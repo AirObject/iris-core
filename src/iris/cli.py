@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from importlib.metadata import version
 import os
 import sys
 import time
@@ -21,6 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(prog="iris")
+    parser.add_argument("--version", action="version", version=f"iris {version('iris-core')}")
     parser.add_argument("--db", help="Explicit SQLite database path (legacy/development override)")
     parser.add_argument("--data-dir", type=Path, help="Data directory; overrides IRIS_DATA_DIR and iris.toml")
     parser.add_argument("--config", type=Path, help="Deployment iris.toml path")
@@ -39,6 +41,26 @@ def main(argv: list[str] | None = None) -> int:
     models = commands.add_parser("models", help="Model connection commands")
     models.add_argument("action", choices=["check", "import"])
     models.add_argument("--from", dest="import_path", type=Path, help="Import model TOML; defaults to IRIS_TEST_MODELS")
+    tokens = commands.add_parser("tokens", help="Manage host credentials while the service is stopped")
+    token_commands = tokens.add_subparsers(dest="token_action", required=True)
+    token_create = token_commands.add_parser("create", help="Print a new credential once as JSON")
+    token_create.add_argument("--host", dest="token_host", required=True)
+    scope = token_create.add_mutually_exclusive_group(required=True)
+    scope.add_argument("--all", dest="all_entries", action="store_true")
+    scope.add_argument("--entry", dest="token_entries", action="append")
+    scope.add_argument("--prefix", dest="token_prefix")
+    token_commands.add_parser("list", help="List metadata without credentials")
+    token_revoke = token_commands.add_parser("revoke")
+    token_revoke.add_argument("token_id")
+    backups = commands.add_parser("backup", help="Offline backup export/import; online export uses the admin API")
+    backup_commands = backups.add_subparsers(dest="backup_action", required=True)
+    backup_export = backup_commands.add_parser("export", help="Export a private archive while the service is stopped")
+    backup_export.add_argument("--out", type=Path, required=True)
+    backup_export.add_argument("--include-secrets", action="store_true", help="Include local model keys (default: excluded)")
+    backup_import = backup_commands.add_parser("import", help="Validate and restore a complete archive while the service is stopped")
+    backup_import.add_argument("archive", type=Path)
+    backup_import.add_argument("--confirm-overwrite", action="store_true", help="Confirm replacement after automatic backup")
+    backup_import.add_argument("--backup-include-secrets", action="store_true", help="Include current local model keys in the automatic pre-import backup")
     ingest = commands.add_parser("ingest", help="Add UTF-8 JSONL messages")
     ingest.add_argument("file", type=Path)
     learn = commands.add_parser("learn", help="Process an entry's pending messages")
@@ -64,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
     evaluation.add_argument("--compare-embeddings", action="store_true", help="Compare 1024/2048 dimensions and query prefix on dev only")
     args = parser.parse_args(argv)
     args.command = args.command or "serve"
-    from .configuration import RuntimeConfig, deployment
+    from .configuration import RuntimeConfig, SecretsUnavailable, deployment, container_mode
     try:
         deploy = deployment(config=args.config, data_dir=args.data_dir, host=args.host, port=args.port)
         args.db = str(Path(args.db).resolve()) if args.db else str(deploy['data_dir'] / 'iris.db')
@@ -72,6 +94,31 @@ def main(argv: list[str] | None = None) -> int:
     except (ValueError, OSError):
         print("部署配置无效，请检查数据目录、监听地址和端口。", file=sys.stderr)
         return 1
+    if args.command == "backup":
+        from .backup import BackupError, export_archive, import_archive
+        from .process_lock import StoreLease, LeaseBusyError
+        import sqlite3
+        try:
+            if args.backup_action == "import":
+                result = import_archive(args.archive, args.db, confirm_overwrite=args.confirm_overwrite,
+                                        backup_include_secrets=args.backup_include_secrets)
+            else:
+                with StoreLease(args.db):
+                    if not Path(args.db).is_file():
+                        raise BackupError("missing_database", "没有可导出的数据库。")
+                    store = Store(args.db)
+                    try:
+                        result = export_archive(store, args.out, include_secrets=args.include_secrets)
+                    finally:
+                        store.close()
+            print(json.dumps(result, ensure_ascii=False))
+            return 0
+        except (BackupError, LeaseBusyError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        except (OSError, ValueError, sqlite3.Error):
+            print("备份操作失败，请检查文件、数据目录及可用空间。", file=sys.stderr)
+            return 1
     if args.command == "models" and args.action == "import":
         path = args.import_path or os.environ.get('IRIS_TEST_MODELS')
         if not path:
@@ -87,6 +134,9 @@ def main(argv: list[str] | None = None) -> int:
                 store.close()
             print("已导入模型配置；密钥仅保存在数据目录的 secrets.json，不显示。")
             return 0
+        except SecretsUnavailable:
+            print("模型配置导入失败：secrets.json 不可读或格式损坏。请检查权限；可启动服务，在设置页重新输入受影响用途的密钥后重试。", file=sys.stderr)
+            return 1
         except (ValueError, OSError):
             print("模型配置导入失败，请检查输入文件及数据目录权限。", file=sys.stderr)
             return 1
@@ -94,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
         from .api import create_app, loopback_host
         import uvicorn
         try:
-            host = loopback_host(deploy['host'])
+            host = deploy['host'] if container_mode() else loopback_host(deploy['host'])
             port = deploy['port']
             if not 1 <= port <= 65535:
                 raise ValueError("port must be 1..65535")
@@ -103,17 +153,20 @@ def main(argv: list[str] | None = None) -> int:
             if args.learning_concurrency is not None and not 1 <= args.learning_concurrency <= 32:
                 raise ValueError("learning concurrency must be 1..32")
             from .runtime_logging import configure_logging
-            configure_logging(data_dir, configs or {})
+            logger = configure_logging(data_dir, configs or {})
+            if container_mode():
+                logger.warning("请只把端口映射到本机（-p 127.0.0.1:8080:8080）或放在可信的 Docker 网络中；不要直接暴露到公网，本服务不提供 TLS")
             loader = (lambda: load_test_models(path)) if path else None
             # External evaluation subprocesses do not open a browser.
-            browser_url = None if args.no_open or path else f"http://{'['+host+']' if ':' in host else host}:{port}"
+            browser_url = None if args.no_open or path or container_mode() else f"http://{'['+host+']' if ':' in host else host}:{port}"
             print(f"Iris 已启动： http://{'['+host+']' if ':' in host else host}:{port}")
             uvicorn.run(create_app(args.db, configs=configs, config_loader=loader,
-                                  learning_concurrency=args.learning_concurrency, open_browser_url=browser_url),
+                                  learning_concurrency=args.learning_concurrency, open_browser_url=browser_url,
+                                  allowed_hosts=deploy['allowed_hosts']),
                         host=host, port=port, workers=1, proxy_headers=False)
             return 0
         except (ValueError, OSError):
-            print("服务配置无效：请检查回环监听地址、端口、并发和模型文件。", file=sys.stderr)
+            print("服务配置无效：请检查监听地址（非容器模式须回环）、端口、主机名白名单、并发和模型文件。", file=sys.stderr)
             return 1
     if args.command == "eval":
         try:
@@ -219,6 +272,25 @@ def main(argv: list[str] | None = None) -> int:
         print(str(error), file=sys.stderr)
         return 1
     try:
+        if args.command == "tokens":
+            from .tokens import Tokens, list_tokens
+            manager = Tokens(store)
+            try:
+                if args.token_action == "create":
+                    scope = ({"kind": "all"} if args.all_entries else
+                             {"kind": "entries", "entries": args.token_entries} if args.token_entries else
+                             {"kind": "prefix", "prefix": args.token_prefix})
+                    result = manager.create(host=args.token_host, scope=scope, actor="local_cli")
+                elif args.token_action == "revoke":
+                    result = manager.revoke(args.token_id, actor="local_cli")
+                else:
+                    with store.read() as conn:
+                        result = {"items": list_tokens(conn)}
+                print(json.dumps(result, ensure_ascii=False))
+                return 0
+            except (ValueError, KeyError):
+                print("令牌操作失败：请检查宿主名称、入口范围和令牌 ID。", file=sys.stderr)
+                return 1
         if args.command == "setup":
             print(setup_role(store, args.name, args.background, args.timezone))
             return 0

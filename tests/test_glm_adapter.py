@@ -88,10 +88,10 @@ def test_ark_codes_precede_http_and_empty_error_fields_fall_back(store):
         (429, "RequestBurstTooFast", "retryable"),
         (400, "ContentSecurityDetectionError", "retryable"),
         (500, "InternalServiceError", "retryable"),
-        (400, "", "configuration"), (401, "", "authentication"),
+        (400, "", "item_error"), (401, "", "authentication"),
         (403, "", "account"), (404, "", "configuration"),
         (429, "", "retryable"), (500, "", "retryable"),
-        (400, "SensitiveContentDetectedUnknown", "configuration"),
+        (400, "SensitiveContentDetectedUnknown", "item_error"),
     ]
     with FakeOpenAI().serve() as server:
         gateway = Gateway(server.configs, store, sleeper=lambda _: None)
@@ -175,7 +175,7 @@ def test_effort_changes_health_identity_and_recovery_probe_payload(store):
         assert fingerprint(low) != fingerprint(high)
         configs = {"chat": low}
         health = ModelHealth(store, configs, clock=clock)
-        gateway = Gateway(configs, store, health=health)
+        gateway = Gateway(configs, store, health=health, clock=clock)
         try:
             token = health.check("chat", "learning")
             health.observe("chat", token, "configuration", "invalid parameter")
@@ -227,7 +227,7 @@ def test_403_and_quota_pause_as_account_without_short_retries(store):
     clock = Clock()
     with FakeOpenAI().serve() as server:
         health = ModelHealth(store, server.configs, clock=clock)
-        gateway = Gateway(server.configs, store, health=health,
+        gateway = Gateway(server.configs, store, health=health, clock=clock,
                           sleeper=lambda _: pytest.fail("account errors must not sleep/retry"))
         try:
             for status, code in [(403, ""), (429, "QuotaExceeded"), (400, "InvalidSubscription")]:

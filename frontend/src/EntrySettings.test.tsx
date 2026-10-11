@@ -15,6 +15,8 @@ beforeEach(() => {
   onClose.mockClear();
   setCSRF("entry-csrf");
   settings = {
+    visibility: "shared",
+    visible_in: [],
     pace: "realtime",
     filters: {
       min_chars: 0,
@@ -41,6 +43,7 @@ const renderForm = () =>
   render(
     <EntrySettingsDialog
       entry={{ id: "A", name: "群聊 A" }}
+      entries={[{ id: "A", name: "群聊 A" }]}
       onClose={onClose}
       onSaved={onSaved}
     />,
@@ -62,7 +65,7 @@ test("读取入口设置，保存节奏与三项过滤并沿用 CSRF", async () 
   await number("前后各 K 条消息", "2");
   await number("每小时最多批次", "10");
   expect(screen.getByText(/放宽或关闭过滤不会重新学习/)).toBeVisible();
-  await userEvent.click(screen.getByRole("button", { name: "保存入口设置" }));
+  await userEvent.click(screen.getByRole("button", { name: "保存节奏与过滤" }));
   const req = requests.find((r) => r.init?.method === "PATCH")!;
   expect(req.url).toBe("/admin/api/entries/A/settings");
   expect(JSON.parse(String(req.init?.body))).toEqual({
@@ -89,9 +92,9 @@ test("自定义节奏读取和保存整数范围，不覆盖未编辑数值", as
   expect(await screen.findByLabelText("学习节奏")).toHaveValue("custom");
   expect(screen.getByLabelText("空闲秒数")).toHaveValue(20);
   await number("触发条数", "7");
-  await userEvent.click(screen.getByRole("button", { name: "保存入口设置" }));
+  await userEvent.click(screen.getByRole("button", { name: "保存节奏与过滤" }));
   expect(JSON.parse(String(requests.at(-1)?.init?.body))).toEqual({
-    ...settings,
+    filters: settings.filters,
     pace: { ...settings.pace, count: 7 },
   });
 });
@@ -107,7 +110,7 @@ test.each([
   await screen.findByLabelText("学习节奏");
   await userEvent.click(screen.getByLabelText("只学习提到角色的消息"));
   await number(label, value);
-  await userEvent.click(screen.getByRole("button", { name: "保存入口设置" }));
+  await userEvent.click(screen.getByRole("button", { name: "保存节奏与过滤" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("整数");
   expect(requests.some((r) => r.init?.method === "PATCH")).toBe(false);
 });
@@ -118,11 +121,11 @@ test("自定义节奏空值不变成 0，后端错误保留草稿", async () => 
     "custom",
   );
   await number("空闲秒数", "");
-  await userEvent.click(screen.getByRole("button", { name: "保存入口设置" }));
+  await userEvent.click(screen.getByRole("button", { name: "保存节奏与过滤" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("空闲秒数");
   failure = true;
   await number("空闲秒数", "15");
-  await userEvent.click(screen.getByRole("button", { name: "保存入口设置" }));
+  await userEvent.click(screen.getByRole("button", { name: "保存节奏与过滤" }));
   expect(await screen.findByText("入口设置已失效，请重试")).toBeVisible();
   expect(screen.getByLabelText("空闲秒数")).toHaveValue(15);
   expect(onSaved).not.toHaveBeenCalled();

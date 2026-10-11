@@ -1,7 +1,7 @@
 """Recall judgment uses fake transport; no real model or corpus labels."""
+from conftest import authorize_host
 import json
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from datetime import timedelta
@@ -17,12 +17,15 @@ from iris.models import Gateway, ModelConfig, ModelError
 from iris.recall_judge import validate_scores
 from iris.retrieval import Retrieval
 from test_models import response
+from fake_openai import Clock
+from thread_helpers import THREAD_WAIT, expire_after_entry
 from test_retrieval import entry, put
 
 
-def gateway(store, handler, *, health=None):
+def gateway(store, handler, *, health=None, **kwargs):
     config = {'chat': ModelConfig('https://example.invalid/v1', '', 'stub', reasoning_effort='low')}
-    return closing(Gateway(config, store, health=health, client=httpx.Client(transport=httpx.MockTransport(handler))))
+    return closing(Gateway(config, store, health=health, clock=health.clock if health else None,
+                           client=httpx.Client(transport=httpx.MockTransport(handler)), **kwargs))
 
 
 def scores(ids, values=None):
@@ -145,27 +148,43 @@ def test_invalid_json_degrades_without_repair_and_records_usage(store):
 
 
 
-def test_concurrency_queue_timeout_and_late_call_keeps_slot(store):
-    active = threading.Event()
-    release = threading.Event()
+def test_concurrency_queue_timeout_and_late_call_keeps_slot(store, monkeypatch):
+    clock = Clock()
+    active, release, expire = (threading.Event() for _ in range(3))
     calls = []
     def handler(request):
         calls.append(request)
         active.set()
-        release.wait(2)
+        release.wait()
         return httpx.Response(200, json=response(scores([1])))
-    with gateway(store, handler) as g, ThreadPoolExecutor(2) as pool:
+    with gateway(store, handler, monotonic=clock.monotonic) as g, ThreadPoolExecutor(1) as pool:
+        expire_after_entry(monkeypatch, g._judge_pool, active, clock, expire=expire)
         first = pool.submit(g.recall_judge, [], ['1'], budget_seconds=.12)
-        assert active.wait(1)
-        with pytest.raises(ModelError, match='queue_timeout'):
-            g.recall_judge([], ['1'], budget_seconds=.03)
-        with pytest.raises(ModelError):
-            first.result()
-        # Underlying HTTP is still in flight; timeout must not release its slot.
-        with pytest.raises(ModelError, match='queue_timeout'):
-            g.recall_judge([], ['1'], budget_seconds=.03)
-        assert len(calls) == 1
-        release.set()
+        try:
+            assert active.wait(THREAD_WAIT)
+            with monkeypatch.context() as queue_time:
+                wait = g._judge_admission.condition.wait
+                def expire_queue(timeout):
+                    clock.advance(timeout)
+                    return wait(timeout=0)
+                queue_time.setattr(g._judge_admission.condition, 'wait', expire_queue)
+                with pytest.raises(ModelError, match='queue_timeout'):
+                    g.recall_judge([], ['1'], budget_seconds=.03)
+                assert not first.done()  # The first caller is still awaiting its deadline.
+                expire.set()
+                with pytest.raises(ModelError) as exc:
+                    first.result(timeout=THREAD_WAIT)
+                assert exc.value.reason == 'timeout'
+                # Underlying HTTP is still in flight; timeout must not release its slot.
+                assert g._judge_admission.active == 1
+                with pytest.raises(ModelError, match='queue_timeout'):
+                    g.recall_judge([], ['1'], budget_seconds=.03)
+                assert len(calls) == 1
+        finally:
+            expire.set()
+            release.set()
+            g._judge_pool.shutdown(wait=True)
+        assert g._judge_admission.active == 0
 
 
 def test_queue_bound_budget_and_account_code_precedence(store):
@@ -173,15 +192,17 @@ def test_queue_bound_budget_and_account_code_precedence(store):
     release, entered = threading.Event(), threading.Event()
     def handler(request):
         entered.set()
-        release.wait(1)
+        release.wait()
         return httpx.Response(200, json=response(scores([1])))
-    with gateway(store, handler) as g, ThreadPoolExecutor(1) as pool:
+    with gateway(store, handler, monotonic=Clock().monotonic) as g, ThreadPoolExecutor(1) as pool:
         first = pool.submit(g.recall_judge, [], ['1'])
-        assert entered.wait(1)
-        with pytest.raises(ModelError, match='queue_full'):
-            g.recall_judge([], ['1'])
-        release.set()
-        assert first.result()['scores'] == [100]
+        try:
+            assert entered.wait(THREAD_WAIT)
+            with pytest.raises(ModelError, match='queue_full'):
+                g.recall_judge([], ['1'])
+        finally:
+            release.set()
+        assert first.result(timeout=THREAD_WAIT)['scores'] == [100]
     configs = {'chat': ModelConfig('https://example.invalid/v1', '', 'stub')}
     health = ModelHealth(store, configs)
     with gateway(store, lambda request: httpx.Response(429, json={'error': {'code': 'QuotaExceeded'}}), health=health) as g:
@@ -193,8 +214,9 @@ def test_queue_bound_budget_and_account_code_precedence(store):
 
 
 def test_daily_limit_and_chat_pause_are_independent(store):
+    from fake_openai import Clock
     configs = {'chat': ModelConfig('https://example.invalid/v1', '', 'stub', reasoning_effort='low')}
-    health = ModelHealth(store, configs)
+    health = ModelHealth(store, configs, clock=Clock())
     token = health.check('chat', 'learning')
     health.observe('chat', token, 'account', 'HTTP 429')
     with gateway(store, lambda request: httpx.Response(200, json=response(scores([1]), usage={'prompt_tokens': 5, 'completion_tokens': 1})), health=health) as g:
@@ -233,6 +255,7 @@ def test_host_api_and_management_settings(store):
     entry(store)
     mid = put(store, '我喜欢天文摄影')
     with TestClient(create_app(store=store), base_url='http://127.0.0.1', client=('127.0.0.1', 12345)) as client:
+        authorize_host(client)
         login_admin(client)
         response = client.post('/api/v1/entries/A/prepare', json={'text': '天文摄影', 'judge': False})
         assert response.status_code == 200
@@ -287,23 +310,26 @@ def test_actual_limit_can_be_two_without_affecting_chat_pool(store):
     def handler(request):
         body = json.loads(request.content)
         if body.get('temperature') == 0:
-            entered.wait(2)
-            release.wait(2)
+            entered.wait(THREAD_WAIT)
+            release.wait()
             return httpx.Response(200, json=response(scores([1])))
         return httpx.Response(200, json=response('{"ok":true}'))
-    with gateway(store, handler) as g, ThreadPoolExecutor(2) as pool:
+    with gateway(store, handler, monotonic=Clock().monotonic) as g, ThreadPoolExecutor(2) as pool:
         futures = [pool.submit(g.recall_judge, [], ['1']) for _ in range(2)]
-        entered.wait(2)
-        assert g.chat([], 'trial_reply').content == '{"ok":true}'
-        with pytest.raises(ModelError, match='queue_full'):
-            g.recall_judge([], ['1'])
-        release.set()
-        assert all(f.result()['scores'] == [100] for f in futures)
+        try:
+            entered.wait(THREAD_WAIT)
+            assert g.chat([], 'trial_reply').content == '{"ok":true}'
+            with pytest.raises(ModelError, match='queue_full'):
+                g.recall_judge([], ['1'])
+        finally:
+            release.set()
+        assert all(f.result(timeout=THREAD_WAIT)['scores'] == [100] for f in futures)
 
 
 def test_network_error_pause_and_daily_limit_skip_probe(store):
-    stamp = [utc_now()]
-    health = ModelHealth(store, {'chat': ModelConfig('https://example.invalid/v1', '', 'stub')}, clock=lambda: stamp[0])
+    from fake_openai import Clock
+    clock = Clock()
+    health = ModelHealth(store, {'chat': ModelConfig('https://example.invalid/v1', '', 'stub')}, clock=clock)
     def handler(request):
         raise httpx.ConnectError('network')
     with gateway(store, handler, health=health) as g:
@@ -312,7 +338,7 @@ def test_network_error_pause_and_daily_limit_skip_probe(store):
                 g.recall_judge([], ['1'])
         assert health.snapshot()['recall_judge']['state'] == 'temporarily_unavailable'
         assert health.learning_allowed()
-        stamp[0] += timedelta(seconds=61)
+        clock.advance(61)  # Cross role midnight before recording the usage.
         assert 'recall_judge' in health.due_probes()
         g._record('test', 'stub', 1, 'success', None, {'prompt_tokens': 5})
         health.set_daily_token_limit(1)
@@ -364,6 +390,7 @@ def test_api_reports_recall_pause_and_per_request_degradation(store, failure):
         return httpx.Response(200, json=response('{}'))
     with gateway(store, handler, health=health) as g:
         with TestClient(create_app(store=store, gateway=g), base_url='http://127.0.0.1') as client:
+            authorize_host(client)
             reply = client.post('/api/v1/entries/A/prepare', json={'text': '摄影器材', 'participants': []})
             assert reply.status_code == 200
             result = reply.json()

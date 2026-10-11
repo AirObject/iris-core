@@ -6,7 +6,7 @@ import pytest
 from iris.learning import LearningEngine, PROMPT_VERSION
 from iris.queue import form_batch
 
-from conftest import FakeGateway, batch, msg
+from conftest import FakeGateway, batch, learning_output, msg
 from test_batches import memory
 
 
@@ -101,7 +101,7 @@ def test_copied_memory_annotations_are_removed_before_writing_and_audited(store,
             revision = json.loads(conn.execute(
                 "SELECT after_json FROM memory_revisions WHERE memory_id=?", (memory_id,)).fetchone()[0])
             assert revision["content"] == CLEAN_CONTENT
-    assert raw == json.dumps(original_output, ensure_ascii=False)
+    assert raw == json.dumps(learning_output(original_output), ensure_ascii=False)
     assert output == original_output
     notes = [note for note in result["normalizations"] if note["field"] == "content"]
     assert len(notes) == 1
@@ -156,5 +156,5 @@ def test_annotation_only_content_is_dropped_by_existing_validation(store, sectio
         assert conn.execute("SELECT revision FROM memories WHERE id=?", (memory_id,)).fetchone()[0] == 1
         raw = conn.execute("SELECT raw_output FROM batch_attempts WHERE batch_id=?", (formed.id,)).fetchone()[0]
         saved = json.loads(conn.execute("SELECT result_json FROM batches WHERE id=?", (formed.id,)).fetchone()[0])
-    assert raw == json.dumps(output, ensure_ascii=False)
+    assert raw == json.dumps(learning_output(output), ensure_ascii=False)
     assert saved["normalizations"] == result["normalizations"]

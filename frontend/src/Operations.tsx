@@ -4,6 +4,11 @@ import { Empty, Notice, Pagination, fullTime } from "./ui";
 import type { Operation, Page } from "./types";
 
 export const operationNames: Record<string, string> = {
+  token_create: "创建宿主令牌",
+  token_revoke: "撤销宿主令牌",
+  token_limits_saved: "更新宿主令牌限流",
+  backup_export: "导出备份",
+  backup_import: "从备份导入",
   consolidation_settings_saved: "更新梦境整理设置",
   goal_dedup_judge_saved: "更新目标去重判断设置",
   consolidation_merge: "整理合并记忆",
@@ -38,6 +43,9 @@ export const operationNames: Record<string, string> = {
   settings_goals: "更新目标与提醒设置",
   memory_adjust: "调整记忆",
   memory_forget: "手动遗忘",
+  memory_bulk_forget: "批量遗忘记忆",
+  memory_bulk_delete: "批量删除记忆",
+  memory_bulk_purge: "批量彻底清除记忆",
   memory_restore: "恢复记忆",
   memory_purge: "彻底清除记忆",
   memory_recreate: "按旧内容新建",
@@ -52,6 +60,7 @@ export const operationNames: Record<string, string> = {
   feedback: "使用反馈",
   feedback_rejected: "使用反馈被拒绝",
   learn_rejected: "立即学习请求被拒绝",
+  trial_media_uploaded: "上传试用图片",
   trial_entry_created: "创建试用入口",
   trial_speaker_created: "创建发言人",
   trial_message_received: "试用消息接收",
@@ -65,6 +74,7 @@ export const operationNames: Record<string, string> = {
   model_retry: "请求模型重试",
   model_test: "测试模型连接",
   recall_judge_saved: "更新召回判断设置",
+  entry_visibility: "更新入口记忆可见范围",
   entry_settings_updated: "更新入口节奏与过滤",
   subject_alias_added: "添加人物别名",
   subject_alias_removed: "删除人物别名",
@@ -75,6 +85,7 @@ export const operationNames: Record<string, string> = {
   logout: "退出登录",
 };
 export const actorNames: Record<string, string> = {
+  local_cli: "本机命令行",
   persona: "persona 更新",
   consolidation: "梦境整理",
   goal_dedup: "目标去重判断",
@@ -87,10 +98,13 @@ export const actorNames: Record<string, string> = {
   local_import: "本机导入",
 };
 const objectNames: Record<string, string> = {
+  host_token: "宿主令牌",
+  backup: "备份",
   persona: "persona 版本",
   persona_attempt: "persona 生成任务",
   goal: "目标",
   memory: "记忆",
+  memory_bulk: "批量记忆操作",
   batch: "批次",
   entry: "入口",
   subject: "人物",

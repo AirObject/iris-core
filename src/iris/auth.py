@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import ipaddress
+import logging
 import secrets
 import threading
 import time
@@ -16,6 +17,7 @@ from .db import dumps, now
 
 COOKIE = 'iris_session'
 SESSION_SECONDS = 12 * 60 * 60
+MAX_ANONYMOUS_SESSIONS = 128
 
 
 def hash_password(password: str) -> str:
@@ -65,10 +67,27 @@ class Password(BaseModel):
     password: SecretStr = Field(min_length=8, max_length=256)
 
 
+class SetupPassword(Password):
+    setup_code: SecretStr | None = Field(default=None, max_length=128)
+
+
 class Sessions:
     def __init__(self, store):
         self.store = store
         self.login_lock = threading.Lock()
+        self.setup_code_hash = None
+
+    def start_setup(self):
+        if not self.exists():
+            code = secrets.token_hex(32)
+            self.setup_code_hash = digest(code)
+            # The only plaintext emission: configured Iris console + iris.log.
+            # Never persist the code/hash in the DB or return it in an API.
+            logging.getLogger(__name__).info('首次设置码：%s', code)
+
+    def setup_code_valid(self, code):
+        return bool(self.setup_code_hash and code and
+                    hmac.compare_digest(self.setup_code_hash, digest(code)))
 
     def exists(self):
         with self.store.read() as conn:
@@ -88,6 +107,10 @@ class Sessions:
         with self.store.write() as conn:
             conn.execute('DELETE FROM admin_sessions WHERE expires_at<=? OR token_hash=?',
                          (time.time(), digest(request.cookies.get(COOKIE, ''))))
+            if not authenticated:
+                conn.execute("""DELETE FROM admin_sessions WHERE token_hash IN (
+                    SELECT token_hash FROM admin_sessions WHERE authenticated=0
+                    ORDER BY expires_at DESC, token_hash LIMIT -1 OFFSET ?)""", (MAX_ANONYMOUS_SESSIONS-1,))
             conn.execute('INSERT INTO admin_sessions VALUES(?,?,?)', (digest(token), int(authenticated), time.time()+lifetime))
         response.set_cookie(COOKIE, token, max_age=lifetime, httponly=True, samesite='strict',
                             secure=request.url.scheme == 'https', path='/')
@@ -109,14 +132,14 @@ def install_auth(app):
 
     @app.middleware('http')
     async def administrator_boundary(request, call_next):
-        path = request.url.path
+        path = request.scope['path']
         if path.startswith('/api/v1') or path.startswith('/assets/'):
             return await call_next(request)
         if not app.state.ready:
             return await call_next(request)
         configured = app.state.store.setting('setup_complete', False)
         sessions = app.state.sessions
-        if not configured and not local(request):
+        if not configured and not local(request) and not app.state.container:
             return error('local_setup_only', '首次设置只允许从本机完成', 403)
         session = sessions.lookup(request)
         authenticated = bool(session and session['authenticated'])
@@ -145,9 +168,16 @@ def install_auth(app):
     @router.get('/session')
     def session_info(request: Request):
         sessions = app.state.sessions
+        origin = request.headers.get('origin')
+        if (request.headers.get('sec-fetch-site') in ('cross-site', 'same-site')
+                or (origin is not None and origin != f'{request.url.scheme}://{request.headers.get("host", "")}')):
+            return error('csrf_failed', '请求校验失败，请从本机页面访问', 403)
+        with sessions.store.write() as conn:
+            conn.execute('DELETE FROM admin_sessions WHERE expires_at<=?', (time.time(),))
         row = sessions.lookup(request)
         body = {'configured': bool(app.state.store.setting('setup_complete', False)),
-                'admin_exists': sessions.exists(), 'authenticated': bool(row and row['authenticated'])}
+                'admin_exists': sessions.exists(), 'authenticated': bool(row and row['authenticated']),
+                'setup_code_required': bool(not sessions.exists() and not local(request))}
         response = JSONResponse({})
         token = request.cookies.get(COOKIE) if row else sessions.issue(request, response, authenticated=False)
         body['csrf_token'] = csrf_token(token)
@@ -156,17 +186,19 @@ def install_auth(app):
         return response
 
     @router.post('/setup/password')
-    def create_password(payload: Password, request: Request):
+    def create_password(payload: SetupPassword, request: Request):
         sessions = app.state.sessions
-        if not local(request):
-            return error('local_setup_only', '首次设置只允许从本机完成', 403)
         with sessions.login_lock:
             if sessions.exists():
                 return error('already_initialized', '管理员密码已设置，请登录', 409)
+            supplied = payload.setup_code.get_secret_value() if payload.setup_code is not None else None
+            if (not local(request) or supplied is not None) and not sessions.setup_code_valid(supplied):
+                return error('invalid_setup_code', '请从服务启动日志取得有效的首次设置码', 403)
             hashed = hash_password(payload.password.get_secret_value())
             with app.state.store.write() as conn:
                 conn.execute('INSERT INTO admin_credentials VALUES(1,?,?)', (hashed, now()))
                 audit(conn, 'setup_password')
+            sessions.setup_code_hash = None
             response = JSONResponse({'ok': True})
             sessions.issue(request, response, authenticated=True)
             return response

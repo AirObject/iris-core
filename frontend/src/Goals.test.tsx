@@ -352,7 +352,10 @@ test("详情显示证据、记忆修订、合并记录和操作字段；只读�
   await screen.findByRole("heading", { name: "目标 #10" });
   expect(screen.getByText("我答应周五联系小林")).toBeVisible();
   expect(screen.getByText(/依据修订 1.*当前修订 2/)).toBeVisible();
-  expect(screen.getByText("周五联系一下小林")).toBeVisible();
+  const merged = screen.getByRole("heading", {
+    name: "合并进来的目标",
+  }).parentElement!;
+  expect(within(merged).getByText("周五联系一下小林")).toBeVisible();
   await userEvent.click(screen.getByText("操作记录", { selector: "summary" }));
   expect(await screen.findByText(/修改前修订 3/)).toBeVisible();
   expect(screen.getByText("暂无修订快照。")).toBeVisible();

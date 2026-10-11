@@ -1,3 +1,4 @@
+from conftest import authorize_host
 import json
 import threading
 import time
@@ -6,8 +7,8 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from fastapi.testclient import TestClient
 
-from conftest import FakeGateway, msg
-from fake_openai import Clock, FakeOpenAI
+from conftest import FakeGateway, learning_output, msg
+from fake_openai import Clock, FakeOpenAI, completion
 from iris.api import create_app
 from iris.learning import LearningEngine
 from iris.memory_ops import edit_memory
@@ -17,6 +18,7 @@ from iris.queue import form_batch, get_batch
 from iris.scheduler import Scheduler
 from test_batches import memory
 from test_retrieval import put
+from thread_helpers import THREAD_WAIT
 
 
 def wait_for(predicate, timeout=5):
@@ -81,7 +83,7 @@ def test_B01_B02_B06_B07_B08_concurrency_serial_entries_and_frozen_batches(store
     for entry in ("A", "B", "C"):
         intake(store, clock, entry, 5, "realtime")
     gate = threading.Event()
-    lock = threading.Lock()
+    lock = threading.Condition()
     active = 0
     maximum = 0
     calls = 0
@@ -91,13 +93,15 @@ def test_B01_B02_B06_B07_B08_concurrency_serial_entries_and_frozen_batches(store
             active += 1
             calls += 1
             maximum = max(maximum, active)
-        assert gate.wait(5)
+            lock.notify_all()
+        gate.wait()
         with lock:
             active -= 1
     scheduler = Scheduler(store, FakeGateway(hook=hook), clock=clock)
     try:
         scheduler.tick()
-        wait_for(lambda: active == 2)
+        with lock:
+            assert lock.wait_for(lambda: active == 2, timeout=THREAD_WAIT)
         new_id = msg(store, 6, "学习时新收到", entry="A")
         for _ in range(5):
             scheduler.tick()
@@ -106,14 +110,19 @@ def test_B01_B02_B06_B07_B08_concurrency_serial_entries_and_frozen_batches(store
         assert len(rows) == 2 and len({r["entry_id"] for r in rows}) == 2
         assert all(new_id not in json.loads(r["target_ids"]) for r in rows if r["entry_id"] == "A")
         gate.set()
-        wait_for(lambda: active == 0)
+        for future in list(scheduler._active.values()):
+            future.result(timeout=THREAD_WAIT)
+        assert active == 0
         clock.advance(6)
-        for _ in range(100):
-            scheduler.tick()
+        def pending():
             with store.read() as conn:
-                if conn.execute("SELECT COUNT(*) FROM messages WHERE learning_state!='learned'").fetchone()[0] == 0:
-                    break
-            time.sleep(.01)
+                return conn.execute("SELECT COUNT(*) FROM messages WHERE learning_state!='learned'").fetchone()[0]
+        while remaining := pending():
+            scheduler.tick()
+            assert scheduler._active, "pending messages were not scheduled"
+            for future in list(scheduler._active.values()):
+                future.result(timeout=THREAD_WAIT)
+            assert pending() < remaining, "completed learning made no progress"
         assert maximum == 2
         with store.read() as conn:
             assert conn.execute("SELECT COUNT(*) FROM messages WHERE learning_state!='learned'").fetchone()[0] == 0
@@ -130,13 +139,15 @@ def test_retry_due_and_pausing_failure_does_not_consume_attempt(store):
     scheduler = Scheduler(store, fake, clock=clock)
     try:
         scheduler.tick()
-        wait_for(lambda: get_batch(store, 1).attempt_count == 1)
+        scheduler._active["A"].result(timeout=THREAD_WAIT)
+        assert get_batch(store, 1).attempt_count == 1
         clock.advance(59)
         scheduler.tick()
         assert len(fake.requests) == 1
         clock.advance(1)
         scheduler.tick()
-        wait_for(lambda: get_batch(store, 1).state == "succeeded")
+        scheduler._active["A"].result(timeout=THREAD_WAIT)
+        assert get_batch(store, 1).state == "succeeded"
     finally:
         scheduler.stop()
 
@@ -144,24 +155,28 @@ def test_retry_due_and_pausing_failure_does_not_consume_attempt(store):
     with FakeOpenAI().serve() as server:
         for _ in range(3):
             server.enqueue(503)
+        server.enqueue()  # Recovery probe.
+        server.enqueue(body=completion(json.dumps(learning_output({}))))
         configs = {"chat": server.configs["chat"]}
         health = ModelHealth(store, configs, clock=clock)
         gateway = Gateway(configs, store, health=health, clock=clock, sleeper=lambda _: None)
         scheduler = Scheduler(store, gateway, clock=clock)
         try:
             scheduler.tick()
-            wait_for(lambda: health.snapshot()["chat"]["state"] == "temporarily_unavailable")
-            wait_for(lambda: get_batch(store, 2).state == "waiting")
+            scheduler._active["B"].result(timeout=THREAD_WAIT)
+            assert health.snapshot()["chat"]["state"] == "temporarily_unavailable"
+            assert get_batch(store, 2).state == "waiting"
             assert get_batch(store, 2).attempt_count == 0
             for _ in range(4):
                 scheduler.tick()
             assert len(server.requests) == 3 and get_batch(store, 2).attempt_count == 0
             clock.advance(60)
-            for _ in range(100):
-                scheduler.tick()
-                if get_batch(store, 2).state == "succeeded":
-                    break
-                time.sleep(.01)
+            scheduler.tick()
+            for future in list(scheduler._probes.values()):
+                future.result(timeout=THREAD_WAIT)
+            scheduler.tick()
+            for future in list(scheduler._active.values()):
+                future.result(timeout=THREAD_WAIT)
             assert get_batch(store, 2).state == "succeeded"
         finally:
             scheduler.stop()
@@ -173,7 +188,7 @@ def test_embedding_pause_fallback_backfill_and_revision_check(store):
     mid = put(store, "我喜欢天文摄影")
     with FakeOpenAI().serve() as server:
         health = ModelHealth(store, server.configs, clock=clock)
-        gateway = Gateway(server.configs, store, health=health, sleeper=lambda _: None)
+        gateway = Gateway(server.configs, store, health=health, clock=clock, sleeper=lambda _: None)
         scheduler = Scheduler(store, gateway, clock=clock)
         settings = store.setting("retrieval")
         store.set_setting("retrieval", {**settings, "embedding_model": "stub-embedding"})
@@ -182,6 +197,7 @@ def test_embedding_pause_fallback_backfill_and_revision_check(store):
             with pytest.raises(ModelError):
                 gateway.embedding("probe")
             with TestClient(create_app(store=store, gateway=gateway), base_url="http://127.0.0.1") as client:
+                authorize_host(client)
                 result = client.post("/api/v1/memories/search", json={"text": "天文摄影"}).json()
                 assert result["memories"][0]["id"] == mid
                 assert any(h["code"] == "model_paused" and h["kind"] == "embedding" for h in result["hints"])
@@ -209,6 +225,7 @@ def test_embedding_pause_fallback_backfill_and_revision_check(store):
 
 def test_manual_learning_accepted_while_paused_and_status_fields(store):
     with TestClient(create_app(store=store), base_url="http://127.0.0.1") as client:
+        authorize_host(client)
         payload = {"sender": "小林", "content": "喜欢猫", "occurred_at": "2026-10-04T08:00:00+08:00", "dedupe_key": "1"}
         assert client.post("/api/v1/entries/A/messages", json=payload).status_code == 200
         result = client.post("/api/v1/entries/A/learn").json()

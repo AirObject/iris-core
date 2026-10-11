@@ -1,4 +1,5 @@
 """Hand-written C2 tests. No real model, endpoint configuration, or corpus labels."""
+from conftest import authorize_host
 from datetime import datetime, timezone
 
 import pytest
@@ -202,6 +203,7 @@ def test_inflight_c2_checks_blocked_candidates_and_method_before_write(store,set
 def test_http_host_and_admin_read_existing_possible_fields(store,setup):
     _,judge=setup
     with TestClient(create_app(store=store,gateway=judge),base_url='http://127.0.0.1',client=('127.0.0.1',12345)) as client:
+        authorize_host(client)
         client.app.state.scheduler.stop()
         login_admin(client)
         old=client.post('/api/v1/goals',json={'content':'周五20点检查服务器'}).json()

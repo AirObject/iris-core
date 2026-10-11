@@ -76,7 +76,7 @@ class Gateway(ModelGateway):
         # become due, but must not change the fixed performance memory corpus.
         if purpose != "learning":
             raise ValueError("benchmark gateway only supports empty learning")
-        output = {"memories": []}
+        output = {"memories": [], "updates": [], "people": [], "goals": [], "questions": []}
         return output, json.dumps(output), None, "direct"
 
 

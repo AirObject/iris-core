@@ -7,6 +7,7 @@ type Session = {
   authenticated: boolean;
   admin_exists: boolean;
   csrf_token: string;
+  setup_code_required?: boolean;
 };
 export default function Access({
   children,
@@ -52,6 +53,7 @@ export default function Access({
           <PasswordForm
             creating={!session.admin_exists}
             configured={session.configured}
+            setupCodeRequired={Boolean(session.setup_code_required)}
             done={refresh}
           />
         )}
@@ -62,14 +64,17 @@ export default function Access({
 function PasswordForm({
   creating,
   configured,
+  setupCodeRequired,
   done,
 }: {
   creating: boolean;
   configured: boolean;
+  setupCodeRequired: boolean;
   done: () => void;
 }) {
   const [password, setPassword] = useState(""),
     [confirm, setConfirm] = useState(""),
+    [setupCode, setSetupCode] = useState(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const submit = async (e: React.FormEvent) => {
@@ -83,10 +88,14 @@ function PasswordForm({
     try {
       await api(
         creating ? "/setup/password" : "/login",
-        json("POST", { password }),
+        json("POST", {
+          password,
+          ...(creating && setupCode ? { setup_code: setupCode } : {}),
+        }),
       );
       setPassword("");
       setConfirm("");
+      setSetupCode("");
       if (configured && location.pathname !== "/")
         history.replaceState(null, "", "/#/trial");
       done();
@@ -130,6 +139,21 @@ function PasswordForm({
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
           />
+        </label>
+      )}
+      {creating && setupCodeRequired && (
+        <label>
+          设置码
+          <input
+            required
+            type="password"
+            aria-label="设置码"
+            maxLength={128}
+            autoComplete="off"
+            value={setupCode}
+            onChange={(e) => setSetupCode(e.target.value)}
+          />
+          <small>从服务启动日志取得；仅首次设置使用。</small>
         </label>
       )}
       {error && <Notice error>{error}</Notice>}

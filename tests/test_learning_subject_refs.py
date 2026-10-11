@@ -6,7 +6,7 @@ import json
 import pytest
 
 from iris.queue import add_message
-from conftest import FakeGateway, batch, msg
+from conftest import FakeGateway, batch, learning_output, msg
 from test_batches import memory
 
 
@@ -34,7 +34,7 @@ def assert_audit(store, formed, result, original, field, before, after):
                for n in result["normalizations"])
     with store.read() as conn:
         assert json.loads(conn.execute("SELECT raw_output FROM batch_attempts WHERE batch_id=?",
-                                       (formed.id,)).fetchone()[0]) == original
+                                       (formed.id,)).fetchone()[0]) == learning_output(original)
         saved = json.loads(conn.execute("SELECT result_json FROM batches WHERE id=?", (formed.id,)).fetchone()[0])
         assert saved["normalizations"] == result["normalizations"]
 

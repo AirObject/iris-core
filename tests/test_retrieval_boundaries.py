@@ -76,7 +76,7 @@ def test_malformed_embedding_response_is_recorded_as_failure(store, vector):
     reply = Retrieval(store,gateway,vector_min=.5).search(text="天文摄影")
     assert reply["memories"] == [] and any(h["code"] == "embedding_fallback" for h in reply["hints"])
     with store.read() as conn:
-        assert {r[0] for r in conn.execute("SELECT result_category FROM model_calls")} == {"configuration"}
+        assert {r[0] for r in conn.execute("SELECT result_category FROM model_calls")} == {"invalid_output"}
     gateway.close()
     client.close()
 

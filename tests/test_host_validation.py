@@ -1,4 +1,5 @@
 """The local HTTP boundary must reject DNS rebinding before any route runs."""
+from conftest import authorize_host
 import asyncio
 from importlib.resources import files
 
@@ -27,6 +28,7 @@ READ_ROUTES = [
 @pytest.fixture
 def client(store):
     with TestClient(create_app(store=store), base_url="http://127.0.0.1", client=("127.0.0.1", 1000)) as client:
+        authorize_host(client)
         login_admin(client)
         client.app.state.scheduler.stop()
         yield client
@@ -39,7 +41,12 @@ def read(client, method, path, host):
 
 def assert_rejected(response):
     assert response.status_code == 400
-    assert response.text == "Invalid host header"
+    if response.request.url.path.startswith("/api/v1/"):
+        error = response.json()["error"]
+        assert error["code"] == "invalid_request"
+        assert error["fields"][0]["field"] == "header.host"
+    else:
+        assert response.text == "Invalid host header"
     assert "location" not in response.headers
     assert "access-control-allow-origin" not in response.headers
 

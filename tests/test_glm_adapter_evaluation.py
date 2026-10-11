@@ -10,7 +10,7 @@ from iris.db import Store
 from iris.model_health import ModelHealth
 from iris.models import Gateway, ModelConfig
 from iris.service_status import service_status
-from fake_openai import FakeOpenAI
+from fake_openai import Clock, FakeOpenAI
 from test_external_judging import learned, round_files, read_json
 from test_e2e_external_judging import collected, round_files as e2e_round_files
 
@@ -54,16 +54,17 @@ def test_e2e_effort_bound_to_signature_and_external_report(collected, tmp_path):
 
 
 def test_diagnostics_reach_learning_and_service_status(store):
+    clock = Clock()
     with FakeOpenAI().serve() as server:
         configs = {**server.configs, "chat": replace(server.configs["chat"], reasoning_effort="low")}
-        health = ModelHealth(store, configs)
-        gateway = Gateway(configs, store, health=health)
+        health = ModelHealth(store, configs, clock=clock)
+        gateway = Gateway(configs, store, health=health, clock=clock)
         try:
             server.enqueue(body={"choices": [{"message": {"content": "{}", "reasoning_content": "abc"},
                                                "finish_reason": "stop"}]})
             gateway.chat([], "learning")
             actual = ev._case_data(store)
-            status = service_status(store, SimpleNamespace(running=True, last_error=None), health)
+            status = service_status(store, SimpleNamespace(running=True, last_error=None), health, clock=clock)
             assert status["chat_reasoning_effort"] == "low"
             for calls in (actual["calls"], status["learning_calls_24h"]):
                 assert calls[0]["reasoning_effort"] == "low"

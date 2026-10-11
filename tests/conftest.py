@@ -9,6 +9,11 @@ from iris.models import ModelConfig, ModelError
 from iris.queue import add_message, form_batch
 
 
+def learning_output(sections):
+    """Complete the protocol envelope for tests focused on individual items."""
+    return {**{key: [] for key in ("memories", "updates", "people", "goals", "questions")}, **sections}
+
+
 class FakeGateway:
     def __init__(self, response=None, hook=None):
         self.response = response if response is not None else {}
@@ -27,10 +32,21 @@ class FakeGateway:
         result = self.response.pop(0) if isinstance(self.response, list) else self.response
         if isinstance(result, Exception):
             raise result
+        # Item-focused tests supply only the sections under test. Emit a complete
+        # protocol envelope; malformed envelopes use the real Gateway transport.
+        if purpose == "learning" and isinstance(result, dict):
+            result = learning_output(result)
         return result, json.dumps(result, ensure_ascii=False), None, "direct"
 
     def embedding(self, text, purpose="embedding"):
         return [1.0, 0.0]
+
+
+@pytest.fixture(autouse=True)
+def isolate_deployment_environment(monkeypatch):
+    """Deployment settings must come from each test, not the caller's shell."""
+    for name in ("IRIS_DATA_DIR", "IRIS_HOST", "IRIS_PORT", "IRIS_CONTAINER", "IRIS_ALLOWED_HOSTS"):
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture
@@ -70,3 +86,10 @@ def login_admin(client):
         role['timezone'] = role['timezone'] or 'Asia/Shanghai'
         response = client.post('/admin/api/setup/complete', json=role)
         assert response.status_code == 200, response.text
+
+
+def authorize_host(client, host='test-host'):
+    """Issue a normal credential using the same core as offline provisioning."""
+    value = client.app.state.tokens.create(host=host, scope={'kind': 'all'}, actor='local_cli')
+    client.headers['Authorization'] = 'Bearer ' + value['token']
+    return value

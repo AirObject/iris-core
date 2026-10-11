@@ -7,10 +7,9 @@
 # base_url 填到 /v1 这一级，程序会在后面接 /chat/completions 或 /embeddings，
 # 例如 https://api.example.com/v1；本地 Ollama 一般是 http://127.0.0.1:11434/v1。
 
-# 对话模型（必填）：所有非 embedding 的调用暂时共用这一组，包括学习、梦境整理、
+# 对话模型（必填）：学习、梦境整理、
 # persona 生成与检查、目标判断和试用回复。评测使用 external 模式，由执行者模型判分；
 # 内置对话模型判分只作预览。
-# 图片理解（M4）也用它，前提是这个模型支持图片输入。
 [chat]
 base_url = ""  # 接口地址
 api_key = ""
@@ -27,3 +26,14 @@ model = ""     # 模型 ID
 base_url = ""  # 接口地址
 api_key = ""
 model = ""     # 模型 ID
+
+# 图片理解（可选、独立用途）：使用方舟支持图片输入的视觉模型。
+# 不继承 chat；未配置或留空时，以“[图片，未理解]”参与学习。
+# base_url / api_key / model 由用户填写；具体端点和模型 ID 以方舟控制台为准。
+# 请求在 base_url 后接 /chat/completions，使用 image_url 的 base64 data URL。
+[image_understanding]
+base_url = ""
+api_key = ""
+model = ""
+# 与其他用途一致，也可省略 api_key，改填 api_key_env = "IRIS_IMAGE_API_KEY"。
+# reasoning_effort = "high"  # 仅在所选视觉模型支持时填写；不填则不发送

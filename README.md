@@ -25,14 +25,15 @@ uv run iris eval learning
 uv run iris
 ```
 
-首次运行会创建 `./data` 并自动在系统浏览器打开 `http://127.0.0.1:8080/setup`。在页面设置管理员密码、角色名、可选背景和模型即可进入试用；不配置模型也可以完成，顶部持续提示“未配置模型，暂不学习”，接收与全文召回照常。`uv run iris serve --no-open` 关闭自动打开。运行服务无需 Node；Docker 与对外监听留到后续阶段，目前只在 macOS 验证。
+首次运行会创建 `./data` 并自动在系统浏览器打开 `http://127.0.0.1:8080/setup`。在页面设置管理员密码、角色名、可选背景和模型即可进入试用；不配置模型也可以完成，顶部持续提示“未配置模型，暂不学习”，接收与全文召回照常。`uv run iris serve --no-open` 关闭自动打开。运行服务无需 Node。默认仍只监听回环地址；Docker 镜像支持 Linux amd64／arm64，部署方式见下文。
 
-部署优先级为 **命令行 > 环境变量 > iris.toml > 默认值**。环境变量为 `IRIS_DATA_DIR`、`IRIS_HOST`、`IRIS_PORT`；当前目录的 `iris.toml` 只接受以下顶层项，可用 `--config <文件>` 指定其他文件。文件中的相对数据目录相对该配置文件解析。`--data-dir` 放在子命令前；兼容原来的 `--db`，显式传入时其父目录就是数据目录。
+部署优先级为 **命令行 > 环境变量 > iris.toml > 默认值**。环境变量为 `IRIS_DATA_DIR`、`IRIS_HOST`、`IRIS_PORT`、`IRIS_ALLOWED_HOSTS`；当前目录的 `iris.toml` 只接受以下顶层项，可用 `--config <文件>` 指定其他文件。文件中的相对数据目录相对该配置文件解析。`--data-dir` 放在子命令前；兼容原来的 `--db`，显式传入时其父目录就是数据目录。
 
 ```toml
 data_dir = "./data"
 host = "127.0.0.1"
 port = 8080
+allowed_hosts = []
 ```
 
 ```bash
@@ -50,19 +51,85 @@ IRIS_TEST_MODELS=/absolute/path/test-models.toml uv run iris --data-dir /path/to
 uv run iris --data-dir /path/to/iris-data serve
 ```
 
-`/setup`、`/login` 及其静态资源可在本机打开；完成设置后，试用／记忆／入口与学习／状态／设置页与管理接口均要求管理员会话。交互接口文档 `/docs`、`/openapi.json` 也要求登录。宿主 `/api/v1` 保持原有行为，宿主令牌在 M4；本阶段继续只绑定回环地址。
+`/setup`、`/login` 及其静态资源可在本机打开；完成设置后，试用／记忆／入口与学习／状态／设置页与管理接口均要求管理员会话。交互接口文档 `/docs`、`/openapi.json` 也要求登录。宿主 `/api/v1` 自 M4 起需要宿主令牌（见下文「宿主接入」）；普通模式下服务只绑定回环地址；仅 `IRIS_CONTAINER=1` 允许非回环监听。
 
-服务还会在所有路由之前校验 HTTP `Host`，仅接受 `127.0.0.1`、`localhost`、`[::1]`（可带端口）。其他域名即使解析到回环地址，也返回 400，不返回业务数据或执行操作；界面、静态资源、`/admin/api`、`/api/v1`、接口文档均受保护。此检查用于阻断 DNS 重绑定，不解析域名、不信任转发 Host，也不启用 CORS。它与管理员会话和 CSRF 校验共同生效。浏览器和宿主客户端请使用上述本机地址，不使用自定义域名。
+服务还会在所有路由之前校验 HTTP `Host`，默认接受 `127.0.0.1`、`localhost`、`[::1]`（可带端口）；可用 `iris.toml` 的 `allowed_hosts` 列表或 `IRIS_ALLOWED_HOSTS` 逗号列表增加明确的主机名。其他域名即使解析到回环地址，也返回 400，不返回业务数据或执行操作；界面、静态资源、`/admin/api`、`/api/v1`、接口文档均受保护。此检查用于阻断 DNS 重绑定，不解析域名、不信任转发 Host，也不启用 CORS。它与管理员会话和 CSRF 校验共同生效。白名单不接受 URL 或通配符；请求可带端口，配置项若附端口也只取主机名。未列入白名单的 Docker 服务名同样被拒绝。浏览器通过本机映射地址访问时仍执行同源 Origin、Sec-Fetch-Site 与 CSRF 校验。
+
+## Docker 部署（0.0.1）
+
+镜像 `ghcr.io/airobject/iris-core:0.0.1` 同时提供 `linux/amd64`、`linux/arm64`，另有 `latest` 标签。推荐固定版本；`iris --version` 可查看已安装版本。镜像基于固定的官方 Python 3.13 小版本，以 UID/GID **10001:10001** 运行，默认 `0.0.0.0:8080`，数据目录 `/data`，健康检查只访问本机 `/login`，不需要宿主令牌。
+
+**只把端口映射到本机，或把 Iris 放在可信 Docker 网络中；不要直接暴露到公网，本服务不提供 TLS。** 只有环境变量严格等于 `IRIS_CONTAINER=1` 才允许非回环监听；`true` 等其他值不会开启。镜像已设此开关，普通安装默认关闭。Host 白名单、宿主令牌、管理员会话和 CSRF 仍全部生效，不信任代理头，也不启用 CORS。
+
+AstrBot 在宿主机时：
+
+```bash
+docker run -d --name iris -p 127.0.0.1:8080:8080 -v iris-data:/data ghcr.io/airobject/iris-core:0.0.1
+docker logs iris
+```
+
+从启动日志取得“首次设置码”，浏览器打开 <http://127.0.0.1:8080/setup>，按表单填写设置码、管理员密码、角色和模型。Docker 的端口转发通常使请求来自容器网桥地址，因此经本机映射访问也会要求设置码。插件地址填 `http://127.0.0.1:8080`，在管理页“接入”创建宿主令牌后填入插件。
+
+还没有管理员密码时，每次启动生成 256 位随机设置码；内存只存 SHA-256 摘要，明文只输出到服务控制台／`/data/logs/iris.log`，不会存入数据库或 API 响应。管理员密码建立后立即失效，不用等待其余设置完成；中途重启可用管理员密码登录继续。尚未建立密码就重启时，必须改用新日志中的设置码。回环客户端可沿用不填码的首次设置。请勿分享包含设置码的启动日志。
+
+AstrBot 也在 Docker 中时，将它的**现有服务配置**接入同一网络，保留原镜像、端口和数据卷；下面展示要合并的服务与网络配置，`ASTRBOT_IMAGE` 填目前使用的 AstrBot 镜像，不要求升级插件或连接器：
+
+```yaml
+services:
+  iris:
+    image: ghcr.io/airobject/iris-core:0.0.1
+    environment:
+      IRIS_ALLOWED_HOSTS: iris
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - iris-data:/data
+    networks: [iris-net]
+  astrbot:
+    image: ${ASTRBOT_IMAGE:?请填写现有 AstrBot 镜像}
+    # 保留现有 AstrBot 的数据卷和端口设置。
+    networks: [iris-net]
+networks:
+  iris-net:
+volumes:
+  iris-data:
+```
+
+用 `docker compose logs iris` 取设置码，经本机浏览器完成设置后，AstrBot 插件填 `http://iris:8080` 和宿主令牌。`IRIS_ALLOWED_HOSTS=iris` 只增加服务名，不允许其他任意 Host；默认白名单仍保留本机地址。允许访问 Iris 的网络应只加入可信容器。需要通过文件配置时，`iris.toml` 可写 `allowed_hosts = ["iris"]` 并以 `--config` 指定；环境变量优先，空字符串可清空附加名单。
+
+模型可在页面配置；也可在创建容器时把现有模型配置**只读挂载**到例如 `/config/models.toml`，再执行：
+
+```bash
+docker exec iris iris --data-dir /data models import --from /config/models.toml
+```
+
+配置文件和密钥不放进镜像，不在命令行参数中填写密钥。容器中的 `127.0.0.1` 指 Iris 容器本身；模型在其他容器时填该服务地址，模型在宿主机时按 Docker 的宿主网络配置填写可达地址。
+
+推荐在管理页“接入”创建令牌；离线命令须先停止服务，沿用相同数据卷，令牌仅在创建输出中显示一次：
+
+```bash
+docker stop iris
+docker run --rm -v iris-data:/data ghcr.io/airobject/iris-core:0.0.1 tokens create --host astrbot --prefix 'astrbot:'
+docker start iris
+```
+
+`/data` 包含数据库、媒体、模型密钥、日志和备份，重启或替换容器时保留同一数据卷。新命名卷会继承镜像的目录权限；绑定宿主目录时须事先让 UID/GID 10001 可写。每日定时备份默认在 `/data/backups`，保留 7 份且不含模型密钥；仍应把备份保存到数据卷之外，管理页也可下载在线导出。恢复使用停服后的 `backup import`，规则见“在线导出与离线导入”。不要把删除数据卷当作容器升级步骤。
+
+发布流程由维护者推送与 `pyproject.toml` 版本一致的 `v*` 标签触发：依次通过 Python 3.13、3.12 全量测试与 `uv build` 后，使用仓库自带的 `GITHUB_TOKEN` 推送双架构版本镜像和 `latest`，创建 GitHub Release 并附 wheel、sdist。版本不匹配或任何验证失败都会阻止发布，无需额外密钥。
 
 ## 首次设置、登录与设置
 
+本地 `secrets.json` 缺失、不可读或损坏不阻止服务启动。引用了不可用密钥的用途（含继承它的判断用途）进入 `configuration_error`，消息仍可接收；无密钥服务和其他有效用途照常工作。独立判断用途的密钥缺失时不会改为继承 chat。设置页保留原端点和模型名，管理员设置响应对受影响用途附 `key_missing:true`、`key_set:false`。重新输入该用途的 API key 并保存即可恢复；确实无需密钥时须显式移除密钥。不能通过省略 API key 沿用进程内的旧值。
+
+修复损坏或不可读的文件时，设置保存以原有 `0600` 原子写入重建文件，尚未重新提供密钥的用途继续暂停，数据库中的端点与未修复引用保留。文件为符号链接时拒绝覆盖，须先修正路径。`models import` 遇到不可读或损坏的密钥文件会退出并提示检查权限或先启动服务、在设置页重新输入密钥；不覆盖已有配置，也不打印文件内容或底层异常。
+
 首次设置先建立管理员密码，再填写角色（默认 Iris、浏览器时区）及可选模型。对话模型提供火山方舟 GLM（Agent Plan，reasoning_effort=high）、DeepSeek 和本机服务预设；模型名和可选推理档位以服务商为准。方舟 GLM 档位依据上述 2026-10-08 决定，仅影响以后选用该预设的配置，已保存的模型配置不自动改写。方舟预设使用 [Agent Plan 官方接入地址](https://docs.volcengine.com/docs/ark/agent-plan-enterprise-other-tools?lang=zh) `/api/plan/v3`，应使用对应套餐密钥；其他方舟产品请按所用产品填写自定义地址。“测试连接”只发送固定短请求，单次总预算 10 秒，展示结果和毫秒耗时，不返回服务商正文；它不保存草稿，测试已保存配置时更新现有用途健康状态。
 
-设置页只提供本阶段的角色名称／背景／时区、对话和 embedding 模型、每日 token 上限、学习并发（1—32，默认 2）与模型立即重试。保存后调用既有内部接口对新工作生效，401 显示“密钥无效”；接收和召回仍可用，改对后恢复学习。API key 留空保留原值，勾选“移除”才清除。更换背景撤销旧的初始设定对象、保存修订并建立新设定，学习所得记忆保留；角色名变化不重复建立初始记忆，persona 保留版本历史。修改均写入操作记录，设置页显示最近 30 条。
+设置页只提供本阶段的角色名称／背景／时区、对话和 embedding 模型、每日 token 上限、学习并发（1—32，默认 2）与模型立即重试。保存后调用既有内部接口对新工作生效，401 显示“密钥无效”；接收和召回仍可用，改对后恢复学习。API key 省略只在接口 origin（协议、主机、有效端口）未变时保留原值；测试或保存到新 origin 必须重新输入密钥，否则返回 `body.api_key` 字段错误且不发送请求。无密钥服务须显式传 `api_key=""`（页面勾选“移除”）；路径改变但 origin 相同仍可沿用。更换背景撤销旧的初始设定对象、保存修订并建立新设定，学习所得记忆保留；角色名变化不重复建立初始记忆，persona 保留版本历史。修改均写入操作记录，设置页显示最近 30 条。
 
-管理员密码以随机盐＋scrypt（N=32768、r=8、p=3）保存，使用 [OWASP 的 scrypt 参数组合](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#scrypt)。会话为 256 位随机值，数据库仅存摘要，绝对有效期 12 小时，登录轮换、退出撤销；Cookie 为 HttpOnly、SameSite=Strict、Path=/，HTTPS 时增加 Secure（M1 本机 HTTP 不启用 TLS）。写请求必须携带会话绑定的 `X-Iris-CSRF` 与 JSON Content-Type，同时检查 Origin 和 Sec-Fetch-Site；不能只依赖 SameSite。五分钟内五次错误密码后暂停登录一分钟，计数持久保存。首次设置核对实际客户端回环地址，serve 不信任代理转发地址；Host 白名单继续覆盖所有路由，不启用 CORS。
+管理员密码以随机盐＋scrypt（N=32768、r=8、p=3）保存，使用 [OWASP 的 scrypt 参数组合](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#scrypt)。会话为 256 位随机值，数据库仅存摘要，绝对有效期 12 小时，登录轮换、退出撤销；Cookie 为 HttpOnly、SameSite=Strict、Path=/，HTTPS 时增加 Secure（M1 本机 HTTP 不启用 TLS）。写请求必须携带会话绑定的 `X-Iris-CSRF` 与 JSON Content-Type，同时检查 Origin 和 Sec-Fetch-Site；不能只依赖 SameSite。五分钟内五次错误密码后暂停登录一分钟，计数持久保存。首次设置核对实际客户端地址：普通模式仍限回环；容器模式下非回环客户端需一次性设置码。serve 不信任代理转发地址；Host 白名单继续覆盖所有路由，不启用 CORS。
 
-管理接口未登录返回 401，未完成设置返回 409，JSON 的 error.redirect 指向 /login 或 /setup；页面本身返回 303。`GET /admin/api/session` 返回状态与 CSRF token，并建立短期匿名会话，首次设置和登录也需要该 token。匿名响应不含角色、记忆或模型配置。页面／管理响应不缓存，页面拒绝被 iframe 嵌入。
+管理接口未登录返回 401，未完成设置返回 409，JSON 的 error.redirect 指向 /login 或 /setup；页面本身返回 303。`GET /admin/api/session` 返回状态与 CSRF token，并建立短期匿名会话，首次设置和登录也需要该 token。跨站 Origin／Sec-Fetch-Site 的 session 请求返回 403，不创建会话。匿名会话有效期 30 分钟、最多 128 个，新建时淘汰最早过期的匿名项；读取 session 或签发会话时清理过期项，已登录会话不受匿名上限淘汰。匿名响应不含角色、记忆或模型配置。登录、设置密码和完成设置的请求体最多 16 KiB，含分块传输，超限返回 413。页面／管理响应不缓存，页面拒绝被 iframe 嵌入。
 
 | 方法与 `/admin/api` 下的路径 | 用途 |
 | --- | --- |
@@ -87,7 +154,7 @@ uv run iris --data-dir /path/to/iris-data serve
 - **删除**：只把目标对象标为 deleted，保留它的 ID、来源和修订，不删除共享消息或其他记忆；原 ID 不会复活，也不参与普通／深度召回。后端允许编辑／删除遗忘记忆；M2 的置顶、遗忘、恢复、分数调整、彻底清除与按旧内容新建在记忆详情页提供，另有“即将删除”列表。
 - **入口与学习**：同时列出试用与宿主入口的名称、平台、类型、节奏、待学习数量和最近／当前批次。批次列表可按入口和组成日期筛选；详情包括冻结的历史／目标／后续消息、消息类型与发送者、每次尝试的时间／总耗时／解析结果、模型请求的结束原因与推理档位、原始正文与 JSON 修正正文、规整及丢弃记录，以及新增／更新／确认的记忆详情链接。原始正文默认折叠，页面不会展示服务商推理字段。
 - **重新学习与记忆缺口**：仅放弃或内容拒绝的批次可重新学习；保留原批次 ID、三段范围、历次尝试与缺口，将状态改回 waiting、目标消息改为 batched，本轮尝试数归零（重新获得 4 次）。历次尝试编号持续递增。已在等待／运行／成功的批次返回 409，重复操作不会排队两次；模型暂停时排队等待恢复，同入口在途批次结束后调度。失败仍只保留该批次的一条缺口，原因与时间按最新终止结果更新；第 4 次尝试被重启中断时也替换该缺口，避免唯一键冲突阻止启动。缺口接口与页面使用稳定的 `batch_id` 标识；**只有学习成功的事务才清除缺口**（设计 7.6、17.7）。缺口页按入口和消息时间区间筛选，重新排队／学习时标为“重新学习中”。只读浏览不调用模型、不写召回或学习状态。
-- **运行状态**：复用既有状态数据，显示对话／embedding 的健康与错误、队列、今日 token 用量、近 24 小时学习耗时／超时，以及最近用途和调度错误摘要。没有定价信息时不估算费用；状态接口不提供滚动日志全文。
+- **运行状态**：复用既有状态数据，显示对话／embedding 的健康与错误、队列、今日 token 用量、近 24 小时学习耗时／超时，以及最近用途和调度错误摘要。没有定价信息时不估算费用；状态接口不提供滚动日志全文。`batches` 只保留进行中的批次及每入口最近 20 个已结束批次，近 24 小时调用／耗时统计仍完整；历史批次从管理端分页查看。
 
 管理请求和响应使用 UTF-8 JSON，额外字段和非法值被拒绝；消息正文沿用 32KB UTF-8 上限。所有管理接口在 `/admin/api`，与宿主接口分开：
 
@@ -134,12 +201,57 @@ uv build
 
 ## 宿主接入
 
+宿主 **v1 契约已冻结**，完整接入说明、15 个操作、错误与重试及状态区分见 [宿主 API v1 接入契约](docs/host-api.md)。新增可选字段和响应字段保持兼容；删除、重命名或改变已有字段类型／含义须使用新版本。完成首次设置并登录管理界面后，可查看 `/docs` 和 `/openapi.json` 中的中文说明与示例。
+
+本轮接通 `POST /api/v1/media`：用 JSON 的 `entry_id`、`content_type`、`data_base64` 上传，可附 `understanding_text`，成功 201 返回 `id`；消息的 `media_ids` 数组按顺序引用媒体。单文件 10 MiB、整个媒体 JSON 14 MiB，超限 413；支持 PNG/JPEG/GIF/WebP、MP3/WAV/Ogg/FLAC、MP4/WebM，须匹配 MIME 与文件头。上传与接收均不等待模型。上传对象绑定入口，引用时同时检查上传入口与接收入口权限；文件按内容哈希共享。本文末尾 MD 后端阶段“尚由 AP 线接入”的说明为历史状态，以本接入节为准。
+
+回复准备只在 `hints` 追加 `other_entries_pending`：其他授权入口中的待学习入口数、UTC 接收时间范围，不含入口标识、正文或人物。`POST /api/v1/memories/search` 可传 `entry_id` 并校验令牌范围；省略时不传递入口上下文。本分支兼容 VS 前后的检索签名，入口隐私过滤须与 VS 一起部署，详见接入契约的过渡说明。
+
+宿主错误统一为 `{"error":{"code":"invalid_request","message":"请求格式或内容不合法","fields":[{"field":"body","message":"字段说明"}],"retry_after_seconds":null,"retry_at":null}}`。状态为 400／401／403／404／409／413／429／503；429 和 503 带 `Retry-After`、建议等待秒数及预计重试时间。状态和目标的超大请求统一返回 413，管理接口行为不变。
+
+宿主与 Iris 可在同一台电脑运行，或位于同一可信 Docker 网络；普通模式只监听回环地址，两种方式都校验 Host。所有 `/api/v1` 请求都需要 `Authorization: Bearer <令牌>`；管理员 Cookie 不能代替宿主令牌，宿主令牌也不能登录管理界面。连接器经独立的 AstrBot 插件接入，平台不需要直接连接 Iris。下文及其他小节的宿主请求示例均须携带这个请求头。
+
+停服后可用离线命令创建、列出或撤销令牌（沿用服务的数据库互斥锁，服务运行时命令失败）：
+
+```bash
+uv run iris tokens create --host astrbot --prefix 'astrbot:'
+uv run iris tokens create --host local-tool --entry group-a --entry private-a
+uv run iris tokens create --host trusted-host --all
+uv run iris tokens list
+uv run iris tokens revoke <令牌ID>
+```
+
+`--data-dir`／`--db` 等全局参数放在 `tokens` 前。创建输出一份 JSON，含 `id`、`host`、`scope` 和仅此一次返回的 `token`；妥善交给宿主保存，不把终端输出重定向到日志。后续列表只显示 ID、宿主名称、范围、创建／最近使用／撤销时间。凭据由随机 256 位秘密值构成；数据库只保存独立随机盐和 SHA-256 摘要。它不是用户口令，不需要使用耗时的口令派生算法。撤销提交后，后续请求立即失效。
+
+在线管理接口使用现有管理员会话；写入还须 JSON Content-Type 和 `X-Iris-CSRF`：
+
+| 接口 | 请求或返回 |
+| --- | --- |
+| `POST /admin/api/tokens` | `{"host":"astrbot","scope":{"kind":"prefix","prefix":"astrbot:"}}`；201，一次性返回令牌 |
+| `GET /admin/api/tokens` | `items` 为元数据列表，另附 `rate_limits`；不返回盐、摘要或凭据 |
+| `POST /admin/api/tokens/{id}/revoke` | 正文 `{}`；重复撤销仍成功，仅首次写撤销记录 |
+| `PATCH /admin/api/settings/host-tokens` | `{"rate_per_second":20,"burst":60}`；保存限流设置并记录操作 |
+
+范围为 `{"kind":"all"}`、`{"kind":"entries","entries":["group-a","private-a"]}` 或 `{"kind":"prefix","prefix":"astrbot:"}`。列表与前缀均按入口 ID 原字符、区分大小写匹配；`%`、`_` 不解释为通配符，可以授权尚未创建的入口。接收消息、回复准备（含近期消息）和立即学习在正文解析及业务执行前检查入口权限；服务状态中的入口、批次和关联学习调用按范围筛选。无效／缺失令牌返回 401 和 `WWW-Authenticate: Bearer`，越界入口返回 403。
+
+目标以自己的 `entry_id` 判定归属；没有 `entry_id` 的全局目标对所有令牌可见；创建、修改及去重合并写入全局目标须使用 `all` 范围令牌，受限令牌写入返回 403。列表计数、分页以及 prepare/search 的目标分区都先按范围过滤；去重候选与可能重复 ID 同样过滤，后台复核持久保存注入时的范围，重启后继续遵守，写回前复核修订号和范围。范围外的目标不能被宿主修改或合并，提醒在分页和标记“已取走”之前按所属目标过滤。同名宿主换用更窄范围的令牌，也不能通过旧 `host_key` 回执或合并跳转取得范围外目标。
+
+按设计 11.4，已形成的记忆仍是跨入口共享的角色知识，prepare/search 的记忆项与排序不因令牌范围而改写；来源条目保留，但范围外来源的 `entry_id`、`entry_name`、`occurred_at` 置为 null，管理员来源保持完整；当前状态与 persona 也是角色全局信息。令牌范围保护入口原始消息和目标，不代替后续可见范围工作线的记忆隐私规则。状态中的入口明细按范围筛选，模型健康、用量等全局统计保留。
+
+每令牌默认持续 **20 次/秒、突发 60 次**，所有宿主路由共用该令牌的桶，不影响其他令牌或管理员会话。超过返回 429 和整数秒 `Retry-After`。配置保存在 `runtime_settings.host_tokens`，运行中立即读取；桶在单进程内维护，重启后补满。最近使用时间记录通过认证及限流的请求，包括随后被入口权限拒绝的请求。创建、撤销和修改限流均写入操作记录。
+
+当前状态报告和宿主目标注入的 `host` 兼容字段仍接受校验，但来源一律取令牌绑定名称；冲突时忽略请求自报名称。目标的可选 `host_key` 按绑定宿主名称隔离；同名宿主的不同令牌共用这个命名空间。使用反馈只接受本令牌发起的召回；换令牌后需重新准备／查询。状态报告历史、目标来源及宿主操作记录保留绑定名称。
+
+端到端评测在首次启动服务前调用同一个离线创建命令，仅在内存捕获一次性标准输出；所有 HTTP 请求携带该令牌，强制重启继续使用它。令牌不进入临时模型配置、服务日志或评测报告。本接入节覆盖前面历史实现说明中“宿主令牌仍在 M4”的旧状态；下文状态报告中的宿主名称也以令牌为准。
+
 下面的 Python 示例依次调用接收消息、回复准备和使用反馈；请求与响应均使用 UTF-8 JSON：
 
 ```python
+import os
 import httpx
 
-with httpx.Client(base_url="http://127.0.0.1:8080", timeout=10) as client:
+with httpx.Client(base_url="http://127.0.0.1:8080", timeout=10,
+                  headers={"Authorization": "Bearer " + os.environ["IRIS_HOST_TOKEN"]}) as client:
     received = client.post("/api/v1/entries/group-a/messages", json={
         "platform": "chat", "sender": "小林", "account_id": "lin-001",
         "content": "我喜欢桂花乌龙茶", "occurred_at": "2026-09-29T20:00:00+08:00",
@@ -164,7 +276,7 @@ with httpx.Client(base_url="http://127.0.0.1:8080", timeout=10) as client:
     feedback.raise_for_status()
 ```
 
-接收接口也接受上述消息对象的数组，整批提交在一个事务中完成。正文上限为 32768 个 UTF-8 字节；超限返回 413，不截断。首次入口自动创建，可以在消息中用 `pace` 选择 `realtime`、`standard`（默认）、`economy`，或对象 `{"count":6,"idle_seconds":30,"max_wait_seconds":180}` 自定义节奏；入口创建后沿用已保存的节奏。接收返回后，由后台按数量、空闲、最长等待、关注信号触发学习。等待时间按接收时间计算，历史消息的发生时间仍用于学习事实和相对日期。
+接收接口也接受上述消息对象的数组，整批提交在一个事务中完成。正文与引用正文各最多 32768 个 UTF-8 字节；字节超限返回 413，不截断。`entry_name`、`account_id`、`scene_identity`、`quote_author`、`quote_author_account_id` 各最多 200 字符，`entry_kind`、`occurred_at` 各最多 100 字符；字符超限返回 400。入口 ID 长 1—200 字符，不能全空白或含 `?`、`#`、控制字符，按路由的解码路径校验，冒号仍可使用。具体字段上限见 [宿主契约](docs/host-api.md#接收消息与去重)。首次入口自动创建，可以在消息中用 `pace` 选择 `realtime`、`standard`（默认）、`economy`，或对象 `{"count":6,"idle_seconds":30,"max_wait_seconds":180}` 自定义节奏；入口创建后沿用已保存的节奏。接收返回后，由后台按数量、空闲、最长等待、关注信号触发学习。等待时间按接收时间计算，历史消息的发生时间仍用于学习事实和相对日期。
 
 离线 `iris learn group-a --force` 只允许在服务停止时使用。服务和离线写入命令使用操作系统文件锁，避免两个进程共同写同一数据库；崩溃后锁自动释放。不要手动删除锁文件来绕过它。
 
@@ -303,7 +415,7 @@ persona 评测的发布方式独立于产品默认。语料未指定时，评测
 
 PUT 的活动经去除首尾空白后，按区分大小写的完整字符串判断是否相同；不合并近义词、内部空白、标点或 Unicode 写法。相同活动按报告／心跳处理，保留开始时间及未报告的细节、情绪。更换活动时清空旧细节，保留情绪及其原更新时间，除非本次 PUT 显式提供 mood（null 清除）；开始时间取本次首次报告时间。DELETE 结束活动时仍清空全部状态。宿主在 PUT 显式给出带时区的 ISO `started_at` 时采用它，包括校正同一活动的开始时间；不接受 null 或晚于本次报告的时间。PATCH 不接受活动或开始时间。
 
-`details` 是最多 32 项的键值对：键长 1—64 字符、不能全空白，值为最多 1000 字符的字符串、有限数字或布尔值；null 删除该细节。按键部分更新，`{}` 保留现有细节；合并后仍受 32 项及 32KB UTF-8 的限制。`mood` 最多 200 字符，null 清空。被明确报告的细节／情绪即使值相同也刷新各自时间，未报告的字段保持原时间。`activity` 长 1—200 字符；`host` 为可选来源名称（1—100 字符），`entry_id` 为可选来源标识（1—200 字符），可先于消息入口创建。每次报告的来源独立保存，省略／null 表示未知，不沿用上一个宿主。此来源名称不是身份认证；宿主令牌仍在 M4。
+`details` 是最多 32 项的键值对：键长 1—64 字符、不能全空白，值为最多 1000 字符的字符串、有限数字或布尔值；null 删除该细节。按键部分更新，`{}` 保留现有细节；合并后仍受 32 项及 32KB UTF-8 的限制。`mood` 最多 200 字符，null 清空。被明确报告的细节／情绪即使值相同也刷新各自时间，未报告的字段保持原时间。`activity` 长 1—200 字符；`host` 为可选来源名称（1—100 字符），`entry_id` 为可选来源标识（1—200 字符），可先于消息入口创建。每次报告的来源独立保存，省略／null 表示未知，不沿用上一个宿主。此来源名称不是身份认证；M4 起宿主名称以令牌为准（见「宿主接入」）。
 
 状态请求正文上限 32768 UTF-8 字节，必须使用 JSON；字段非法、未知字段、超限或无活动时 PATCH 均返回 400，`error.fields` 给出字段说明。Host 校验沿用现有规则。管理读取要求管理员会话；设置写入还要求 JSON Content-Type、CSRF、Origin／Sec-Fetch-Site 校验。管理员没有编辑或结束活动的管理接口。
 
@@ -523,6 +635,15 @@ prepare 和 search 为每条最终返回的记忆追加 `subject_annotations`，
 
 普通删除仍保留历史和来源。彻底清除必须显式传 confirm=true，删除修订、标签、涉及人及自身来源关系；来源消息使用同一套引用保护规则，只有没有其他引用时才删除，响应列出删除及受保护的消息 ID／原因。**已知限制：按设计 12.4，彻底清除删除修订历史和只被该记忆引用的来源消息，不清除批次尝试中的模型原始输出及调用记录里已有的内容。**数据库保留无正文、无向量的 deleted 占位行，管理列表／详情不再展示，确保 SQLite 也不会复用最大 ID；其他记忆的依据引用继续指向这个已清除对象。按旧内容新建使用所选修订的正文／判断，生成新 ID，按 30＋重要度×0.4 初始化强度，不继承置顶、遗忘时间或向量；沿用当前 about、tags 和现存来源（包括来源记忆修订号），因为旧修订并未完整快照这些关系，不伪造历史来源。
 
+人物详情页和「入口与学习」的入口卡片提供 **批量遗忘／删除**。人物范围按说话人或 about 涉及人匹配；入口范围仅按直接来源消息所在入口匹配。默认排除置顶，先预览有效／遗忘／已删除数量、置顶数和最多 5 条截断示例，再确认操作；彻底清除另需勾选不可撤销说明并再次确认。遗忘／删除跳过已删除对象，彻底清除包含已删除对象；已彻底清除的占位对象不参加操作。以上沿用单条语义与来源保护规则，派生记忆继续由已有依赖事件／待复核规则处理。
+
+批量接口只在管理 API 提供，同样检查管理员会话、CSRF、Host、Origin 与 JSON Content-Type：
+
+- `POST /admin/api/memories/bulk/preview`：`subject_id` 或 `entry_id` 二选一，`include_pinned` 默认 false，`action` 为 `forget/delete/purge`。返回 `counts`、`total`、`applicable_count`、`pinned_count`（已选中）、`excluded_pinned_count`、`examples`、`snapshot_token` 与 `expires_at`。
+- `POST /admin/api/memories/bulk/apply`：`snapshot_token`、与预览相同的 `action`，彻底清除额外要求 `confirm: true`。返回 `status`、`count`、`memory_ids`、`skipped_count` 及来源消息删除／保护明细。
+
+预览令牌绑定 ID、修订、生命周期、置顶、保留强度、人物／来源关系及生命周期设置，保存在当前进程内，15 分钟过期，最多保留 32 份；服务重启、过期或被后续预览淘汰时需重新预览。执行开始前核对整个选择，之后每批最多 50 条，在短事务内逐条核对修订，最终再核对范围。发生变化返回 `409 bulk_preview_stale` 和 `result` 中的已完成数量／ID：第一批提交前冲突不更改记忆，批次间冲突保留已提交部分，要求重新预览。进程重启导致令牌丢失时 `result` 为 null，应先查操作记录。执行中的重复请求不重复写入；完成后在令牌有效期内重试返回同一结果。每次批量执行只写一条 `memory_bulk_<action>` 操作记录，保存范围、操作、数量和 ID 列表，并随每批提交更新进度；不保存正文或预览令牌。异常退出时已提交批次的记录仍在，状态可能停留在 running，需核对记录后重新预览。此功能不需要新迁移，不增加模型调用。
+
 以下接口沿用管理员会话、CSRF 与 Host 校验；记忆写请求都带 expected_revision：
 
 | `/admin/api` 下的方法与路径 | 参数／用途 |
@@ -570,6 +691,71 @@ persona 在记忆整理后调用既有到期判断：自上一版至少五条自
 
 报告的 `items` 只列实际变化与失败：合并与继承来源、带摘录的矛盾／依赖模型建议、persona 发布／待确认／拒绝、目标依据变更及失败原因。`summary.skipped.reasons` 汇总跳过，`summary.model_calls` 汇总调用数、已报告输入／输出 token、耗时及未知用量调用数；`consolidation` 给出本次设置快照、延期项数及停止原因。`persona` 给出 `status`（`published / pending / rejected / not_due / skipped / failed / conflict`，运行中为 `running`）、`reason`、`due`、尝试与版本 ID，候选结果附正文、检查结果和变化程度；`goal_review` 给出是否开启、检查数或关闭原因。未到期和无变化成功检查不逐条留日志；来源报告中的建议不等于已确认事实。
 
+每日维护还分批清理运行数据，每批最多处理 128 行并单独提交：`model_calls` 保留 90 天；`recalls` 及其 `recall_items`、`host_recalls` 保留 30 天；`batch_attempts` 和 `consolidation_calls` 保留记录，只清除超过 90 天的原始／修正正文字段。数据目录中的迁移前 `iris.db.<时间>.bak` 保留最近 3 份。未满保留期及边界时刻的数据不清理。支持中断后续跑；有资格自动重试的批次目标消息受清理保护。停机超过 24 小时后的补跑若在当天预定时间后开始，占用当天维护时段，避免同日再次定时衰减。
+
+数据库启动时拒绝比当前代码更新或不兼容的迁移历史，须升级代码或恢复迁移前 `.bak`。写连接启用检查点刷盘 `checkpoint_fullfsync`，日志尺寸目标为 64 MiB；不启用每次提交的 `fullfsync`。
+
+## 入口画像
+
+入口画像是 group／live 单个入口的 150—500 字中文摘要，可包含话题、氛围与说话方式、群内说法的含义、明确说过的群规。private 不生成。每个模型句都有自己的消息／记忆依据；禁止成员个人信息与隐私、个人评价、性别推断、其他入口内容及给模型或宿主的指令。只出现一次的现象须限定具体场景。上一版只帮助保持措辞和比较变化，不能作为事实依据。提示词为 `entry_profile_generate_v1`、`entry_profile_check_v1`；公开 dev 使用单独冻结的 `entry_profile_v1`，外部判分与机制测试分开报告。
+
+`entry_profile.py` 确定性选择本入口最近 14 天的实际发言（message／self_output，不含行动结果、事件、未来消息），按角色时区分天，各天平分 6000 token 预算；每一天依次取最早、最晚和区间中点，摘录最多约 300 token，连同元数据计入预算。有效、在本入口可见且有本入口直接来源的记忆按重要度降序、ID 升序选取，合计 2000 token；每条最多附最早一条及最近三条本入口原话。材料使用 S／M 编号，入库换为消息 ID 与指纹，或记忆 ID、修订号、来源指纹。
+
+梦境整理的记忆模型阶段增加入口画像步骤，与其他整理共用 `max_calls`（默认 50，含 HTTP 重试）及每日 token 限额。首版要求窗口内至少 50 条消息；更新要求自上一版以来至少 50 条新消息，或自生成时间经过至少 168 小时且有新消息。依据被清理、修改、删除、遗忘或可见范围变化时只读计算 `possibly_stale` 和 `stale_basis`，下一次整理重新生成；全部生成路径每入口每个角色本地日期最多一次。手动重新生成可跳过更新数量／七天条件，首版门槛、每日上限、开关和用途暂停仍有效。停用不删除历史。
+
+生成和逐句检查各共享 120 秒总预算（含该调用内重试），在数据库事务外执行；开始前为检查预留一次调用。代码先核对引用，模型再检查每句的支持、场景限定及禁止内容。检查输入按句附上该句绑定的依据，不附未引用消息或用于并发校验的散列元数据；每句的事实支持、场景限定与禁止内容分别判断。场景限定不合格不会因引用条数多而放行。不合格的模型句删去并保存原句、依据、原因；累计删去超过原候选句数的 30% 时整版拒绝，恰好 30% 可以通过。删句后重查 150—500 字，不补写、不再次模型检查。管理员手写句由代码原样保留；检查指出手写句有禁止内容时保留原文但待管理员确认。手写句删改的确定性判断覆盖模型变化判断，视为大变化并待确认。
+
+根据 2026-10-11 的上线决定，入口画像默认开启，默认 `check_auto`：检查通过即发布，包括大变化；质量继续迭代，管理员可按入口改为 `all_manual`（全部人工确认）或关闭。检查失败保留当前已发布版。新的候选或管理员编辑使旧候选成为 rejected，检查结果记 `superseded`。生成写回的短事务复核当前版本、设置修订、消息指纹、记忆修订和可见性；冲突不覆盖。失败和中断保存尝试记录；恢复不会重跑已完成或中断的模型调用，缺失的整理报告项可从记录补回。
+
+三张表分别保存 `entry_profile_settings`（入口开关、发布方式、设置修订及当前版本指针）、`entry_profile_versions`（入口内递增版本、父版本、正文、逐句依据、完整检查、变化程度、生成／发布时间、作者、来源和材料快照）、`entry_profile_attempts`（整理运行、日期、状态、原始输出和调用记录）。版本状态只有 `candidate / published / rejected`，作者为 `model / admin`；旧的已发布版仍是 published，`is_current` 区分当前版。回滚只针对曾经发布的版本，复制为新的版本，不改写历史；过时依据仍会标出。依据 ID 不用外键保留原始消息，清理不会被画像阻塞。
+
+入口与学习页的每个入口都有“入口画像”面板（群聊／直播可用，私聊显示不适用）。面板支持当前正文、生成时间、待确认计数、历史版本、逐句依据与原话、检查和删句记录、任意两版对比，以及编辑、回滚、重新生成、确认／拒绝和画像设置。新增或改写的管理员句子标记为手写并受保护；未改句保留原依据。编辑发生 409 冲突时保留草稿，核对最新版本后再处理。窄屏使用单列对比。
+
+`prepare.entry_profile` 只返回本入口启用且已发布的 `{text, version, generated_at, possibly_stale}`，否则为 null；search 不返回。令牌范围外的入口不允许 prepare；新增分区不改变 memories、近期消息、状态或目标，不在回复准备时生成。宿主使用约定见 [接口 v1](docs/host-api.md#回复准备的七个分区)。
+
+数据层函数：
+
+| 函数 | 行为 |
+| --- | --- |
+| `current_profile(store, entry_id)` | 当前已发布版、`possibly_stale`、`stale_basis`；没有时为 null |
+| `list_versions(store, entry_id, limit=50, offset=0)` / `get_version(store, entry_id, version)` | 分页版本列表／完整详情（含逐句 basis、author、checks） |
+| `version_diff(store, entry_id, before, after)` | 按句比较 insert／delete／replace／equal，附前后句及依据 |
+| `profile_settings` / `set_settings(..., expected_version, enabled, publish_mode)` | 读／写单入口设置；未给出的字段保持原值 |
+| `admin_edit(..., content, expected_version)` | 长度检查后直接发布；未变句保留依据，新增／改写句标 admin |
+| `rollback(..., version, expected_version)` | 复制已发布版并发布新版本 |
+| `confirm_candidate` / `reject_candidate` | 接收候选 version 和 expected_version；确认前复核依据 |
+| `EntryProfileEngine.update` / `.regenerate` | 参数 entry_id、expected_version；返回 status、reason、version、attempt_id、due |
+| `profile_due` / `select_material` | 可注入 clock 的到期判断／材料快照 |
+| `profile_context(conn, entry_id)` | 回复准备的只读 `{text, version, generated_at, possibly_stale}`；关闭或无画像时 null |
+
+所有写函数要求 `expected_version` 为当前已发布版本号，无版本为 0；冲突抛 `EntryProfileConflict`，在途竞争可抛 `EntryProfileBusy`。所有操作写 `admin_operations`，不在操作记录里重复存正文。每个模型检查结果的 index 对应 `checks.checked_sentences`，被删句见 `checks.deleted_sentences`，实际模型检查输入见 `checks.model_input`。运行设置 `runtime_settings.entry_profile` 存默认值；整理快照开关为 `consolidation.entry_profile_enabled`。
+
+管理接口统一位于 `/admin/api/entries/{entry_id}/profile`，沿用管理员会话、CSRF、JSON Content-Type 和操作记录；版本号只在本入口有效，路径里的 `version` 不用全局行 ID。
+
+| 方法和相对路径 | 请求／返回 |
+| --- | --- |
+| `GET /` | 当前和待确认版本摘要、`pending_count`、入口设置、`possibly_stale`、`stale_basis`、`latest_attempt`；无当前版为 null |
+| `GET /versions?limit=30&offset=0` | `{items,total,limit,offset}`，倒序历史；`is_current` 区分当前与历史已发布版 |
+| `GET /versions/{version}` | 正文、逐句 `basis`／`admin_written`、依据摘录和当前记忆状态、检查及删句记录；不返回整份聊天材料和原始模型输出 |
+| `GET /diff?before_version=N&after_version=M` | 任意两版的逐句差异，附前后正文和依据 |
+| `PUT /` | `{expected_version,content}`，150—500 字；直接发布管理员编辑 |
+| `PATCH /settings` | `{expected_version,enabled?,publish_mode?}`；至少一个设置字段。开关立即生效，发布方式只影响之后的候选 |
+| `POST /versions/{version}/confirm`、`/reject`、`/rollback` | `{expected_version}`；reject 可附 `reason`。确认前再次核对依据，回滚新建当前版本 |
+| `POST /regenerate` | `{expected_version}`；202，`{accepted:true,attempt}` 和任务 `Location` |
+| `GET /attempts/{attempt_id}` | 持久任务状态、阶段 generating／checking／finished、结果版本与安全原因码；不能跨入口查询 |
+
+所有写请求中的 `expected_version` 指当前已发布版本号，无当前版为 0。版本、候选、设置或依据冲突返回 409；参数错误 400，不存在 404。重新生成在短事务中预约后立即返回，模型在线程池执行，不占请求线程、不持数据库事务。服务同时最多接收一个管理员生成任务，重复提交返回 409；与整理通过同入口的持久预约和每日上限互斥。任务失败、暂停、每日上限或消息不足会留下可查询的结果，`accepted` 不等于已发布。页面轮询不会重新提交；服务正常关闭等待在途任务，重启将无主任务标为 `failed/interrupted`，不会暗中重跑。
+
+评测运行器只读显式 `--corpus`，每案例用隔离数据库和 `as_of` 时钟，直接载入消息与记忆，不经过学习。输入 JSON 为 `format_version: 1` 和 `cases` 数组；每案例含 `id`、`entry: {id, kind, name?}`、带时区的 `as_of`、`messages: [{id, at, text, sender?, kind?, entry_id?}]`，可选 `timezone`、`other_entries`、`memories: [{content, sources: [消息id], importance?, stance?, lifecycle?}]`、`initial_profile`（管理员手写）、`must_cover`、`forbidden`。也直接支持已冻结的 `groups` 格式（`entry_kind`、`now`、`quote`）：每个目标入口的独立数据库都先装入所有入口，消息 ID 加入口前缀、引用保留原作者，共享账号不合并入口；只取目标入口材料。标注不进入生成或检查请求。运行器不搜索语料、不复用其他运行，全部材料放仓库外：
+
+```bash
+uv run python -m evals.entry_profile_eval run --corpus <已冻结的显式文件> --out <外部运行目录>
+# 机制试跑可加 --fake-responses <JSON响应数组>，不读取模型配置、不访问模型
+uv run python -m evals.entry_profile_eval score --materials <材料目录> --judgments <第一轮> --judgments <第二轮> --judge-model <执行者模型名> --out <外部报告目录>
+```
+
+导出 PR #7 约定的 `format_version`、`manifest.json`、`round-template.json`、`scoring.md`、`cases/*.json`、`run.json`，指纹绑定源码、提示词、全部输入、模型非敏感配置和输出。判分轮把 round-template 复制为 manifest，按清单文件名保存逐句结果；严格核对数组长度、索引、布尔值及指纹。双判支持取 AND，违规取并集，必须要点取 AND，禁止项取 OR，列全部分歧。已发布／待确认版本计算有依据比例、禁止内容、要点覆盖率；被拒绝版本单列，另报拒绝比例、删句比例、超时、调用量、P50／P95 和 token 用量。门槛是模型句有依据 ≥90%、禁止内容 0，要点覆盖率仅诊断；手写句不占模型依据比例，但仍检查禁止内容。假模型结果只验证流程，不代表质量达标。调用记录出现超时即视为运行不完整，即使上层原因只写作 `retryable`；不把这类结果当作正常拒绝来计算有效成绩。三轮公开 dev 双判尚未达到上述目标；逐轮结果、遗留问题及作废重跑记录见 [评测汇总](evals/reports/entry-profile-dev-20261011.md)。
+
 ## 模型故障与状态
 
 学习首次请求、调用内重试和 JSON 修正共享 180 秒总预算；其他生成请求为 120 秒，embedding 为 30 秒，召回查询 embedding 仍限 2 秒且不重试，评测判分为 240 秒。召回判断另有包含排队的 10 秒总预算、仅一次尝试。其他调用内最多再试两次；有有效 `Retry-After` 时按秒数或 HTTP 日期等待，否则分别以 2、4 秒为基数，加上 0 到基数之间的均匀随机抖动。等待和后续请求不得超过同一个总预算。批次重试间隔为 1／5／15 分钟，共四次尝试。
@@ -583,6 +769,65 @@ embedding 暂停时网关直接返回可降级错误，回复准备和查询使�
 迁移 006 为 `model_calls` 增加 `reasoning_effort`、`reasoning_present`、`reasoning_chars`；历史记录保持 NULL。推理字符数按 Unicode 字符计，已返回但非文本的推理字段记为未知；正文解析只用 `message.content`，不存 `reasoning_content`／`reasoning` 全文。`reasoning_tokens` 取 `usage.completion_tokens_details.reasoning_tokens`，缺失记 NULL，不从字符数估算；completion 用量已包含推理，不能再次相加。状态额外提供当前 `chat_reasoning_effort` 及逐次学习诊断。用量合计只覆盖已报告值，不能把未知调用当成零消耗。
 
 运行日志同时输出控制台和数据库所在目录的 `logs/iris.log`，每 2 MB 滚动，保留 3 份旧文件；只记录状态、标识和错误类别，默认不记录消息正文或 API key。
+
+宿主 prepare/search 的来源条目按令牌范围投影：范围外的 `entry_id`、`entry_name`、`occurred_at` 为 null，保留来源存在与消息 ID；管理员来源详情不变，不改变召回正文或顺序。
+
+## 运行记录
+
+上线后的只读检查使用迁移 `024_runtime_journal.sql` 的两张元数据表。服务每次启动分配随机 `instance_id`；正常退出前等待已接受的后台工作结束，留下最终积压快照和停止记录。启动后每 **300 秒**由独立线程记录心跳，调度器卡住也不会阻止该线程采样。没有正常停止记录的退出，可结合心跳中断、下一次启动和进程监管日志推断。心跳表示进程记录线程活跃，不等于外部 HTTP 探测成功；启动记录对应服务生命周期开始，不是端口已经绑定的证明。
+
+`runtime_events` 是追加表，无正文或自由格式 JSON：
+
+| 字段 | 含义 |
+| --- | --- |
+| `id` | 单调递增事件 ID；同一时刻按 ID 排序 |
+| `instance_id` | 32 位随机十六进制 ID；离线操作为 NULL，不能当作在线运行证据 |
+| `occurred_at` | UTC、带偏移的 ISO 8601 记录时刻 |
+| `event` | 下表的固定事件名 |
+| `entry_id` | prepare 的入口 ID；鉴权／路由前被拒绝时可能为 NULL |
+| `model_kind`, `configured` | 健康用途及是否已有非空端点和模型（0／1）；不记录端点、模型名称或配置摘要 |
+| `previous_state`, `state`, `reason` | 固定状态与固定原因，不保存异常原文 |
+| `run_id`, `phase`, `scheduled_at` | 维护运行 ID、阶段及预定 UTC 时间；`phase` 为 `maintenance`／`consolidation`／`persona` |
+| `duration_ms`, `result` | 单次执行的总耗时（单调时钟、毫秒）及 prepare 分类 |
+| `plan_id`, `notification_id` | 被取消／跳过的提醒计划 ID，以及替代它的通知 ID（如有） |
+
+除 `id`、`occurred_at`、`event` 外，列只在对应事件有意义时填写，其余为 NULL。
+
+| `event` | 取值和解释 |
+| --- | --- |
+| `process_started`／`process_stopped` | 生命周期开始／正常停止；不补造历史启动、崩溃或停止时间 |
+| `heartbeat` | 启动、每 5 分钟和正常停止前各一次；与其所有入口快照同一短写事务提交 |
+| `model_state` | `model_kind` 为 `chat`、`embedding`、`recall_judge`、`goal_dedup_judge`、`image_understanding`；整理、persona 等沿用它们实际使用的 chat 健康状态。状态为 `normal`、`configuration_error`、`invalid_key`、`account_problem`、`temporarily_unavailable`、`rate_limited`、`usage_limit`。可选用途 `configured=0` 表示尚未配置，不应当成等待自动恢复的故障。 |
+| `maintenance_scheduled` | 提前记录下一个每日时刻；运行繁忙时仍观察计划。按角色时区计算后存 UTC。重启可能重复观察同一时刻，按 `scheduled_at` 合并计划，不把它们当多次执行。 |
+| `maintenance_started`／`maintenance_completed` | 一次维护调用或整理／persona 阶段的开始与完成；`run_id` 对应 `maintenance_runs.id`。重启续跑会产生新的开始，耗时按各次调用单列；persona 阶段完成表示计算结束，是否仍待人工确认看既有 `maintenance_persona.status`。 |
+| `maintenance_skipped`／`maintenance_failed` | 跳过／中断或失败及固定原因。`shutdown`／`interrupted` 表示可继续的工作，本次结束不代表整日完成；`schedule_changed` 只撤销原先尚未到时的计划。 |
+| `reminder_resolved` | 只补计划 `cancelled`／`skipped` 的变化时间。`plan_id` 关联 `goal_reminder_plans.id`；合并过期阶段时 `notification_id` 指向实际替代通知。 |
+| `prepare` | 通过 Host 与令牌范围检查后，宿主 POST prepare 的服务端处理总时间，含排队、正文校验、召回、判断、提示和 JSON 序列化；不含先行鉴权、网络传输和记录写入本身。分类 `normal`／`judge_degraded`／`fulltext_degraded`／`error`。错误含鉴权通过后的正文校验和未捕获异常，不保存错误详情。Host／令牌／入口范围／令牌限流拒绝及未就绪请求不写 prepare 记录。全文降级与判断降级同时发生时，分类优先 `fulltext_degraded`。 |
+
+健康原因：`startup`（本实例初始观察）、`network`（网络／超时／可重试服务端故障）、`rate_limit`、`invalid_key`、`configuration`、`account`、`daily_limit`、`daily_reset`、`limit_changed`、`manual_retry`、`configuration_change`、`probe_success`、`response_received`、`cooldown_elapsed`。冷却到期和每日额度是计算状态，记录的是下一次观察到转换的时刻（调度轮询或调用时），不是虚构的精确服务商恢复时刻。配置变化即使仍为 normal 也留记录；跨实例使用 startup 作为初始状态，不将它误配为一次自动恢复。
+
+维护原因白名单：`schedule_changed`、`shutdown`、`interrupted`、`internal_error`、`disabled`、`unconfigured`、`model_items_disabled`、`call_budget`、`usage_limit`、`paused`、`not_due`、`no_changes`、`already_running`、`revision_conflict`、`invalid_output`、`other`。提醒原因：`goal_changed`、`goal_closed`、`configuration_change`、`superseded`、`overdue_disabled`、`already_reminded`。无法映射的已有维护诊断只记 `other`。
+
+`runtime_backlog` 用 `(heartbeat_id, entry_id)` 作主键，外键 `heartbeat_id → runtime_events.id`；包括空入口，删除心跳时级联清理：
+
+| 字段 | 含义 |
+| --- | --- |
+| `pending_messages` | `messages.learning_state IN ('pending','batched')` 的未学消息总数 |
+| `waiting_batches`, `running_batches` | 对应 `batches.state` 的批次数 |
+| `oldest_wait_seconds` | 最老未学消息的 **received_at** 到采样时的秒数（非 occurred_at）；没有未学消息时为 NULL，无法解析接收时间时亦可能为 NULL |
+| `memory_gaps` | 此时 `memory_gaps` 中该入口的缺口数 |
+
+积压在一个只读快照中按索引汇总，采样时间写入心跳 `occurred_at`；随后单独提交事件与快照，不持有业务写锁扫描消息，不读取正文。记录使用现有单写连接，锁等待和 SQLite busy 等待各最多 50 ms；记录失败只写固定日志 `runtime journal write failed`，清理失败为 `runtime journal cleanup failed`，继续业务。新记录保留 **30 天**，每日维护完成时每批最多删除 1000 条过期事件及其积压快照；停服、维护中断或清理失败会延迟清理。既有业务表的保留策略不变。
+
+提醒已有证据不重复记：`goal_reminder_plans.created_at/scheduled_at` 是计划建立／预定时间；已发布计划的通知可按 `goal_id + scheduled_at` 与 `notifications` 对应，目标合并另按现有目标合并关系追溯。`notifications.published_at/taken_at/cancelled_at` 是发布、首次取走及取消时间；取走不代表平台送达。新表只补过去无法确定时间的计划取消／跳过，早期没有记录的终态仍是未知。判断降级的独立明细继续读取 `recalls.request_json.judgment`，不以其判断耗时冒充 prepare 总耗时。
+
+连接器 `tools/live_review/` 可据此补充判定（需连接器线适配本 schema）：
+
+- 服务连续性：按实例读取开始、心跳、停止，检查窗口覆盖与心跳缺口，并结合监管／宿主成功记录。缺失、记录失败或超过保留期不能计为正常。
+- 入口卡住／积压清空：逐入口比较 5 分钟快照、最老等待时间以及既有 `admin_operations.batch_result`／`batch_attempts` 的成功进度；持续一小时无进展需标出。最终清空须有窗口末附近的零积压快照或该时刻一致读证据，不能拿当前状态代替历史结束时刻。
+- 自动恢复：同一实例、同一模型用途配对暂停到 normal，区分 `probe_success`／`cooldown_elapsed`／`daily_reset` 与 `manual_retry`／`configuration_change`／`limit_changed`；再核对恢复后的积压。未配对、跨实例、缺日志不判通过。
+- 每日整理：将事先记录的每日时刻与 `maintenance_started` 和完成事件、既有冻结 `maintenance_runs` 关联；300 秒延迟、缺开始／完成、阶段跳过和失败各自列出。手动／catchup 不能替代缺失的 scheduled 运行，缺未来计划也不能凭无错误宣称未漏跑。
+- 提醒：结合计划、补充取消／跳过事件和既有通知时间，检查 300 秒发布／取走延迟及到期未发布；及时取消与合并通知单列，不能把被取走当作送达。
 
 ## 评测
 
@@ -619,3 +864,117 @@ trigram 查询中的一字／两字实词会补查已有 jieba 索引；只询�
 评测启动子进程时，临时 TOML 只记录端点、模型和 `api_key_env` 变量名，密钥仅通过该子进程环境传递；不会修改调用者环境。评测的配置来源仍为 `test-models.toml`／`IRIS_TEST_MODELS`，serve 的配置优先级见上文。需要时也可在模型配置组中用 `api_key_env` 引用已设置的环境变量，不能与 `api_key` 同时填写；变量缺失会明确报错。
 
 GLM 服务商默认 max 推理可能耗尽 180 秒学习预算；依据 `DECISIONS.md` 2026-10-08「GLM 默认推理档位改为 high」，设置页的方舟预设及开发配置使用 high，未指定档位的外部配置仍由服务商决定。学习仍共享 180 秒预算。学习提示词默认 v7，先筛长期价值，再核对完整证据、人物归属、别名声明和时间一致性；补充转述视角、扮演双方主体、周一周界和跨批更新要求，v5、v6 保留。学习精确率问题列为已知问题，延后到上线后优化，M2 不再为它迭代提示词。[learning_v8.md](src/iris/prompts/learning_v8.md) 已冻结、未启用，留作上线后的精度优化起点；冻结信息及本轮保留的确定性修复见[收尾说明](evals/reports/m2-learning-v8-20261009.md)。参与者编号紧接完整已知姓名、带空格或括号时均解析回同一主体；编号与姓名不匹配则弃项，不按拼接后的名字新建主体。正文和标签中的括号显示名只展开一次；未使用的 null 关系字段可省略，实际关系的唯一性与证据要求不变。学习再次遇到同一命题时确认原记忆，包含遗忘中的记忆；每批仅增加一次保留强度（默认 +5），达到恢复阈值 H 后恢复有效，已删除对象不复活。数值或否定序列不同的命题不作近似重复合并。推理档位和方舟错误码适配已合入；M1 的评测门槛在定稿代码上以公开样本和规划者隐藏集的独立双判达到，M1 已完成（DECISIONS.md 2026-10-08）；公开样本的单判及流程试用仍不能作为门槛结论。
+
+## M4 备份：在线导出与离线导入
+
+服务运行时，管理员可通过 `POST /admin/api/backups/export` 下载备份，JSON 体默认为 `{}`；显式传入 `{"include_secrets":true}` 才包含数据目录内的模型密钥。请求沿用管理员会话、JSON Content-Type 和 `X-Iris-CSRF`，宿主令牌不能代替管理员会话。响应为 ZIP 下载，`Cache-Control: no-store`；含密钥时文件名带 `-with-secrets`，`X-Iris-Backup-Includes-Secrets` 为 `true`，清单和导出记录也明确标记。`GET /admin/api/backups?limit=30` 返回最近导出记录（最多 100 条）、是否含密钥及离线导入说明。前端入口由 M4 界面线接入。
+
+每日维护完成后自动执行一次定时备份，默认开启、写入 `<数据目录>/backups/`、保留最近 7 份且不含模型密钥。补跑、正常维护和手动维护共用按角色时区计算的每日名额；同日重复调用或重启不会重复导出。失败、空间不足也占用当天尝试，下一天维护后再试；关闭时不占名额。维护中断时不导出，完成状态提交后才开始在线快照，备份失败不撤销或阻止其他维护阶段。
+
+通过 `runtime_settings` 的 `scheduled_backup` JSON 设置（缺省字段使用默认值；本条没有设置页开关）：
+
+```json
+{"enabled":true,"keep":7,"directory":null}
+```
+
+`enabled` 必须为布尔值，`keep` 必须为正整数；`directory=null` 使用默认目录，也可填绝对路径或相对于数据目录的路径，不能位于媒体目录中。设置无效会留下固定失败原因。定时备份复用手动在线导出的快照、媒体校验、0600 文件权限和不覆盖发布机制。文件名为 `iris-scheduled-<实例标识>-<本地日期>-<备份ID>.zip`，清单附 `scheduled_backup` 的 `owner`、`day`。仅在新备份成功后，清理当前配置目录中同时匹配本实例命名规则、备份 ID 和清单标记的旧定时备份；不跟随符号链接，不清理手动导出、其他实例文件、迁移前 `.bak` 或以前配置的其他目录。
+
+导出前估算目标卷所需空间：数据库与媒体总量的两倍，加上至少 64 MiB（或总量 5%，取较大值）的余量，用于未压缩暂存、ZIP 和并发变化；不足时跳过并记录 `insufficient_space`，保留旧备份。实际导出仍可能因后续磁盘变化失败，按同一记录返回固定原因。
+
+`GET /admin/api/backups` 的最近导出记录同时返回定时尝试；沿用 `purpose` 并新增明确的 `trigger`：`manual`（手动）、`pre_import`（导入前）、`scheduled`（定时），旧记录按原用途补齐。界面线可据此显示“定时”。新增元数据为 `status`（`running / succeeded / failed / skipped`）、`reason`、`started_at`、`finished_at`、`duration_ms`；原有 `created_at`、`size`、`file_count` 等保留。定时备份每次尝试一条记录，完成后更新结果；失败时大小为 0，成功时为实际 ZIP 字节数。中断后再次检查会标记 `failed / interrupted`，耗时未知为 null，不补造成功。定时失败原因只使用 `invalid_settings`、`insufficient_space`、`invalid_output`、`output_exists`、`media_changed`、`media_integrity`、`unsupported_migration`、`manifest_too_large`、`export_failed`、`interrupted`；不写异常原文、路径或密钥。若导出成功但旧备份清理失败，保留新文件，`status` 仍为 `succeeded`，另记 `retention_reason=cleanup_failed`；正常时该字段为 null。不增加运行记录事件。
+
+停服后也可使用命令行；这些命令不加载测试模型配置、不调用模型：
+
+```bash
+uv run iris --data-dir /path/to/iris-data backup export --out /path/to/backup.zip
+# 需要将本地模型密钥一起备份时，显式加 --include-secrets
+uv run iris --data-dir /path/to/new-data backup import /path/to/backup.zip
+# 覆盖已有实例：先停止服务及其他配置命令，再显式确认
+uv run iris --data-dir /path/to/iris-data backup import /path/to/backup.zip --confirm-overwrite
+# 覆盖前的私有自动备份默认保留旧本地模型密钥，结果返回归档位置
+```
+
+导出包格式版本为 1：`manifest.json`（UTF-8）列出备份 ID、创建时间、迁移版本及完整迁移序列、是否含模型密钥、是否包含媒体目录，以及各文件的字节数和 SHA-256；内容为 `iris.db`、已有的 `media/` 文件，以及选择包含时的 `secrets.json`。不包含日志、旧备份、部署配置、外部 TOML 或环境变量中的密钥。媒体路径沿用 `media/<sha256>`，数据库快照同时保留媒体对象、理解文本和消息引用；导出与导入均校验登记的哈希、大小与文件一致。只要求数据库快照登记的媒体文件在复制期间存在且保持不变；忽略 `.upload-*` 临时文件和快照后新增的内容寻址文件。登记文件缺失或改变时整次导出失败，可重试；不会发布缺损包。
+
+数据库来自独立只读连接上的 SQLite 在线备份，固定同一已提交快照，不占用接收或学习使用的写锁。模型配置锁只覆盖快照建立和可选的密钥捕获。CLI 输出和服务端下载临时文件权限为 `0600`，浏览器保存后的权限由浏览器决定；同名输出文件不会被覆盖。导出和导入操作记录只存标识、版本、数量与密钥包含标志，不存文件内容或本机路径。备份仍包含原始消息、记忆、管理员密码摘要和宿主令牌摘要，应按实例数据私密保存；选择包含的模型密钥在 ZIP 内不加密。
+
+默认无密钥的备份会清除**副本**中的模型密钥引用，保留端点、模型名等非敏感配置，原实例不变。导入这种备份也不会沿用目标目录原有的密钥文件；需要重新配置模型密钥，或继续使用原来的外部配置方式。宿主令牌摘要、撤销状态和入口范围原样恢复，令牌明文不会重新生成。
+
+导入仅提供离线命令，选择该方式是为了在整体替换数据库、媒体和可选密钥时没有运行中的连接继续访问旧数据。程序持有服务锁和配置锁；先校验清单、每个文件的完整性、数据库完整性与外键、迁移序列，再在私有临时目录依次迁移旧版本。较新或不兼容的版本、截断包、路径越界和符号链接条目会被拒绝。覆盖前自动生成 `数据目录名.pre-import-<随机ID>.zip`，放在数据目录旁并在命令结果中返回路径；私有自动备份权限为 `0600`，默认保留旧 `secrets.json` 中的全部本地模型密钥（包括不再被当前配置引用的旧项）。命令 JSON 的 `previous_backup` 返回归档路径，含旧密钥时 `previous_secrets_archive` 同时明确返回该位置。`--backup-include-secrets` 保持兼容；手动导出仍默认不含密钥。自动备份失败不会覆盖数据。
+
+校验和迁移成功后，通过 macOS／Linux 的原子目录交换一次发布完整数据；服务锁在交换前后保持同一文件身份。失败或进程在交换点中断时，目标目录只会是完整旧实例或完整新实例。其他文件（如日志）保留；崩溃可能留下私有 `.iris-import-*` 临时目录，可在确认恢复结果后删除。此导入实现要求数据目录可在同一文件系统原子交换，不支持直接替换挂载点或 Windows；当前验证平台为 macOS。恢复后按原方式启动服务，未完成批次由既有重启恢复流程处理。
+
+
+## M4 媒体与图片理解（后端）
+
+媒体保存在数据目录的 `media/`，按 SHA-256 共享文件；每次保存返回独立媒体对象，不覆盖同文件其他对象的宿主说明。单文件默认最多 10 MiB（10 × 1024 × 1024 字节），检查 MIME 和文件头。图片白名单为 PNG、JPEG、GIF、WebP（`image/png`、`image/jpeg`、`image/gif`、`image/webp`），不接受 SVG、HTML 或任意文件类型。音频支持 MP3、WAV、Ogg、FLAC，视频支持 MP4、WebM；仅保存附件，不调用音视频理解模型。无宿主说明时分别使用 `[音频，未理解]`、`[视频，未理解]`。文件头校验不等同于完整解码，损坏图片的模型失败仍退回占位。
+
+在 `test-models.toml` 中由用户新增 `[image_understanding]`，填写 `base_url`、`model`、`api_key`（或省略 `api_key`，填写 `api_key_env` 所指的环境变量名）；可选 `reasoning_effort`，只在所选模型支持时设置。不需要 `dimensions`。该组使用方舟视觉模型，端点和模型 ID 以用户控制台为准，不自动沿用对话模型。请求使用 OpenAI 兼容 `/chat/completions` 的 `image_url` data URL，见[方舟图片输入契约](https://docs.volcengine.com/docs/ark/chat-api?lang=zh&redirect=1)。本线仅以假模型验证，未读取测试密钥，真实视觉模型冒烟需用户配置后另行运行。
+
+本地模型配置、导入、热重载和脱敏设置投影自动包含 `image_understanding`。管理接口 `PUT /admin/api/settings/models/image_understanding`、同路径的 `POST /test`、`POST /retry` 沿用管理员会话和 CSRF；`enabled=false` 停用。测试连接使用固定 64×64 PNG、总预算 10 秒；探测图片满足[方舟输入尺寸下限](https://docs.volcengine.com/docs/ark/image-understanding?lang=zh)。设置页已提供独立的图片理解模型组。
+
+处理顺序是：保存媒体 → 消息引用 `media_ids` → 按原节奏冻结批次 → 领取批次为 `running` → 补充图片理解 → 读取学习快照、组成材料 → 学习。上传和接收消息不等待模型。整批图片（目标优先，再历史、后续）共享最多 120 秒，包含排队、网络和调用内重试；随后学习仍有独立的 180 秒预算。含媒体消息在冻结时预留原有的每消息 1500 token 上限。图片理解并发最多 2、排队最多 8，独立线程池和健康状态；不等待其他批次已在理解的同一对象，本次使用其已有占位。图片较慢时端到端延迟可能超过实时入口的一分钟目标。
+
+每个对象优先直接使用宿主理解文本（UTF-8，最多 32 KB）；其余图片在配置可用时逐个理解。一般网络、超时、429、5xx 和无效响应最多再试两次，间隔 2、8 秒，服务商的 `Retry-After` 优先，始终受整批预算限制。失败或未配置用 `[图片，未理解]` 继续学习；图片失败不触发学习批次重试。明确安全拒绝固定为“敏感信息无法访问”，标记为被拒绝，同文件保留期间不再自动理解；识别[方舟图片安全错误码](https://docs.volcengine.com/docs/ark/error-codes?lang=zh)，不将安全检测服务故障误当内容拒绝。已结束的理解尝试不会因为历史段重复出现或批次重新学习而自动重做；未配置、用途已暂停或排队不足而未完成的对象，在以后组成材料时可再尝试。没有额外图片后台补算任务。
+
+材料在对应消息正文后追加一行，媒体按消息引用顺序编号，例如：
+
+```text
+媒体（数据）=[{"序号":1,"类型":"图片","来源":"宿主提供","被拒绝":false,"理解文本":"窗边有猫。"},{"序号":2,"类型":"图片","来源":"被拒绝","被拒绝":true,"理解文本":"敏感信息无法访问"}]
+```
+
+来源固定为“宿主提供／本系统理解／被拒绝／未理解”；文本使用 JSON 转义。正文与媒体文本合并后沿用单条 1500 token 截断，原始正文和理解文本完整保存；材料超过原总预算时沿用去除上下文的规则。无媒体消息材料逐字不变，学习检索仍使用原正文和原选材规则，召回算法与返回材料未增加媒体字段。
+
+消息清理继续遵守来源引用保护；最后一条消息引用消失后才开始 1 天宽限，文件在后续每日维护中删除。仍被任一消息引用的共享文件不删；操作记录不算引用。未绑定消息的上传也有 1 天引用窗口，崩溃遗留的临时／未登记文件在一天后清理。删除文件同时移除其无引用媒体对象；正在理解的迟到结果不能重建它们。
+
+宿主上传 `POST /api/v1/media` 和消息 `media_ids` 已接通，见[宿主接入文档](docs/host-api.md)。保存函数约定见 [ARCHITECTURE.md 的媒体一节](ARCHITECTURE.md#m4-媒体保存与接线契约)。
+
+管理员媒体接口（管理员会话；写请求同时带 `X-Iris-CSRF`，遵守现有 Origin 与 JSON Content-Type 检查）：
+
+| 接口 | 返回与用途 |
+| --- | --- |
+| `POST /admin/api/media` | 201，上传试用图片，JSON 为 `{"content_type":"image/png","data_base64":"标准 Base64"}`；返回下面的媒体投影 |
+| `GET /admin/api/media/{media_id}/file` | 200，原文件字节；管理员可读取所有入口及内部媒体，宿主 Bearer 令牌不能替代管理员会话 |
+| `POST /admin/api/trial/entries/{entry_id}/messages` | 既有 201 回执；增加可选 `media_ids`，最多 100 个、不重复，按数组顺序引用图片 |
+| `GET /admin/api/trial/entries/{entry_id}` | 每条 `messages[]` 增加 `media[]`，轮询可读取最新理解结果 |
+| `GET /admin/api/batches/{batch_id}` | 三段现存消息均增加 `media[]`；已清理的消息沿用 `missing` 占位对象 |
+| `GET /admin/api/memories/{memory_id}` | 来源消息和前后文均增加 `media[]`；目标来源前后文沿用同一媒体投影 |
+| `GET /admin/api/status` | 新增 `usage.by_purpose.image_understanding.today/week`，以及 `timeouts_seconds.image_understanding=120` |
+
+先上传每张图片，再把返回的 `id` 放进试用消息的 `media_ids`。`content` 可以为 `""`，但正文和图片不能同时为空；保留原 `speaker_id`、`dedupe_key`。新消息的媒体无效时整条消息回滚；重复去重键返回原消息，不覆盖原正文或图片。管理员上传只接受 PNG/JPEG/GIF/WebP，解码后最多 10 MiB，完整 JSON 最多 14 MiB（也限制实际接收的分块正文）；超限 413，非法类型、文件头、Base64 或字段为 400。上传不接受文件路径、URL、客户端文件名或伪造理解文本；新对象以未理解状态进入原有学习流程。未发送的上传沿用一天清理宽限。独立管理员上传不会向宿主令牌授予媒体引用权限。
+
+`media[]` 包含 `id`、`kind`、`content_type`、`size_bytes`、`understanding_text`、`understanding_source`、`understanding_source_label`、`completed_at`、`file_url`。来源代码为 `host/system/refused/unprocessed`，中文标签为“宿主提供／本系统理解／被拒绝／未理解”。`completed_at` 是宿主说明接收或本系统理解尝试完成的时间，未完成为 null；一般失败也可有完成时间，须结合来源代码区分成功。读取不触发理解、学习、召回或保留强度变化。无媒体消息返回空数组。管理投影展示所有入口媒体，不受宿主可见范围筛选；文件系统路径和处理租约不返回。
+
+`file_url` 可用于同源图片预览；提供原图，由界面缩放。响应使用登记的图片/音频/视频 MIME，`Cache-Control: no-store`、`X-Content-Type-Options: nosniff`、`Cross-Origin-Resource-Policy: same-origin`，不公开缓存。读取只接受媒体对象 ID，从数据库解析内容哈希，固定目录和文件描述符，拒绝符号链接，复核大小、哈希与文件头；不存在、已清理或文件不可用均为 404，不回显磁盘路径，也不重建目录。
+
+图片用量按角色时区统计今日和本周（周一开始），结束于查询时刻。每个分桶包含 `calls`、`prompt_tokens`、`completion_tokens`、`reasoning_tokens`、`tokens`（输入＋输出）、`calls_without_usage`、`failures`、`refusals`、`failure_rate`、`duration_ms`（总耗时）、`p50_ms`、`p95_ms`、`max_ms`、`timeouts`。统计图片用途的实际调用记录，包含调用内重试、设置连接测试和恢复探测；旧记录按图片 purpose 兼容归类。失败包含全部非成功调用，拒绝是其中 `content_rejection` 的子集；无调用时延迟和失败率为 null，缺失 token 不作推算。图片调用已计入原有总用量，界面不要再次相加。
+
+## M4 入口的记忆可见范围（VS）
+
+入口默认 `shared`（全部共享），可改为 `entry_only`（本入口）或 `entries`（指定入口列表，始终包含本入口）。管理员通过已有会话与 CSRF 调用：
+
+```http
+PATCH /admin/api/entries/入口ID/visibility
+Content-Type: application/json
+X-Iris-CSRF: <当前会话的 CSRF 值>
+
+{"visibility":"entries","visible_in":["另一个入口ID"]}
+```
+
+入口必须已经存在；名单完整替换，不能引用未知入口。改动写入管理操作记录。`GET /admin/api/entries` 和入口 `/settings` 返回 `visibility`、`visible_in`；记忆详情返回 `visibility.shared` 与计算后的 `visibility.visible_in`，空列表且 `shared=false` 表示仅管理员可见。
+
+记忆范围是全部来源消息的入口范围与派生依据范围的交集；目标还与所属入口范围取交集。无来源目标按所属入口计算，无所属入口的目标全局可见。计算使用当前设置，收紧、放宽、撤换名单对旧对象和派生链立即生效，不必重新学习。原始消息仍只返回本次入口的近期窗口。
+
+回复准备、人物要点、点名检索、深度召回、目标分区及其附带引用均按查询入口过滤。底层 `Retrieval.search(entry_id=...)` 支持指定入口；省略入口时仅返回全局可见的记忆和目标，不按宿主令牌范围放宽。HTTP `POST /api/v1/memories/search` 已接通该入口参数，令牌无权访问指定入口时返回 `403 entry_forbidden`。令牌范围另行限制目标分区；本节取代前文接入过渡说明中的待接线状态。不同实际范围的对象不做召回去重、学习再次确认、目标去重或整理合并；整理的矛盾与依赖材料也不跨范围。persona 的依据仅限全局可见的自我记忆，已发布句子的依据被改为私有时，该句立即停止进入宿主和学习材料，等待后续更新。
+
+隐私 dev 检查与回归命令（完整输出放在仓库外）：
+
+```bash
+uv run python evals/visibility_eval/run.py --out <外部目录> --judge --http-search
+uv run python evals/visibility_eval/run.py --corpus <JSON路径> --out <外部目录> --offline
+uv run python evals/visibility_eval/compare_learning.py --baseline <主线源码目录> --candidate . --out <外部目录>
+uv run python evals/visibility_eval/compare_recall.py --baseline <主线源码目录> --candidate . --out <外部目录>
+uv run python evals/visibility_eval/benchmark.py --out <外部目录>
+```
+
+隐私运行使用默认召回配置；`--http-search` 让所有 search 查询经带真实宿主令牌的 ASGI HTTP 接口，prepare 保留语料的精确近期窗口。HTTP 错误会令整次运行无效。`--embedding-cache <已完成的公开向量缓存>` 可复用 embedding，召回判断仍重新调用。`--offline` 检查默认全文降级路径，不加载模型配置。`--judge` 开启真实召回判断，判断降级或查询未完成会将整次运行标为无效。门槛只检查 forbidden 和跨范围合并；expected / expected_goals 只作为过度过滤诊断。公开集零泄漏不等于 M4 隐藏验收通过。

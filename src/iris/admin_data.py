@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from .retrieval import Retrieval
@@ -10,7 +11,9 @@ from .state import report_history
 from .goals import goal_list, goal_detail, notification_list
 from .people import list_people, person_detail, canonical_subject
 from .memory_ops import lifecycle_settings, missing_batch_targets
-from .model_health import utc_now
+from .model_health import utc_now, usage_window
+from .media import message_media, SOURCES
+from .service_status import percentile
 from .queue import entry_settings, batch_rate_status
 from .search_text import segmented
 
@@ -90,14 +93,59 @@ def list_memories(store, *, text="", person_id=None, kind=None, entry_id=None,
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
+def media_projection(item):
+    """Administrator-only projection; no filesystem or provider internals."""
+    return {key: item[key] for key in ('id', 'kind', 'content_type', 'size_bytes',
+            'understanding_text', 'understanding_source', 'completed_at')} | {
+        'understanding_source_label': SOURCES[item['understanding_source']],
+        'file_url': f"/admin/api/media/{quote(item['id'], safe='')}/file"}
+
+
+def with_message_media(conn, rows):
+    attached = message_media(conn, list(dict.fromkeys(row['id'] for row in rows if not row.get('missing'))))
+    for row in rows:
+        if not row.get('missing'):
+            row['media'] = [media_projection(item) for item in attached.get(row['id'], [])]
+    return rows
+
+
+def image_usage(store, *, current=None):
+    """Image-purpose accounting, including retries, connection tests and probes."""
+    current = current or utc_now()
+    start, _ = usage_window(store, current)
+    local = current.astimezone(ZoneInfo(str(store.setting('timezone', 'Asia/Shanghai'))))
+    week = (local.replace(hour=0, minute=0, second=0, microsecond=0)
+            - timedelta(days=local.weekday())).astimezone(timezone.utc)
+    with store.read() as conn:
+        rows = conn.execute("""SELECT duration_ms,prompt_tokens,completion_tokens,reasoning_tokens,
+            result_category,timed_out,created_at FROM model_calls
+            WHERE (model_kind='image_understanding' OR purpose='image_understanding')
+            AND julianday(created_at)>=julianday(?) AND julianday(created_at)<=julianday(?)""",
+            (week.isoformat(), current.isoformat())).fetchall()
+    def summarize(since):
+        calls = [row for row in rows if datetime.fromisoformat(row['created_at']) >= since]
+        durations = [row['duration_ms'] for row in calls]
+        result = {key: sum(row[key] or 0 for row in calls)
+                  for key in ('prompt_tokens', 'completion_tokens', 'reasoning_tokens')}
+        result.update(calls=len(calls), tokens=result['prompt_tokens'] + result['completion_tokens'],
+            failures=sum(row['result_category'] != 'success' for row in calls),
+            refusals=sum(row['result_category'] == 'content_rejection' for row in calls),
+            calls_without_usage=sum(row['prompt_tokens'] is None and row['completion_tokens'] is None for row in calls),
+            duration_ms=sum(durations), p50_ms=percentile(durations, 50), p95_ms=percentile(durations, 95),
+            max_ms=max(durations, default=None), timeouts=sum(bool(row['timed_out']) for row in calls))
+        result['failure_rate'] = result['failures'] / len(calls) if calls else None
+        return result
+    return {'today': summarize(start), 'week': summarize(week)}
+
+
 def messages(conn, entry_id, *, before=None, limit=100):
     where, args = "m.entry_id=?", [entry_id]
     if before is not None:
         where += " AND m.id<?"
         args.append(before)
-    return [dict(r) for r in reversed(conn.execute(f"""SELECT m.*,s.name AS sender_name
+    return with_message_media(conn, [dict(r) for r in reversed(conn.execute(f"""SELECT m.*,s.name AS sender_name
         FROM messages m JOIN subjects s ON s.id=m.sender_subject_id
-        WHERE {where} ORDER BY m.id DESC LIMIT ?""", [*args, limit]).fetchall())]
+        WHERE {where} ORDER BY m.id DESC LIMIT ?""", [*args, limit]).fetchall())])
 
 
 def memory_detail(store, memory_id):
@@ -106,6 +154,8 @@ def memory_detail(store, memory_id):
         if not rows:
             raise KeyError(memory_id)
         detail = rows[0]
+        from .memory_ops import Visibility
+        detail["visibility"] = Visibility(conn).describe_memory(memory_id)
         from .consolidation import memory_annotations
         detail['consolidation_annotations'] = memory_annotations(conn,[memory_id],include_reports=True)[memory_id]
         detail["speaker"] = dict(conn.execute("SELECT id,name FROM subjects WHERE id=?", (detail["speaker_subject_id"],)).fetchone())
@@ -121,7 +171,8 @@ def memory_detail(store, memory_id):
                     after = [dict(r) for r in conn.execute("""SELECT m.*,s.name AS sender_name FROM messages m
                         JOIN subjects s ON s.id=m.sender_subject_id WHERE m.entry_id=? AND m.id>? ORDER BY m.id LIMIT 2""",
                         (message["entry_id"], message["id"]))]
-                    source["context"] = [*before, dict(message), *after]
+                    source["context"] = with_message_media(conn, [*before, dict(message), *after])
+                    source["message"] = source["context"][len(before)]
             if source["source_memory_id"]:
                 parent = conn.execute("SELECT id,content,lifecycle,revision FROM memories WHERE id=?", (source["source_memory_id"],)).fetchone()
                 source["memory"] = dict(parent) if parent else None
@@ -188,7 +239,8 @@ def entry_learning_settings(store, entry_id):
         entry = conn.execute("SELECT * FROM entries WHERE id=?", (entry_id,)).fetchone()
         if entry is None:
             raise KeyError(entry_id)
-        return entry_settings(entry)
+        from .memory_ops import entry_visibility
+        return {**entry_settings(entry), **entry_visibility(entry)}
 
 
 def entry_queue_wait(conn, entry, current):
@@ -225,6 +277,7 @@ def learning_entries(store):
     instant = utc_now()
     with store.read() as conn:
         items = [dict(r) for r in conn.execute("""SELECT e.*,
+            (SELECT COUNT(*) FROM entry_profile_versions p WHERE p.entry_id=e.id AND p.status='candidate') AS entry_profile_pending_count,
             (SELECT COUNT(*) FROM messages m WHERE m.entry_id=e.id
                 AND m.learning_state IN ('pending','batched')) AS pending_count
             FROM entries e ORDER BY e.name,e.id""")]
@@ -232,6 +285,9 @@ def learning_entries(store):
             entry["filters"] = json.loads(entry["filters_json"])
             entry["queue_wait"] = entry_queue_wait(conn, entry, instant)
             entry.pop("filters_json")
+            from .memory_ops import entry_visibility
+            entry.update(entry_visibility(entry))
+            entry.pop("visible_in_json")
             latest = conn.execute(f"SELECT {BATCH_COLUMNS} FROM batches b WHERE b.entry_id=? ORDER BY b.id DESC LIMIT 1", (entry["id"],)).fetchone()
             current = conn.execute(f"""SELECT {BATCH_COLUMNS} FROM batches b WHERE b.entry_id=?
                 AND b.state IN ('waiting','running') ORDER BY b.id LIMIT 1""", (entry["id"],)).fetchone()
@@ -302,7 +358,7 @@ def batch_detail(store, batch_id):
                 JOIN subjects s ON s.id=m.sender_subject_id LEFT JOIN subjects q ON q.id=m.quote_author_subject_id
                 WHERE m.id IN ({','.join('?' for _ in ids)})""", ids).fetchall() if ids else []
             by_id = {r["id"]: dict(r) for r in rows}
-            detail["segments"][segment] = [by_id.get(i, {"id": i, "missing": True, "content": "已清理"}) for i in ids]
+            detail["segments"][segment] = with_message_media(conn, [by_id.get(i, {"id": i, "missing": True, "content": "已清理"}) for i in ids])
         attempts = [dict(r) for r in conn.execute("SELECT * FROM batch_attempts WHERE batch_id=? ORDER BY number", (batch_id,))]
         # The gateway stores only message.content in raw/repair_output. Project a
         # whitelist of call diagnostics, never provider envelopes or reasoning.
@@ -406,7 +462,8 @@ def _goal_source_context(conn, message_id):
         after = [dict(r) for r in conn.execute("""SELECT m.*,s.name AS sender_name FROM messages m
             JOIN subjects s ON s.id=m.sender_subject_id WHERE m.entry_id=? AND m.id>? ORDER BY m.id LIMIT 2""",
             (message['entry_id'],message_id))]
-        result['context'] = [*before,dict(message),*after]
+        result['context'] = with_message_media(conn, [*before,dict(message),*after])
+        result['message'] = result['context'][len(before)]
     return result
 
 
@@ -556,3 +613,117 @@ def persona_self_memories(store, *, limit=30, offset=0):
         items = memory_rows(conn, f'''SELECT {MEMORY_COLUMNS} FROM memories m WHERE {where}
             ORDER BY m.pinned DESC,m.importance DESC,m.retention DESC,m.id LIMIT ? OFFSET ?''', (limit, offset))
     return {'items': items, 'total': total, 'limit': limit, 'offset': offset}
+
+
+def host_tokens(store):
+    """Never project credential hashes or salts into management responses."""
+    from .tokens import list_tokens, DEFAULT_LIMITS
+    with store.read() as conn:
+        items = list_tokens(conn)
+    return {'items': items, 'rate_limits': store.setting('host_tokens', DEFAULT_LIMITS)}
+
+
+def bulk_memory_preview(store, *, subject_id=None, entry_id=None, action, include_pinned=False):
+    """An explicit privacy scope, independent of management/recall filters."""
+    from .memory_ops import bulk_memory_rows, remember_bulk_preview
+    if bool(subject_id) == bool(entry_id) or action not in ("forget", "delete", "purge") or type(include_pinned) is not bool:
+        raise ValueError("请选择一个人物或入口及有效的操作")
+    scope = {"subject_id": subject_id} if subject_id else {"entry_id": entry_id}
+    with store.read() as conn:
+        if subject_id:
+            person = conn.execute("SELECT merged_into FROM subjects WHERE id=?", (subject_id,)).fetchone()
+            if person is None:
+                raise KeyError(subject_id)
+            if person["merged_into"]:
+                raise ValueError("人物已合并，请打开合并后的人物重新预览")
+        elif conn.execute("SELECT 1 FROM entries WHERE id=?", (entry_id,)).fetchone() is None:
+            raise KeyError(entry_id)
+        all_rows = bulk_memory_rows(conn, scope, True)
+        rows = {mid: row for mid, row in all_rows.items() if include_pinned or not row["pinned"]}
+        counts = {state: sum(r["lifecycle"] == state for r in rows.values()) for state in ("active", "forgotten", "deleted")}
+        examples = []
+        for mid in list(rows)[:5]:
+            content = conn.execute("SELECT content FROM memories WHERE id=?", (mid,)).fetchone()[0]
+            examples.append({"id": mid, "revision": rows[mid]["revision"], "lifecycle": rows[mid]["lifecycle"],
+                             "pinned": bool(rows[mid]["pinned"]), "content": content[:160] + ("…" if len(content) > 160 else ""),
+                             "truncated": len(content) > 160})
+        token, expires = remember_bulk_preview(store, scope=scope, action=action, include_pinned=include_pinned,
+                                               rows=rows, settings=lifecycle_settings(conn))
+    return {"scope": scope, "action": action, "include_pinned": include_pinned, "total": len(rows),
+            "counts": counts, "pinned_count": sum(r["pinned"] for r in rows.values()),
+            "excluded_pinned_count": len(all_rows) - len(rows),
+            "applicable_count": len(rows) - (counts["deleted"] if action != "purge" else 0),
+            "examples": examples, "snapshot_token": token, "expires_at": expires}
+
+
+ENTRY_PROFILE_COLUMNS = '''id,entry_id,version,base_version,content,status,source,author,
+    change_degree,generated_at,published_at'''
+ENTRY_PROFILE_ATTEMPT_COLUMNS = '''id,entry_id,base_version,state,reason,version,started_at,finished_at,
+    (SELECT status FROM entry_profile_versions v WHERE v.entry_id=entry_profile_attempts.entry_id
+        AND v.version=entry_profile_attempts.version) AS version_status,
+    CASE WHEN state!='running' THEN 'finished'
+         WHEN json_type(outputs_json,'$.consolidation_entry_profile_generate') IS NOT NULL THEN 'checking'
+         ELSE 'generating' END AS stage'''
+
+
+def _entry_profile_summary(row, current):
+    return dict(row) | {'is_current': row['version'] == current}
+
+
+def entry_profile_snapshot(store, entry_id):
+    from . import entry_profile as profiles
+    with store.read() as conn:
+        entry = profiles._entry(conn, entry_id)
+        settings = profiles._settings(conn, entry_id)
+        current = conn.execute(f'SELECT {ENTRY_PROFILE_COLUMNS} FROM entry_profile_versions WHERE entry_id=? AND version=?',
+                               (entry_id, settings['current_version'])).fetchone()
+        pending = conn.execute(f"SELECT {ENTRY_PROFILE_COLUMNS} FROM entry_profile_versions WHERE entry_id=? AND status='candidate' ORDER BY version DESC",
+                               (entry_id,)).fetchall()
+        latest = conn.execute(f'SELECT {ENTRY_PROFILE_ATTEMPT_COLUMNS} FROM entry_profile_attempts WHERE entry_id=? ORDER BY id DESC LIMIT 1',
+                              (entry_id,)).fetchone()
+        value = profiles._view(conn, profiles._current(conn, entry_id))
+        return {'entry': entry, 'supported': entry['kind'] in ('group', 'live'),
+                'global_enabled': profiles._runtime(conn)['enabled'], 'settings': settings,
+                'current': _entry_profile_summary(current, settings['current_version']) if current else None,
+                'pending': _entry_profile_summary(pending[0], settings['current_version']) if pending else None,
+                'pending_count': len(pending), 'possibly_stale': bool(value and value['possibly_stale']),
+                'stale_basis': value['stale_basis'] if value else [],
+                'latest_attempt': dict(latest) if latest else None}
+
+
+def entry_profile_versions(store, entry_id, *, limit=30, offset=0):
+    from .entry_profile import _settings
+    with store.read() as conn:
+        current = _settings(conn, entry_id)['current_version']
+        total = conn.execute('SELECT COUNT(*) FROM entry_profile_versions WHERE entry_id=?', (entry_id,)).fetchone()[0]
+        items = [_entry_profile_summary(r, current) for r in conn.execute(f'''SELECT {ENTRY_PROFILE_COLUMNS}
+            FROM entry_profile_versions WHERE entry_id=? ORDER BY version DESC LIMIT ? OFFSET ?''', (entry_id, limit, offset))]
+        return {'items': items, 'total': total, 'limit': limit, 'offset': offset}
+
+
+def entry_profile_version(store, entry_id, version):
+    from .entry_profile import _view, _version
+    with store.read() as conn:
+        value = _view(conn, _version(conn, entry_id, version))
+        evidence = value.pop('material').get('evidence', {})
+        # Only cited snippets, never the full sampled conversation or model input.
+        indexed = {item['sha256']: item for kind in ('messages', 'memories') for item in evidence.get(kind, [])}
+        for sentence in value['sentences']:
+            sentence['admin_written'] = sentence['author'] == 'admin'
+            for basis in sentence['basis']:
+                cited = indexed.get(basis['sha256'])
+                basis['evidence'] = ({key: item for key, item in cited.items() if key not in ('sha256', 'ref')}
+                                     if cited else None)
+                if 'memory_id' in basis:
+                    basis['memory'] = _persona_memory(conn, basis['memory_id'])
+        value['checks'].pop('model_input', None)
+        return value
+
+
+def entry_profile_attempt(store, entry_id, attempt_id):
+    with store.read() as conn:
+        row = conn.execute(f'SELECT {ENTRY_PROFILE_ATTEMPT_COLUMNS} FROM entry_profile_attempts WHERE entry_id=? AND id=?',
+                           (entry_id, attempt_id)).fetchone()
+        if row is None:
+            raise KeyError(attempt_id)
+        return dict(row)

@@ -10,14 +10,12 @@ export class ApiError extends Error {
     public code: string,
     message: string,
     public status: number,
+    public result?: unknown,
   ) {
     super(message);
   }
 }
-export async function apiResponse<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<{ data: T; status: number; headers: Headers }> {
+async function request(path: string, init?: RequestInit): Promise<Response> {
   const response = await fetch(`/admin/api${path}`, {
     ...init,
     credentials: "same-origin",
@@ -27,8 +25,8 @@ export async function apiResponse<T>(
       ...init?.headers,
     },
   });
-  const body = await response.json();
   if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
     const error = body.error || {};
     if (
       ["login_required", "setup_required", "csrf_failed"].includes(error.code)
@@ -41,9 +39,34 @@ export async function apiResponse<T>(
           ? `请检查输入：${error.fields.map((f: { field: string; message: string }) => `${f.field.split(".").pop()}：${f.message}`).join("；")}`
           : "请求失败，请重试"),
       response.status,
+      body.result,
     );
   }
-  return { data: body, status: response.status, headers: response.headers };
+  return response;
+}
+export async function apiResponse<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<{ data: T; status: number; headers: Headers }> {
+  const response = await request(path, init);
+  return {
+    data: await response.json(),
+    status: response.status,
+    headers: response.headers,
+  };
+}
+export async function apiDownload(path: string, init?: RequestInit) {
+  const response = await request(path, init);
+  if (
+    response.headers.get("Content-Type")?.split(";")[0].trim() !==
+    "application/zip"
+  )
+    throw new ApiError(
+      "invalid_download",
+      "没有收到 ZIP 备份，请刷新登录状态后重试",
+      response.status,
+    );
+  return { blob: await response.blob(), headers: response.headers };
 }
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return (await apiResponse<T>(path, init)).data;

@@ -40,7 +40,7 @@ def test_three_transport_errors_pause_probe_backoff_restart_and_recover(store):
     clock = Clock()
     with FakeOpenAI().serve() as server:
         health = ModelHealth(store, server.configs, clock=clock)
-        gateway = Gateway(server.configs, store, health=health, sleeper=clock.advance)
+        gateway = Gateway(server.configs, store, health=health, clock=clock, sleeper=clock.advance)
         try:
             for status in (429, 503, 500):
                 server.enqueue(status, headers={"Retry-After": "3"})
@@ -137,19 +137,30 @@ def test_shared_learning_deadline_includes_repair_and_retry_delays(store):
 
 
 def test_real_http_timeout_is_recorded_and_late_reply_is_discarded(store, monkeypatch):
-    import iris.models as models
-    monkeypatch.setattr(models, "LEARNING_TOTAL_TIMEOUT", 0.05)
+    from threading import Event
+    from thread_helpers import expire_after_entry
+    clock = Clock()
+    entered, release = Event(), Event()
+    def respond(path, payload):
+        entered.set()
+        release.wait()
+        return 200, completion(), {}, 0
     with FakeOpenAI().serve() as server:
-        server.enqueue(delay=0.2)
-        gateway = Gateway(server.configs, store)
+        server.handler = respond
+        gateway = Gateway(server.configs, store, clock=clock, monotonic=clock.monotonic)
+        requests = expire_after_entry(monkeypatch, gateway._pool, entered, clock)
         try:
-            with pytest.raises(ModelError):
+            with pytest.raises(ModelError, match='total timeout'):
                 gateway.json_chat([], "learning")
-            with store.read() as conn:
-                rows = conn.execute("SELECT * FROM model_calls").fetchall()
-            assert len(rows) == 1 and rows[0]["timed_out"] == 1
         finally:
+            release.set()
+            gateway._pool.shutdown(wait=True)
             gateway.close()
+        assert len(server.requests) == len(requests) == 1
+        assert requests[0].result().status_code == 200  # The late reply really arrived.
+        with store.read() as conn:
+            rows = conn.execute("SELECT * FROM model_calls").fetchall()
+        assert len(rows) == 1 and rows[0]["timed_out"] == 1
 
 
 def test_late_probe_cannot_clear_new_authentication_failure(store):
@@ -208,7 +219,7 @@ def test_embedding_health_probe_keeps_requested_dimensions(store):
     with FakeOpenAI().serve() as server:
         configs = {**server.configs, "embedding": replace(server.configs["embedding"], dimensions=3)}
         health = ModelHealth(store, configs, clock=clock)
-        gateway = Gateway(configs, store, health=health)
+        gateway = Gateway(configs, store, health=health, clock=clock)
         try:
             token = health.check("embedding", "embedding")
             for _ in range(3):

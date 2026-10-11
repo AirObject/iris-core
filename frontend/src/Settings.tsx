@@ -20,12 +20,20 @@ import type {
   GoalConfig,
 } from "./types";
 
-type ModelKind = "chat" | "embedding" | "recall_judge" | "goal_dedup_judge";
+const modelKinds = [
+  "chat",
+  "embedding",
+  "recall_judge",
+  "goal_dedup_judge",
+  "image_understanding",
+] as const;
+type ModelKind = (typeof modelKinds)[number];
 export const modelNames: Record<string, string> = {
   chat: "对话模型",
   embedding: "Embedding 模型",
   recall_judge: "召回判断模型",
   goal_dedup_judge: "目标去重判断模型",
+  image_understanding: "图片理解模型",
 };
 
 export type Role = {
@@ -199,7 +207,7 @@ function ModelFields({
         </p>
       ) : (
         <fieldset disabled={readonly || !value.enabled}>
-          {kind !== "embedding" && (
+          {kind !== "embedding" && kind !== "image_understanding" && (
             <label>
               {label}服务商预设
               <select
@@ -287,7 +295,9 @@ function ModelFields({
                   change({ ...value, reasoning_effort: e.target.value || null })
                 }
               />
-              {arkEffort && <small>火山方舟 GLM 预设使用 {arkEffort}。</small>}
+              {arkEffort && kind !== "image_understanding" && (
+                <small>火山方舟 GLM 预设使用 {arkEffort}。</small>
+              )}
               {judgment && <small>判断档位留空时，后端使用 high。</small>}
             </label>
           ) : (
@@ -488,12 +498,7 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
         setReminderMinutes(String(latest.goals.default_reminder_minutes));
         setOverdueReminders(latest.goals.overdue_reminders);
       }
-      for (const kind of [
-        "chat",
-        "embedding",
-        "recall_judge",
-        "goal_dedup_judge",
-      ] as const) {
+      for (const kind of modelKinds) {
         if (path === `/settings/models/${kind}`)
           setModels((v) => ({ ...v, [kind]: latest.models[kind] }));
       }
@@ -534,17 +539,30 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
           配置来自外部文件，只读；数据库模型配置和 secrets.json 不用于本次服务。
         </Notice>
       )}
-      {(["chat", "embedding", "recall_judge", "goal_dedup_judge"] as const)
+      {modelKinds
         .filter((kind) => settings.models[kind])
         .map((kind) => (
-          <section key={kind} className="panel settings-panel">
+          <section
+            key={kind}
+            className="panel settings-panel"
+            aria-label={modelNames[kind]}
+          >
             <h2>{modelNames[kind]}</h2>
             <p>
               当前状态：
-              {healthLabel(
-                settings.health[kind]?.state || "configuration_error",
-              )}
+              {kind === "image_understanding" && !settings.models[kind].enabled
+                ? "未启用"
+                : healthLabel(
+                    settings.health[kind]?.state || "configuration_error",
+                  )}
             </p>
+            {kind === "image_understanding" && (
+              <p>
+                独立配置支持图片输入的视觉模型，不沿用对话模型。方舟的接口地址与模型
+                ID
+                以控制台为准，推理档位仅在模型支持时填写。测试连接会发送一张固定测试图片；没有宿主说明且未启用时，图片以“未理解”占位继续学习。
+              </p>
+            )}
             <form
               onSubmit={(e) => {
                 e.preventDefault();

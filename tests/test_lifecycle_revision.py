@@ -73,6 +73,8 @@ def test_automatic_retry_skips_batch_whose_targets_were_cleared(store):
     with store.write() as conn:
         conn.execute("UPDATE messages SET received_at=?", ((clock()-timedelta(days=31)).isoformat(),))
         conn.execute("UPDATE batches SET finished_at=?", ((clock()-timedelta(days=1)).isoformat(),))
+        # Already cleared before this run (e.g. while automatic retry was disabled).
+        conn.execute("DELETE FROM messages")
     report = run(store, clock)
     with store.read() as conn:
         assert conn.execute("SELECT state FROM batches WHERE id=?", (batch.id,)).fetchone()[0] == "abandoned"
@@ -111,7 +113,7 @@ def test_noop_runs_store_counts_but_no_per_object_journal(store):
         report = run(store)
         assert report["items"] == []
         assert report["summary"]["checked"]["count"] == 80
-        assert report["summary"]["checked"]["by_phase"] == {"decay": 40, "expiry": 0, "dependency": 0, "messages": 40, "retry": 0, "goals": 0}
+        assert report["summary"]["checked"]["by_phase"] == {"decay": 40, "expiry": 0, "dependency": 0, "messages": 40, "retry": 0, "goals": 0, "media": 0}
         assert report["summary"]["skipped"]["reasons"]["referenced"] == 40
     with store.read() as conn:
         assert conn.execute("SELECT COUNT(*) FROM maintenance_items").fetchone()[0] == 0

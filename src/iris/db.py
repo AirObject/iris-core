@@ -36,6 +36,8 @@ class Store:
         self._writer.execute("PRAGMA journal_mode=WAL")
         self._writer.execute("PRAGMA foreign_keys=ON")
         self._writer.execute("PRAGMA busy_timeout=30000")
+        self._writer.execute("PRAGMA checkpoint_fullfsync=ON")
+        self._writer.execute("PRAGMA journal_size_limit=67108864")
         try:
             self._migrate(existed)
         except BaseException:
@@ -73,6 +75,9 @@ class Store:
         scripts = sorted(p for p in migration_dir.iterdir() if p.name.endswith(".sql"))
         has_table = self._writer.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'").fetchone()
         applied = {r[0] for r in self._writer.execute("SELECT version FROM schema_migrations")} if has_table else set()
+        known = [p.name for p in scripts]
+        if sorted(applied) != known[:len(applied)]:
+            raise ValueError("数据库迁移版本比当前程序新或迁移历史不兼容；请升级代码，或使用迁移前的 .bak 恢复。")
         pending = [p for p in scripts if p.name not in applied]
         if pending and existed:
             stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")

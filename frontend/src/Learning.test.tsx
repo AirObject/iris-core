@@ -1,6 +1,7 @@
 import { render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { mediaFixture } from "./media-fixtures";
 import LearningPage from "./Learning";
 import { setCSRF } from "./api";
 
@@ -11,6 +12,8 @@ const entry = {
   kind: "group",
   pace: "realtime",
   pending_count: 2,
+  visibility: "shared",
+  visible_in: [],
   filters: {
     min_chars: 3,
     mention_only: true,
@@ -100,7 +103,12 @@ beforeEach(() => {
           body = { accepted: true, state };
         }
       } else if (url.endsWith("/entries/A/settings"))
-        body = { pace: entry.pace, filters: entry.filters };
+        body = {
+          pace: entry.pace,
+          filters: entry.filters,
+          visibility: entry.visibility,
+          visible_in: entry.visible_in,
+        };
       else if (url === "/admin/api/batches/8")
         body = {
           ...current,
@@ -118,6 +126,7 @@ beforeEach(() => {
                 content: "历史正文",
                 learning_state: "learned",
               },
+              { id: 99, missing: true },
             ],
             target: [
               {
@@ -125,6 +134,7 @@ beforeEach(() => {
                 kind: "self_output",
                 sender_name: "Iris",
                 content: "目标正文",
+                media: [mediaFixture],
                 learning_state: state === "waiting" ? "batched" : "abandoned",
               },
             ],
@@ -241,7 +251,7 @@ test("入口页能编辑过滤，保存后刷新列表，批次显示当前等�
     await screen.findByRole("button", { name: "修改入口设置 · 试用群聊 A" }),
   );
   expect(await screen.findByLabelText("最短字数")).toHaveValue(3);
-  await userEvent.click(screen.getByRole("button", { name: "保存入口设置" }));
+  await userEvent.click(screen.getByRole("button", { name: "保存节奏与过滤" }));
   expect(await screen.findByText("入口设置已保存")).toBeVisible();
   await userEvent.click(
     screen.getByRole("button", { name: "查看批次 · 试用群聊 A" }),
@@ -331,4 +341,57 @@ test("gap list sends entry/date filters and reads do not post", async () => {
   expect(
     requests.every((r) => !r.init?.method || r.init.method === "GET"),
   ).toBe(true);
+});
+
+test("批次详情显示媒体缩略图与理解状态，已清理占位保持原样", async () => {
+  render(<LearningPage openMemory={openMemory} />);
+  await openBatch();
+  expect(screen.getByRole("link", { name: "查看图片 1 原图" })).toHaveAttribute(
+    "href",
+    mediaFixture.file_url,
+  );
+  expect(screen.getByText("等待理解／理解中")).toBeVisible();
+  expect(screen.getByText("[图片，未理解]")).toBeVisible();
+  expect(screen.getByText("消息 #99 已不可用")).toBeVisible();
+});
+
+test("入口卡片提供按直接来源的批量操作入口", async () => {
+  render(<LearningPage openMemory={openMemory} />);
+  await userEvent.click(
+    await screen.findByRole("button", { name: "批量遗忘／删除 · 试用群聊 A" }),
+  );
+  expect(
+    screen.getByRole("dialog", { name: "批量遗忘／删除" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/至少一条直接来源消息/)).toBeInTheDocument();
+});
+
+test("每入口可打开画像面板，打开列表不触发画像生成", async () => {
+  const original = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    const url = String(input);
+    if (url.endsWith("/entries/A/profile"))
+      return new Response(
+        JSON.stringify({
+          supported: false,
+          settings: { current_version: 0 },
+          pending: null,
+          latest_attempt: null,
+        }),
+      );
+    if (url.includes("/profile/versions?"))
+      return new Response(JSON.stringify({ items: [], total: 0 }));
+    return original(input, init);
+  });
+  render(<LearningPage openMemory={openMemory} />);
+  await userEvent.click(
+    await screen.findByRole("button", { name: "入口画像 · 试用群聊 A" }),
+  );
+  expect(
+    await screen.findByRole("dialog", { name: "入口画像 · 试用群聊 A" }),
+  ).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: "入口画像 · 宿主私聊" }),
+  ).toBeInTheDocument();
+  expect(requests.every((r) => !r.init?.method)).toBe(true);
 });

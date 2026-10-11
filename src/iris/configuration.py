@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import ipaddress
+import re
 import logging
 import os
 import secrets
@@ -9,7 +11,7 @@ import tempfile
 import threading
 import tomllib
 from contextlib import contextmanager
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from time import monotonic
 
@@ -23,14 +25,51 @@ CONFIG_LOCK_WAIT_SECONDS = 3.0
 log = logging.getLogger(__name__)
 
 
+class SecretsUnavailable(ValueError):
+    """Fixed diagnostic only: never retain file contents or OS exception text."""
+
+
+class ConfigurationBusy(ValueError):
+    """A configuration lock could not be acquired within its wait budget."""
+
+
 def _lock_busy(timeout):
     if timeout > 0:
         message = f'配置锁等待超时（{timeout:g} 秒），请稍后重试'
         # The import CLI intentionally suppresses exception details. Emit only
         # this fixed diagnostic so its timeout remains visible without secrets.
         log.warning(message)
-        return ValueError(message)
-    return ValueError('配置正在更新，请稍后重试')
+        return ConfigurationBusy(message)
+    return ConfigurationBusy('配置正在更新，请稍后重试')
+
+
+def container_mode():
+    # Deliberately explicit: truthy strings and config files cannot enable it.
+    return os.environ.get('IRIS_CONTAINER') == '1'
+
+
+def allowed_hostnames(values):
+    """Exact Host names, no wildcard, URL, userinfo or DNS resolution."""
+    if not isinstance(values, (list, tuple)):
+        raise ValueError('allowed_hosts 必须是主机名列表')
+    result = []
+    for value in values:
+        if not isinstance(value, str):
+            raise ValueError('allowed_hosts 必须是主机名列表')
+        match = re.fullmatch(r'(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9_]+(?:[.-][A-Za-z0-9_-]+)*)(?::([0-9]{1,5}))?', value)
+        if not match or (match[2] and not 1 <= int(match[2]) <= 65535):
+            raise ValueError('allowed_hosts 只接受明确主机名，可带端口；不能使用通配符或 URL')
+        host = match[1]
+        if host.startswith('['):
+            ipaddress.IPv6Address(host[1:-1])
+        if host not in result:
+            result.append(host)
+    return result
+
+
+def environment_hosts():
+    raw = os.environ.get('IRIS_ALLOWED_HOSTS', '')
+    return allowed_hostnames([part.strip() for part in raw.split(',')] if raw else [])
 
 
 def deployment(*, config=None, data_dir=None, host=None, port=None):
@@ -43,13 +82,14 @@ def deployment(*, config=None, data_dir=None, host=None, port=None):
         values = {}
     except (ValueError, OSError):
         raise ValueError('部署配置文件无效') from None
-    if set(values)-{'data_dir', 'host', 'port'}:
-        raise ValueError('iris.toml 只接受 data_dir、host、port')
+    if set(values)-{'data_dir', 'host', 'port', 'allowed_hosts'}:
+        raise ValueError('iris.toml 只接受 data_dir、host、port、allowed_hosts')
     directory = data_dir or os.environ.get('IRIS_DATA_DIR')
     if directory is None:
         directory = path.parent / str(values.get('data_dir', 'data'))
-    return {'data_dir': Path(directory).resolve(), 'host': host or os.environ.get('IRIS_HOST') or values.get('host', '127.0.0.1'),
-            'port': int(port if port is not None else os.environ.get('IRIS_PORT', values.get('port', 8080)))}
+    return {'data_dir': Path(directory).resolve(), 'host': host or os.environ.get('IRIS_HOST') or values.get('host', '0.0.0.0' if container_mode() else '127.0.0.1'),
+            'port': int(port if port is not None else os.environ.get('IRIS_PORT', values.get('port', 8080))),
+            'allowed_hosts': environment_hosts() if 'IRIS_ALLOWED_HOSTS' in os.environ else allowed_hostnames(values.get('allowed_hosts', []))}
 
 
 class RuntimeConfig:
@@ -62,8 +102,8 @@ class RuntimeConfig:
 
     @contextmanager
     def locked(self, *, timeout=0.0):
-        # Readers (including scheduler reloads) never wait. Writers share one
-        # deadline across the in-process lock and the inter-process file lease.
+        # Background readers never wait; reads on the save path may opt in.
+        # Both locks share the caller's remaining wait budget.
         deadline = monotonic() + timeout
         if not self._lock.acquire(timeout=timeout):
             raise _lock_busy(timeout)
@@ -97,7 +137,7 @@ class RuntimeConfig:
                 raise ValueError()
             return data['keys']
         except (OSError, ValueError, AttributeError):
-            raise ValueError('无法读取 secrets.json，请检查格式和权限') from None
+            raise SecretsUnavailable('无法读取 secrets.json，请检查权限或在设置页重新输入受影响用途的密钥') from None
 
     def _write_secrets(self, keys):
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -113,34 +153,67 @@ class RuntimeConfig:
         finally:
             Path(temporary).unlink(missing_ok=True)
 
-    def _load_local(self):
+    def _local_values(self):
         rows = self.store.setting('models', {})
-        keys = self._secrets()
-        result = {}
+        try:
+            keys = self._secrets()
+        except SecretsUnavailable:
+            keys = {}
+        result, unavailable = {}, set()
         for kind in KINDS:
             row = rows.get(kind)
             if row:
                 reference = row.get('api_key_ref')
-                if reference and reference not in keys:
-                    raise ValueError('模型密钥引用缺失，请重新导入或保存模型配置')
+                if reference and not keys.get(reference):
+                    unavailable.add(kind)
                 result[kind] = ModelConfig(row['base_url'], keys.get(reference, ''), row['model'], row.get('dimensions'), row.get('reasoning_effort'))
-        return result
+        return result, unavailable
 
-    def load(self):
+    def _load_local(self):
+        configs, unavailable = self._local_values()
+        # An explicit unusable config pauses the purpose through the existing
+        # health logic. None would incorrectly make an independent judge inherit
+        # chat. Keep nonsecret model metadata for diagnostics; never use a stale key.
+        return {kind: replace(config, base_url='', api_key='') if kind in unavailable else config
+                for kind, config in configs.items()}
+
+    def _editable_configs(self, *, timeout=0.0):
+        if self.external_loader:
+            raw, unavailable = self.load(), set()
+        else:
+            with self.locked(timeout=timeout):
+                raw, unavailable = self._local_values()
+        if 'chat' in unavailable:
+            unavailable.update(kind for kind in JUDGMENT_KINDS if not raw.get(kind))
+        return raw, effective_configs(raw), unavailable
+
+    def editable(self, kind, *, timeout=0.0):
+        """Fresh saved endpoint and credential availability, including inheritance."""
+        _, configs, unavailable = self._editable_configs(timeout=timeout)
+        return configs.get(kind), kind in unavailable
+
+    def load(self, *, timeout=0.0):
         if self.external_loader:
             try:
                 return self.external_loader()
             except (OSError, ValueError):
                 raise ValueError('外部模型配置暂不可用，请检查原文件') from None
-        with self.locked():
+        with self.locked(timeout=timeout):
             return self._load_local()
 
-    def save(self, updates, *, actor='admin'):
+    def save(self, updates, *, actor='admin', repair_secrets=False, timeout=CONFIG_LOCK_WAIT_SECONDS):
         if self.external_loader:
             raise ValueError('模型配置来自外部文件，只读')
-        with self.locked(timeout=CONFIG_LOCK_WAIT_SECONDS):
+        with self.locked(timeout=timeout):
             old = self.store.setting('models', {})
-            keys = self._secrets()
+            try:
+                keys = self._secrets()
+            except SecretsUnavailable:
+                # Repair is explicit on the authenticated settings path only.
+                # Unrepaired references remain unavailable instead of being cleared.
+                if not repair_secrets or self.path.is_symlink():
+                    raise
+                keys = {}
             # Keep current references until the database commit. A crash cannot pair
             # a newly imported key with the previous provider URL.
             keep = {row['api_key_ref'] for row in old.values() if row.get('api_key_ref')}
@@ -164,13 +237,13 @@ class RuntimeConfig:
                 conn.execute('INSERT OR REPLACE INTO runtime_settings VALUES(?,?)', ('models', dumps(rows)))
                 audit(conn, 'models_saved', {'purposes': sorted(updates)}, actor=actor)
 
-    def public(self):
-        raw = self.load()
-        configs = effective_configs(raw)
+    def public(self, *, timeout=0.0):
+        raw, configs, unavailable = self._editable_configs(timeout=timeout)
         return {kind: {'inherited': kind in JUDGMENT_KINDS and not raw.get(kind),
                        'enabled': bool(configs.get(kind) and configs[kind].base_url and configs[kind].model),
                        'base_url': configs[kind].base_url if configs.get(kind) else '',
                        'model': configs[kind].model if configs.get(kind) else '',
                        'dimensions': configs[kind].dimensions if configs.get(kind) else None,
                        'reasoning_effort': configs[kind].reasoning_effort if configs.get(kind) else None,
-                       'key_set': bool(configs.get(kind) and configs[kind].api_key)} for kind in KINDS}
+                       'key_set': bool(configs.get(kind) and configs[kind].api_key),
+                       **({'key_missing': True} if kind in unavailable else {})} for kind in KINDS}

@@ -1,0 +1,18 @@
+# Allow only inputs needed by uv and the installed runtime package.
+**
+!Dockerfile
+!.dockerignore
+!pyproject.toml
+!uv.lock
+!README.md
+!src/
+!src/iris/
+!src/iris/**
+**/__pycache__
+**/*.py[cod]
+**/test-models.toml
+**/secrets.json
+**/.secrets-*
+**/.env*
+**/*.pem
+**/*.key

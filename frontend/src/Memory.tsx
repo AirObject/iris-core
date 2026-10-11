@@ -1,4 +1,6 @@
+import { MessageMedia } from "./Media";
 import { MemorySuggestions } from "./MemorySuggestions";
+import { memoryVisibilityLabel } from "./Visibility";
 import { useEffect, useState, type FormEvent } from "react";
 import { ApiError, api, json, useData, errorText } from "./api";
 import {
@@ -321,6 +323,7 @@ export function MemoryDetail({
   openMemory: (id: number) => void;
 }) {
   const query = useData<Detail>(`/memories/${id}`);
+  const catalog = useData<{ entries: Person[] }>("/catalog");
   const [saved, setSaved] = useState<Detail | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -517,6 +520,15 @@ export function MemoryDetail({
             }}
           />
           <dl className="metadata">
+            <div>
+              <dt>记忆可见范围</dt>
+              <dd>
+                {memoryVisibilityLabel(
+                  detail.visibility,
+                  catalog.data?.entries || [],
+                )}
+              </dd>
+            </div>
             {detail.lifecycle === "forgotten" && (
               <div>
                 <dt>遗忘时间</dt>
@@ -704,6 +716,7 @@ export function SourceView({
             {time(s.message.occurred_at)}
           </p>
           <blockquote>{s.message.content}</blockquote>
+          <MessageMedia media={s.message.media} />
           <details className="source-context">
             <summary>查看前后文</summary>
             {s.context?.map((m) => (
@@ -715,6 +728,7 @@ export function SourceView({
                   {m.sender_name} · {time(m.occurred_at)}
                 </small>
                 <p>{m.content}</p>
+                <MessageMedia media={m.media} />
               </div>
             ))}
           </details>

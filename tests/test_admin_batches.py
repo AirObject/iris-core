@@ -1,4 +1,5 @@
 """Entry/batch browsing and design 7.6/17.7 relearning; no real models."""
+from conftest import authorize_host
 import json
 from concurrent.futures import ThreadPoolExecutor
 
@@ -79,6 +80,7 @@ def test_relearning_keeps_gap_and_hints_until_success(store, state):
 @pytest.fixture
 def client(store):
     with TestClient(create_app(store=store), base_url="http://127.0.0.1", client=("127.0.0.1", 1234)) as value:
+        authorize_host(value)
         login_admin(value)
         value.app.state.scheduler.stop()
         yield value
@@ -109,7 +111,7 @@ def test_batch_detail_three_segments_attempts_body_only_results_and_readonly(cli
     future = msg(store, 3, "祝你顺利", kind="self_output")
     formed = form_batch(store, "A", PROMPT_VERSION, target_count=1)
     output = {"memories": [{**memory("小林计划去上海", [2]), "stance": "计划"}, memory("只在后续段的信息", [3])]}
-    body = dumps(output)
+    body = dumps({"updates": [], "people": [], "goals": [], "questions": [], **output})
     responses = iter([("{broken", "length"), (body, "stop")])
     def handler(request):
         content, finish = next(responses)

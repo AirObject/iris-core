@@ -2,18 +2,25 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
+import json
+import tempfile
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timezone
 from importlib.resources import files
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Path as PathParameter, Query
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import APIRouter, Path as PathParameter, Query, Request
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
+from starlette.background import BackgroundTask
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError, field_validator, model_validator
 
-from . import admin_data, trial, people, persona
+from . import admin_data, trial, people, persona, backup, media, entry_profile
+from .models import IMAGE_TOTAL_TIMEOUT
 from .auth import audit, error
+from .tokens import NewToken, RateLimits
 from .queue import reset_batch, update_entry_settings, pace_parameters, filter_parameters, FILTER_DEFAULTS, PACE
 from .memory_ops import edit_memory, delete_memory, manage_memory, purge_memory, recreate_memory, operation, missing_batch_targets
 from .retrieval import Retrieval
@@ -22,6 +29,10 @@ from .service_status import service_status, add_health_hints
 
 class Input(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class BackupExport(Input):
+    include_secrets: bool = Field(default=False, strict=True, description="包含数据目录的模型密钥；下载文件将明确标记含密钥，请私密保存")
 
 
 class Name(Input):
@@ -37,6 +48,11 @@ class Name(Input):
 
 class NewEntry(Name):
     kind: Literal["group", "private"] = "group"
+
+
+class EntryVisibility(Input):
+    visibility: Literal['shared', 'entry_only', 'entries']
+    visible_in: list[str] = Field(default_factory=list, max_length=1000)
 
 
 class EntrySettings(Input):
@@ -66,10 +82,16 @@ class EntrySettings(Input):
         return self
 
 
+class ImageUpload(Input):
+    content_type: Literal['image/png', 'image/jpeg', 'image/gif', 'image/webp']
+    data_base64: str = Field(description='标准 Base64 文件内容；解码后不超过 10 MiB')
+
+
 class TrialMessage(Input):
     speaker_id: str = Field(min_length=1, max_length=100)
-    content: str = Field(min_length=1)
+    content: str
     dedupe_key: str = Field(min_length=1, max_length=200)
+    media_ids: list[Annotated[str, StringConstraints(min_length=1, max_length=100)]] = Field(default_factory=list, max_length=100)
 
     @field_validator("dedupe_key")
     @classmethod
@@ -78,12 +100,13 @@ class TrialMessage(Input):
             raise ValueError("去重键使用了保留前缀")
         return value
 
-    @field_validator("content")
-    @classmethod
-    def nonblank(cls, value):
-        if not value.strip():
-            raise ValueError("消息不能为空")
-        return value
+    @model_validator(mode='after')
+    def message_or_images(self):
+        if not self.content.strip() and not self.media_ids:
+            raise ValueError('消息须包含正文或图片')
+        if len(set(self.media_ids)) != len(self.media_ids):
+            raise ValueError('media_ids 不能重复')
+        return self
 
 
 class Reply(Input):
@@ -113,6 +136,25 @@ class LifecycleEdit(Revision):
 
 class Purge(Revision):
     confirm: bool = Field(strict=True)
+
+
+class BulkPreview(Input):
+    subject_id: str | None = Field(default=None, min_length=1, max_length=200)
+    entry_id: str | None = Field(default=None, min_length=1, max_length=200)
+    include_pinned: bool = Field(default=False, strict=True)
+    action: Literal["forget", "delete", "purge"]
+
+    @model_validator(mode="after")
+    def one_scope(self):
+        if (self.subject_id is None) == (self.entry_id is None):
+            raise ValueError("请选择一个人物或入口")
+        return self
+
+
+class BulkApply(Input):
+    snapshot_token: str = Field(min_length=1, max_length=100)
+    action: Literal["forget", "delete", "purge"]
+    confirm: bool = Field(default=False, strict=True)
 
 
 class Recreate(Revision):
@@ -154,6 +196,37 @@ class PersonaVersions(Page):
 class PersonaDiff(Input):
     before_version: int = Field(gt=0, le=9223372036854775807)
     after_version: int = Field(gt=0, le=9223372036854775807)
+
+
+class EntryProfileRevision(Input):
+    expected_version: int = Field(ge=0, le=9223372036854775807, strict=True)
+
+
+class EntryProfileEdit(EntryProfileRevision):
+    content: str = Field(min_length=150, max_length=500)
+
+
+class EntryProfileReject(EntryProfileRevision):
+    reason: str = Field(default='管理员拒绝', min_length=1, max_length=1000)
+
+    @field_validator('reason')
+    @classmethod
+    def nonblank(cls, value):
+        if not value.strip():
+            raise ValueError('拒绝原因不能为空白')
+        return value.strip()
+
+
+class EntryProfileSettings(EntryProfileRevision):
+    enabled: bool | None = Field(default=None, strict=True)
+    publish_mode: Literal['check_auto', 'all_manual'] | None = None
+
+    @model_validator(mode='after')
+    def changes(self):
+        fields = self.model_fields_set - {'expected_version'}
+        if not fields or any(getattr(self, key) is None for key in fields):
+            raise ValueError('至少修改一项画像设置，值不能为空')
+        return self
 
 
 GoalId = Annotated[int, PathParameter(gt=0, le=9223372036854775807)]
@@ -369,10 +442,13 @@ def install_admin(app):
     async def lifespan(app):
         jobs = persona.PersonaJobs(app.state.store, app.state.gateway)
         app.state.persona_jobs = jobs
+        profile_jobs = entry_profile.EntryProfileJobs(app.state.store, app.state.gateway)
+        app.state.entry_profile_jobs = profile_jobs
         try:
             yield
         finally:
             # Included router lifespans close before create_app's gateway/store.
+            await asyncio.to_thread(profile_jobs.close)
             await asyncio.to_thread(jobs.close)
 
     router = APIRouter(prefix="/admin/api", tags=["本机管理界面"], lifespan=lifespan)
@@ -380,6 +456,50 @@ def install_admin(app):
     def record(action, object_type, object_id, details=None):
         with app.state.store.write() as conn:
             operation(conn, action, object_type, object_id, details)
+
+    @router.post('/media', status_code=201, summary='管理员上传试用图片', openapi_extra={
+        'requestBody': {'required': True, 'content': {'application/json': {'schema': ImageUpload.model_json_schema()}}}})
+    async def upload_image(request: Request):
+        # The administrator middleware authenticates and checks CSRF before this
+        # bounded parser; FastAPI must not buffer an unbounded Base64 JSON body.
+        limit = 14 * 1024 * 1024
+        length = request.headers.get('content-length', '')
+        if length.isdecimal() and (len(length) > 20 or int(length) > limit):
+            return error('media_too_large', '图片上传请求超过 14 MiB', 413)
+        body = bytearray()
+        async for chunk in request.stream():
+            if len(body) + len(chunk) > limit:
+                return error('media_too_large', '图片上传请求超过 14 MiB', 413)
+            body.extend(chunk)
+        try:
+            payload = ImageUpload.model_validate_json(body)
+        except ValidationError as exc:
+            return JSONResponse({'error': {'code': 'invalid_request', 'fields': [
+                {'field': '.'.join(('body', *map(str, issue['loc']))), 'message': issue['msg']}
+                for issue in exc.errors()]}}, status_code=400)
+        if len(payload.data_base64) > 4 * ((media.DEFAULT_MAX_BYTES + 2) // 3):
+            return error('media_too_large', '图片超过单文件 10 MiB 上限', 413)
+        try:
+            data = base64.b64decode(payload.data_base64, validate=True)
+        except (ValueError, binascii.Error):
+            return error('invalid_request', 'data_base64 须为标准 Base64 文件内容', 400)
+        try:
+            item = await asyncio.to_thread(media.save_media, app.state.store, data, content_type=payload.content_type)
+        except OSError:
+            return error('media_unavailable', '媒体存储暂时不可用', 503)
+        await asyncio.to_thread(record, 'trial_media_uploaded', 'media', item['id'])
+        return admin_data.media_projection(item)
+
+    @router.get('/media/{media_id}/file', summary='管理员只读查看媒体原文件')
+    def media_file(media_id: str):
+        try:
+            data, content_type = media.read_media(app.state.store, media_id)
+        except media.MediaError:
+            return error('media_unavailable', '媒体不存在或文件不可用', 404)
+        return Response(data, media_type=content_type, headers={
+            'Cache-Control': 'no-store', 'Content-Disposition': 'inline',
+            'X-Content-Type-Options': 'nosniff', 'Cross-Origin-Resource-Policy': 'same-origin',
+            'Content-Security-Policy': "default-src 'none'; sandbox"})
 
     @router.get("/trial")
     def trial_catalog():
@@ -427,6 +547,8 @@ def install_admin(app):
     @router.post("/trial/entries/{entry_id}/reply")
     def reply(entry_id: str, payload: Reply):
         result = app.state.trial_replies.reply(entry_id, payload.message_id)
+        with app.state.store.read() as conn:
+            admin_data.with_message_media(conn, [result['message']])
         record("trial_reply", "entry", entry_id, {"message_id": result["message"]["id"], "reused": result["reused"]})
         app.state.scheduler.wake()
         return result
@@ -466,6 +588,21 @@ def install_admin(app):
     @router.get("/memories/upcoming-deletion")
     def upcoming(query: Annotated[Page, Query()]):
         return admin_data.upcoming_deletion(app.state.store, **query.model_dump())
+
+    @router.post("/memories/bulk/preview")
+    def bulk_preview(payload: BulkPreview):
+        result = admin_data.bulk_memory_preview(app.state.store, **payload.model_dump())
+        return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+    @router.post("/memories/bulk/apply")
+    def bulk_apply(payload: BulkApply):
+        from .memory_ops import apply_bulk_memories, BulkMemoryConflict
+        try:
+            result = apply_bulk_memories(app.state.store, **payload.model_dump())
+        except BulkMemoryConflict as exc:
+            return JSONResponse({"error": {"code": "bulk_preview_stale", "message": str(exc)},
+                                 "result": exc.result}, status_code=409, headers={"Cache-Control": "no-store"})
+        return JSONResponse(result, headers={"Cache-Control": "no-store"})
 
     @router.get("/memories/{memory_id}")
     def memory(memory_id: int):
@@ -577,6 +714,11 @@ def install_admin(app):
         app.state.scheduler.wake()
         return result
 
+    @router.patch('/entries/{entry_id}/visibility')
+    def change_entry_visibility(entry_id: str, payload: EntryVisibility):
+        from .memory_ops import set_entry_visibility
+        return set_entry_visibility(app.state.store, entry_id, **payload.model_dump())
+
     @router.get("/batches")
     def batches(query: Annotated[LearningQuery, Query()]):
         return admin_data.learning_batches(app.state.store, **query.model_dump())
@@ -604,6 +746,57 @@ def install_admin(app):
     @router.get("/memory-gaps")
     def gaps(query: Annotated[LearningQuery, Query()]):
         return admin_data.memory_gaps(app.state.store, **query.model_dump())
+
+    @router.get('/entries/{entry_id}/profile')
+    def current_entry_profile(entry_id: str):
+        return admin_data.entry_profile_snapshot(app.state.store, entry_id)
+
+    @router.get('/entries/{entry_id}/profile/versions')
+    def entry_profile_versions(entry_id: str, query: Annotated[Page, Query()]):
+        return admin_data.entry_profile_versions(app.state.store, entry_id, **query.model_dump())
+
+    @router.get('/entries/{entry_id}/profile/versions/{version}')
+    def entry_profile_version(entry_id: str, version: PersonaId):
+        return admin_data.entry_profile_version(app.state.store, entry_id, version)
+
+    @router.get('/entries/{entry_id}/profile/diff')
+    def entry_profile_diff(entry_id: str, query: Annotated[PersonaDiff, Query()]):
+        return entry_profile.version_diff(app.state.store, entry_id, query.before_version, query.after_version)
+
+    @router.get('/entries/{entry_id}/profile/attempts/{attempt_id}')
+    def entry_profile_attempt(entry_id: str, attempt_id: PersonaId):
+        return admin_data.entry_profile_attempt(app.state.store, entry_id, attempt_id)
+
+    @router.put('/entries/{entry_id}/profile')
+    def edit_entry_profile(entry_id: str, payload: EntryProfileEdit):
+        version = entry_profile.admin_edit(app.state.store, entry_id, **payload.model_dump())
+        return admin_data.entry_profile_version(app.state.store, entry_id, version['version'])
+
+    @router.patch('/entries/{entry_id}/profile/settings')
+    def entry_profile_settings(entry_id: str, payload: EntryProfileSettings):
+        return entry_profile.set_settings(app.state.store, entry_id, **payload.model_dump(exclude_unset=True))
+
+    @router.post('/entries/{entry_id}/profile/versions/{version}/confirm')
+    def confirm_entry_profile(entry_id: str, version: PersonaId, payload: EntryProfileRevision):
+        entry_profile.confirm_candidate(app.state.store, entry_id, version, **payload.model_dump())
+        return admin_data.entry_profile_version(app.state.store, entry_id, version)
+
+    @router.post('/entries/{entry_id}/profile/versions/{version}/reject')
+    def reject_entry_profile(entry_id: str, version: PersonaId, payload: EntryProfileReject):
+        entry_profile.reject_candidate(app.state.store, entry_id, version, **payload.model_dump())
+        return admin_data.entry_profile_version(app.state.store, entry_id, version)
+
+    @router.post('/entries/{entry_id}/profile/versions/{version}/rollback')
+    def rollback_entry_profile(entry_id: str, version: PersonaId, payload: EntryProfileRevision):
+        value = entry_profile.rollback(app.state.store, entry_id, version, **payload.model_dump())
+        return admin_data.entry_profile_version(app.state.store, entry_id, value['version'])
+
+    @router.post('/entries/{entry_id}/profile/regenerate', status_code=202)
+    def regenerate_entry_profile(entry_id: str, payload: EntryProfileRevision):
+        from urllib.parse import quote
+        attempt = app.state.entry_profile_jobs.submit(entry_id, **payload.model_dump())
+        return JSONResponse({'accepted': True, 'attempt': admin_data.entry_profile_attempt(app.state.store, entry_id, attempt)},
+                            status_code=202, headers={'Location': f'/admin/api/entries/{quote(entry_id, safe="")}/profile/attempts/{attempt}'})
 
     @router.get('/persona')
     def current_persona():
@@ -711,6 +904,55 @@ def install_admin(app):
     def notifications(query: Annotated[NotificationQuery, Query()]):
         return admin_data.notifications(app.state.store, **query.model_dump())
 
+    @router.get("/backups", summary="最近的导出记录与离线导入方式")
+    def backups(limit: int = Query(default=30, ge=1, le=100)):
+        return {"items": backup.recent_exports(app.state.store, limit=limit), "import_mode": "offline",
+                "import_instructions": "停止服务后执行 iris --data-dir <目录> backup import <备份>；覆盖须加 --confirm-overwrite。"}
+
+    @router.post("/backups/export", summary="在线导出一致快照，默认不含模型密钥", response_class=FileResponse)
+    def export_backup(payload: BackupExport):
+        temporary = tempfile.TemporaryDirectory(prefix="iris-download-")
+        from pathlib import Path
+        path = Path(temporary.name) / "backup.zip"
+        try:
+            result = backup.export_archive(app.state.store, path, include_secrets=payload.include_secrets,
+                                           actor="admin", runtime=app.state.runtime_config)
+            suffix = "-with-secrets" if result["includes_model_secrets"] else ""
+            return FileResponse(path, media_type="application/zip",
+                                filename=f"iris-backup-{result['backup_id']}{suffix}.zip",
+                                headers={"X-Iris-Backup-Includes-Secrets": str(result["includes_model_secrets"]).lower(),
+                                         "X-Iris-Backup-Id": result["backup_id"], "Cache-Control": "no-store"},
+                                background=BackgroundTask(temporary.cleanup))
+        except BaseException:
+            temporary.cleanup()
+            raise
+
+    @app.exception_handler(backup.BackupError)
+    async def backup_failed(request, exc):
+        return error(exc.code, str(exc), 409 if exc.code == "media_changed" else 400)
+
+    @router.get("/tokens")
+    def host_tokens():
+        return admin_data.host_tokens(app.state.store)
+
+    @router.post("/tokens", status_code=201)
+    def create_host_token(payload: NewToken):
+        return app.state.tokens.create(**payload.model_dump())
+
+    @router.post("/tokens/{token_id}/revoke")
+    def revoke_host_token(token_id: str, payload: Input):
+        return app.state.tokens.revoke(token_id)
+
+    @router.patch("/settings/host-tokens")
+    def host_token_limits(payload: RateLimits):
+        with app.state.store.write() as conn:
+            from .db import dumps
+            row = conn.execute("SELECT value_json FROM runtime_settings WHERE key='host_tokens'").fetchone()
+            values = {**json.loads(row[0]), **payload.model_dump(exclude_unset=True)}
+            conn.execute("UPDATE runtime_settings SET value_json=? WHERE key='host_tokens'", (dumps(values),))
+            operation(conn, "token_limits_saved", "settings", "host_tokens", values, actor="admin")
+        return values
+
     @router.get("/state")
     def current_state():
         return app.state.current_state.get()
@@ -723,7 +965,17 @@ def install_admin(app):
     def status():
         result = service_status(app.state.store, app.state.scheduler, app.state.health)
         admin_data.add_entry_waits(app.state.store, result["entries"])
+        result['usage']['by_purpose'] = {'image_understanding': admin_data.image_usage(app.state.store)}
+        result['timeouts_seconds']['image_understanding'] = IMAGE_TOTAL_TIMEOUT
         return result
+
+    @app.exception_handler(entry_profile.EntryProfileConflict)
+    async def entry_profile_conflict(request, exc):
+        return error('entry_profile_conflict', '当前画像、候选、设置或依据已变化，请刷新后重试', 409)
+
+    @app.exception_handler(entry_profile.EntryProfileBusy)
+    async def entry_profile_busy(request, exc):
+        return error('entry_profile_generation_in_progress', '已有入口画像生成任务或服务正在停止，请查询任务状态', 409)
 
     @app.exception_handler(persona.PersonaConflict)
     async def persona_conflict(request, exc):

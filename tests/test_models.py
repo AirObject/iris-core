@@ -141,7 +141,7 @@ def test_embedding_dimension_payload_and_mismatched_response(store):
         with pytest.raises(ModelError):
             gateway.embedding('不匹配的向量')
         with store.read() as conn:
-            assert conn.execute('SELECT result_category FROM model_calls ORDER BY id DESC LIMIT 1').fetchone()[0] == 'configuration'
+            assert conn.execute('SELECT result_category FROM model_calls ORDER BY id DESC LIMIT 1').fetchone()[0] == 'invalid_output'
     finally:
         gateway.close()
 

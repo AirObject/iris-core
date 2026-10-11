@@ -5,11 +5,13 @@ import hashlib
 import json
 import logging
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from .db import Store
-from .models import JUDGMENT_KINDS, MODEL_KINDS, effective_configs
+from .runtime_journal import record
+from .models import IMAGE_TOTAL_TIMEOUT, JUDGMENT_KINDS, MODEL_KINDS, effective_configs
 
 
 def utc_now():
@@ -33,16 +35,57 @@ def fingerprint(config):
 
 
 class ModelHealth:
-    def __init__(self, store: Store, configs, *, clock=utc_now):
+    def __init__(self, store: Store, configs, *, clock=utc_now, monotonic=time.monotonic):
         self.store, self.clock = store, clock
         self._raw_configs = dict(configs)
         self.configs = effective_configs(configs)
         self._lock = threading.RLock()
+        self._budget_lock = threading.Lock()
+        self._budget_cache = None
+        self._monotonic = monotonic
         self._states = {}
+        self._journal_states = {}
+        initial_reasons = {}
         for kind in MODEL_KINDS:
             saved = store.setting("model_health." + kind, {})
             self._states[kind] = saved if saved.get("fingerprint") == fingerprint(self.configs.get(kind)) else self._fresh(kind)
             self._save(kind)
+            self._journal_states[kind] = saved.get('state')
+            initial_reasons[kind] = ('configuration_change' if saved and
+                saved.get('fingerprint') != self._states[kind]['fingerprint'] else 'startup')
+        for kind in MODEL_KINDS:
+            self._journal_sync(initial_reasons[kind], kinds=(kind,), force=True)
+
+    def _journal_sync(self, reason=None, *, kinds=None, force=False, budget=None):
+        # Observe effective states too: cooldown expiry and daily limits are
+        # computed, not persisted circuit resets. No model/config text is used.
+        try:
+            budget = self.budget() if budget is None else budget
+            with self._lock:
+                for kind in kinds or MODEL_KINDS:
+                    state = self._states[kind]
+                    current = state['state']
+                    if current == 'rate_limited' and not self._cooling(state):
+                        current = 'normal'
+                    if current == 'normal' and kind != 'embedding' and budget['exhausted']:
+                        current = 'usage_limit'
+                    previous = self._journal_states.get(kind)
+                    if previous != current or force:
+                        cause = reason
+                        if cause is None:
+                            if current == 'usage_limit':
+                                cause = 'daily_limit'
+                            elif previous == 'usage_limit':
+                                cause = 'daily_reset'
+                            elif previous == 'rate_limited' and current == 'normal' and not reason:
+                                cause = 'cooldown_elapsed'
+                        config = self.configs.get(kind)
+                        record(self.store, 'model_state', current=self.clock(), model_kind=kind,
+                               configured=int(bool(config and config.base_url and config.model)),
+                               previous_state=previous, state=current, reason=cause or 'response_received')
+                        self._journal_states[kind] = current
+        except Exception:
+            logging.getLogger('iris.runtime_journal').warning('runtime journal write failed')
 
     def _fresh(self, kind):
         config = self.configs.get(kind)
@@ -66,30 +109,51 @@ class ModelHealth:
         self.store.set_setting("model_health." + kind, self._states[kind])
 
     def budget(self):
+        # Call outside the circuit lock. The persisted revision invalidates even
+        # same-second inserts, corrections and retention deletes from any writer.
         limit = self.store.setting("daily_token_limit")
         start, end = usage_window(self.store, self.clock())
         with self.store.read() as conn:
+            revision = conn.execute('SELECT revision FROM model_usage_revision WHERE id=1').fetchone()[0]
+            key = (revision, limit, start.isoformat(), end.isoformat())
+            with self._budget_lock:
+                cached = self._budget_cache
+                if cached and cached[0] == key and 0 <= self._monotonic()-cached[1] < 1:
+                    return dict(cached[2])
             used = conn.execute("""SELECT COALESCE(SUM(COALESCE(prompt_tokens,0)+COALESCE(completion_tokens,0)),0)
                 FROM model_calls WHERE julianday(created_at)>=julianday(?) AND julianday(created_at)<julianday(?)""",
                 (start.isoformat(), end.isoformat())).fetchone()[0]
-        return {"limit": limit, "used": used, "reset_at": end.isoformat(),
-                "exhausted": limit is not None and used >= limit}
+        result = {"limit": limit, "used": used, "reset_at": end.isoformat(),
+                  "exhausted": limit is not None and used >= limit}
+        with self._budget_lock:
+            self._budget_cache = key, self._monotonic(), result
+        return dict(result)
 
     def set_daily_token_limit(self, limit):
         if limit is not None and (type(limit) is not int or limit < 1):
             raise ValueError("daily token limit must be a positive integer or None")
+        self._journal_sync()
         self.store.set_setting("daily_token_limit", limit)
+        self._journal_sync("limit_changed")
 
     def snapshot(self):
         with self._lock:
-            result = {kind: {k: v for k, v in state.items() if k != "fingerprint"}
+            result = {kind: {k: v for k, v in state.items() if k not in ("fingerprint", "item_error_keys")}
                       for kind, state in self._states.items()}
         for state in result.values():
             if state['state'] == 'rate_limited' and not self._cooling(state):
                 state.update(state='normal', retry_at=None)
+        # Image understanding is opt-in. An absent/disabled image model is an
+        # ordinary placeholder path, not an outage hint on every host request.
+        image = self.configs.get('image_understanding')
+        if not image or not image.base_url or not image.model:
+            result.pop('image_understanding', None)
+        else:
+            result['image_understanding']['timeout_seconds'] = IMAGE_TOTAL_TIMEOUT
         budget = self.budget()
-        for kind in ('chat', *JUDGMENT_KINDS):
-            if budget['exhausted'] and result[kind]['state'] == 'normal':
+        self._journal_sync(budget=budget)
+        for kind in ('chat', *JUDGMENT_KINDS, 'image_understanding'):
+            if kind in result and budget['exhausted'] and result[kind]['state'] == 'normal':
                 result[kind].update(state='usage_limit', last_error='达到每日 token 上限', next_probe_at=budget['reset_at'])
         return result
 
@@ -97,34 +161,56 @@ class ModelHealth:
         return self.snapshot()["chat"]["state"] == "normal"
 
     def allowed(self, kind):
+        self._journal_sync(kinds=(kind,))
         with self._lock:
             return self._available(self._states[kind])
 
     def check(self, kind, purpose, *, probe=False):
+        self._journal_sync(kinds=(kind,))
         from .models import ModelError
         with self._lock:
             state = self._states[kind]
             if not probe and not self._available(state):
                 raise ModelError("paused", state["last_error"] or state["state"], paused=True, reason=state["state"])
             token = state["fingerprint"]
-        if ((not probe and purpose in ("learning", "learning_repair")) or kind in JUDGMENT_KINDS) and self.budget()["exhausted"]:
+        if ((not probe and purpose in ("learning", "learning_repair")) or kind in (*JUDGMENT_KINDS, "image_understanding")) and self.budget()["exhausted"]:
             raise ModelError("paused", "达到每日 token 上限", paused=True, reason="usage_limit")
         return token
 
-    def observe(self, kind, token, category, summary=None, *, probe=False, rate_limited=False, retry_after=None):
+    def observe(self, kind, token, category, summary=None, *, probe=False, rate_limited=False, retry_after=None, item_key=None):
         """Returns whether the caller must wait without spending a batch attempt."""
+        budget = self.budget()
         with self._lock:
+            self._journal_sync(kinds=(kind,), budget=budget)
             state = self._states[kind]
             if state["fingerprint"] != token:
                 return True  # A response from a replaced configuration cannot restore it.
             previous = state["state"]
-            if previous in ("invalid_key", "configuration_error"):
-                return True  # Only replacing configuration may clear these states.
+            if previous == "invalid_key" or (previous == "configuration_error" and not (probe and category == "success")):
+                return True  # An ordinary in-flight response cannot reopen a circuit.
+            if category not in ('item_error', 'invalid_output'):
+                state.pop('item_error_keys', None)
             cooldown_until = datetime.fromisoformat(state['retry_at']) if kind in JUDGMENT_KINDS and self._cooling(state) else None
             if category == "success":
                 # Only a probe may close an open circuit; an older in-flight call may finish later.
                 if probe or self._available(state):
                     self._states[kind] = self._fresh(kind)
+            elif category in ('item_error', 'invalid_output'):
+                # A retry of one bad batch/image/input is still one item. Only
+                # three distinct consecutive failing items establish bad config.
+                keys = state.setdefault('item_error_keys', [])
+                if item_key is not None and item_key not in keys and len(keys) < 3:
+                    keys.append(item_key)
+                state['consecutive_errors'] = 0
+                state['last_error'] = summary
+                if probe or len(keys) >= 3:
+                    state.update(state='configuration_error', next_probe_at=None)
+                if kind in JUDGMENT_KINDS:
+                    state['consecutive_rate_limits'] = 0
+                    if state['state'] == 'configuration_error':
+                        state['retry_at'] = None
+                    elif self._available(state):
+                        state.update(state='normal', retry_at=None)
             elif category == "retryable":
                 state["consecutive_errors"] += 1
                 state["last_error"] = summary
@@ -168,26 +254,36 @@ class ModelHealth:
                     state["probe_delay_seconds"] = min(600, state["probe_delay_seconds"] * 2)
                     state["next_probe_at"] = (self.clock() + timedelta(seconds=state["probe_delay_seconds"])).isoformat()
             self._save(kind)
+            reason = {'authentication': 'invalid_key', 'configuration': 'configuration', 'account': 'account',
+                      'success': 'probe_success' if probe else 'response_received',
+                      'item_error': 'configuration', 'invalid_output': 'configuration',
+                      'retryable': 'rate_limit' if rate_limited else 'network'}.get(category, 'response_received')
+            self._journal_sync(reason, kinds=(kind,), budget=budget)
             current = self._states[kind]["state"]
             if previous != current:
                 logging.getLogger("iris.models").info("model state kind=%s state=%s", kind, current)
             return not self._available(self._states[kind])
 
     def due_probes(self):
-        exhausted = self.budget()['exhausted']
+        budget = self.budget()
+        self._journal_sync(budget=budget)
+        exhausted = budget['exhausted']
         from .goal_dedup_judge import settings as goal_judge_settings
         judge_available = {'recall_judge':self.store.setting('recall_judge', {}).get('enabled',True) and not exhausted,
                            'goal_dedup_judge':goal_judge_settings(self.store)['enabled'] and not exhausted}
         with self._lock:
             return [kind for kind, state in self._states.items()
                     if (kind not in JUDGMENT_KINDS or judge_available[kind])
+                    and (kind != 'image_understanding' or not exhausted)
                     and state["state"] in ("temporarily_unavailable", "account_problem")
                     and state["next_probe_at"] and datetime.fromisoformat(state["next_probe_at"]) <= self.clock()]
 
     def replace_config(self, kind, config):
         if kind not in self._states:
             raise ValueError("unknown model purpose")
+        budget = self.budget()
         with self._lock:
+            self._journal_sync(budget=budget)
             self._raw_configs[kind] = config
             updated = effective_configs(self._raw_configs)
             changed = False
@@ -197,11 +293,15 @@ class ModelHealth:
                     self.configs[purpose] = candidate
                     self._states[purpose] = self._fresh(purpose)
                     self._save(purpose)
+                    self._journal_sync("configuration_change", kinds=(purpose,), force=True, budget=budget)
                     changed = True
             return changed
 
     def retry_now(self, kind):
+        budget = self.budget()
         with self._lock:
+            self._journal_sync(kinds=(kind,), budget=budget)
             if self._states[kind]["state"] in ("temporarily_unavailable", "account_problem"):
                 self._states[kind] = self._fresh(kind)
                 self._save(kind)
+                self._journal_sync("manual_retry", kinds=(kind,), budget=budget)

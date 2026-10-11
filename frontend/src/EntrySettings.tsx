@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from "react";
 import { api, errorText, json, useData } from "./api";
 import { Dialog, Notice, fullTime } from "./ui";
+import { EntryVisibilityForm } from "./Visibility";
 import type {
   CustomPace,
   EntryFilters,
   EntrySettings,
+  EntryVisibility,
   Person,
   QueueWait,
 } from "./types";
@@ -77,14 +79,16 @@ export function EntryQueueWait({ value }: { value?: QueueWait }) {
 }
 export function EntrySettingsDialog({
   entry,
+  entries,
   onClose,
   onSaved,
 }: {
   entry: Person;
+  entries: Person[];
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const data = useData<EntrySettings>(
+  const data = useData<EntrySettings & EntryVisibility>(
     `/entries/${encodeURIComponent(entry.id)}/settings`,
   );
   const [busy, setBusy] = useState(false);
@@ -101,13 +105,30 @@ export function EntrySettingsDialog({
         </Notice>
       )}
       {data.data ? (
-        <EntryForm
-          entry={entry}
-          value={data.data}
-          busy={busy}
-          setBusy={setBusy}
-          onSaved={onSaved}
-        />
+        <>
+          {data.data.visibility ? (
+            <EntryVisibilityForm
+              entry={entry}
+              entries={entries}
+              value={data.data}
+              busy={busy}
+              setBusy={setBusy}
+              onSaved={onSaved}
+            />
+          ) : (
+            <Notice error>
+              未读到可见范围，请重新加载入口设置。
+              <button onClick={data.refresh}>重新加载</button>
+            </Notice>
+          )}
+          <EntryForm
+            entry={entry}
+            value={data.data}
+            busy={busy}
+            setBusy={setBusy}
+            onSaved={onSaved}
+          />
+        </>
       ) : (
         <p role="status">正在读取入口设置…</p>
       )}
@@ -321,7 +342,7 @@ function EntryForm({
         </Notice>
       </fieldset>
       <button className="primary" disabled={busy}>
-        {busy ? "正在保存…" : "保存入口设置"}
+        {busy ? "正在保存…" : "保存节奏与过滤"}
       </button>
     </form>
   );

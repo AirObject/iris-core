@@ -21,12 +21,13 @@ from iris.service_status import service_status
 from test_batches import memory
 from test_retrieval import put
 from test_scheduler import intake, wait_for
+from thread_helpers import THREAD_WAIT
 
 
 def test_B13_real_process_exit_mid_learning_transaction_rolls_back(tmp_path):
     path = tmp_path / "crash.db"
     child = """
-import os,sys
+import json,os,sys
 from iris.db import Store
 from iris.learning import LearningEngine
 from iris.models import ModelConfig
@@ -34,7 +35,9 @@ from iris.queue import add_message,form_batch
 class Fake:
     configs={"chat":ModelConfig("fake","","fake")}
     def json_chat(self,*args,**kw):
-        return {"memories":[{"content":"小林喜欢猫","type":"偏好","about":["P1"],"speaker":"P1","stance":"亲历","evidence":[1]}]},"{}",None,"direct"
+        result={"updates":[],"people":[],"goals":[],"questions":[],
+                "memories":[{"content":"小林喜欢猫","type":"偏好","about":["P1"],"speaker":"P1","stance":"亲历","evidence":[1]}]}
+        return result,json.dumps(result),None,"direct"
 class Crash(LearningEngine):
     def _source(self,conn,memory_id,message_id):
         assert conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0] == 1
@@ -141,9 +144,11 @@ def test_request_learning_watermark_survives_scheduler_restart(store):
     second = Scheduler(store, FakeGateway(), clock=clock)
     try:
         second.tick()
-        wait_for(lambda: get_batch(store, 1).state == "succeeded")
+        second._active["A"].result(timeout=THREAD_WAIT)
+        assert get_batch(store, 1).state == "succeeded"
         second.tick()
-        wait_for(lambda: get_batch(store, 2).state == "succeeded")
+        second._active["A"].result(timeout=THREAD_WAIT)
+        assert get_batch(store, 2).state == "succeeded"
         assert get_batch(store, 2).target_ids == [13]
     finally:
         second.stop()

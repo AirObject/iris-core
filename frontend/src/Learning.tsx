@@ -1,4 +1,8 @@
+import { EntryProfileDialog } from "./EntryProfile";
+import { BulkMemoryDialog } from "./BulkMemory";
+import { MessageMedia } from "./Media";
 import { useState } from "react";
+import { entryVisibilityLabel } from "./Visibility";
 import { api, errorText, json, useData } from "./api";
 import {
   Badge,
@@ -23,6 +27,7 @@ import type {
   EntryFilters,
   QueueWait,
   EntrySettings,
+  EntryVisibility,
 } from "./types";
 
 type Summary = Batch & {
@@ -34,14 +39,16 @@ type Summary = Batch & {
   can_relearn: boolean;
   relearning: boolean;
 };
-type LearningEntry = Entry & {
-  platform: string;
-  pending_count: number;
-  latest_batch?: Summary;
-  current_batch?: Summary;
-  filters?: EntryFilters;
-  queue_wait?: QueueWait;
-};
+type LearningEntry = Entry &
+  EntryVisibility & {
+    platform: string;
+    entry_profile_pending_count?: number;
+    pending_count: number;
+    latest_batch?: Summary;
+    current_batch?: Summary;
+    filters?: EntryFilters;
+    queue_wait?: QueueWait;
+  };
 type Call = {
   id: number;
   purpose: string;
@@ -113,7 +120,7 @@ type Gap = {
 };
 type Page<T> = { items: T[]; total: number; offset: number; limit: number };
 const kindLabel = (value: string) =>
-  ({ group: "群聊", private: "私聊" })[value] || value;
+  ({ group: "群聊", private: "私聊", live: "直播" })[value] || value;
 const messageKind = (value: string) =>
   ({
     message: "消息",
@@ -137,7 +144,9 @@ export default function LearningPage({
 }) {
   const [tab, setTab] = useState<"entries" | "batches" | "gaps">("entries");
   const [selected, setSelected] = useState<number | null>(null);
+  const [bulkEntry, setBulkEntry] = useState<LearningEntry | null>(null);
   const [editingEntry, setEditingEntry] = useState<LearningEntry | null>(null);
+  const [profileEntry, setProfileEntry] = useState<LearningEntry | null>(null);
   const [notice, setNotice] = useState("");
   const [filter, setFilter] = useState({
     entry_id: "",
@@ -209,9 +218,26 @@ export default function LearningPage({
         </Notice>
       )}
       {notice && <Notice>{notice}</Notice>}
+      {bulkEntry && (
+        <BulkMemoryDialog
+          scope={{ entry_id: bulkEntry.id }}
+          name={bulkEntry.name}
+          onClose={() => setBulkEntry(null)}
+          onChanged={refresh}
+        />
+      )}
+      {profileEntry && (
+        <EntryProfileDialog
+          key={profileEntry.id}
+          entry={profileEntry}
+          onClose={() => setProfileEntry(null)}
+          openMemory={openMemory}
+        />
+      )}
       {editingEntry && (
         <EntrySettingsDialog
           entry={editingEntry}
+          entries={entries.data?.items || []}
           onClose={() => setEditingEntry(null)}
           onSaved={() => {
             setEditingEntry(null);
@@ -256,6 +282,10 @@ export default function LearningPage({
                     <Badge>{paceLabel(entry.pace)}</Badge>
                     <strong>待学习 {entry.pending_count} 条</strong>
                   </div>
+                  <p className="entry-filter-summary">
+                    记忆可见范围：
+                    {entryVisibilityLabel(entry, entries.data?.items || [])}
+                  </p>
                   <FilterSummary value={entry.filters} />
                   <EntryQueueWait value={entry.queue_wait} />
                   <p>
@@ -278,7 +308,24 @@ export default function LearningPage({
                       setEditingEntry(entry);
                     }}
                   >
-                    修改节奏与过滤
+                    修改入口设置
+                  </button>
+                  <button
+                    className="secondary"
+                    aria-label={`入口画像 · ${entry.name}`}
+                    onClick={() => setProfileEntry(entry)}
+                  >
+                    入口画像
+                    {entry.entry_profile_pending_count
+                      ? ` · 待确认 ${entry.entry_profile_pending_count}`
+                      : ""}
+                  </button>
+                  <button
+                    className="secondary"
+                    aria-label={`批量遗忘／删除 · ${entry.name}`}
+                    onClick={() => setBulkEntry(entry)}
+                  >
+                    批量遗忘／删除
                   </button>
                   <button
                     className="text-button"
@@ -661,6 +708,7 @@ function BatchDetail({
                           ) : (
                             <p className="message-body">{message.content}</p>
                           )}
+                          <MessageMedia media={message.media} />
                           {message.quote_content && (
                             <blockquote>
                               {message.quote_author_name || "引用"}：

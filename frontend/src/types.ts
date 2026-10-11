@@ -55,6 +55,10 @@ export type CustomPace = {
   idle_seconds: number;
   max_wait_seconds: number;
 };
+export type EntryVisibility = {
+  visibility: "shared" | "entry_only" | "entries";
+  visible_in: string[];
+};
 export type EntrySettings = {
   pace: string | CustomPace;
   filters: EntryFilters;
@@ -74,7 +78,35 @@ export type Entry = {
   pace: string;
   default_speaker_id?: string;
 };
+export type Media = {
+  id: string;
+  kind: "image" | "audio" | "video";
+  content_type: string;
+  size_bytes: number;
+  understanding_text: string;
+  understanding_source: "host" | "system" | "refused" | "unprocessed";
+  understanding_source_label: string;
+  completed_at: string | null;
+  file_url: string;
+};
+export type ImageUsage = {
+  calls: number;
+  tokens: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  reasoning_tokens: number;
+  calls_without_usage: number;
+  failures: number;
+  refusals: number;
+  failure_rate: number | null;
+  duration_ms: number;
+  p50_ms: number | null;
+  p95_ms: number | null;
+  max_ms: number | null;
+  timeouts: number;
+};
 export type Message = {
+  media?: Media[];
   id: number;
   entry_id?: string;
   entry_name?: string;
@@ -284,6 +316,7 @@ export type Revision = {
   created_at: string;
 };
 export type MemoryDetail = Memory & {
+  visibility: { shared: boolean; visible_in: string[] };
   consolidation_annotations?: MemorySuggestion[];
   speaker: Person;
   sources: Source[];
@@ -433,6 +466,7 @@ export type Health = {
   state: string;
   last_error?: string;
   next_probe_at?: string;
+  timeout_seconds?: number;
   consecutive_errors?: number;
   retry_at?: string | null;
 };
@@ -458,6 +492,9 @@ export type Status = {
   }[];
   scheduler: { running: boolean; last_error?: string; max_concurrent: number };
   usage: {
+    by_purpose?: {
+      image_understanding: { today: ImageUsage; week: ImageUsage };
+    };
     today: {
       calls: number;
       tokens: number;
@@ -485,6 +522,7 @@ export type Status = {
     learning: number;
     recall_judge?: number;
     goal_dedup_judge?: number;
+    image_understanding?: number;
   };
   memory_gap_count: number;
   missing_vectors: number;

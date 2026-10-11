@@ -1,6 +1,6 @@
 import json
 
-from conftest import FakeGateway, batch, msg
+from conftest import FakeGateway, batch, learning_output, msg
 from iris.learning import PROMPT, PROMPT_VERSION
 
 
@@ -21,7 +21,7 @@ def test_temporary_participant_numbers_removed_after_validation_and_raw_preserve
     assert row[0] == "大鹏会带望远镜，大鹏的设备编号为XP10"
     assert tags == {"大鹏", "大鹏的约定"}
     assert row[1] == speaker
-    assert raw == output
+    assert raw == learning_output(output)
     assert any(n["field"] == "content" for n in result["normalizations"])
 
 

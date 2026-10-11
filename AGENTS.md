@@ -1,6 +1,6 @@
 # Iris 后续实现说明
 
-产品行为以 `companion_memory_cognition_system_design_integrated.md` 和 `DECISIONS.md` 为准。M1 已于 2026-10-08 完成（DECISIONS.md「M1 完成」），M2 已于 2026-10-09 完成（DECISIONS.md「M2 完成」，含已知问题）；M3 已于 2026-10-10 完成（DECISIONS.md「M3 完成」，persona 与记忆合并的隐藏集门槛列为已知问题，persona 默认全部人工确认）；当前阶段为 M4（接入），计划、门槛口径、分工和对照规则见 DECISIONS.md 2026-10-10「M4 计划」及 `evals/README.md`「M4 计划」。M3 的计划见 DECISIONS.md 2026-10-09「M3 计划」及 `evals/README.md`「M3 计划」。M2 的计划见 DECISIONS.md 2026-10-08「M2 计划」及 `evals/README.md`「M2 计划」。当前代码完成 M1 学习核心、召回与宿主接口，以及后台调度、模型用途暂停恢复、向量补算、HTTP 立即学习和端到端评测；本机试用对话、记忆管理和运行状态界面，首次设置、管理员会话、设置页和 secrets.json 已实现；M2 的生命周期与每日维护、回复准备的召回判断、人物联系的确认／否认／合并、高流量入口过滤及其界面已实现；宿主令牌仍在 M4。不要复制 `dev-0`、`dev-1` 分支的代码。
+产品行为以 `companion_memory_cognition_system_design_integrated.md` 和 `DECISIONS.md` 为准。M1 已于 2026-10-08 完成（DECISIONS.md「M1 完成」），M2 已于 2026-10-09 完成（DECISIONS.md「M2 完成」，含已知问题）；M3 已于 2026-10-10 完成（DECISIONS.md「M3 完成」，persona 与记忆合并的隐藏集门槛列为已知问题，persona 默认全部人工确认）；M4 已于 2026-10-10 完成（DECISIONS.md「M4 完成」，“不需要人工干预”按用户决定改为上线测试后分析运行日志，persona 优化线暂停）；设计 22 的阶段全部完成；2026-10-11 合入上线前修复、定时备份、管理页批量遗忘／删除和入口画像（DECISIONS.md 2026-10-11 各条），当前为上线测试：用户以 AstrBot 插件接入真实聊天平台，测试结束后用 iris-connectors 的 `tools/live_review/` 读取运行记录（README「运行记录」）分析。M4 的计划、门槛口径和对照规则见 DECISIONS.md 2026-10-10「M4 计划」及 `evals/README.md`「M4 计划」。M3 的计划见 DECISIONS.md 2026-10-09「M3 计划」及 `evals/README.md`「M3 计划」。M2 的计划见 DECISIONS.md 2026-10-08「M2 计划」及 `evals/README.md`「M2 计划」。当前代码完成 M1 学习核心、召回与宿主接口，以及后台调度、模型用途暂停恢复、向量补算、HTTP 立即学习和端到端评测；本机试用对话、记忆管理和运行状态界面，首次设置、管理员会话、设置页和 secrets.json 已实现；M2 的生命周期与每日维护、回复准备的召回判断、人物联系的确认／否认／合并、高流量入口过滤及其界面已实现；宿主令牌、入口可见范围、媒体与图片理解、导出导入、接口 v1 冻结和运行记录已在 M4 实现，接入示例与 AstrBot 插件在 iris-connectors 仓库。不要复制 `dev-0`、`dev-1` 分支的代码。
 
 2026-10-05 起，开发与评测的对话模型改为 glm-5.3-flash，开发设备改为 macOS。MiniMax-M3 时期的评测结果全部作废；GLM 重测计划及新设备召回复现见 `evals/README.md`。
 
@@ -63,7 +63,7 @@ uv run iris eval e2e-score --materials <材料目录> --judgments <第一轮目�
 - `src/iris/memory_ops.py`：初始设定和数据层记忆操作。
 - `src/iris/retrieval.py`、`vector_index.py`、`search_text.py`：FTS5、numpy 向量、回复准备和反馈。
 - `src/iris/learning_retrieval.py`：独立的学习材料检索，不继承回复调参。
-- `src/iris/api.py`：FastAPI 宿主接口；serve 只绑定回环地址。
+- `src/iris/api.py`：FastAPI 宿主接口；serve 只绑定回环地址（容器模式例外，见下文 Docker）。
 - `src/iris/evaluation.py`、`recall_evaluation.py`、`evals/`：隔离数据库的学习和召回评测。
 - `src/iris/scheduler.py`、`model_health.py`、`service_status.py`：服务内调度、模型恢复和状态。
 - `src/iris/e2e_evaluation.py`：真实 HTTP 端到端运行、材料导出和外部计分。
@@ -95,13 +95,13 @@ trigram 查询中的一字／两字实词同时查已有 jieba 索引，与三�
 
 不能在运行评测时切换或重建同一虚拟环境，也不要在模型评测运行期间修改源码或迁移。完整学习案例按源码／语料／模型端点、ID、维度／判分次数指纹保存在忽略的 `data/lc/<16位指纹>`，meta.json 校验完整 SHA-256；外部 --out 的检查点在 `<out>/.lc/<16位指纹>`，完整明细也留在外部。只复用相同输入的完成案例，不按分数选择或改写结果。
 
-本分支覆盖召回验收 R01、R04—R13；R02、R03、R14 经用户确认留到 M4。M4 的宿主令牌、媒体与图片理解、可见范围、接口冻结、导出导入和连接器按 `evals/README.md`「M4 计划」的分工实现，只改分配给本会话的文件；M3 的模型整理、persona、当前状态和目标的现行规则见 DECISIONS.md 2026-10-09 至 2026-10-10 各条。合成性能数据由 `evals/benchmark_retrieval.py` 生成，不属于质量评测语料；加 `--default-config` 测量当前默认的 5 千／5 万条、点名／不点名四组 prepare。
+召回验收 R01—R14 均已实现（R02、R03、R14 在 M4）。宿主接口 v1 已冻结，不兼容的修改须先在 DECISIONS.md 记录并经规划者批准；M3 的模型整理、persona、当前状态和目标的现行规则见 DECISIONS.md 2026-10-09 至 2026-10-10 各条。合成性能数据由 `evals/benchmark_retrieval.py` 生成，不属于质量评测语料；加 `--default-config` 测量当前默认的 5 千／5 万条、点名／不点名四组 prepare。
 
 ## 调度与端到端（M1-6）
 
 服务启动先恢复中断批次，默认同时学习两个批次，同入口串行；学习状态以 batches 为准。手动请求的消息位置持久保存在 entries，向量补算由 memories 的缺失向量推导。暂不建立通用任务表，梦境整理阶段再引入。接收后不能假设消息已经被学习；等待状态接口的批次结果。
 
-模型健康按 chat／embedding 分开并持久保存，连续三次可重试的网络请求错误（包括调用内重试）暂停用途；触发暂停的批次失败不扣尝试次数。探测间隔 60／120／240／480／600 秒。错误分类优先看服务商 error.code，再以 HTTP 兜底：401 为密钥无效，404／参数错误为配置错误，均只在配置变化后恢复；403 权限、欠费／订阅及额度用尽为账户问题，不作调用内短间隔重试。每日 token 上限默认不限，按角色时区恢复；在途调用及服务商未报告的 token 无法事先扣减。serve 默认使用数据库模型设置＋数据目录 secrets.json；显式 --models-config 或 IRIS_TEST_MODELS 优先且在页面只读。API key 不进数据库。评测与离线命令仍可使用测试 TOML。
+模型健康按用途（chat、embedding、recall_judge、goal_dedup_judge、image_understanding）分开并持久保存，连续三次可重试的网络请求错误（包括调用内重试）暂停用途；触发暂停的批次失败不扣尝试次数。探测间隔 60／120／240／480／600 秒。错误分类优先看服务商 error.code，再以 HTTP 兜底：401 为密钥无效，只在配置变化后恢复；404 和已知配置错误码立即为配置错误。普通调用中无已知错误码的 400 记为 item_error、成功响应无法解析或结构无效记为 invalid_output，都只算该条目失败（学习按普通失败计次，图片用占位），同一用途连续三个不同条目出现这两类错误才进入配置错误；探测和测试连接遇到未知 400 仍为配置错误。配置错误在配置变化、当前配置的测试连接成功或探测成功后清除（2026-10-11 上线前修复，PR #73）。403 权限、欠费／订阅及额度用尽为账户问题，不作调用内短间隔重试。embedding 内容拒绝的记忆按修订号标记跳过，其他补算失败按条目退避。每日 token 上限默认不限，按角色时区恢复；在途调用及服务商未报告的 token 无法事先扣减。serve 默认使用数据库模型设置＋数据目录 secrets.json；显式 --models-config 或 IRIS_TEST_MODELS 优先且在页面只读。API key 不进数据库。评测与离线命令仍可使用测试 TOML。
 
 内部设置接口为 Gateway.replace_config、Gateway.retry_now、ModelHealth.set_daily_token_limit、Scheduler.set_concurrency；设置页通过管理接口调用它们。serve 自动重新读取模型配置。离线 iris learn 必须停止服务后运行，服务／离线命令用操作系统锁互斥。模型网络调用仍在事务外，向量补算写回必须核对修订号；不要改变 learning_context 的选材。
 
@@ -117,7 +117,7 @@ trigram 查询中的一字／两字实词同时查已有 jieba 索引，与三�
 
 界面源码 `frontend/` 使用 React＋Vite＋TypeScript，npm 依赖锁定在 package-lock.json；运行服务不需要 Node。修改前端后依次 `npm ci`、`npm test`、`npm run build`（在 frontend 内），将源码与 `src/iris/web/` 构建产物一起提交，再执行两个 Python 版本测试和 `uv build`。Vitest＋Testing Library＋jsdom 的组件测试覆盖主要交互，桌面／手机布局用浏览器检查；截图和真实试用数据在仓库外。
 
-所有 HTTP 路由（含宿主 API、管理 API、界面、静态资源与文档）在就绪检查之前校验 Host，只允许 `127.0.0.1`、`localhost`、`[::1]`，可带端口；其他／缺失 Host 返回 400，不信任转发 Host，不增加 CORS。此 DNS 重绑定防护在第二步加入管理员会话后仍保留，不代替鉴权。TestClient 必须显式使用本机 `base_url`，不能为测试把 testserver 加入产品白名单。
+所有 HTTP 路由（含宿主 API、管理 API、界面、静态资源与文档）在就绪检查之前校验 Host，只允许 `127.0.0.1`、`localhost`、`[::1]` 以及 `allowed_hosts`／`IRIS_ALLOWED_HOSTS` 显式列出的主机名（默认空，精确匹配），可带端口；其他／缺失 Host 返回 400，不信任转发 Host，不增加 CORS。此 DNS 重绑定防护在第二步加入管理员会话后仍保留，不代替鉴权。TestClient 必须显式使用本机 `base_url`，不能为测试把 testserver 加入产品白名单。
 
 管理路由 `/admin/api` 在 admin.py，管理只读投影在 admin_data.py，试用收发及 JSON 回复在 trial.py，提示词为 trial_reply_v1.md；宿主 `/api/v1` 不生成回复。试用入口默认实时节奏，“我（用户）”是 person，只有已发布角色回复使用 self_output。回复失败保留原消息，不回灌准备材料；每入口最多一条在途回复，同一消息的成功输出持久去重。列表和轮询不是召回，不增加调用或使用次数；来源前后文只读，不能当作新经历入队。
 
@@ -129,7 +129,7 @@ trigram 查询中的一字／两字实词同时查已有 jieba 索引，与三�
 
 `configuration.py` 负责部署与模型配置、原子密钥文件，`auth.py` 负责密码／会话／CSRF，`settings_api.py` 负责首次设置和本阶段设置。迁移 007 加入管理员密码、会话摘要、登录限流与设置操作记录。设置写入使用短事务并留操作记录，模型测试在事务外使用既有 Gateway，固定短请求共用 10 秒预算且不返回原始输出。SecretStr 请求字段不允许回显；不要把完整请求、密钥文件、密码或 Cookie 写入日志、异常和报告。secrets.json 与临时密钥文件始终忽略，Unix 0600；跨文件提交使用随机引用保证中断不会把新密钥配给旧端点。
 
-管理员写接口须有 JSON Content-Type、会话绑定 X-Iris-CSRF，通过 Origin／Sec-Fetch-Site 检查；Host 白名单保留。会话 Cookie HttpOnly、SameSite=Strict，有效期 12 小时；HTTPS 才设置 Secure。本阶段不开放非回环监听、不信任代理转发地址。首次设置核对连接来源的回环地址。已有 UI 测试通过 conftest.login_admin 走正式设置／登录流程，不增加测试专用鉴权绕过。
+管理员写接口须有 JSON Content-Type、会话绑定 X-Iris-CSRF，通过 Origin／Sec-Fetch-Site 检查；Host 白名单保留。会话 Cookie HttpOnly、SameSite=Strict，有效期 12 小时；HTTPS 才设置 Secure。非容器模式不开放非回环监听；任何模式都不信任代理转发地址。首次设置来自回环地址时沿用原行为；来自非回环地址时必须提供启动日志中的一次性设置码（256 位，只存摘要，设置完成即失效）。已有 UI 测试通过 conftest.login_admin 走正式设置／登录流程，不增加测试专用鉴权绕过。
 
 开发导入：`IRIS_TEST_MODELS=<绝对路径> uv run iris --data-dir <数据目录> models import`；也可 `models import --from <文件>`。程序读取文件并把密钥写到目标 secrets.json，不打印内容；手动验证配置同样不要复制或打印。导入可以在本地配置服务运行时执行，调度器重载后自动替换配置；若当前为外部模式，须取消外部参数再启动才能使用导入结果。截图和实际试用数据仍放仓库外。
 
@@ -140,3 +140,7 @@ trigram 查询中的一字／两字实词同时查已有 jieba 索引，与三�
 `POST /admin/api/batches/{id}/relearn` 使用既有管理员会话与 CSRF，JSON 体为 `{}`。只接收 abandoned／refused；在一个写事务中调用 reset_batch 并写 admin_operations 的 batch_relearn，重复或并发请求只有一次成功，其余 409。保留原三段与 batch_attempts，attempt_count 归零，历史尝试编号继续增长；缺口必须保留到 learning.py 现有成功事务清除。再次失败沿用 batch_id 唯一缺口的更新；recover_inflight 同样用 INSERT OR REPLACE，管理接口及页面用 batch_id 标识缺口，不用替换时会改变的行号。页面在 waiting／running 仍有缺口时显示“重新学习中”；waiting 的普通失败走既有自动重试，不重置额度。读页面不会触发重新学习。学习逻辑和提示词由学习会话维护。
 
 运行状态的 learning_calls_24h 按 created_at、id 倒序返回，页面取前 12 条；统计仍使用全部 24 小时记录。角色回复开关按入口存于浏览器 localStorage，新入口默认关闭；存储不可用或读写失败时不保存选择，当前页面仍可开启，刷新或重新挂载后回到关闭；不把它变成服务端设置。
+
+## Docker 与发布（2026-10-11）
+
+镜像 `ghcr.io/airobject/iris-core`（Dockerfile、`.github/workflows/release.yml`）。只有环境变量 `IRIS_CONTAINER=1`（镜像内设定）时 serve 才接受非回环监听，配置文件不能开启；镜像默认 `0.0.0.0:8080`、数据目录 `/data`、非 root。部署只映射到 127.0.0.1，或放在可信 Docker 网络并用 `IRIS_ALLOWED_HOSTS` 列出服务名；本服务不提供 TLS。推送 `v*` 标签触发发布：先核对标签与 pyproject 版本一致，再跑两个 Python 版本测试与构建，通过后推送 linux/amd64、linux/arm64 镜像（版本号与 latest）并创建附 wheel／sdist 的 GitHub Release；只用 GITHUB_TOKEN。版本号在 pyproject.toml，`iris --version` 输出。容器相关改动须在本机 Docker 构建并运行验证（设置码、设置、令牌、两种 Host 的 prepare、重启保留数据）。

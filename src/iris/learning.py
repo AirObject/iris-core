@@ -18,10 +18,12 @@ from .db import Store, dumps, now
 from .goals import write_learning_goal
 from .claim_sequences import normalize_claim as _normalize, same_claim_sequences as _same_claim_sequences
 from .people import canonical_subject
-from .memory_ops import confirm_retention
-from .models import Gateway, ModelError
+from .memory_ops import Visibility, confirm_retention
+from .models import Gateway, ModelError, parse_json_object_with_status
+from .media import material_content, message_media, prepare_media
 from .queue import Batch, estimate_tokens, get_batch, truncate_material
 from .retrieval import Retrieval
+from .persona import persona_context
 
 
 PROMPT_VERSION = "learning_v7"
@@ -31,6 +33,26 @@ MEMORY_TYPES = {"事件", "事实", "偏好", "关系", "观点", "计划", "自
 STANCES = {"亲历", "转述", "推断", "观点"}
 RETRY_DELAYS = (60, 300, 900)
 PARTICIPANT_NUMBER = re.compile(r"(?<![A-Za-z0-9_])P[0-9]+(?![A-Za-z0-9_])")
+
+
+def _validate_output_shape(output: Any, raw: str) -> None:
+    """All five sections are required, even when empty; never infer an empty result.
+
+    Keep the gateway's think/fence handling, but do not accept an object extracted
+    from a top-level array or chat prose. Extra keys alongside all five arrays
+    remain compatible; item-level evidence validation still happens separately.
+    """
+    stripped = re.sub(r"<think\b[^>]*>.*?</think>", "", raw, flags=re.I | re.S)
+    stripped = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", stripped.strip(), flags=re.I)
+    if not isinstance(output, dict) or not stripped.startswith("{"):
+        raise ValueError("learning output must be a top-level JSON object")
+    sections = ("memories", "updates", "people", "goals", "questions")
+    missing = [key for key in sections if key not in output]
+    wrong = [key for key in sections if key in output and not isinstance(output[key], list)]
+    errors = (["missing arrays: " + ", ".join(missing)] if missing else [])
+    errors += ["not arrays: " + ", ".join(wrong)] if wrong else []
+    if errors:
+        raise ValueError("invalid learning output shape (" + "; ".join(errors) + ")")
 
 
 def _score(value: Any, default: int) -> int:
@@ -138,8 +160,10 @@ class LearningEngine:
             subjects = conn.execute("SELECT id,name,parent_id FROM subjects WHERE merged_into IS NULL").fetchall()
             aliases = conn.execute("SELECT subject_id,alias FROM subject_aliases WHERE folded_into IS NULL ORDER BY subject_id,alias").fetchall()
             identities = conn.execute("SELECT subject_id,platform,account_id FROM platform_identities").fetchall()
-            persona = conn.execute("SELECT content FROM persona_versions WHERE is_current=1 ORDER BY id DESC LIMIT 1").fetchone()
+            persona = persona_context(conn)['content']
             messages = {r["id"]: _row_dict(r) for r in rows}
+            for message_id, media in message_media(conn, ids).items():
+                messages[message_id]["media"] = media
             names = {r["id"]: r["name"] for r in subjects}
             # Preserve stored provenance; use final identities consistently in
             # this snapshot's participant labels and evidence validation.
@@ -151,12 +175,12 @@ class LearningEngine:
                         message[field], message[label] = sid, names[sid]
         return {"messages": messages, "subjects": [_row_dict(r) for r in subjects],
                 "aliases": [_row_dict(r) for r in aliases], "identities": [_row_dict(r) for r in identities],
-                "persona": persona[0] if persona else "", "role_name": str(self.store.setting("role_name", "Iris"))}
+                "persona": persona, "role_name": str(self.store.setting("role_name", "Iris"))}
 
     def _related(self, batch: Batch, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
         target = [snapshot["messages"][i] for i in batch.target_ids]
         participants = list(dict.fromkeys(m["sender_subject_id"] for m in target))
-        return self.retrieval.learning_context("\n".join(m["content"] for m in target), participants)
+        return self.retrieval.learning_context("\n".join(m["content"] for m in target), participants, entry_id=batch.entry_id)
 
     def _material(self, batch: Batch, snapshot: dict[str, Any], related: list[dict[str, Any]]) -> tuple[str, dict[int, int], dict[str, dict[str, Any]]]:
         messages = snapshot["messages"]
@@ -222,10 +246,11 @@ class LearningEngine:
                              f"；正文作者 {subject_label(m['sender_subject_id'], m['sender_name'])}")
                 scene = f"（{m['scene_identity']}）" if m["scene_identity"] else ""
                 prefix = f"#{number} [{dt.strftime('%Y-%m-%d 周')}{'一二三四五六日'[dt.weekday()]} {dt.strftime('%H:%M')}] "
+                body = truncate_material(material_content(m["content"], m.get("media", [])))
                 if m["kind"] == "event":
-                    lines.append(f"{prefix}[场景事件] {truncate_material(m['content'])}")
+                    lines.append(f"{prefix}[场景事件] {body}")
                 else:
-                    lines.append(f"{prefix}[{label_type}] {subject_label(m['sender_subject_id'], m['sender_name'])}{scene}{quote}：数据：{truncate_material(m['content'])}")
+                    lines.append(f"{prefix}[{label_type}] {subject_label(m['sender_subject_id'], m['sender_name'])}{scene}{quote}：数据：{body}")
         material = "\n".join(lines)
         # Drop context from the beginning/end if the material exceeds its budget; target IDs stay fixed.
         if estimate_tokens(material) > 10000:
@@ -293,6 +318,42 @@ class LearningEngine:
         if len(matches) > 1:
             raise ValueError("subject is ambiguous; use participant number")
         return next(iter(matches)) if matches else None
+
+    def _learning_output(self, messages: list[dict[str, str]], batch_id: int):
+        # json_chat already repairs syntax once. Shape errors may use that same
+        # allowance only if no model repair has happened, and share its budget.
+        monotonic = getattr(self.gateway, "monotonic", time.monotonic)
+        deadline = monotonic() + Gateway.timeout_for("chat", "learning")
+        result = self.gateway.json_chat(messages, "learning", max_tokens=LEARNING_MAX_TOKENS, batch_id=batch_id)
+        output, raw, repair, status, *details = result
+        try:
+            _validate_output_shape(output, repair if repair is not None else raw)
+            return result
+        except ValueError as first_error:
+            if status == "repaired" or repair is not None:
+                prior = details[0] if details else "JSON parse error"
+                raise ModelError("retryable", f"learning output invalid after repair (first: {prior}; second: {first_error})",
+                                 repair, first_raw=raw) from first_error
+            repair_messages = messages + [
+                {"role": "assistant", "content": raw},
+                {"role": "user", "content": f"上一个回答无法解析：{first_error}。只输出修正后的完整 JSON 对象，不要解释。"},
+            ]
+            try:
+                second = self.gateway.chat(repair_messages, "learning_repair", LEARNING_MAX_TOKENS,
+                                           batch_id=batch_id, _deadline=deadline)
+            except ModelError as error:
+                error.first_raw = raw
+                error.summary = f"learning output repair failed ({first_error}): {error.summary}"
+                raise
+            try:
+                if second.finish_reason == "length":
+                    raise ValueError("finish_reason=length")
+                corrected, _ = parse_json_object_with_status(second.content)
+                _validate_output_shape(corrected, second.content)
+                return corrected, raw, second.content, "repaired", str(first_error)
+            except ValueError as second_error:
+                raise ModelError("retryable", f"learning output invalid after repair (first: {first_error}; second: {second_error})",
+                                 second.content, first_raw=raw) from second_error
 
     @staticmethod
     def _normalize_output(output: dict[str, Any], refs: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -594,6 +655,7 @@ class LearningEngine:
                     confirmed_once.add(memory_id)
                     confirmed.append(memory_id)
 
+            visibility = Visibility(conn)
             row = conn.execute("SELECT state FROM batches WHERE id=?", (batch.id,)).fetchone()
             if not row or row[0] != "running":
                 raise RuntimeError("batch state changed before commit")
@@ -615,6 +677,11 @@ class LearningEngine:
                 if (not current or current["revision"] != original["revision"] or current["lifecycle"] == "deleted"
                         or (item["action"] != "确认" and current["lifecycle"] != "active")):
                     dropped.append({"section": "updates", "item": item, "reason": "memory revision changed"})
+                    continue
+                incoming_scope = visibility.evidence(item['evidence'])
+                if (not visibility.memory_visible(current['id'], batch.entry_id)
+                        or visibility.memory(current['id']) != incoming_scope):
+                    dropped.append({'section':'updates','item':item,'reason':'memory visibility changed or differs'})
                     continue
                 if item["action"] == "确认":
                     confirm_once(current["id"])
@@ -648,6 +715,17 @@ class LearningEngine:
                     if message_id in target:
                         self._source(conn, current["id"], message_id)
             for item in accepted["memories"]:
+                # Recheck every derived reference before any write, including
+                # scope changes while the learning model was in flight.
+                visibility = Visibility(conn)
+                derived = [refs[ref] for ref in item['derived_from']]
+                stale = any(not visibility.memory_visible(m['id'], batch.entry_id) or not conn.execute(
+                    "SELECT 1 FROM memories WHERE id=? AND revision=? AND lifecycle='active'", (m['id'],m['revision'] + (m['id'] in updated))).fetchone()
+                    for m in derived)
+                if stale:
+                    dropped.append({'section':'memories','item':item,'reason':'derived memory changed or invisible'})
+                    continue
+                incoming_scope = visibility.evidence(item['evidence'], [m['id'] for m in derived])
                 speaker_id = canonical_subject(conn, item["speaker_id"])
                 about_ids = {self._resolve_subject(conn, name, snapshot) for name in item["about"]}
                 # Composite index narrows by the same speaker/claim before fetching prose or vectors.
@@ -675,7 +753,7 @@ class LearningEngine:
                         return False
                     denominator = float(np.linalg.norm(prior) * np.linalg.norm(current_vector))
                     return bool(denominator and float(np.dot(prior, current_vector) / denominator) >= dedupe_threshold)
-                duplicate = next((m for m in existing if m["speaker_subject_id"] == speaker_id and
+                duplicate = next((m for m in existing if visibility.memory(m["id"]) == incoming_scope and m["speaker_subject_id"] == speaker_id and
                                   m["stance"] == item["stance"] and
                                   m["event_time"] == item["event_time"] and
                                   existing_about.get(m["id"], set()) == about_ids and same_meaning(m)), None)
@@ -685,6 +763,10 @@ class LearningEngine:
                     for message_id in item["evidence"]:
                         if message_id in target:
                             self._source(conn, duplicate["id"], message_id)
+                    for source_memory in derived:
+                        if source_memory['id'] != duplicate['id']:
+                            conn.execute("""INSERT OR IGNORE INTO sources(memory_id,kind,source_memory_id,source_revision,created_at)
+                                VALUES(?,'memory',?,?,?)""", (duplicate['id'],source_memory['id'],source_memory['revision'],now()))
                     continue
                 stamp = now()
                 result = conn.execute("""INSERT INTO memories
@@ -812,12 +894,13 @@ class LearningEngine:
         attempt = {"number": attempt_number, "started_at": now(), "raw_output": None,
                    "repair_output": None, "parse_status": "failed", "duration_ms": 0}
         try:
+            prepare_media(self.store, self.gateway, batch.target_ids + batch.history_ids + batch.future_ids,
+                          batch_id=batch.id, clock=self.clock)
             snapshot = self._snapshot(batch)
             related = self._related(batch, snapshot)
             material, numbers, refs = self._material(batch, snapshot, related)
-            output, raw, repair, parse_status, *details = self.gateway.json_chat(
-                [{"role": "system", "content": PROMPT}, {"role": "user", "content": material}], "learning",
-                max_tokens=LEARNING_MAX_TOKENS, batch_id=batch.id)
+            output, raw, repair, parse_status, *details = self._learning_output(
+                [{"role": "system", "content": PROMPT}, {"role": "user", "content": material}], batch.id)
             attempt.update(raw_output=raw, repair_output=repair, parse_status=parse_status,
                            error=details[0] if details else None)
             output, snapshot["normalizations"] = self._normalize_output(output, refs)
@@ -832,8 +915,9 @@ class LearningEngine:
             attempt["duration_ms"] = round((time.monotonic() - started) * 1000)
             return self._apply(batch, accepted, dropped, snapshot, refs, attempt)
         except ModelError as error:
-            attempt["raw_output"] = attempt["raw_output"] or error.first_raw or error.raw_output
-            if error.first_raw:
+            if attempt["raw_output"] is None:
+                attempt["raw_output"] = error.first_raw if error.first_raw is not None else error.raw_output
+            if error.first_raw is not None:
                 attempt["repair_output"] = error.raw_output
             attempt["duration_ms"] = round((time.monotonic() - started) * 1000)
             state = self._fail(batch, attempt, error)

@@ -254,7 +254,7 @@ def add_message(store: Store, *, entry_id: str, entry_name: str, platform: str, 
                 kind: str, sender: str, content: str, occurred_at: str, dedupe_key: str,
                 account_id: str | None = None, scene_identity: str | None = None,
                 quote_author: str | None = None, quote_author_account_id: str | None = None,
-                quote_content: str | None = None,
+                quote_content: str | None = None, media_ids: list[str] | None = None,
                 pace: str | dict = "standard", _conn: sqlite3.Connection | None = None) -> int:
     if kind not in ("message", "self_output", "action_result", "event"):
         raise ValueError("invalid message type")
@@ -289,6 +289,9 @@ def add_message(store: Store, *, entry_id: str, entry_name: str, platform: str, 
             VALUES(?,?,?,?,?,?,?,?,?,?)""",
             (entry_id, kind, sender_id, scene_identity, content, quote_id, quote_content,
              occurred_at, now(), dedupe_key))
+        if media_ids is not None:
+            from .media import attach_media
+            attach_media(store, conn, int(result.lastrowid), media_ids)
         conn.execute("INSERT INTO message_admission(message_id,entry_id,position) VALUES(?,?,?)",
                      (result.lastrowid, entry_id, position))
         conn.execute("UPDATE entries SET last_message_at=? WHERE id=?", (occurred_at, entry_id))
@@ -321,7 +324,7 @@ def form_batch(store: Store, entry_id: str, prompt_version: str, *, target_count
         settings = entry_settings(entry)
         filters = settings["filters"]
         decided = " AND EXISTS(SELECT 1 FROM message_admission a WHERE a.message_id=messages.id AND a.decided=1)" if filters["min_chars"] or filters["mention_only"] else ""
-        pending = conn.execute("SELECT id,content FROM messages WHERE entry_id=? AND learning_state='pending'" + decided + " ORDER BY id", (entry_id,)).fetchall()
+        pending = conn.execute("SELECT id,content,EXISTS(SELECT 1 FROM message_media r WHERE r.message_id=messages.id) AS has_media FROM messages WHERE entry_id=? AND learning_state='pending'" + decided + " ORDER BY id", (entry_id,)).fetchall()
         if not pending:
             return None
         if batch_rate_status(conn, entry_id, filters["max_batches_per_hour"], current)["retry_at"]:
@@ -330,7 +333,9 @@ def form_batch(store: Store, entry_id: str, prompt_version: str, *, target_count
         selected: list[int] = []
         total = 0
         for row in pending:
-            cost = min(estimate_tokens(row["content"]), 1500)
+            # The description may arrive only after freezing. Reserve the same
+            # per-message ceiling so images cannot inflate the target budget.
+            cost = 1500 if row["has_media"] else min(estimate_tokens(row["content"]), 1500)
             if selected and (len(selected) >= maximum or total + cost > token_limit):
                 break
             selected.append(row["id"])
@@ -355,3 +360,18 @@ def reset_batch(store: Store, batch_id: int, *, _conn: sqlite3.Connection | None
         conn.execute("UPDATE batches SET state='waiting',attempt_count=0,next_retry_at=NULL,last_error=NULL WHERE id=?", (batch_id,))
         # Design 7.6/17.7: the successful learning transaction resolves the gap.
         conn.executemany("UPDATE messages SET learning_state='batched' WHERE id=?", ((i,) for i in json.loads(row["target_ids"])))
+
+
+def other_entry_pending(store: Store, entry_id: str, *, scope) -> dict | None:
+    """R02: aggregate authorized queues without reading any message content.
+
+    Pending includes frozen/in-flight batches; terminal gaps and filtered inputs
+    are separate states. Receipt timestamps are generated in UTC by intake.
+    """
+    clause, args = scope.sql('m.entry_id')
+    with store.read() as conn:
+        row = conn.execute("""SELECT COUNT(DISTINCT m.entry_id) AS entry_count,
+            MIN(m.received_at) AS time_from, MAX(m.received_at) AS time_to
+            FROM messages m WHERE m.entry_id!=? AND m.learning_state IN ('pending','batched')
+            AND """ + clause, (entry_id, *args)).fetchone()
+    return dict(row) if row['entry_count'] else None

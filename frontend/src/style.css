@@ -2099,6 +2099,9 @@ tr:last-child td {
   color: var(--purple);
   font-weight: 600;
 }
+.entry-visibility-form {
+  overflow-wrap: anywhere;
+}
 .entry-settings-form label {
   display: grid;
   gap: 8px;
@@ -2867,4 +2870,249 @@ tr:last-child td {
   .maintenance-item {
     overflow-wrap: anywhere;
   }
+}
+
+/* M4: token management and local backups. */
+.access-panel {
+  margin-bottom: 24px;
+  overflow-wrap: anywhere;
+}
+.access-panel p,
+.access-dialog p,
+.import-steps {
+  line-height: 1.8;
+  margin: 10px 0;
+}
+.access-panel .panel-heading {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.access-panel .notice {
+  margin-top: 16px;
+}
+.access-data-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.access-records {
+  display: grid;
+  gap: 14px;
+}
+.access-record {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  min-width: 0;
+}
+.access-record .panel-heading {
+  margin-bottom: 8px;
+}
+.access-record h3,
+.access-record h4 {
+  font-size: 14px;
+}
+.access-record p {
+  font-size: 13px;
+}
+.access-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 8px;
+  font-size: 12px;
+}
+.access-facts dt {
+  color: var(--muted);
+}
+.access-facts dd {
+  margin: 4px 0;
+}
+.access-dialog {
+  padding: 0 24px 24px;
+  overflow-wrap: anywhere;
+}
+.access-dialog input,
+.access-dialog textarea,
+.access-dialog select {
+  width: 100%;
+}
+.token-secret {
+  font-family: ui-monospace, monospace;
+  word-break: break-all;
+}
+.import-steps {
+  padding-left: 22px;
+}
+.import-steps li {
+  margin-bottom: 14px;
+}
+.import-steps pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 12px;
+  background: #f7f8fb;
+  border-radius: 8px;
+  font-size: 12px;
+}
+@media (max-width: 1000px) {
+  .access-data-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}
+@media (max-width: 760px) {
+  .app-footer {
+    padding-bottom: calc(240px + env(safe-area-inset-bottom));
+  }
+  .access-panel {
+    padding: 16px;
+  }
+  .access-dialog {
+    padding: 0 16px 20px;
+  }
+  .access-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Shared media previews in messages and sources. */
+.message-media {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+  white-space: normal;
+}
+.media-card {
+  display: grid;
+  gap: 6px;
+  width: 240px;
+  max-width: 100%;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.media-card img {
+  display: block;
+  max-width: 100%;
+  max-height: 180px;
+  object-fit: contain;
+}
+.media-card small {
+  color: var(--muted);
+}
+.media-description {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.trial-images {
+  margin: 10px 0;
+}
+.trial-images input {
+  display: block;
+  max-width: 100%;
+  margin-top: 6px;
+}
+.draft-images {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.draft-images li {
+  display: grid;
+  gap: 6px;
+  width: 140px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.draft-images img {
+  width: 100%;
+  height: 90px;
+  object-fit: contain;
+}
+.draft-images span {
+  font-size: 12px;
+}
+.image-usage {
+  table-layout: fixed;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  width: 100%;
+  font-size: 13px;
+}
+.image-usage caption {
+  text-align: left;
+  margin: 8px 0;
+}
+.image-usage th {
+  text-align: left;
+  font-weight: 500;
+}
+.image-usage td,
+.image-usage th {
+  padding: 8px;
+}
+
+.bulk-options {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.bulk-options > label:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.bulk-options select {
+  width: 100%;
+}
+.bulk-examples {
+  padding-left: 22px;
+}
+.bulk-examples li {
+  margin: 10px 0;
+}
+.bulk-examples p {
+  margin: 3px 0;
+}
+.bulk-ids {
+  overflow-wrap: anywhere;
+}
+.bulk-memory details {
+  margin: 10px 0;
+}
+
+/* Entry profiles keep evidence and controls readable inside narrow dialogs. */
+.entry-profile { display: grid; gap: 18px; min-width: 0; }
+.entry-profile p, .entry-profile li, .entry-profile blockquote { overflow-wrap: anywhere; }
+.entry-profile-section { border-top: 1px solid var(--line); padding-top: 18px; min-width: 0; }
+.entry-profile-section h3 { margin: 0 0 10px; }
+.entry-profile label { display: grid; gap: 6px; margin: 12px 0; }
+.entry-profile label.check-label { display: flex; align-items: center; gap: 10px; }
+.entry-profile textarea, .entry-profile input:not([type=checkbox]), .entry-profile select { width: 100%; min-width: 0; }
+.entry-profile-content { white-space: pre-wrap; line-height: 1.85; }
+.entry-profile-task { margin-top: 14px; padding: 12px; background: #f7f8fb; border-radius: 8px; }
+.entry-profile-history { list-style: none; padding: 0; }
+.entry-profile-history li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.entry-profile-history p { margin: 4px 0; }
+.entry-profile-compare { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; }
+.entry-profile-compare label { flex: 1; min-width: 120px; }
+.entry-profile-compare button { margin-bottom: 12px; }
+.entry-profile-sentences { padding-left: 24px; }
+.entry-profile-sentences > li { padding: 8px 0 16px; }
+.entry-profile-evidence { padding: 10px 14px; margin-top: 10px; border-left: 3px solid var(--line); background: #f7f8fb; }
+.entry-profile-evidence p { margin: 6px 0; }
+.entry-profile-evidence blockquote { margin: 10px 0; }
+.entry-profile-evidence footer { font-size: 12px; opacity: .7; }
+.entry-profile-diff { margin-top: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+.entry-profile-diff-columns { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+@media (max-width: 560px) {
+  .entry-profile .button-row { align-items: stretch; }
+  .entry-profile .button-row > button { flex: 1 1 130px; }
+  .entry-profile-diff-columns { grid-template-columns: minmax(0,1fr); }
 }

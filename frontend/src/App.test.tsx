@@ -8,6 +8,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, afterEach, expect, test, vi } from "vitest";
 import App from "./App";
+import { tokensFixture, backupsFixture } from "./access-fixtures";
 import type { Judgment } from "./types";
 
 const entry = {
@@ -151,6 +152,8 @@ beforeEach(() => {
           timeouts_seconds: { learning: 180, recall_judge: 10 },
           learning_calls_24h: learningCalls,
         };
+      else if (url === "/admin/api/tokens") data = tokensFixture;
+      else if (url === "/admin/api/backups?limit=30") data = backupsFixture;
       else if (url === "/admin/api/persona") data = personaSnapshotFixture;
       else if (url === "/admin/api/persona/versions/7")
         data = personaCurrentFixture;
@@ -750,4 +753,27 @@ test("试用右侧显示 persona 待确认数量，链接定位候选且浏览�
   expect(requests.some((r) => /prepare|search|api\/v1/.test(r.url))).toBe(
     false,
   );
+});
+
+test("主导航进入接入与数据，说明本机令牌接入并提供备份与离线导入", async () => {
+  render(<App />);
+  await userEvent.click(
+    await screen.findByRole("link", { name: "接入与数据" }),
+  );
+  expect(
+    await screen.findByRole("heading", { name: "接入与数据" }),
+  ).toBeVisible();
+  expect(await screen.findByText("聊天机器人")).toBeVisible();
+  expect(screen.getByRole("heading", { name: "导出备份" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "从备份导入" })).toBeVisible();
+  expect(screen.getByText(/http:\/\/127\.0\.0\.1.*\/api\/v1/)).toBeVisible();
+  expect(screen.getByRole("link", { name: "打开接口文档" })).toHaveAttribute(
+    "href",
+    "/docs",
+  );
+  expect(screen.getByRole("link", { name: "接入与数据" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  expect(requests.every((r) => r.method === "GET")).toBe(true);
 });

@@ -12,7 +12,7 @@ from importlib.resources import files
 
 from .db import dumps
 from .learning import LearningEngine, PARTICIPANT_NUMBER, _same_claim_sequences
-from .memory_ops import lifecycle_settings, operation
+from .memory_ops import Visibility, lifecycle_settings, operation
 from .model_health import utc_now
 from .models import Gateway, ModelError
 from .search_text import match_query, terms, words
@@ -22,7 +22,7 @@ METHODS = {'balanced': 0.40, 'strict': 0.65, 'broad': 0.20}
 RESOLUTIONS = ('report_only_v1',)
 DEFAULTS = {'enabled': True, 'max_calls': 50, 'method': 'broad', 'resolution': 'report_only_v1',
             'merge_enabled': True, 'conflict_enabled': True, 'dependency_enabled': True,
-            'persona_enabled': True, 'goal_review_enabled': True}
+            'persona_enabled': True, 'goal_review_enabled': True, 'entry_profile_enabled': True}
 PROMPT_VERSION = 'consolidation_report_only_v1'
 MAX_ANCESTORS = 64
 
@@ -210,6 +210,9 @@ def snapshot(conn, mid):
               'pinned','event_time','created_at','updated_at','world','merged_into')}
     result.update(type=row['kind'], speaker=row['speaker_subject_id'], stance=row['stance'],
                   pinned=bool(row['pinned']), last_edit=last_edit(conn, mid))
+    scope = Visibility(conn).memory(mid)
+    if scope is not None:
+        result['_visibility'] = sorted(scope)
     result['about'] = [r[0] for r in conn.execute('SELECT subject_id FROM memory_subjects WHERE memory_id=? ORDER BY subject_id',(mid,))]
     result['sources'] = [dict(r) for r in conn.execute("""SELECT DISTINCT m.id,m.dedupe_key AS key,m.entry_id,
         e.kind AS entry_kind,m.sender_subject_id AS sender,m.kind,m.occurred_at AS at,m.content AS text,
@@ -274,6 +277,8 @@ def same_event_time(left, right):
 
 
 def merge_exclusion(a,b):
+    if a.get('_visibility') != b.get('_visibility'):
+        return 'visibility'
     if any(m['lifecycle']=='deleted' or m['merged_into'] for m in (a,b)):
         return 'deleted'
     if protected(a) or protected(b):
@@ -314,7 +319,7 @@ def source_excerpt(source):
 
 
 def material(m):
-    result = {k:v for k,v in m.items() if k not in ('updated_at','annotations','last_edit')}
+    result = {k:v for k,v in m.items() if k not in ('updated_at','annotations','last_edit','_visibility')}
     result['protected'] = protected(m)
     sources = m['sources']
     selected = sources if len(sources)<=4 else [sources[0],*sources[-3:]]
@@ -337,6 +342,8 @@ def dependency_material(conn, target):
         m=snapshot(conn,mid)
         if m is None:
             continue
+        if m.get('_visibility') != target.get('_visibility'):
+            return None
         memories.append(m)
         changed = bool(conn.execute("""SELECT 1 FROM memory_revisions WHERE memory_id=? AND revision_after>?
             AND json_extract(before_json,'$.content') IS NOT json_extract(after_json,'$.content') LIMIT 1""",
@@ -395,7 +402,7 @@ class Consolidation:
             settings=json.loads(conn.execute('SELECT settings_json FROM consolidation_runs WHERE run_id=?',(self.run_id,)).fetchone()[0])
             count=conn.execute('SELECT COUNT(*) FROM consolidation_calls WHERE run_id=?',(self.run_id,)).fetchone()[0]
             # A generation retry/repair must still leave one call for the checker.
-            required = 2 if purpose.startswith('persona_generate') else 1
+            required = 2 if purpose.startswith(('persona_generate', 'consolidation_entry_profile_generate')) else 1
             if count+required>settings['max_calls']:
                 raise ModelError('budget','call budget',reason='call_budget')
             return conn.execute('INSERT INTO consolidation_calls(run_id,work_id,purpose,created_at) VALUES(?,?,?,?)',
@@ -526,6 +533,8 @@ class Consolidation:
             raise UnsafeWrite('weakening_cannot_rewrite')
 
     def _plan_pair(self, get, m, n, settings):
+        if m.get('_visibility') != n.get('_visibility'):
+            return None
         # A proposition and its supporting chain belong to dependency review.
         def ancestors(value):
             found=set()
@@ -542,6 +551,8 @@ class Consolidation:
                 stack.extend(s['id'] for s in base['derived_from'])
             return found
         ma,na=ancestors(m),ancestors(n)
+        if any(get(i).get('_visibility') != m.get('_visibility') for i in ma | na):
+            return None
         if m['id'] in na or n['id'] in ma:
             return None
         related=(bool(set(m['about']) & set(n['about'])) or m['about']==n['about']) and m['world']==n['world']
@@ -715,6 +726,11 @@ class Consolidation:
         if not config['enabled'] or not self.gateway or not callable(getattr(self.gateway,'chat',None)):
             self.halt('disabled' if not config['enabled'] else 'unconfigured')
             return True
+        # Entry profiles are a separate durable step using this run's call ledger.
+        from .entry_profile import update_profiles_for_run
+        if not update_profiles_for_run(self.store, _PersonaGateway(self, stop=stop), run, config,
+                                       clock=self.clock, stop=stop):
+            return False
         if not any(config[key] for key in ('merge_enabled','conflict_enabled','dependency_enabled')):
             self.halt('model_items_disabled')
             return True
@@ -858,6 +874,10 @@ class Consolidation:
 
     def apply(self,conn,work,payload,result):
         before=[snapshot(conn,m['id']) for m in payload['memories']]
+        if any(m is None or m['revision'] != old['revision'] for m,old in zip(before,payload['memories'])):
+            raise UnsafeWrite('revision_conflict')
+        if len({dumps(m.get('_visibility')) for m in before}) > 1:
+            raise UnsafeWrite('visibility')
         decision=result['decision']
         details={'action_id':f'co-{work["id"]}','decision':decision,'before_memories':before,
                  'report':result['reason'],'evidence':result['evidence'],

@@ -7,6 +7,7 @@ from importlib.resources import files
 
 from .db import dumps, now
 from .models import ModelError
+from .media import MediaError
 from .queue import _subject, add_message
 from .retrieval import Retrieval
 from .service_status import add_health_hints
@@ -52,16 +53,24 @@ def trial_catalog(store):
                 "speakers": speakers, "role_name": store.setting("role_name", "Iris")}
 
 
-def receive(store, entry_id, speaker_id, content, dedupe_key):
+def receive(store, entry_id, speaker_id, content, dedupe_key, media_ids=None):
     with store.write() as conn:
         entry = require_entry(conn, entry_id)
         speaker = conn.execute("""SELECT s.name,p.account_id FROM subjects s JOIN platform_identities p ON p.subject_id=s.id
             WHERE s.id=? AND p.platform=?""", (speaker_id, PLATFORM)).fetchone()
         if not speaker:
             raise KeyError(speaker_id)
+        existing = conn.execute('SELECT id FROM messages WHERE entry_id=? AND dedupe_key=?', (entry_id, dedupe_key)).fetchone()
+        if not existing:
+            for media_id in media_ids or []:
+                item = conn.execute('SELECT kind FROM media_objects WHERE id=?', (media_id,)).fetchone()
+                if item is None:
+                    raise MediaError('invalid_media')
+                if item['kind'] != 'image':
+                    raise MediaError('unsupported_media_type')
         mid = add_message(store, entry_id=entry_id, entry_name=entry["name"], entry_kind=entry["kind"],
                           platform=PLATFORM, kind="message", sender=speaker["name"], account_id=speaker["account_id"],
-                          content=content, occurred_at=now(), dedupe_key=dedupe_key, pace="realtime", _conn=conn)
+                          content=content, occurred_at=now(), dedupe_key=dedupe_key, media_ids=media_ids, pace="realtime", _conn=conn)
         state = conn.execute("SELECT learning_state FROM messages WHERE id=?", (mid,)).fetchone()[0]
         pending = conn.execute("SELECT COUNT(*) FROM messages WHERE entry_id=? AND learning_state IN ('pending','batched')", (entry_id,)).fetchone()[0]
     return {"message_id": mid, "learning_state": state, "pending_count": pending}
