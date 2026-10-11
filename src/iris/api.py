@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Body, Depends, FastAPI, Query, Request
+from fastapi import APIRouter, Body, Depends, FastAPI, Header, Query, Request
 from fastapi.security import HTTPBearer
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .tokens import Tokens, install_tokens, valid_entry_id
+from .events import CURSOR_PATTERN, EventDrainMiddleware, EventHub, EventQuery, EventResponse, EventStatus, drain_signals
 from .db import Store
 from .models import Gateway
 from .model_health import ModelHealth
@@ -217,6 +218,7 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
     async def lifespan(app):
         resources = ExitStack()
         normal_exit = False
+        signal_context = None
         try:
             if store is None:
                 resources.enter_context(StoreLease(db_path))
@@ -246,6 +248,10 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
             app.state.sessions = Sessions(active_store)
             app.state.sessions.start_setup()
             app.state.tokens = Tokens(active_store)
+            app.state.events = EventHub(active_store)
+            # Signals must drain long responses before Uvicorn waits for them.
+            signal_context = drain_signals(app.state.events)
+            signal_context.__enter__()
             app.state.gateway = active_gateway
             app.state.health = health
             app.state.scheduler = scheduler
@@ -265,6 +271,10 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
             normal_exit = True
         finally:
             app.state.ready = False
+            if hasattr(app.state, "events"):
+                app.state.events.shutdown()
+            if signal_context is not None:
+                signal_context.__exit__(None, None, None)
             await asyncio.to_thread(resources.close)
 
     app = FastAPI(title="Iris 宿主接口", version="1.0.0", lifespan=lifespan,
@@ -527,6 +537,29 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
     def notifications(query: Annotated[NotificationPull, Query()], request: Request):
         return app.state.goals.pull(**query.model_dump(), scope=request.state.principal.scope)
 
+    @host_router.get("/api/v1/events", status_code=200, response_class=EventResponse, summary="订阅提醒事件流（v1 兼容新增）",
+                     description="只读 SSE：reminder 与拉取提醒项相同，heartbeat 约 15 秒；未知或过期断点发 resync。仍由 notifications 拉取标记取走。",
+                     responses={code: {"description": description, "content": {"application/json": {
+                         "schema": {"$ref": "#/components/schemas/HostError"}}}}
+                         for code, description in {400: "断点格式不合法", 401: "需要有效令牌", 403: "入口无权访问",
+                             429: "event_token_limit / event_global_limit / rate_limited；按 Retry-After 重试",
+                             503: "服务尚未就绪或正在关闭"}.items()})
+    async def events(query: Annotated[EventQuery, Query()], request: Request,
+                     last_event_id: Annotated[str | None, Header(alias="Last-Event-ID", min_length=34,
+                         max_length=53, pattern=CURSOR_PATTERN)] = None):
+        if len(request.query_params.getlist('last_event_id')) > 1:
+            raise HostRequestError(400, "invalid_request", "重复的事件断点", "query.last_event_id")
+        if len(request.headers.getlist('last-event-id')) > 1 or (
+                last_event_id is not None and query.last_event_id is not None and last_event_id != query.last_event_id):
+            raise HostRequestError(400, "invalid_request", "重复或冲突的事件断点", "header.Last-Event-ID")
+        stream = app.state.events.open(request.state.principal, last_event_id or query.last_event_id)
+        return EventResponse(app.state.events, stream)
+
+    @host_router.get("/api/v1/events/status", response_model=EventStatus, summary="事件流连接与累计推送计数（v1 兼容新增）",
+                     description="仅进程级计数与固定上限；不含入口、提醒正文、令牌或宿主名称。累计推送不代表送达。")
+    def event_status():
+        return app.state.events.status()
+
     @host_router.get("/api/v1/state", summary="读取宿主报告的当前状态")
     def get_state():
         return app.state.current_state.get()
@@ -567,6 +600,7 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
     app.include_router(host_router)
     install_admin(app)
     _install_host_openapi(app)
+    app.add_middleware(EventDrainMiddleware, state=app.state)
     return app
 
 
@@ -747,6 +781,13 @@ def _install_host_openapi(app):
                 elif code == 401:
                     response["headers"] = {"WWW-Authenticate": {"schema": {"type": "string", "enum": ["Bearer"]}}}
                 operation["responses"][str(code)] = response
+        # The SSE route is additive; leave every existing JSON contract intact.
+        stream = schema["paths"]["/api/v1/events"]["get"]
+        stream["responses"].pop("422", None)
+        stream["responses"]["200"] = {"description": "SSE 事件流，断线后可用 Last-Event-ID 续订",
+            "content": {"text/event-stream": {"schema": {"type": "string"},
+                "example": "id: 00000000000000000000000000000001:1\nevent: heartbeat\ndata: {\"time\":\"2026-10-11T00:00:00+00:00\"}\n\n"}}}
+        stream["tags"] = ["宿主 v1"]
         app.openapi_schema = schema
         return schema
 
