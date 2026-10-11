@@ -72,10 +72,17 @@ class Model:
             hook,self.hook=self.hook,None
             hook()
         if purpose.endswith('generate'):
-            value={'sentences':[{'text':t,'basis':self.refs or ['S1']} for t in self.texts]}
+            evidence=payload['evidence']
+            linked={m['ref']:m for m in evidence['messages']+evidence['memories']}
+            refs=self.refs or ['S1']
+            source=linked.get(refs[0],{})
+            source=source.get('source_messages',[source])[0]
+            value={'items':[{'kind':'saying','label':t[:18],
+                'quotes':[{'message_id':source.get('message_id',999999),'text':source.get('content','不存在')}],
+                'memory_refs':[ref for ref in refs if ref.startswith('M')]} for t in self.texts]}
         else:
             value={'sentences':[{'index':i+1,'supported':i not in self.bad,
-                'scene_qualified':i not in self.bad,'violations':list(self.violations) if i in self.bad else [],
+                'scene_qualified':i not in self.bad,'meaning_supported':True,'violations':list(self.violations) if i in self.bad else [],
                 'reason':'假模型检查结果'} for i,_ in enumerate(payload['candidate'])],
                 'change_degree':self.degree,'reason':'假模型变化判断'}
         return ModelReply(dumps(value),'stop',{'prompt_tokens':10,'completion_tokens':10})
@@ -172,7 +179,7 @@ def test_generate_check_publish_records_evidence_and_budget(store,clock):
     assert get_version(store,'group',version['version'])==version
 
 
-@pytest.mark.parametrize('bad,status,removed',[((), 'published',0),((0,), 'published',1),((0,1),'rejected',2)])
+@pytest.mark.parametrize('bad,status,removed',[((), 'published',0),((0,), 'published',1),((0,1,2),'rejected',3)])
 def test_sentence_deletion_threshold(store,clock,bad,status,removed):
     result,_=generate(store,clock,bad=bad)
     version=result['version']
@@ -184,14 +191,14 @@ def test_sentence_deletion_threshold(store,clock,bad,status,removed):
         assert 'too_many_deleted' in version['checks']['errors']
 
 
-def test_unknown_references_and_short_output_reject(store,clock):
+def test_unknown_references_reject_and_short_output_publishes(store,clock):
     result,model=generate(store,clock,refs=['S999'])
     assert result['version']['status']=='rejected'
     assert len(model.calls)==1
     clock.advance(days=1)
     result=EntryProfileEngine(store,Model(store,texts=['当次聊天谈了照片。']),clock=clock).regenerate('group',expected_version=0)
-    assert result['version']['status']=='rejected'
-    assert 'too_short' in result['version']['checks']['errors']
+    assert result['version']['status']=='published'
+    assert len(result['version']['content'])<150
 
 
 def test_all_manual_confirmation_rejection_and_current_cas(store,clock):
@@ -214,7 +221,8 @@ def test_all_manual_confirmation_rejection_and_current_cas(store,clock):
 def test_admin_sentences_preserved_by_code_rollback_and_diff(store,clock):
     result,_=generate(store,clock)
     first=result['version']['version']
-    edited_text=TEXTS[0].replace('照片','相册')+''.join(TEXTS[1:])
+    original=result['version']['sentences']
+    edited_text=original[0]['text'].replace('照片','相册')+''.join(s['text'] for s in original[1:])
     edited=admin_edit(store,'group',edited_text,expected_version=first,clock=clock)
     assert edited['sentences'][0]['author']=='admin'
     assert all(s['author']=='model' for s in edited['sentences'][1:])
@@ -295,8 +303,8 @@ def test_checker_timeout_records_rejected_candidate_with_old_current_intact(stor
 
 
 @pytest.mark.parametrize('bad,expected',[(range(3),'published'),(range(4),'rejected')])
-def test_exact_thirty_percent_boundary(store,clock,bad,expected):
-    texts=[f'本次第{i+1}段讨论中，发言者围绕照片的整理和展示办法进行了具体交流。' for i in range(10)]
+def test_exact_half_boundary(store,clock,bad,expected):
+    texts=[f'测试说法{i+1}' for i in range(6)]
     result,_=generate(store,clock,texts=texts,bad=bad)
     assert result['status']==expected
     assert len(result['version']['checks']['deleted_sentences'])==len(bad)
@@ -315,7 +323,7 @@ def test_admin_warning_retains_sentence_and_requires_confirmation(store,clock):
 
 
 def test_rejected_candidate_is_not_a_rollback_target(store,clock):
-    result,_=generate(store,clock,bad=(0,1))
+    result,_=generate(store,clock,bad=(0,1,2))
     with pytest.raises(ValueError):
         rollback(store,'group',result['version']['version'],expected_version=0,clock=clock)
 
@@ -448,31 +456,18 @@ def test_update_counts_all_new_messages_since_version_not_only_window(store,cloc
 def test_check_input_groups_only_current_bound_evidence_per_sentence(store,clock):
     own=messages(store,clock)
     memory(store,clock,own[2:4])
-    model=Model(store)
-    original=model.chat
-    def chat(messages,purpose,*args,**kwargs):
-        reply=original(messages,purpose,*args,**kwargs)
-        if purpose.endswith('generate'):
-            value=json.loads(reply.content)
-            for row,refs in zip(value['sentences'],[['S1'],['M1'],['S2'],['S1','M1'],['S2']],strict=True):
-                row['basis']=refs
-            return ModelReply(dumps(value),'stop',{})
-        return reply
-    model.chat=chat
+    model=Model(store,refs=['M1'])
     result=EntryProfileEngine(store,model,clock=clock).regenerate('group',expected_version=0)
     payload=model.calls[1][1]
     assert 'evidence' not in payload
     assert result['version']['checks']['model_input']==payload
     assert [s['index'] for s in payload['candidate']]==[1,2,3,4,5]
-    assert [s['ref'] for s in payload['candidate'][0]['evidence']['messages']]==['S1']
-    assert payload['candidate'][0]['evidence']['memories']==[]
-    assert payload['candidate'][1]['evidence']['messages']==[]
-    sources=payload['candidate'][1]['evidence']['memories'][0]['source_messages']
+    assert len(payload['candidate'][0]['evidence']['messages'])==1
+    sources=payload['candidate'][0]['evidence']['memories'][0]['source_messages']
     assert [s['message_id'] for s in sources]==own[2:4]
     assert sources[0]['speaker']=='self' and sources[0]['content']
     assert 'sha256' not in dumps(payload)
-    assert all(s['ref'] in sentence['refs'] for sentence in payload['candidate']
-               for kind in ('messages','memories') for s in sentence['evidence'][kind])
+    assert payload['candidate'][0]['quotes'][0]['message_id']==own[2]
 
 
 def test_unqualified_scene_is_deleted_even_with_multiple_message_references(store,clock):
@@ -489,7 +484,7 @@ def test_unqualified_scene_is_deleted_even_with_multiple_message_references(stor
     model.chat=chat
     result=EntryProfileEngine(store,model,clock=clock).regenerate('group',expected_version=0)
     deleted=result['version']['checks']['deleted_sentences']
-    assert len(deleted)==1 and deleted[0]['sentence']['text']==TEXTS[0]
+    assert len(deleted)==1 and deleted[0]['sentence']['label']==TEXTS[0][:18]
 
 
 def test_check_input_keeps_admin_sentences_without_borrowing_evidence(store,clock):

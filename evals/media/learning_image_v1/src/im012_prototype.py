@@ -1,0 +1,31 @@
+"""手绘 IM012 行李架试制记录旧图；与后续正文的更正构成冲突。"""
+from pathlib import Path
+from PIL import Image, ImageDraw, ImageFont
+
+im = Image.new('RGB', (1040, 760), '#f4f6f8')
+d = ImageDraw.Draw(im)
+font = '/System/Library/Fonts/Hiragino Sans GB.ttc'
+f20 = ImageFont.truetype(font, 20)
+f26 = ImageFont.truetype(font, 26)
+f34 = ImageFont.truetype(font, 34)
+f42 = ImageFont.truetype(font, 42)
+d.text((48, 40), '舟夹 · 折叠行李架', font=f42, fill='#344c60')
+d.text((49, 104), '试制记录 A  /  2026年10月18日', font=f26, fill='#7c8d9d')
+d.rounded_rectangle((38, 191, 544, 634), radius=15, fill='#e6edf1')
+d.line((112, 311, 448, 319), fill='#6a879b', width=14)
+d.line((112, 371, 448, 379), fill='#6a879b', width=14)
+d.line((114, 313, 447, 377), fill='#8a9ea9', width=8)
+d.line((446, 319, 112, 371), fill='#8a9ea9', width=8)
+d.line((117, 373, 414, 585), fill='#607b8f', width=13)
+d.line((440, 378, 146, 585), fill='#607b8f', width=13)
+d.line((147, 585, 122, 604), fill='#384c5b', width=12)
+d.line((414, 585, 444, 604), fill='#384c5b', width=12)
+d.text((135, 223), '样机结构示意', font=f26, fill='#647e92')
+d.text((590, 232), '制作者：邵霁', font=f26, fill='#344c60')
+d.text((590, 306), '载重上限', font=f26, fill='#7c8d9d')
+d.text((590, 345), '25 kg', font=f42, fill='#344c60')
+d.text((590, 421), '净重', font=f26, fill='#7c8d9d')
+d.text((590, 460), '1.8 kg', font=f42, fill='#344c60')
+d.text((590, 557), '仅室内使用', font=f34, fill='#a1694b')
+d.text((48, 693), '工作台记录 · 自制单件', font=f20, fill='#8a98a2')
+im.save(Path(__file__).resolve().parent.parent / 'im012_prototype.png', optimize=True)

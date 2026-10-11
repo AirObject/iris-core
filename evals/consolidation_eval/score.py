@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import itertools
 import json
 from pathlib import Path
 
 import numpy as np
-from run import ROOT, SCORING, SCORING_VERSION, SOURCE_FIELDS, REPORT_ONLY_SCORING
+from run import ROOT, SCORING, SCORING_VERSION, SOURCE_FIELDS, REPORT_ONLY_SCORING, DETAIL_SCORING
 from iris.evaluation import _json_sha256, _read_json, _write_json, _verified_material_file
 
 
@@ -83,6 +84,19 @@ def validate_payload(p):
         require(isinstance(action['report'],str) and set(action['keys'])<=set(keys),'invalid action keys/report')
         for m in [*action['before_memories'],*action['after_memories']]:
             memory(m)
+    if 'merge_version' in p:
+        require(isinstance(p.get('merge_checks'),list),'missing merge detail checks')
+        seen=set()
+        for check in p['merge_checks']:
+            require(isinstance(check['check_id'],str) and check['check_id'] not in seen,'duplicate merge check')
+            seen.add(check['check_id'])
+            require(len(check['pair_ids'])==2 and len(set(check['pair_ids']))==2,'invalid check pair')
+            require(check['pair_ids']==[keymap[k] for k in check['pair_keys']],'merge check keys mismatch')
+            require([m['id'] for m in check['before_memories']]==check['pair_ids'],'merge check snapshot mismatch')
+            for m in check['before_memories']:
+                memory(m)
+            boolean(check['merge_allowed'])
+            require(check['result'] is None or isinstance(check['result'],dict),'invalid merge check result')
     values={keymap[m['key']]:m['retention'] for m in case['memories']}
     for i,r in enumerate(p['retention_changes']):
         require(type(r['index']) is int and r['index']==i,'retention order mismatch')
@@ -104,6 +118,8 @@ def load_materials(directory):
     require(_verified_material_file(directory,'scoring.md',manifest['scoring_sha256']).read_text(encoding='utf-8')==SCORING,'scoring rules differ')
     if manifest['run'].get('resolution')=='report_only_v1':
         require(_verified_material_file(directory,'report-only-scoring.md',manifest.get('report_only_scoring_sha256','')).read_text(encoding='utf-8')==REPORT_ONLY_SCORING,'report-only scoring policy differs')
+    if any('merge_version' in row['input'] for row in rows):
+        require(_verified_material_file(directory,'merge-details-scoring.md',manifest.get('merge_details_scoring_sha256','')).read_text(encoding='utf-8')==DETAIL_SCORING,'merge detail scoring differs')
     require(len(rows)==len(manifest['cases']),'case count mismatch')
     for i,(row,entry) in enumerate(zip(rows,manifest['cases'],strict=True)):
         exact(entry,('case_id','file','sha256','judgment_file'))
@@ -301,9 +317,60 @@ def audit_writes(manifest, paths):
     return {'write_audit_rounds':len(rounds),'write_damage':ratio(sum(d['has_damage'] for d in details),len(details)),
             'write_audit_details':details}
 
-def score(materials,judgments,out,judge_model,write_audits=()):
+
+def validate_detail_judgment(j,p):
+    exact(j,('format_version','case_id','merge_detail_results','refusal_results'))
+    require(type(j['format_version']) is int and j['format_version']==1 and j['case_id']==p['case']['id'],'detail judgment case mismatch')
+    merges=p['actual_merges']
+    pairs=p['case']['expected'].get('merges',[])
+    require(isinstance(j['merge_detail_results'],list) and len(j['merge_detail_results'])==len(merges),'detail merge length mismatch')
+    require(isinstance(j['refusal_results'],list) and len(j['refusal_results'])==len(pairs),'detail refusal length mismatch')
+    for item,merge in zip(j['merge_detail_results'],merges,strict=True):
+        exact(item,('action_id','all_facts_preserved','reason'))
+        require(item['action_id']==merge['action_id'],'detail action mismatch')
+        boolean(item['all_facts_preserved'])
+    # Refusals refer to frozen expected pairs, not a changing number of attempts.
+    keymap=p['before']['key_map']
+    edges={m['id']:merge['result']['id'] for merge in merges for m in merge['absorbed_memories']}
+    def destination(mid):
+        seen=set()
+        while mid in edges:
+            require(mid not in seen,'cyclic merge lineage')
+            seen.add(mid)
+            mid=edges[mid]
+        return mid
+    for index,(item,pair) in enumerate(zip(j['refusal_results'],pairs,strict=True)):
+        exact(item,('index','pair','no_false_refusal','reason'))
+        require(type(item['index']) is int and item['index']==index and item['pair']==pair,'detail pair/order mismatch')
+        boolean(item['no_false_refusal'])
+        require(item['no_false_refusal'] or destination(keymap[pair[0]])!=destination(keymap[pair[1]]),'merged pair cannot be a refusal')
+    for item in [*j['merge_detail_results'],*j['refusal_results']]:
+        require(isinstance(item['reason'],str) and bool(item['reason'].strip()),'detail reason required')
+    return j
+
+
+def load_detail_rounds(manifest,rows,directories):
+    rounds=[]
+    for directory in directories:
+        document=_read_json(directory/'manifest.json')
+        exact(document,('materials_sha256',))
+        require(document['materials_sha256']==manifest['materials_sha256'],'detail material mismatch')
+        expected={'manifest.json',*(e['judgment_file'] for e in manifest['cases'])}
+        require({p.name for p in directory.iterdir() if p.is_file()}==expected,'detail files missing or unexpected')
+        rounds.append([validate_detail_judgment(_read_json(directory/e['judgment_file']),row['input'])
+                       for e,row in zip(manifest['cases'],rows,strict=True)])
+    return rounds
+
+
+def score(materials,judgments,out,judge_model,write_audits=(),*,detail_judgments=()):
     require(1<=len(judgments)<=2 and judge_model.strip(),'one or two rounds and judge model required')
     manifest,rows=load_materials(materials)
+    if detail_judgments:
+        require(len(detail_judgments)==len(judgments),'detail and scoring round counts must match')
+        require('merge_details_scoring_sha256' in manifest and all('merge_checks' in r['input'] for r in rows),'materials lack merge detail checks')
+    detail_rounds=load_detail_rounds(manifest,rows,detail_judgments)
+    detail_results=[]
+    detail_disagreements=[]
     if write_audits:
         require(len(write_audits)==len(judgments),'write audit and scoring round counts must match')
         require('write_audit_sha256' in manifest,'materials lack frozen write audit instructions')
@@ -322,6 +389,17 @@ def score(materials,judgments,out,judge_model,write_audits=()):
         j=rounds[0][i]
         if len(rounds)==2:
             j=combine(j,rounds[1][i],row['input']['case']['id'],disagreements)
+        if detail_rounds:
+            detail=detail_rounds[0][i]
+            if len(detail_rounds)==2:
+                detail=combine(detail,detail_rounds[1][i],row['input']['case']['id'],detail_disagreements)
+            j=copy.deepcopy(j)
+            for base,extra in zip(j['merge_results'],detail['merge_detail_results'],strict=True):
+                base['key_facts_preserved'] &= extra['all_facts_preserved']
+            detail_results.append({'case_id':row['input']['case']['id'],
+                'detail_loss':ratio(sum(not d['all_facts_preserved'] for d in detail['merge_detail_results']),len(detail['merge_detail_results'])),
+                'false_refusal':ratio(sum(not d['no_false_refusal'] for d in detail['refusal_results']),len(detail['refusal_results'])),
+                'judgment':detail,'rounds':[r[i] for r in detail_rounds]})
         results.append(score_case(row['input'],j))
     validity=[run_validity(row) for row in rows]
     report={'format_version':1,'evaluation':'consolidation','method':manifest['run']['method'],
@@ -330,6 +408,9 @@ def score(materials,judgments,out,judge_model,write_audits=()):
         'judge_model':judge_model,'judge_rounds':len(rounds),'valid':all(r['valid'] for r in validity),
         'original_valid':all(r['valid'] for r in rows),'run_validity':validity,
         'format_failures':sum(r['format_failures'] for r in validity),'cases':results,'disagreements':disagreements}
+    report.update(detail_judge_rounds=len(detail_rounds),detail_disagreements=detail_disagreements,detail_cases=detail_results)
+    for metric in ('detail_loss','false_refusal'):
+        report[metric]=ratio(sum(r[metric]['numerator'] for r in detail_results),sum(r[metric]['denominator'] for r in detail_results)) if detail_rounds else None
     report['safety_rejections']=sum(r.get('safety_rejections',0) for r in rows)
     if write_audits:
         report.update(audit_writes(manifest,write_audits))
@@ -360,11 +441,12 @@ def main():
     parser.add_argument('--materials',type=Path,required=True)
     parser.add_argument('--judgments',type=Path,action='append',required=True)
     parser.add_argument('--judge-model',required=True)
+    parser.add_argument('--detail-judgments',type=Path,action='append',default=[])
     parser.add_argument('--write-audit',type=Path,action='append',default=[])
     parser.add_argument('--out',type=Path,required=True)
     args=parser.parse_args()
-    report=score(args.materials,args.judgments,args.out,args.judge_model,args.write_audit)
-    print(json.dumps({k:v for k,v in report.items() if k not in ('cases','disagreements')},ensure_ascii=False,indent=2))
+    report=score(args.materials,args.judgments,args.out,args.judge_model,args.write_audit,detail_judgments=args.detail_judgments)
+    print(json.dumps({k:v for k,v in report.items() if k not in ('cases','disagreements','detail_cases','detail_disagreements')},ensure_ascii=False,indent=2))
 
 
 if __name__=='__main__':

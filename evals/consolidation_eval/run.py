@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'src'))
-from iris.consolidation import METHODS, RESOLUTIONS, snapshot
+from iris.consolidation import METHODS, RESOLUTIONS, MERGE_PROMPT_VERSION, snapshot
 from iris.db import Store, dumps
 from iris.evaluation import _json_sha256, _read_json, _write_json
 from iris.maintenance import Maintenance
@@ -28,13 +28,14 @@ SOURCE_FIELDS=('key','entry_id','entry_kind','sender','kind','at','text')
 SCORING_VERSION='consolidation_scoring_v1'
 SCORING=(ROOT/'src/iris/prompts'/f'{SCORING_VERSION}.md').read_text(encoding='utf-8')
 REPORT_ONLY_SCORING=(Path(__file__).parent/'report_only_scoring.md').read_text(encoding='utf-8')
+DETAIL_SCORING=(Path(__file__).parent/'merge_details_scoring_v1.md').read_text(encoding='utf-8')
 
 
 def source_hash():
     paths=sorted([*ROOT.joinpath('src/iris').rglob('*.py'),*ROOT.joinpath('src/iris').rglob('*.sql'),
                   *ROOT.joinpath('src/iris').rglob('*.md'),*ROOT.joinpath('src/iris').rglob('*.json'),
                   *Path(__file__).parent.glob('*.py'),*Path(__file__).parent.glob('*.json'),
-                  Path(__file__).parent/'write_audit.md',Path(__file__).parent/'report_only_scoring.md'])
+                  *Path(__file__).parent.glob('*.md')])
     return hashlib.sha256(b''.join(str(p.relative_to(ROOT)).encode()+p.read_bytes() for p in paths)).hexdigest()
 
 
@@ -223,13 +224,26 @@ def case_run(case,dbpath,gateway_factory,method,resolution='report_only_v1'):
                 old=[export_memory(m,key_map,members) for m in data['memories']]
                 actions.append({'action_id':f'skip-{skip["work_id"]}','kind':'skipped','keys':[reverse[m['id']] for m in old],
                     'status':'skipped','before_memories':old,'after_memories':[], 'report':skip['reason'] or 'deferred'})
+        checks=[]
+        with store.read() as conn:
+            for work in conn.execute('''SELECT w.*,rw.outcome,rw.reason FROM consolidation_work w
+                JOIN consolidation_run_work rw ON rw.work_id=w.id WHERE rw.run_id=? AND w.kind='pair'
+                ORDER BY w.id''',(rid,)):
+                data=json.loads(work['payload_json'])
+                checks.append({'check_id':f'co-{work["id"]}','pair_ids':data['pair_ids'],
+                    'pair_keys':[reverse[mid] for mid in data['pair_ids']],
+                    'merge_allowed':data['merge_allowed'],'merge_exclusion':data['merge_exclusion'],
+                    'before_memories':[export_memory(m,key_map,{}) for m in data['memories'] if m['id'] in data['pair_ids']],
+                    'result':json.loads(work['result_json']) if work['result_json'] else None,
+                    'outcome':work['outcome'],'reason':work['reason']})
         after=capture(store,key_map,members)
         after['report']='\n'.join(a['report'] for a in actions if a['status']=='committed' and not a['kind'].startswith('event_'))
         enriched=copy.deepcopy(case)
         for m in enriched['memories']:
             m.update(annotations=[],is_placeholder=False,merged_into=None)
         payload={'role':{'name':'Iris','self_subject_id':'self'},'case':enriched,'before':before,'actual_merges':merges,
-            'actual_actions':actions,'after':after,'retention_changes':retention}
+            'actual_actions':actions,'after':after,'retention_changes':retention,
+            'merge_checks':checks,'merge_version':MERGE_PROMPT_VERSION}
         failures=[i for i in report['items'] if i['outcome']=='failed']
         safety_rejections=sum(i['reason']=='unsafe_write' for i in failures)
         valid=not skipped and not any(c['result']!='success' for c in calls) and not any(
@@ -262,11 +276,23 @@ def export(rows,out,metadata):
     if metadata.get('resolution')=='report_only_v1':
         (out/'report-only-scoring.md').write_text(REPORT_ONLY_SCORING,encoding='utf-8')
         manifest['report_only_scoring_sha256']=hashlib.sha256(REPORT_ONLY_SCORING.encode()).hexdigest()
+    if all('merge_checks' in row['input'] for row in rows):
+        (out/'merge-details-scoring.md').write_text(DETAIL_SCORING,encoding='utf-8')
+        manifest['merge_details_scoring_sha256']=hashlib.sha256(DETAIL_SCORING.encode()).hexdigest()
     manifest['materials_sha256']=_json_sha256(manifest)
     _write_json(out/'manifest.json',manifest)
     _write_json(out/'round-template.json',{'materials_sha256':manifest['materials_sha256']})
     _write_json(out/'write-audit-template.json',{'materials_sha256':manifest['materials_sha256'],
         'cases':[{'case_id':e['case_id'],'has_damage':None,'reason':''} for e in manifest['cases']]})
+    if 'merge_details_scoring_sha256' in manifest:
+        _write_json(out/'detail-judgment-template'/'manifest.json',{'materials_sha256':manifest['materials_sha256']})
+        for entry,row in zip(manifest['cases'],rows,strict=True):
+            p=row['input']
+            _write_json(out/'detail-judgment-template'/entry['judgment_file'],{
+                'format_version':1,'case_id':p['case']['id'],
+                'merge_detail_results':[{'action_id':m['action_id'],'all_facts_preserved':None,'reason':''} for m in p['actual_merges']],
+                'refusal_results':[{'index':i,'pair':pair,'no_false_refusal':None,'reason':''}
+                                   for i,pair in enumerate(p['case']['expected'].get('merges',[]))]})
     return manifest
 
 
@@ -306,7 +332,8 @@ def main():
     if source_hash()!=source:
         raise ValueError('source changed during model evaluation')
     metadata={'corpus':{'sha256':_json_sha256(cases),'file_sha256':hashlib.sha256(args.corpus.read_bytes()).hexdigest(),'cases':len(cases)},
-        'source_sha256':source,'scoring_version':SCORING_VERSION,'method':args.method,'resolution':args.resolution,'chat_model':chat.model,
+        'source_sha256':source,'scoring_version':SCORING_VERSION,'method':args.method,'resolution':args.resolution,
+        'merge_version':MERGE_PROMPT_VERSION,'chat_model':chat.model,
         'chat_reasoning_effort':chat.reasoning_effort,'endpoint_sha256':hashlib.sha256(chat.base_url.encode()).hexdigest(),
         'calls':sum(len(r['calls']) for r in rows),'elapsed_seconds':sum(r['elapsed_seconds'] for r in rows),'valid':all(r['valid'] for r in rows)}
     export(rows,out/'materials',metadata)
