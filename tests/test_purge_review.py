@@ -486,3 +486,32 @@ def test_current_version_with_only_unused_cleared_material_keeps_all_sentences(s
     assert current['content']==sentence['text'] and current['sentences']==[sentence]
     assert current['source']=='purge' and PROSE not in dumps(current)
     assert record(store,family+'_versions',old)['content']==''
+
+
+def test_write_failure_after_first_chunk_preserves_receipt_when_audit_is_unavailable(store,monkeypatch):
+    from contextlib import contextmanager
+    import sqlite3
+    ids=[put(store,'写故障前已提交'),put(store,'写故障后未提交')]
+    monkeypatch.setattr(memory_ops,'BULK_BATCH_SIZE',1)
+    preview=admin_data.bulk_memory_preview(store,subject_id='self',action='purge')
+    original=store.write;writes=0
+    @contextmanager
+    def unavailable():
+        nonlocal writes
+        writes+=1
+        if writes>1:
+            raise sqlite3.OperationalError('simulated write failure')
+        with original() as conn:
+            yield conn
+    with monkeypatch.context() as patch:
+        patch.setattr(store,'write',unavailable)
+        with pytest.raises(memory_ops.BulkMemoryConflict) as exc:
+            memory_ops.apply_bulk_memories(store,snapshot_token=preview['snapshot_token'],action='purge',confirm=True)
+    assert exc.value.result['memory_ids']==[ids[0]]
+    assert exc.value.result['status']=='interrupted'
+    assert exc.value.result['backup_notice']['upgrade_backup_keep']==3
+    assert record(store,'memories',ids[0])['purged_at']
+    assert not record(store,'memories',ids[1])['purged_at']
+    with store.read() as conn:
+        audit=json.loads(conn.execute("SELECT details_json FROM admin_operations WHERE action='memory_bulk_purge'").fetchone()[0])
+        assert audit['memory_ids']==[ids[0]] and 'backup_notice' not in audit

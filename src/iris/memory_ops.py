@@ -876,8 +876,15 @@ def apply_bulk_memories(store, *, snapshot_token, action, confirm=False):
             snapshot["result"] = deepcopy(result)
             snapshot["rows"] = {}
         if audit_id is not None:
-            with store.write() as conn:
-                conn.execute("UPDATE admin_operations SET details_json=? WHERE id=?", (dumps(_bulk_audit_result(result)), audit_id))
+            try:
+                with store.write() as conn:
+                    conn.execute("UPDATE admin_operations SET details_json=? WHERE id=?", (dumps(_bulk_audit_result(result)), audit_id))
+            except Exception:
+                if action != 'purge':
+                    raise
+                # Each committed chunk already persisted its exact receipt.
+                # A second storage failure must not hide those completed IDs
+                # or the backup notice from the interrupted purge response.
         if isinstance(exc, BulkMemoryConflict):
             raise BulkMemoryConflict(result=result) from exc
         if action == 'purge':
