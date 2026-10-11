@@ -138,8 +138,8 @@ def test_s05_stale_basis_and_prepare_projection(client, store, action, reason):
 
 def test_s17_deleted_basis_absent_from_new_generation(client, store):
     delete_memory(store, 1, 1)
-    mid = add_self(store, '我在昨晚读书时选择了安静的角落。')
-    gateway(client).generated = {'sentences': [{'text': '昨晚读书时，我选择了安静的角落。', 'basis': ['M1']}]}
+    mid = add_self(store, '我在那次读书时选择了安静的角落。')
+    gateway(client).generated = {'sentences': [{'text': '那次读书时，我选择了安静的角落。', 'basis': ['M1']}]}
     task = finished(client, start(client))
     assert task['state'] == 'current'
     payload = gateway(client).calls[0][1]

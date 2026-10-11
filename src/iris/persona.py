@@ -33,8 +33,8 @@ PUBLISH_MODES = ('small_medium_auto', 'all_auto', 'all_manual')
 DEGREES = ('small', 'medium', 'large')
 BASIS_TOKENS = 6000
 MAX_CHARS = 800
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v2', 'persona_check': 'persona_check_v2',
-                   'persona_sentence_repair': 'persona_generate_v2', 'persona_recheck': 'persona_check_v2'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v3', 'persona_check': 'persona_check_v3',
+                   'persona_sentence_repair': 'persona_generate_v3', 'persona_recheck': 'persona_check_v3'}
 CALL_TIMEOUTS = {'persona_generate': 120, 'persona_check': 180,
                  'persona_sentence_repair': 120, 'persona_recheck': 180}
 REFERENCE = re.compile(r'(?<![A-Za-z0-9])[MP]\s*#?\s*\d+(?![A-Za-z0-9])', re.I)
@@ -461,6 +461,13 @@ def _surface_issues(sentence):
     # referent or rewrite it into an invented name, including the reader's 你.
     if {'他','她','他们','她们','他俩','她俩','你','您','你们','您们','妳','妳们'} & set(words(text)):
         issues.append('neutral person reference required: 自动句使用本句依据中的姓名或“对方”，不要用他／她／你及其复数指称')
+    if not sentence['initial_setting'] and re.search(
+            r'今天|今日|昨天|昨日|明天|明日|前天|后天|昨晚|今晚|明晚|昨夜|今夜|今早|今晨|'
+            r'今年|去年|明年|上周|本周|这周|下周|上星期|本星期|这星期|下星期|'
+            r'上个月|本月|这个月|下个月|最近|近日|近来|刚才|刚刚|现在|目前', text):
+        # Never resolve an event date from the request date: a source may describe
+        # a past event. Reject this wording for repair, preserving raw evidence.
+        issues.append('relative time is not durable: 自动句须使用有据的事件日期或具体活动，不保留相对日历时间')
     if not sentence['initial_setting'] and sentence['date_count'] < 2:
         # Narrow style restrictions, not a general Chinese entailment parser.
         # In particular, a union of multiple dates is not proof for every clause;

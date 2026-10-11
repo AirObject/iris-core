@@ -409,7 +409,9 @@ def _run_timeline(configs,case,directory,gateway_factory):
             with store.read() as conn:
                 attempts = [dict(r) for r in conn.execute('SELECT * FROM persona_attempts ORDER BY id')]
                 calls = [dict(r) for r in conn.execute('SELECT * FROM model_calls ORDER BY id')]
-            return {'case':case,'complete':complete,'observations':observations,'checkpoints':events,
+            invalid_calls = _invalid_model_calls(calls)
+            return {'case':case,'complete':complete and not invalid_calls,
+                    'invalid_calls':invalid_calls,'observations':observations,'checkpoints':events,
                     'attempts':attempts,'calls':calls,'control_operations':control_operations}
         finally:
             if gateway:
@@ -439,6 +441,20 @@ def _is_change(observation):
             and previous is not None and candidate['content'] != previous['content'])
 
 
+def _invalid_model_calls(calls):
+    # A successful retry does not turn a rate-limited/timed-out evaluation into
+    # a valid run. Preserve these records and never reuse that timeline as done.
+    failures = []
+    for call in calls:
+        reason = ('rate_limited' if call.get('status_code') == 429 else
+                  'timeout' if call.get('timed_out') else
+                  'transport_failure' if call.get('result_category') == 'retryable' else None)
+        if reason:
+            failures.append({key:call.get(key) for key in
+                ('id','purpose','created_at','duration_ms','status_code','timed_out')} | {'reason':reason})
+    return failures
+
+
 def _call_metrics(calls):
     return {'count':len(calls), 'duration_ms_p50':_percentile([c['duration_ms'] for c in calls],50),
             'duration_ms_p95':_percentile([c['duration_ms'] for c in calls],95),
@@ -452,6 +468,7 @@ def _call_metrics(calls):
                 for purpose in dict.fromkeys(c['purpose'] for c in calls)},
             'usage_missing_calls':sum(c['prompt_tokens'] is None or c['completion_tokens'] is None for c in calls),
             'timed_out_calls':sum(bool(c.get('timed_out')) for c in calls),
+            'rate_limited_calls':sum(c.get('status_code') == 429 for c in calls),
             'by_purpose':dict(Counter(c['purpose'] for c in calls))}
 
 
@@ -466,7 +483,12 @@ def _metrics(rows, judgments=None):
                        for o in observations]
     deletions = [len(o['candidate']['checks'].get('deleted_sentences',[])) for o in observations]
     repairs = [len(o['candidate']['checks'].get('repaired_sentences',[])) for o in observations]
-    result = {'proposed_sentences':sum(sentence_counts), 'deleted_sentences':sum(deletions),
+    invalid_calls = _invalid_model_calls(calls)
+    result = {'run_valid':all(r['complete'] for r in rows) and not invalid_calls,
+              'invalid_call_count':len(invalid_calls),
+              'run_invalid_reasons':sorted({c['reason'] for c in invalid_calls} |
+                  ({'incomplete_timeline'} if any(not r['complete'] for r in rows) else set())),
+              'proposed_sentences':sum(sentence_counts), 'deleted_sentences':sum(deletions),
               'deleted_sentence_ratio':sum(deletions)/sum(sentence_counts) if sum(sentence_counts) else None,
               'candidates_with_deletions':sum(bool(n) for n in deletions),
               'candidate_deletion_ratio':sum(bool(n) for n in deletions)/len(observations) if observations else None,
@@ -634,7 +656,8 @@ def run_persona_eval(configs, root, *, corpus, out, judge_mode='model', gateway_
         if path.exists():
             saved = _read_json(path)
             if (saved['signature'] != signature or saved['row_sha256'] != _json_sha256(saved['row'])
-                    or saved['row']['case'] != case or saved['row']['complete'] is not True):
+                    or saved['row']['case'] != case or saved['row']['complete'] is not True
+                    or _invalid_model_calls(saved['row']['calls'])):
                 raise ValueError('invalid or incomplete persona checkpoint')
             row,resumed = saved['row'],resumed+1
         else:
