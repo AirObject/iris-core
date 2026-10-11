@@ -10,6 +10,7 @@ import Operations from "./Operations";
 import StatusPage from "./Status";
 import LearningPage from "./Learning";
 import People from "./People";
+import PeopleGraph from "./PeopleGraph";
 import StatePage from "./State";
 import PersonaPage from "./Persona";
 import type { Page, PersonSummary, Status } from "./types";
@@ -120,7 +121,12 @@ function Workspace({ refreshSession }: { refreshSession: () => void }) {
             <a
               key={r.id}
               href={`#/${r.id}`}
-              aria-current={routePath === r.id ? "page" : undefined}
+              aria-current={
+                routePath === r.id ||
+                (routePath === "people-graph" && r.id === "people")
+                  ? "page"
+                  : undefined
+              }
             >
               <Icon name={r.icon} />
               {r.name}
@@ -183,6 +189,12 @@ function Workspace({ refreshSession }: { refreshSession: () => void }) {
               version={version}
               openMemory={openMemory}
               onChange={memoryChanged}
+            />
+          ) : routePath === "people-graph" ? (
+            <PeopleGraph
+              key={route}
+              initialQuery={route.split("?")[1]}
+              openMemory={openMemory}
             />
           ) : routePath === "people" ? (
             <People
