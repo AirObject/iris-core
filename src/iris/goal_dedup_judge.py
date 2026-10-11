@@ -21,7 +21,8 @@ PROMPT=files('iris').joinpath('prompts/goal_dedup_judge_v1.md').read_text(encodi
 # Selected by GO-04: C batch judgment plus deterministic possible hints (C2).
 # Explicit method overrides are internal to the probe, never an admin option.
 DEFAULT_METHOD='C2'
-DEFAULTS={'enabled':True,'budget_seconds':5.0,'concurrency':1,'queue_limit':8}
+DEFAULTS={'enabled':True,'budget_seconds':5.0,'concurrency':1,'queue_limit':8,
+          'pending_fallback_minutes':30,'possible_min_similarity':.6}
 MAX_SECONDS=60.0  # Measurement override; the administrator API is capped at 10 s.
 MAX_CANDIDATES=8
 
@@ -50,6 +51,16 @@ def validate_budget(value):
     if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or not 0<value<=MAX_SECONDS:
         raise ValueError('goal judgment budget must be >0 and <=60 seconds')
     return float(value)
+
+
+def validate_similarity(value):
+    if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or not 0<=value<=1:
+        raise ValueError('possible similarity must be between 0 and 1')
+    return float(value)
+
+
+def similarity(a,b):
+    return difflib.SequenceMatcher(None,normalize_claim(a['content']),normalize_claim(b['content'])).ratio()
 
 
 def context_compatible(a,b):
@@ -137,11 +148,15 @@ def validate_decisions(raw,ids):
     return {row['id']:row['verdict'] for row in rows}
 
 
-def decision_from_verdicts(verdicts,*,origin,overflow=False,possible_ids=()):
+def decision_from_verdicts(verdicts,*,origin,overflow=False,possible_ids=(),scores=None,min_similarity=0):
+    minimum=validate_similarity(min_similarity)
     same=[gid for gid,verdict in verdicts.items() if verdict=='same']
     possible=list(dict.fromkeys([gid for gid,verdict in verdicts.items() if verdict in ('same','uncertain')]+list(possible_ids)))
+    # Keep every original ambiguity as a merge blocker, even when its weak hint
+    # is hidden by the display threshold. Raising the threshold cannot add merges.
     if len(same)==1 and len(possible)==1 and origin!='admin' and not overflow and not possible_ids:
         return {'status':'merged','target_id':same[0]}
+    possible=[gid for gid in possible if gid in same or (scores or {}).get(gid,0)>=minimum]
     if possible:
         return {'status':'possible_duplicate','target_id':possible[0],'target_ids':possible}
     return {'status':'created','target_id':None}

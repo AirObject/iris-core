@@ -19,6 +19,10 @@ uv run iris models check
 uv run iris eval learning
 ```
 
+用 `IRIS_TEST_MODEL_PROFILE=chat2` 选择同一 TOML 中的 `[chat2]` 作为对话配置（例如 `IRIS_TEST_MODEL_PROFILE=chat2 uv run iris models check`）；不设置此变量时仍使用 `[chat]` 和各用途自己的节。选中档位必须有非空 `base_url`、`model`，以及 `api_key`（无密钥服务可显式填空字符串）或 `api_key_env`。选择档位后，学习等 chat 用途、召回判断、目标去重判断都使用该档位，忽略文件中的独立判断及图片理解节，embedding 保持原配置。图片理解由支持图片的选中 chat 派生；未声明图片能力时仍用占位。派生用途只继承来源显式配置的 `reasoning_effort`；来源未配置时不发送该字段，GLM 显式配置的 high 保持不变。
+
+支持图片的对话模型可在对应 TOML 节设置 `vision = true`，默认 false。这是 Iris 的能力标记，不发送给服务商，也不改变纯文本请求。本地模型设置保存同一字段；`PUT /admin/api/settings/models/chat` 接受布尔值 `vision`，省略时保留已有值，旧配置默认 false，保存照常留下操作记录。当前界面尚无此勾选项。
+
 ## 本机服务
 
 ```bash
@@ -332,7 +336,7 @@ PATCH 可只提供 `pace` 或部分 `filters` 字段，其余沿用旧值。`pac
 
 prepare 可以传 `"judge": false` 关闭本次判断，或 `"judge_budget_seconds": 3` 缩短预算（必须 >0 且 ≤10 秒）。响应的 `judgment` 和 `hints` 标明 `applied`／`disabled`／`degraded`、`reason`、`duration_ms`、`queue_ms`、`network_ms` 和 `removed_memory_ids`。未配置、暂停、额度耗尽、排队满、超时或非法输出都保留仍有效的原候选；调用后逐条核对修订号、生命周期、宿主已知记忆，并以最终返回的近期消息检查冗余；失效项记入 `stale_memory_ids`。新消息或别名变化不废弃整次判断，其他候选仍按原判断保留或移除，状态保持 applied。调用中关闭判断的配置仍生效。只有最终返回的记忆取得本次反馈资格。
 
-`recall_judge` 是独立模型用途，未单独配置时继承 chat 的接口、密钥和模型，推理档位固定默认 high；chat 的暂停不暂停判断，判断的暂停也不暂停学习。可在测试配置中增加 `[recall_judge]`，或通过已有管理员接口 `PUT /admin/api/settings/models/recall_judge` 保存独立模型及档位；`enabled:false` 清除该独立配置、恢复继承。全局关闭使用 `PATCH /admin/api/settings/recall-judge` 的 `enabled:false`。此 PATCH 还支持 `concurrency`（1—8，默认 1）和 `queue_limit`（0—64，默认 8），省略字段保留现值；模型来自外部文件时模型配置仍只读。管理设置响应列出实际配置、`inherited` 和独立健康状态；设置页的模型部分可以配置、关闭和测试召回判断，运行状态页显示它的健康状态，试用页显示每次回复准备的判断结果。
+`recall_judge` 是独立模型用途，未单独配置时继承 chat 的接口、密钥、模型及显式推理档位；chat 未配置档位时不发送，独立判断配置仍默认 high；chat 的暂停不暂停判断，判断的暂停也不暂停学习。可在测试配置中增加 `[recall_judge]`，或通过已有管理员接口 `PUT /admin/api/settings/models/recall_judge` 保存独立模型及档位；`enabled:false` 清除该独立配置、恢复继承。全局关闭使用 `PATCH /admin/api/settings/recall-judge` 的 `enabled:false`。此 PATCH 还支持 `concurrency`（1—8，默认 1）和 `queue_limit`（0—64，默认 8），省略字段保留现值；模型来自外部文件时模型配置仍只读。管理设置响应列出实际配置、`inherited` 和独立健康状态；设置页的模型部分可以配置、关闭和测试召回判断，运行状态页显示它的健康状态，试用页显示每次回复准备的判断结果。
 
 判断最长总预算 10 秒，包含排队，只有一次网络尝试，不修正 JSON。达到并发／队列上限时有界等待或立即降级；429 及账户限额按服务商错误码优先分类。前两次临时限流进入独立 `rate_limited` 退避，有有效 `Retry-After` 时按它等待（支持秒数或 HTTP 日期），没有时分别等待 2、4 秒；`retry_at` 标明截止时间。期间新 prepare 直接降级，不排队、不发请求，到期由下次业务请求恢复，无需探测。连续第三次可重试错误（含限流）进入暂停，后台按 60／120／240／480／600 秒探测；更长的 Retry-After 或仍未到期的退避均保留。迟到的成功不提前解除退避，迟到的限流不缩短已有等待；成功业务请求或成功探测清零计数。账户限额继续按账户问题暂停。判断与学习使用独立并发槽位；同账号仍共享服务商额度，不能保证没有账号限流。已达每日 token 上限时不再开始判断或判断恢复探测，基础召回继续。
 
@@ -567,17 +571,23 @@ Python 3.13 与隔离的 3.12 按顺序运行，各通过 1635 个测试；`uv b
 
 ## M3 目标去重判断（GO 第三、四步）
 
-目标去重默认开启 C2：沿用 C 的整批候选判断，另为数字／否定差异的相近配对标记可能重复。C2 在 `82a053c26022771b0d34983b01e70bd4c7452491` 单独冻结；公开 goal_dedup_v1 两轮均为 0/13 误合并、28/28 应合并识别，相比 C 的 0/14、14/28 提高识别且未增加误合并，按 GO 第四步规则采用。不应合并中标可能重复由 6/39 增至 22/39，增加了人工复核量；没有放宽合并。两轮各调用 38 次，均无降级。详见 [C2 冻结规则](evals/goal_dedup_probe/C2_METHOD.md) 和 [C2 探测报告](evals/goal_dedup_probe/C2_RESULTS.md)。A／B／C 及原提示词在 `9cacbd02d38f0200dd757316c7b8c8c101dde113` 冻结，原方法选择与 C 的 5 秒预算验证保留在 [GO 第三步报告](evals/goal_dedup_probe/RESULTS.md)。
+目标去重默认开启 C2：沿用 C 的整批候选判断，另为数字／否定差异的相近配对提供可能重复候选。GD2 为弱标记增加门槛（见下文）；以下数字是旧门槛的历史结果。C2 在 `82a053c26022771b0d34983b01e70bd4c7452491` 单独冻结；公开 goal_dedup_v1 两轮均为 0/13 误合并、28/28 应合并识别，相比 C 的 0/14、14/28 提高识别且未增加误合并，按 GO 第四步规则采用。不应合并中标可能重复由 6/39 增至 22/39，增加了人工复核量；没有放宽合并。两轮各调用 38 次，均无降级。详见 [C2 冻结规则](evals/goal_dedup_probe/C2_METHOD.md) 和 [C2 探测报告](evals/goal_dedup_probe/C2_RESULTS.md)。A／B／C 及原提示词在 `9cacbd02d38f0200dd757316c7b8c8c101dde113` 冻结，原方法选择与 C 的 5 秒预算验证保留在 [GO 第三步报告](evals/goal_dedup_probe/RESULTS.md)。
 
 B／C 只判断同 kind、未结束且未合并的候选。明确的人物集合、期限、数字或否定序列冲突先排除；人物信息缺失按未知处理。正文相似度至少 0.25 或有共同涉及人即召回，最多 8 个；模型材料只有正文及时间、涉及人、期限、入口类型和来源摘录。即使正文完全相同也判断来源是否指同一事件。只有唯一 `same` 且其余没有 `same/uncertain` 才自动合并；有歧义或候选超限则保留并标可能重复。管理员创建始终不自动合并。只有一方缺少涉及人时，确认合并保留已知人物；明确不同的人物仍拒绝合并。
 
-C2 将被数字／否定序列排除的相近配对只标为可能重复：同 kind、未结束且未合并、涉及人兼容、非空期限一致，并满足规整正文相似度 ≥0.25，或同一非空入口且该入口的来源消息有共同的非 self／scene 发言人（按已确认身份取规范 ID）。按相似度、创建时间、ID 取最多 8 个，不占模型候选名额，不送模型，不放宽自动或手动合并限制。只有这些配对时立即返回 possible_duplicate；还有模型候选时标记立即可见，即使模型另有唯一 same，也先保留为可能重复供人工复核。管理员与宿主使用现有 possible_duplicate_ids 查看，可驳回；若要合并不兼容内容，须先明确编辑。显式关闭判断仍沿用 A。
+C2 将被数字／否定序列排除的相近配对只标为可能重复：同 kind、未结束且未合并、涉及人兼容、非空期限一致，并满足规整正文相似度 ≥0.25，或同一非空入口且该入口的来源消息有共同的非 self／scene 发言人（按已确认身份取规范 ID）。按相似度、创建时间、ID 取最多 8 个，不占模型候选名额，不送模型，不放宽自动或手动合并限制。只有这些配对且达到弱标记门槛时立即返回 possible_duplicate；还有模型候选时，达到门槛的标记在管理查询中立即可见。即使某个弱标记未达到门槛，它仍参与歧义检查，不能因此让另一个 same 自动合并。管理员与宿主使用现有 possible_duplicate_ids 查看，可驳回；若要合并不兼容内容，须先明确编辑。显式关闭判断仍沿用 A。
 
 宿主 POST 先提交目标，再在请求内判断。超时、排队满、限流、暂停或在途修订变化返回 `dedup.status=pending`，由调度器补做。学习仍只在原事务内执行确定性候选检索、可能重复标记和入队，提交后才调用模型判断，不改学习材料／校验／提示词。宿主键重试保留首次响应，后台结果不改写回执。补做结束写操作记录，并发布 `kind=goal_dedup_result` 通知；宿主仍按通知发布游标拉取，查看最新目标列表中的合并与可能重复状态。
 
+GD2：`pending`／运行中的目标在补判结束前不进入 prepare 和 search 的目标分区，也不发布提醒；管理列表和详情仍展示，并返回 `dedup_pending`、`dedup_injectable`、`dedup_fallback_at`。过滤先于目标分区的排序截取，待复核目标的 ID 也不作为其他目标的可能重复引用注入。内部学习入队后下一轮调度即可补判；宿主同步失败后按 30 秒、2 分钟、10 分钟退避，之后每 10 分钟重试，复用该用途的健康、并发、排队和每日 token 门槛。模型仍在事务外调用，所有参与判断的修订号、范围和门槛设置在写回前复核。
+
+`goal_dedup_judge.pending_fallback_minutes` 控制兜底时长，默认 30 分钟，范围 0—1440；设为 0 或关闭判断时立即恢复注入。兜底按首次入队计时，重试、进程重启及用途暂停都不延长它；放行仍保留 pending 标注并继续补判，不把不可用当作“不重复”。30 分钟覆盖几轮正常退避，又避免暂停或每日额度耗尽让真实目标等到次日。实际截止不顺延：放行时已经临近／过期则只发布一条即时提醒，不补齐所有错过的阶段；之后继续按原期限和每日上限提醒。提醒及补判结果通知在可注入时分配游标，旧策略下尚未取走的通知会取消并在放行时重新发布，避免先创建后可见的游标漏取。已取走的通知保留记录；相同截止时间已取走的临近提醒、当天到期／过期提醒不会在放行时重发，尚未通知的新阶段照常提醒。
+
+弱标记设置 `goal_dedup_judge.possible_min_similarity` 范围 0—1，0 完整回退旧门槛。本补丁暂用 0.6 作为待真实标定的工程默认值，尚不代表公开集质量通过。分数沿用规整正文的 SequenceMatcher 相似度，仅过滤模型 uncertain、C2 序列冲突配对及 A 的近似提示；A 原有 0.88 下限保留。模型明确 same 的管理员目标仍标为可能重复，其他 same 歧义也保留；被过滤的弱提示继续阻止自动合并。共享入口／来源人不能绕过标记门槛。既有关系保留，管理员已驳回的关系不重开。两个参数通过 `Goals(store).configure_dedup(pending_fallback_minutes=30, possible_min_similarity=0.6, actor="admin")` 校验、持久化并留操作记录，下一次读取／调度生效。当前管理 HTTP 的字段保持原样。真实取值将在服务商确定后的独占窗口按 [GD2 网格](evals/goal_dedup_probe/GD2_GRID.md) 标定，本轮只做假模型自检。
+
 迁移 014 新增 `goal_dedup_jobs`，保存任务状态、两边修订号、尝试次数、下次执行时间及可过期租约。调度器只查询到期任务，不重新去重历史目标；失效租约可在重启后恢复。模型调用在事务外，写回核对租约、本目标和全部候选修订，并再次核对人物／来源投影；失效结果不落地。完成或放弃取消未完成复核。管理目标详情增加只读 `dedup_review`，含状态、方法、输入修订、尝试次数、结果、下次执行和更新时间，不暴露租约凭据。
 
-`goal_dedup_judge` 用途默认继承对话端点及 high 档位，健康状态、并发和有界排队独立于学习及召回判断。前两次 429 按 Retry-After 或 2／4 秒退避，第三次连续可重试错误暂停并探测；每日 token 上限同样阻止判断。`PATCH /admin/api/settings/goal-dedup-judge` 沿用会话、CSRF 和操作记录，设置 `enabled`、`budget_seconds`（大于 0 且至多 10 秒）、`concurrency`（1—8）和 `queue_limit`（0—64）。默认预算按有效探测较高 P95 加 20% 向上取整为 5 秒，并发 1、排队 8；已保存的显式设置保留。此前 C 在 5 秒产品预算下的有效双轮宿主同步 P50/P95 为 1.05/3.44 秒、1.19/2.83 秒；该阶段含作废尝试的宿主降级为 10/459，见 GO 第三步报告。本轮 C2 按冻结的 60 秒测量预算运行，宿主 P50/P95 为 1.10/2.91 秒、1.18/2.58 秒；这不改变产品的 5 秒时限，也不代表以后不会超时。显式关闭 enabled 使用 A；模型不可用时保留待复核，不自动切换到 A 合并。独立模型端点的保存／测试／重试沿用 `/admin/api/settings/models/goal_dedup_judge` 系列接口。
+`goal_dedup_judge` 用途默认继承对话端点及显式推理档位（未配置则不发送），健康状态、并发和有界排队独立于学习及召回判断。前两次 429 按 Retry-After 或 2／4 秒退避，第三次连续可重试错误暂停并探测；每日 token 上限同样阻止判断。`PATCH /admin/api/settings/goal-dedup-judge` 沿用会话、CSRF 和操作记录，设置 `enabled`、`budget_seconds`（大于 0 且至多 10 秒）、`concurrency`（1—8）和 `queue_limit`（0—64）。默认预算按有效探测较高 P95 加 20% 向上取整为 5 秒，并发 1、排队 8；已保存的显式设置保留。此前 C 在 5 秒产品预算下的有效双轮宿主同步 P50/P95 为 1.05/3.44 秒、1.19/2.83 秒；该阶段含作废尝试的宿主降级为 10/459，见 GO 第三步报告。本轮 C2 按冻结的 60 秒测量预算运行，宿主 P50/P95 为 1.10/2.91 秒、1.18/2.58 秒；这不改变产品的 5 秒时限，也不代表以后不会超时。显式关闭 enabled 使用 A；模型不可用时保留待复核，不自动切换到 A 合并。独立模型端点的保存／测试／重试沿用 `/admin/api/settings/models/goal_dedup_judge` 系列接口。
 
 探测脚本支持仓库外 `--corpus` 和 `--out`；`--fake` 使用本地传输，不读取模型配置、不发送网络请求，结果明确标为模拟并被选型函数拒绝。使用方法与本轮验证汇总见 [探测说明](evals/goal_dedup_probe/README.md)。
 
@@ -781,6 +791,8 @@ embedding 暂停时网关直接返回可降级错误，回复准备和查询使�
 
 迁移 006 为 `model_calls` 增加 `reasoning_effort`、`reasoning_present`、`reasoning_chars`；历史记录保持 NULL。推理字符数按 Unicode 字符计，已返回但非文本的推理字段记为未知；正文解析只用 `message.content`，不存 `reasoning_content`／`reasoning` 全文。`reasoning_tokens` 取 `usage.completion_tokens_details.reasoning_tokens`，缺失记 NULL，不从字符数估算；completion 用量已包含推理，不能再次相加。状态额外提供当前 `chat_reasoning_effort` 及逐次学习诊断。用量合计只覆盖已报告值，不能把未知调用当成零消耗。
 
+兼容 MiniMax 等服务商时，正文开头（允许前导空白）的一个完整 `<think>…</think>` 块会在用途校验和 JSON 解析前剥离；正文中间、第二个块或未闭合块不剥离。剥离内容只累计到推理出现标志和字符数，不保存全文，也不进入 JSON 修正请求。`batch_attempts` 等原始输出保存剥离后的正文；关联的 `model_calls.leading_think_stripped` 标明是否剥离（迁移 027，历史为 NULL）。学习及召回评测报告保留这些诊断，源码指纹区分适配前后的结果；GLM 独立推理字段的处理保持原样。
+
 运行日志同时输出控制台和数据库所在目录的 `logs/iris.log`，每 2 MB 滚动，保留 3 份旧文件；只记录状态、标识和错误类别，默认不记录消息正文或 API key。
 
 宿主 prepare/search 的来源条目按令牌范围投影：范围外的 `entry_id`、`entry_name`、`occurred_at` 为 null，保留来源存在与消息 ID；管理员来源详情不变，不改变召回正文或顺序。
@@ -922,9 +934,9 @@ uv run iris --data-dir /path/to/iris-data backup import /path/to/backup.zip --co
 
 媒体保存在数据目录的 `media/`，按 SHA-256 共享文件；每次保存返回独立媒体对象，不覆盖同文件其他对象的宿主说明。单文件默认最多 10 MiB（10 × 1024 × 1024 字节），检查 MIME 和文件头。图片白名单为 PNG、JPEG、GIF、WebP（`image/png`、`image/jpeg`、`image/gif`、`image/webp`），不接受 SVG、HTML 或任意文件类型。音频支持 MP3、WAV、Ogg、FLAC，视频支持 MP4、WebM；仅保存附件，不调用音视频理解模型。无宿主说明时分别使用 `[音频，未理解]`、`[视频，未理解]`。文件头校验不等同于完整解码，损坏图片的模型失败仍退回占位。
 
-在 `test-models.toml` 中由用户新增 `[image_understanding]`，填写 `base_url`、`model`、`api_key`（或省略 `api_key`，填写 `api_key_env` 所指的环境变量名）；可选 `reasoning_effort`，只在所选模型支持时设置。不需要 `dimensions`。该组使用方舟视觉模型，端点和模型 ID 以用户控制台为准，不自动沿用对话模型。请求使用 OpenAI 兼容 `/chat/completions` 的 `image_url` data URL，见[方舟图片输入契约](https://docs.volcengine.com/docs/ark/chat-api?lang=zh&redirect=1)。本线仅以假模型验证，未读取测试密钥，真实视觉模型冒烟需用户配置后另行运行。
+在 `test-models.toml` 中由用户新增 `[image_understanding]`，填写 `base_url`、`model`、`api_key`（或省略 `api_key`，填写 `api_key_env` 所指的环境变量名）；可选 `reasoning_effort`，只在所选模型支持时设置。不需要 `dimensions`。独立配置优先；未单独配置且 chat 的 `vision=true` 时，沿用 chat 的端点、密钥、模型和显式推理档位，否则保持未理解占位。健康状态始终按图片理解用途独立。脱敏设置中的 `models.image_understanding.inherited` 及服务状态中的 `model_health.image_understanding.inherited` 标明是否沿用对话模型。请求使用 OpenAI 兼容 `/chat/completions` 的 `image_url` data URL，见[方舟图片输入契约](https://docs.volcengine.com/docs/ark/chat-api?lang=zh&redirect=1)。真实视觉模型冒烟只应使用已配置且声明支持图片的模型。
 
-本地模型配置、导入、热重载和脱敏设置投影自动包含 `image_understanding`。管理接口 `PUT /admin/api/settings/models/image_understanding`、同路径的 `POST /test`、`POST /retry` 沿用管理员会话和 CSRF；`enabled=false` 停用。测试连接使用固定 64×64 PNG、总预算 10 秒；探测图片满足[方舟输入尺寸下限](https://docs.volcengine.com/docs/ark/image-understanding?lang=zh)。设置页已提供独立的图片理解模型组。
+本地模型配置、导入、热重载和脱敏设置投影自动包含 `image_understanding`。管理接口 `PUT /admin/api/settings/models/image_understanding`、同路径的 `POST /test`、`POST /retry` 沿用管理员会话和 CSRF；`enabled=false` 清除独立配置，此时 chat 支持图片则恢复继承，否则停用。测试连接使用固定 64×64 PNG、总预算 10 秒；探测图片满足[方舟输入尺寸下限](https://docs.volcengine.com/docs/ark/image-understanding?lang=zh)。设置页已提供独立的图片理解模型组。
 
 处理顺序是：保存媒体 → 消息引用 `media_ids` → 按原节奏冻结批次 → 领取批次为 `running` → 补充图片理解 → 读取学习快照、组成材料 → 学习。上传和接收消息不等待模型。整批图片（目标优先，再历史、后续）共享最多 120 秒，包含排队、网络和调用内重试；随后学习仍有独立的 180 秒预算。含媒体消息在冻结时预留原有的每消息 1500 token 上限。图片理解并发最多 2、排队最多 8，独立线程池和健康状态；不等待其他批次已在理解的同一对象，本次使用其已有占位。图片较慢时端到端延迟可能超过实时入口的一分钟目标。
 

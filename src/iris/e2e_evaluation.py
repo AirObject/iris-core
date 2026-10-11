@@ -138,6 +138,8 @@ class ServeProcess:
         self.directory.mkdir(parents=True, exist_ok=True)
         config = self.directory / "test-models.toml"
         self.env = {**os.environ, "IRIS_TEST_MODELS": str(config.resolve()), "PYTHONIOENCODING": "utf-8"}
+        # The caller has already resolved its profile into the chat section.
+        self.env.pop('IRIS_TEST_MODEL_PROFILE', None)
         sections = []
         for kind, value in configs.items():
             fields = asdict(value)

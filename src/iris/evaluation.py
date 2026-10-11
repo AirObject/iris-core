@@ -70,7 +70,7 @@ def _case_data(store: Store) -> dict[str, Any]:
             a.raw_output,a.batch_id FROM batch_attempts a ORDER BY a.id""")]
         calls = [dict(r) for r in conn.execute("""SELECT purpose,prompt_tokens,completion_tokens,reasoning_tokens,result_category,
             finish_reason,batch_id,duration_ms,error_summary,status_code,timed_out,
-            reasoning_effort,reasoning_present,reasoning_chars
+            reasoning_effort,reasoning_present,reasoning_chars,leading_think_stripped
             FROM model_calls ORDER BY id""")]
         batches = [dict(r) for r in conn.execute("SELECT id,state,target_ids,result_json FROM batches ORDER BY id")]
         identities = [dict(r) for r in conn.execute("""SELECT s.id,s.name,p.account_id FROM subjects s
@@ -762,7 +762,7 @@ def _write_learning_report(rows: list[dict[str, Any]], root: Path, reports: Path
               "generation_calls": [{"case": row["case"]["id"], **{key: call.get(key) for key in
                                      ("purpose", "batch_id", "finish_reason", "prompt_tokens", "completion_tokens", "reasoning_tokens",
                                       "duration_ms", "result_category", "status_code", "timed_out",
-                                      "reasoning_effort", "reasoning_present", "reasoning_chars")}}
+                                      "reasoning_effort", "reasoning_present", "reasoning_chars", "leading_think_stripped")}}
                                    for row in rows for call in row["actual"]["calls"]
                                    if call["purpose"] in ("learning", "learning_repair", "learning_judge", "learning_judge_repair")],
               "spot_check": [{"id": row["case"]["id"], "split": row["case"]["split"], "must": row["case"]["must"],
