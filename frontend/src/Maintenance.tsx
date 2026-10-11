@@ -46,7 +46,7 @@ const countNames: Record<string, string> = {
   skipped: "跳过",
   failed: "失败",
   merged: "合并",
-  conflicts: "矛盾建议",
+  conflicts: "待核对建议（矛盾或合并）",
   dependencies_reviewed: "依赖复核建议",
   persona_published: "persona 已发布",
   persona_pending: "persona 待确认",

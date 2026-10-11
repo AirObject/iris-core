@@ -1,8 +1,9 @@
+import { TrialDiagnosticView } from "./TrialDiagnostic";
 import { MessageMedia } from "./Media";
 import { TrialImagePicker, useTrialImages } from "./TrialImages";
 import { PersonaSummary } from "./PersonaSummary";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { api, json, useData, errorText } from "./api";
+import { api, json, useData, errorText, ApiError } from "./api";
 import { Badge, Empty, Notice, time, batchLabel, messageState } from "./ui";
 import { EntryQueueWait, paceLabel } from "./EntrySettings";
 import { JudgmentSummary, SubjectAnnotations } from "./RecallJudgment";
@@ -13,6 +14,8 @@ import type {
   TrialCatalog,
   TrialSnapshot,
   Prepared,
+  TrialDiagnostic,
+  TrialReplyResult,
   Status,
   Message,
   Person,
@@ -193,6 +196,7 @@ function Conversation({
   const [notice, setNotice] = useState("");
   const [retry, setRetry] = useState<number | null>(null);
   const [prepared, setPrepared] = useState<Prepared | null>(null);
+  const [diagnostic, setDiagnostic] = useState<TrialDiagnostic | null>(null);
   const [prepareNote, setPrepareNote] = useState("");
   const [older, setOlder] = useState<Message[]>([]);
   const [moreOlder, setMoreOlder] = useState<boolean | null>(null);
@@ -248,17 +252,22 @@ function Conversation({
   async function prepareOrReply(mid: number, reply: boolean) {
     setPhase(reply ? "角色正在回复…" : "正在准备回复材料…");
     setPrepareNote("");
+    setDiagnostic(null);
+    setPrepared(null);
     try {
       if (reply) {
         setRetry(mid);
-        const result = await api<{ prepared: Prepared | null }>(
+        const result = await api<TrialReplyResult>(
           `/trial/entries/${entryId}/reply`,
           json("POST", { message_id: mid }),
         );
         setPrepared(result.prepared);
-        if (!result.prepared)
+        setDiagnostic(result.diagnostic || null);
+        if (result.reused)
           setPrepareNote(
-            "后端未返回当时的回复准备结果（已发布的回复可能被复用），无法展示召回判断状态。",
+            result.diagnostic
+              ? `已复用回复 #${result.diagnostic.reply_message_id}；以下诊断来自发布该回复时的准备。`
+              : "已复用已发布回复；原诊断未记录或已按保留期限清理，无法还原当时的判断。",
           );
         setRetry(null);
       } else {
@@ -270,7 +279,14 @@ function Conversation({
         );
       }
     } catch (e) {
-      setPrepareNote("本次回复准备结果未返回，无法展示召回判断状态。");
+      const result =
+        e instanceof ApiError && e.code === "reply_failed"
+          ? (e.result as { diagnostic?: TrialDiagnostic } | undefined)
+          : undefined;
+      if (result?.diagnostic) {
+        setDiagnostic(result.diagnostic);
+        setPrepareNote("角色回复失败；以下为本次已经完成的回复准备诊断。");
+      } else setPrepareNote("本次回复准备结果未返回，无法展示召回判断状态。");
       throw e;
     }
   }
@@ -283,6 +299,7 @@ function Conversation({
     setError("");
     setNotice("");
     setPrepared(null);
+    setDiagnostic(null);
     setPrepareNote("");
     setRetry(null);
     setPhase("正在发送…");
@@ -616,27 +633,38 @@ function Conversation({
             <span className="muted">
               {prepared
                 ? `${prepared.memories.length} 条召回`
-                : prepareNote
-                  ? "未返回材料"
-                  : busy
-                    ? "准备中"
-                    : "等待发送"}
+                : diagnostic
+                  ? "当次诊断"
+                  : prepareNote
+                    ? "未返回材料"
+                    : busy
+                      ? "准备中"
+                      : "等待发送"}
             </span>
           </div>
-          {!prepared ? (
+          {!prepared && !diagnostic ? (
             <p className="quiet">
               {prepareNote ||
                 (busy ? "正在准备回复材料…" : "发送消息后展示召回结果。")}
             </p>
           ) : (
             <>
-              <JudgmentSummary value={prepared.judgment} />
-              {prepared.memories.length === 0 && (
+              {prepareNote && <Notice>{prepareNote}</Notice>}
+              <JudgmentSummary
+                value={diagnostic?.judgment || prepared?.judgment}
+              />
+              {diagnostic && (
+                <TrialDiagnosticView
+                  value={diagnostic}
+                  openMemory={openMemory}
+                />
+              )}
+              {prepared?.memories.length === 0 && (
                 <p className="quiet">
                   没有额外召回记忆，近期原文仍在对话上下文中。
                 </p>
               )}
-              {prepared.memories.map((m) => (
+              {prepared?.memories.map((m) => (
                 <div key={m.id}>
                   <button
                     className="memory-preview"
@@ -655,7 +683,7 @@ function Conversation({
               <p className="fine-print">
                 被召回不等于被使用，也不代表内容已证实。
               </p>
-              {prepared.hints
+              {prepared?.hints
                 .filter((h) => h.code !== "recall_judgment")
                 .map((h, i) => (
                   <p key={i} className="fine-print">

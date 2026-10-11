@@ -171,6 +171,13 @@ def memory_detail(store, memory_id):
         detail["visibility"] = Visibility(conn).describe_memory(memory_id)
         from .consolidation import memory_annotations
         detail['consolidation_annotations'] = memory_annotations(conn,[memory_id],include_reports=True)[memory_id]
+        for annotation in detail['consolidation_annotations']:
+            report = conn.execute("SELECT details_json FROM maintenance_items WHERE run_id=? AND phase='consolidation' AND item_key=?",
+                                  (annotation['report']['run_id'], str(annotation['report']['work_id']))).fetchone()
+            details = json.loads(report[0]) if report else {}
+            if details.get('suggestion_type') == 'merge_details':
+                annotation['report'].update(suggestion_type='merge_details', unique_details=details.get('unique_details'),
+                    detail_memory_ids=[item['id'] for item in details.get('before_memories', [])[:2]])
         detail["speaker"] = dict(conn.execute("SELECT id,name FROM subjects WHERE id=?", (detail["speaker_subject_id"],)).fetchone())
         detail["sources"] = []
         for row in conn.execute("SELECT * FROM sources WHERE memory_id=? ORDER BY id", (memory_id,)):
@@ -683,7 +690,8 @@ def bulk_memory_preview(store, *, subject_id=None, entry_id=None, action, includ
 
 
 ENTRY_PROFILE_COLUMNS = '''id,entry_id,version,base_version,content,status,source,author,
-    change_degree,generated_at,published_at,COALESCE(json_extract(checks_json,'$.needs_regeneration'),0) AS needs_regeneration'''
+    change_degree,generated_at,published_at,COALESCE(json_extract(checks_json,'$.format_version'),1) AS format_version,
+    COALESCE(json_extract(checks_json,'$.needs_regeneration'),0) AS needs_regeneration'''
 ENTRY_PROFILE_ATTEMPT_COLUMNS = '''id,entry_id,base_version,state,reason,version,started_at,finished_at,
     (SELECT status FROM entry_profile_versions v WHERE v.entry_id=entry_profile_attempts.entry_id
         AND v.version=entry_profile_attempts.version) AS version_status,
@@ -710,6 +718,8 @@ def entry_profile_snapshot(store, entry_id):
         value = profiles._view(conn, profiles._current(conn, entry_id))
         return {'entry': entry, 'supported': entry['kind'] in ('group', 'live'),
                 'global_enabled': profiles._runtime(conn)['enabled'], 'settings': settings,
+                'edit_limits': {'max_items': profiles.MAX_ITEMS, 'max_chars': profiles._runtime(conn)['max_chars'],
+                                'max_tokens': profiles.MAX_PROFILE_TOKENS},
                 'current': _entry_profile_summary(current, settings['current_version'], conn) if current else None,
                 'pending': _entry_profile_summary(pending[0], settings['current_version'], conn) if pending else None,
                 'pending_count': len(pending), 'possibly_stale': bool(value and value['possibly_stale']),
@@ -728,7 +738,7 @@ def entry_profile_versions(store, entry_id, *, limit=30, offset=0):
 
 
 def entry_profile_version(store, entry_id, version):
-    from .entry_profile import _view, _version
+    from .entry_profile import _view, _version, _evidence_index, _quote
     with store.read() as conn:
         value = _redaction(conn,'entry_profile_versions',_view(conn, _version(conn, entry_id, version)))
         evidence = value.pop('material').get('evidence', {})
@@ -736,12 +746,29 @@ def entry_profile_version(store, entry_id, version):
         indexed = {item['sha256']: item for kind in ('messages', 'memories') for item in evidence.get(kind, [])}
         for sentence in value['sentences']:
             sentence['admin_written'] = sentence['author'] == 'admin'
+            for quote in sentence.get('quotes', []):
+                speaker = conn.execute('SELECT name FROM subjects WHERE id=?', (quote.get('speaker'),)).fetchone()
+                quote['speaker_name'] = speaker['name'] if speaker else None
             for basis in sentence['basis']:
                 cited = indexed.get(basis['sha256'])
                 basis['evidence'] = ({key: item for key, item in cited.items() if key not in ('sha256', 'ref')}
                                      if cited else None)
                 if 'memory_id' in basis:
                     basis['memory'] = _persona_memory(conn, basis['memory_id'])
+        checks = value['checks']
+        if checks.get('format_version') == 2 and isinstance(checks.get('original_sentences'), list) and all(
+                key in evidence for key in ('entry', 'messages', 'memories')):
+            messages_by_id, _ = _evidence_index(evidence)
+            items = []
+            for index, item in enumerate(checks['original_sentences'], 1):
+                quotes = item.get('quotes', []) if isinstance(item, dict) else []
+                results = []
+                for number, quote in enumerate(quotes if isinstance(quotes, list) else [], 1):
+                    _, issue = _quote(quote, messages_by_id)
+                    results.append({'index': number, 'passed': issue is None, 'reason': issue})
+                items.append({'index': index, 'total': len(results),
+                              'passed': sum(result['passed'] for result in results), 'quotes': results})
+            checks['quote_validation_items'] = items
         value['checks'].pop('model_input', None)
         return value
 

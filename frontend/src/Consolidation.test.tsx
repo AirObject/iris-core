@@ -290,3 +290,81 @@ test("已合并的记忆占位指向保留记忆", async () => {
     screen.queryByRole("button", { name: "恢复记忆" }),
   ).not.toBeInTheDocument();
 });
+
+test("双方互有细节的记忆建议独立标注，采纳不执行合并", async () => {
+  detail.consolidation_annotations[0].report = {
+    ...suggestion.report,
+    suggestion_type: "merge_details",
+    unique_details: { a: ["在线授课"], b: ["面向初学者"] },
+    detail_memory_ids: [8, 9],
+  };
+  detail.consolidation_annotations[0].text = "模型建议核对两条记忆";
+  const openMemory = vi.fn();
+  render(
+    <MemoryDetail
+      id={8}
+      onClose={vi.fn()}
+      onChange={vi.fn()}
+      openMemory={openMemory}
+    />,
+  );
+  expect(
+    await screen.findByText("合并待核对（双方互有细节，不代表事实矛盾）"),
+  ).toBeVisible();
+  expect(screen.queryByText("争议", { exact: true })).not.toBeInTheDocument();
+  expect(screen.getByText("在线授课")).toBeVisible();
+  expect(screen.getByText("面向初学者")).toBeVisible();
+  await userEvent.click(
+    screen.getByRole("button", { name: "记忆 #9 的独有细节" }),
+  );
+  expect(openMemory).toHaveBeenCalledWith(9);
+  expect(
+    screen.getByRole("button", { name: "记忆 #8 的独有细节" }),
+  ).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "采纳建议 #6" }));
+  expect(screen.getByRole("group", { name: "确认建议操作" })).toHaveTextContent(
+    "不执行合并",
+  );
+  await userEvent.click(screen.getByRole("button", { name: "确认采纳建议" }));
+  expect(requests.filter((r) => r.method === "POST").map((r) => r.url)).toEqual(
+    ["/admin/api/memories/8/annotations/6/confirm"],
+  );
+});
+
+test("整理报告的合并待核对不显示成矛盾检查或争议", async () => {
+  const original = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (url, init) => {
+    const result = await original(url, init);
+    if (String(url) !== "/admin/api/maintenance/4") return result;
+    const report = await result.json();
+    report.items[1].details = {
+      ...report.items[1].details,
+      suggestion_type: "merge_details",
+      unique_details: { a: ["在线授课"], b: ["面向初学者"] },
+      before_memories: [
+        { id: 8, revision: 1, content: "在线授课" },
+        { id: 9, revision: 1, content: "面向初学者" },
+      ],
+    };
+    return response(report);
+  });
+  const openMemory = vi.fn();
+  render(
+    <MaintenanceReportDialog id={4} close={vi.fn()} openMemory={openMemory} />,
+  );
+  const region = await screen.findByRole("region", {
+    name: "整理建议（模型建议）",
+  });
+  expect(
+    within(region).getByText("合并待核对（双方互有细节，不代表事实矛盾）"),
+  ).toBeVisible();
+  expect(within(region).queryByText("矛盾检查")).not.toBeInTheDocument();
+  expect(
+    within(region).queryByText("争议", { exact: true }),
+  ).not.toBeInTheDocument();
+  await userEvent.click(
+    within(region).getByRole("button", { name: "记忆 #8 的独有细节" }),
+  );
+  expect(openMemory).toHaveBeenCalledWith(8);
+  expect(within(region).getByText(/采纳只确认建议，不执行合并/)).toBeVisible();
+});

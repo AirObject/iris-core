@@ -276,3 +276,18 @@ def test_admin_confirmation_is_revision_checked_idempotent_and_metadata_only(sto
     count=len(model.requests)
     run(store,model)
     assert len(model.requests)==count
+
+
+def test_merge_detail_management_projection_is_readonly_and_has_both_sides(store):
+    from iris.admin_data import memory_detail
+    from test_merge_details import DetailModel, bodies
+    a, b = pair(store)
+    bodies(store, a, b, '我每周在线教口琴', '我每周教口琴，面向初学者')
+    _, _, report = run(store, DetailModel(store, {'a': ['在线'], 'b': ['面向初学者']}))
+    changes = store._writer.total_changes
+    view = memory_detail(store, a)
+    details = view['consolidation_annotations'][0]['report']
+    assert details['suggestion_type'] == 'merge_details'
+    assert details['unique_details'] == {'a': ['在线'], 'b': ['面向初学者']}
+    assert details['detail_memory_ids'] == [a, b]
+    assert store._writer.total_changes == changes
