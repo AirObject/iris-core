@@ -33,6 +33,8 @@ class Model:
             raise value
         if value is None:
             value = {'decision': 'separate', 'reason': '不同事实', 'evidence': [], 'updates': []}
+        if 'MG2' in messages[0]['content'] and 'unique_details' not in value:
+            value = {**value, 'unique_details': {'a': [], 'b': []}}
         return ModelReply(json.dumps(value, ensure_ascii=False), 'stop', {'prompt_tokens': 20, 'completion_tokens': 10})
 
 
@@ -45,7 +47,7 @@ def pair(store):
 
 
 def merge_answer(payload):
-    return {'decision': 'merge', 'keep_id': payload['preferred_keep_id'], 'reason': '原话确认同一每周课程，保留较完整的一条',
+    return {'unique_details': {'a': [], 'b': []}, 'decision': 'merge', 'keep_id': payload['preferred_keep_id'], 'reason': '原话确认同一每周课程，保留较完整的一条',
             'evidence': [s['id'] for m in payload['memories'] for s in m['sources']], 'updates': []}
 
 

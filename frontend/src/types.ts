@@ -449,6 +449,26 @@ export type Judgment = {
   removed_memory_ids: number[];
   stale_memory_ids?: number[];
 };
+export type TrialDiagnostic = {
+  recall_id: string;
+  prepared_at: string;
+  message_id: number;
+  reply_message_id: number | null;
+  judgment: Judgment;
+  candidates: {
+    id: number;
+    revision: number;
+    reason: string;
+    support: number | null;
+    outcome: string;
+  }[];
+};
+export type TrialReplyResult = {
+  prepared: Prepared | null;
+  diagnostic?: TrialDiagnostic | null;
+  reused: boolean;
+  message: Message;
+};
 export type RecallJudgeConfig = {
   enabled: boolean;
   concurrency: number;

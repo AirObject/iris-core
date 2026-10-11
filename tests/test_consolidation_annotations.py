@@ -206,13 +206,13 @@ def test_upgrade_discards_pending_v2_decisions_and_preserves_legacy_annotations(
         upgraded.close()
 
 
-def test_broad_uses_complete_frozen_pair_prompt_then_separate_report_prompt(store):
+def test_broad_uses_detail_pair_prompt_then_unchanged_report_prompt(store):
     from importlib.resources import files
     a,b=pair(store)
     class Capture(Model):
         def chat(self,messages,purpose,*args,**kwargs):
             if not self.requests:
-                assert messages[0]['content']==files('iris').joinpath('prompts/consolidation_pair_v1.md').read_text(encoding='utf-8')
+                assert messages[0]['content']==files('iris').joinpath('prompts/consolidation_pair_v2.md').read_text(encoding='utf-8')
                 payload=json.loads(messages[1]['content'])
                 assert 'resolution' not in payload
                 assert all('annotations' not in m for m in payload['memories'])
@@ -276,3 +276,18 @@ def test_admin_confirmation_is_revision_checked_idempotent_and_metadata_only(sto
     count=len(model.requests)
     run(store,model)
     assert len(model.requests)==count
+
+
+def test_merge_detail_management_projection_is_readonly_and_has_both_sides(store):
+    from iris.admin_data import memory_detail
+    from test_merge_details import DetailModel, bodies
+    a, b = pair(store)
+    bodies(store, a, b, '我每周在线教口琴', '我每周教口琴，面向初学者')
+    _, _, report = run(store, DetailModel(store, {'a': ['在线'], 'b': ['面向初学者']}))
+    changes = store._writer.total_changes
+    view = memory_detail(store, a)
+    details = view['consolidation_annotations'][0]['report']
+    assert details['suggestion_type'] == 'merge_details'
+    assert details['unique_details'] == {'a': ['在线'], 'b': ['面向初学者']}
+    assert details['detail_memory_ids'] == [a, b]
+    assert store._writer.total_changes == changes

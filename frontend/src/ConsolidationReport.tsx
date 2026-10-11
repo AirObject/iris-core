@@ -1,3 +1,4 @@
+import { MergeDetailReview, mergeReviewLabel } from "./MergeDetailReview";
 import { useState } from "react";
 import { Badge, Pagination, RoleTime, seconds } from "./ui";
 import { PersonaChecks } from "./PersonaDetails";
@@ -136,12 +137,27 @@ function ModelItems({
               <>
                 <Badge tone="warning">模型建议</Badge>{" "}
                 <span>
-                  {item.outcome === "conflicts" ? "矛盾检查" : "依赖复核"}
+                  {d.suggestion_type === "merge_details"
+                    ? mergeReviewLabel
+                    : item.outcome === "conflicts"
+                      ? "矛盾检查"
+                      : "依赖复核"}
                 </span>
+                {d.suggestion_type === "merge_details" && (
+                  <MergeDetailReview
+                    details={d.unique_details}
+                    ids={d.before_memories?.slice(0, 2).map((m) => m.id) || []}
+                    openMemory={openMemory}
+                  />
+                )}
                 {d.suggestions?.map((s) => (
                   <div className="suggestion-summary" key={s.id}>
                     <p>
-                      <Badge>{suggestionKinds[s.kind] || s.kind}</Badge>{" "}
+                      <Badge>
+                        {d.suggestion_type === "merge_details"
+                          ? "合并待核对"
+                          : suggestionKinds[s.kind] || s.kind}
+                      </Badge>{" "}
                       <Badge>{suggestionStatuses[s.review_status]}</Badge> 建议
                       #{s.id}
                     </p>

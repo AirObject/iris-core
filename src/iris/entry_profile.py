@@ -6,8 +6,8 @@ Evidence IDs are snapshots, not foreign keys that pin cleaned source messages.
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
+import re
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -22,6 +22,7 @@ from .memory_ops import Visibility, operation
 from .models import Gateway, ModelError
 from .persona import split_sentences
 from .queue import estimate_tokens, truncate_material
+from .profile_common import evidence_hash, setting, whitespace, excerpt, json_object, ChatHealthGate
 
 DEFAULTS = dict(enabled=True, publish_mode='check_auto', window_days=14,
                 message_tokens=6000, memory_tokens=2000, min_messages=50,
@@ -29,6 +30,15 @@ DEFAULTS = dict(enabled=True, publish_mode='check_auto', window_days=14,
                 generate_timeout_seconds=120, check_timeout_seconds=120)
 PUBLISH_MODES = ('check_auto', 'all_manual')
 DEGREES = ('small', 'medium', 'large')
+# The optional prepare partition has its own cap; the 1500-token memory cap is unchanged.
+PROFILE_FORMAT = 2
+MAX_ITEMS = 6
+MAX_PROFILE_TOKENS = 500
+ITEM_LABELS = {'topic':'常聊话题', 'saying':'群内说法', 'rule':'明确群规／禁忌'}
+_ACCOUNT = re.compile(
+    r'(?i)(?<!\d)\d{5,}(?!\d)|<@!?\d+>|\[CQ:at[,\]]|'
+    r'(?:qq|uid|user[_ -]?id|微信号?|账号|帐号|群号)\s*[:：=]\s*[a-z0-9_.@+-]+|'
+    r'[a-z0-9_.+-]+@[a-z0-9.-]+\.[a-z]{2,}')
 VIOLATIONS = ('无依据', '单条消息泛化', '个人信息或隐私', '个人评价', '性别推断', '指令', '其他入口', '虚构')
 # Service/offline locks prevent multiple processes from owning this database.
 # A durable running receipt without a live owner is an interrupted call.
@@ -59,12 +69,11 @@ def _instant(value):
 
 
 def _hash(value):
-    return hashlib.sha256(dumps(value).encode('utf-8')).hexdigest()
+    return evidence_hash(value)
 
 
 def _setting(conn, key, default):
-    row = conn.execute('SELECT value_json FROM runtime_settings WHERE key=?', (key,)).fetchone()
-    return json.loads(row[0]) if row else default
+    return setting(conn, key, default)
 
 
 def _runtime(conn):
@@ -146,14 +155,18 @@ def _message_hash(row):
     return _hash({key:row[key] for key in MESSAGE_FIELDS})
 
 
+def _excerpt(text, limit):
+    return excerpt(text, limit)
+
+
 def _message(row, zone, *, limit=300):
     value = {'message_id':row['id'], 'source_id':row['dedupe_key'], 'entry_id':row['entry_id'], 'kind':row['kind'],
             'date':_instant(row['occurred_at']).astimezone(zone).date().isoformat(),
             'occurred_at':row['occurred_at'], 'speaker':row['sender_subject_id'],
-            'content':truncate_material(row['content'], limit), 'sha256':_message_hash(row)}
+            'content':_excerpt(row['content'], limit), 'sha256':_message_hash(row)}
     if row['quote_content'] is not None:
         value['quote']={'speaker':row['quote_author_subject_id'],
-                        'content':truncate_material(row['quote_content'], min(limit,180))}
+                        'content':_excerpt(row['quote_content'], min(limit,180))}
     return value
 
 
@@ -375,10 +388,27 @@ def set_settings(store, entry_id, *, expected_version, enabled=None, publish_mod
         return _settings(conn,entry_id)
 
 
-def _length_errors(content, config):
-    size=len(content.strip())
-    return (['empty'] if not size else ['too_short'] if size<config['min_chars'] else
-            ['too_long'] if size>config['max_chars'] else [])
+def _length_errors(content, config, *, structured=False):
+    size=len(content) if structured else len(content.strip())
+    return (['empty'] if not content.strip() else ['too_short'] if not structured and size<config['min_chars'] else
+            ['too_long'] if size>config['max_chars'] else
+            ['token_budget'] if structured and estimate_tokens(content)>MAX_PROFILE_TOKENS else [])
+
+
+def _edit_segments(content, previous):
+    # Quotes can contain punctuation. Preserve unchanged rendered items atomically,
+    # and use the legacy sentence splitter only for genuinely new/edited text.
+    known=sorted({s['text'] for s in previous['sentences'] if s.get('format_version')==PROFILE_FORMAT}
+                 if previous else [],key=len,reverse=True)
+    if not known:
+        return split_sentences(content)
+    parts=[]; start=0
+    for match in re.finditer('^(?:'+'|'.join(re.escape(text) for text in known)+')',content,re.MULTILINE):
+        parts.extend(split_sentences(content[start:match.start()]))
+        parts.append(match.group())
+        start=match.end()
+    parts.extend(split_sentences(content[start:]))
+    return parts
 
 
 def _insert(conn, entry_id, *, previous, content, sentences, checks, degree, status, stamp,
@@ -410,7 +440,7 @@ def admin_edit(store, entry_id, content, *, expected_version, clock=utc_now):
         for sentence in previous['sentences'] if previous else []:
             old[sentence['text']].append(sentence)
         sentences=[]
-        for text in split_sentences(content):
+        for text in _edit_segments(content,previous):
             sentences.append(old[text].pop(0) if old[text] else {'text':text,'basis':[],'author':'admin','message_count':0})
         through=conn.execute('SELECT COALESCE(MAX(id),0) FROM messages WHERE entry_id=?',(entry_id,)).fetchone()[0]
         return _insert(conn,entry_id,previous=expected_version,content=content,sentences=sentences,
@@ -431,7 +461,7 @@ def rollback(store, entry_id, version, *, expected_version, clock=utc_now):
     with store.write() as conn:
         _expect(conn,entry_id,expected_version); settings=_ensure(conn,entry_id,stamp)
         target=_version(conn,entry_id,version)
-        if target['status']!='published' or _length_errors(target['content'],_runtime(conn)):
+        if target['status']!='published' or _length_errors(target['content'],_runtime(conn),structured=target['checks'].get('format_version')==PROFILE_FORMAT):
             raise ValueError('rollback requires a previously published valid profile')
         through=conn.execute('SELECT COALESCE(MAX(id),0) FROM messages WHERE entry_id=?',(entry_id,)).fetchone()[0]
         return _insert(conn,entry_id,previous=expected_version,content=target['content'],sentences=target['sentences'],
@@ -465,57 +495,164 @@ def reject_candidate(store, entry_id, version, *, expected_version, reason='admi
         return _view(conn,_version(conn,entry_id,version))
 
 
-def _resolve(generated, evidence, previous):
-    references={item['ref']:item for key in ('messages','memories') for item in evidence[key]}
-    manual=[dict(s) for s in previous['sentences'] if s['author']=='admin'] if previous else []
-    protected={s['text'] for s in manual}
-    sentences=[]; deleted=[]; errors=[]; seen=set()
-    rows=generated.get('sentences') if isinstance(generated,dict) else None
-    if not isinstance(rows,list) or len(rows)>50:
-        return manual,[],['invalid_sentences'],len(manual)
-    original_count=len(rows)+len(manual)
-    for index,row in enumerate(rows):
-        reason=None
-        if not isinstance(row,dict) or not isinstance(row.get('text'),str) or not row['text'].strip():
-            reason='invalid_sentence'
-        elif row['text'] in protected:
-            # It will be appended verbatim by code. Never turn it into a model fact.
-            original_count-=1
+def _whitespace(text):
+    """Collapse whitespace only; do not fold punctuation, case, or missing words."""
+    return whitespace(text)
+
+
+def _evidence_index(evidence):
+    messages={}; owners={}
+    for item in evidence['messages']:
+        if item['entry_id']==evidence['entry']['id']:
+            messages[item['message_id']]=item
+    for memory in evidence['memories']:
+        for item in memory['source_messages']:
+            if item['entry_id']!=evidence['entry']['id']:
+                continue
+            # A quiet-day quota can shorten the direct excerpt below the memory
+            # source excerpt. Accept the longest material view and bind its owner.
+            old=messages.get(item['message_id'])
+            if old is None or len(item['content'])>len(old['content']):
+                messages[item['message_id']]=item
+                owners[item['message_id']]=memory['ref']
+    return messages,owners
+
+
+def _contains_account(text, evidence):
+    if _ACCOUNT.search(text):
+        return True
+    messages,_=_evidence_index(evidence)
+    # Opaque account IDs are metadata, never valid background prose. Do not treat
+    # ordinary display names or self/scene as account numbers.
+    identifiers={str(speaker) for message in messages.values()
+                 for speaker in (message.get('speaker'),message.get('quote',{}).get('speaker'))
+                 if speaker and re.search(r'[0-9:_@-]',str(speaker)) and len(str(speaker))>=5}
+    return any(re.search(r'(?<![a-zA-Z0-9_])'+re.escape(identifier)+r'(?![a-zA-Z0-9_])',text) for identifier in identifiers)
+
+
+def _quote(quote, messages):
+    if not isinstance(quote,dict) or set(quote)!={'message_id','text'}:
+        return None,'invalid_quote'
+    if type(quote['message_id']) is not int or quote['message_id'] not in messages:
+        return None,'invalid_quote_reference'
+    if not isinstance(quote['text'],str) or not 1<=len(_whitespace(quote['text']))<=100:
+        return None,'invalid_quote'
+    message=messages[quote['message_id']]; text=_whitespace(quote['text'])
+    for field,source in (('content',message),('quote',message.get('quote',{}))):
+        if text in _whitespace(source.get('content','')):
+            return {**quote,'text':text,'field':field,'speaker':source.get('speaker')},None
+    return None,'quote_not_found'
+
+
+def _independent_topic(quotes, messages):
+    # The count alone does not prove a recurring topic; the checker still checks
+    # independent discussions and scope. Reject same-day exchanges and quote copies.
+    originals=[]; dates=set(); ids=set()
+    for quote in quotes:
+        # A forwarded original has no trustworthy original event date. It may
+        # explain an item, but never supplies a second observation of recurrence.
+        if quote['field']!='content':
             continue
-        elif row['text'] in seen:
-            reason='duplicate_sentence'
-        elif (not isinstance(row.get('basis'),list) or not row['basis'] or
-              any(not isinstance(ref,str) or ref not in references for ref in row['basis'])):
-            reason='invalid_evidence_reference'
+        message=messages[quote['message_id']]
+        text=_whitespace(message['content'])
+        if any(text in old or old in text for old in originals):
+            continue
+        originals.append(text)
+        dates.add(message['date']); ids.add(message['message_id'])
+    return len(ids)>=2 and len(dates)>=2
+
+
+
+def _render_item(item):
+    text=ITEM_LABELS[item['kind']]+'：'+item['label']
+    if item.get('meaning'):
+        text+='——'+item['meaning']
+    return text+'（'+'；'.join('“'+q['text']+'”' for q in item['quotes'])+'）。\n'
+
+
+def _resolve(generated, evidence, previous):
+    messages,owners=_evidence_index(evidence)
+    memories={item['ref']:item for item in evidence['memories']}
+    manual=[dict(s) for s in previous['sentences'] if s['author']=='admin'] if previous else []
+    sentences=[]; deleted=[]; errors=[]; seen=set()
+    protected={s['text'] for s in manual}
+    quote_stats={'total':0,'passed':0}
+    rows=generated.get('items') if isinstance(generated,dict) else None
+    if not isinstance(rows,list) or len(rows)>50 or set(generated)!={'items'}:
+        return manual,[],['invalid_items'],0,quote_stats
+    original_count=len(rows)
+    for index,row in enumerate(rows):
+        reason=None; quotes=[]
+        raw_quotes=row.get('quotes') if isinstance(row,dict) else None
+        # Audit every supplied quote, even in an item with another schema error.
+        if isinstance(raw_quotes,list):
+            for raw in raw_quotes:
+                quote,issue=_quote(raw,messages)
+                quote_stats['total']+=1
+                quote_stats['passed']+=issue is None
+                if issue:
+                    reason=reason or issue
+                else:
+                    quotes.append(quote)
+        if (not isinstance(row,dict) or set(row)-{'kind','label','meaning','quotes','memory_refs'}
+                or not isinstance(row.get('kind'),str) or row['kind'] not in ITEM_LABELS
+                or not isinstance(row.get('label'),str) or not 1<=len(_whitespace(row['label']))<=40
+                or not isinstance(row.get('meaning',''),str) or len(_whitespace(row.get('meaning','')))>80
+                or (row.get('meaning') and row.get('kind')!='saying')):
+            reason=reason or 'invalid_item'
+        elif not isinstance(raw_quotes,list) or not 1<=len(raw_quotes)<=3:
+            reason=reason or 'invalid_quotes'
+        refs=row.get('memory_refs',[]) if isinstance(row,dict) else []
+        if (not isinstance(refs,list) or len(refs)>3
+                or any(not isinstance(ref,str) or ref not in memories for ref in refs)):
+            reason=reason or 'invalid_evidence_reference'
+        if not reason:
+            item={'kind':row['kind'],'label':_whitespace(row['label']),
+                  'meaning':_whitespace(row.get('meaning','')),'quotes':quotes}
+            key=(item['kind'],item['label'])
+            if _render_item(item) in protected:
+                # As in v1, model echoes never replace or duplicate handwritten content.
+                original_count-=1
+                continue
+            if key in seen:
+                reason='duplicate_item'
+            elif _contains_account(' '.join([item['label'],item['meaning'],*[q['text'] for q in quotes]]),evidence):
+                reason='account_identifier'
+            elif item['kind']=='topic' and not _independent_topic(quotes,messages):
+                reason='insufficient_topic_recurrence'
+            if not reason:
+                seen.add(key)
+                refs=list(dict.fromkeys([*refs,*(owners[q['message_id']] for q in quotes if q['message_id'] in owners)]))
+                basis=[_basis(messages[mid]) for mid in dict.fromkeys(q['message_id'] for q in quotes) if mid not in owners]
+                basis.extend(_basis(memories[ref]) for ref in refs)
+                sentences.append({**item,'text':_render_item(item),'basis':basis,'author':'model',
+                                  'message_count':len({q['message_id'] for q in quotes}), 'refs':refs,'format_version':PROFILE_FORMAT})
         if reason:
             deleted.append({'index':index+1,'sentence':row,'reason':reason,'stage':'deterministic'})
-            continue
-        seen.add(row['text'])
-        refs=list(dict.fromkeys(row['basis'])); linked=[references[ref] for ref in refs]
-        message_ids={s['message_id'] for item in linked for s in item.get('source_messages',[item])}
-        sentences.append({'text':row['text'],'basis':[_basis(item) for item in linked],
-                          'author':'model','message_count':len(message_ids),'refs':refs})
-    return [*sentences,*manual],deleted,errors,original_count
-
+    if original_count+len(manual)>MAX_ITEMS:
+        errors.append('too_many_items')
+    return [*sentences,*manual],deleted,errors,original_count,quote_stats
 
 
 def _check_input(material, sentences):
-    """Pair each sentence with its actual evidence; hashes are for CAS, not judging."""
-    evidence=material['evidence']
-    references={item['ref']:item for kind in ('messages','memories') for item in evidence[kind]}
+    """Bind each structured item to its quotes and explicitly linked memories."""
+    evidence=material['evidence']; messages,_=_evidence_index(evidence)
+    memories={item['ref']:item for item in evidence['memories']}
     def message(item):
-        return {key:item[key] for key in ('ref','message_id','entry_id','kind','date','occurred_at',
+        return {key:item[key] for key in ('message_id','entry_id','kind','date','occurred_at',
                                           'speaker','content','quote') if key in item}
     def memory(item):
         return {**{key:item[key] for key in ('ref','memory_id','revision','content','stance')},
                 'source_messages':[message(source) for source in item['source_messages']]}
     candidate=[]
     for index,sentence in enumerate(sentences,1):
-        refs=sentence.get('refs',[]) if sentence['author']=='model' else []
-        linked=[references[ref] for ref in refs]
-        candidate.append({'index':index,'text':sentence['text'],'author':sentence['author'],'refs':refs,
-            'evidence':{'messages':[message(item) for item in linked if 'memory_id' not in item],
-                        'memories':[memory(item) for item in linked if 'memory_id' in item]}})
+        model=sentence['author']=='model'
+        quotes=sentence.get('quotes',[]) if model else []
+        refs=sentence.get('refs',[]) if model else []
+        candidate.append({'index':index,'text':sentence['text'],'author':sentence['author'],
+            **({key:sentence[key] for key in ('kind','label','meaning','quotes')} if model else {}),
+            'evidence':{'messages':[message(messages[mid]) for mid in dict.fromkeys(q['message_id'] for q in quotes)],
+                        'memories':[memory(memories[ref]) for ref in refs]}})
     return {'entry':evidence['entry'],'as_of':evidence['as_of'],'previous':material['previous'],
             'candidate':candidate}
 
@@ -526,15 +663,15 @@ def _check(output, sentences):
     rows=output.get('sentences')
     if not isinstance(rows,list) or len(rows)!=len(sentences):
         raise ValueError('invalid_check_sentence_count')
-    removed=[]; retained=[]; admin_warnings=[]
+    removed=[]; retained=[]; admin_warnings=[]; removed_meanings=[]
     for index,(row,sentence) in enumerate(zip(rows,sentences,strict=True)):
         if (not isinstance(row,dict) or type(row.get('index')) is not int or row['index']!=index+1
                 or type(row.get('supported')) is not bool or type(row.get('scene_qualified')) is not bool
-                or not isinstance(row.get('violations'),list) or not isinstance(row.get('reason'),str)
+                or type(row.get('meaning_supported')) is not bool
+                or not isinstance(row.get('violations'),list) or not isinstance(row.get('reason'),str) or not row['reason'].strip()
                 or any(v not in VIOLATIONS for v in row['violations'])):
             raise ValueError('invalid_check_sentence')
-        bad=(not row['supported'] or bool(row['violations']) or
-             not row['scene_qualified'])
+        bad=not row['supported'] or bool(row['violations']) or not row['scene_qualified']
         if sentence['author']=='admin':
             retained.append(sentence)
             if row['violations']:
@@ -542,8 +679,12 @@ def _check(output, sentences):
         elif bad:
             removed.append({'index':index+1,'sentence':sentence,'reason':row['reason'],'result':row,'stage':'model'})
         else:
+            if sentence.get('meaning') and not row['meaning_supported']:
+                removed_meanings.append({'index':index+1,'meaning':sentence['meaning'],'reason':row['reason']})
+                sentence={**sentence,'meaning':''}
+                sentence['text']=_render_item(sentence)
             retained.append(sentence)
-    return retained,removed,admin_warnings,output['change_degree']
+    return retained,removed,admin_warnings,output['change_degree'],removed_meanings
 
 
 def _admin_removed(previous, sentences):
@@ -553,14 +694,8 @@ def _admin_removed(previous, sentences):
     return bool(before-after)
 
 
-class _HealthGate:
-    """Apply the shared chat daily limit on every HTTP attempt, including retries."""
-    def __init__(self, health):
-        self.real=health
-    def check(self, kind, purpose, *, probe=False):
-        return self.real.check(kind,'learning' if kind=='chat' else purpose,probe=probe)
-    def __getattr__(self, key):
-        return getattr(self.real,key)
+class _HealthGate(ChatHealthGate):
+    pass
 
 
 class EntryProfileEngine:
@@ -592,7 +727,7 @@ class EntryProfileEngine:
         if health:
             health.check('chat','learning')
         purpose='consolidation_entry_profile_'+kind
-        prompt=files('iris').joinpath(f'prompts/entry_profile_{kind}_v1.md').read_text(encoding='utf-8')
+        prompt=files('iris').joinpath(f'prompts/entry_profile_{kind}_v2.md').read_text(encoding='utf-8')
         messages=[{'role':'system','content':prompt},{'role':'user','content':dumps(payload)}]
         monotonic=getattr(gateway,'monotonic',time.monotonic)
         started=monotonic(); deadline=started+config[kind+'_timeout_seconds']
@@ -607,17 +742,7 @@ class EntryProfileEngine:
                       'usage':reply.usage,'finish_reason':reply.finish_reason})
         if reply.finish_reason!='stop':
             raise ValueError('incomplete_output')
-        def unique(pairs):
-            value={}
-            for key,item in pairs:
-                if key in value:
-                    raise ValueError('duplicate_key')
-                value[key]=item
-            return value
-        value=json.loads(reply.content,object_pairs_hook=unique)
-        if not isinstance(value,dict):
-            raise ValueError('invalid_output')
-        return value
+        return json_object(reply.content)
 
     def _finish(self, attempt, state, reason, outputs, calls):
         with self.store.write() as conn:
@@ -676,7 +801,8 @@ class EntryProfileEngine:
                             (entry_id,due['local_day'])).fetchone():
                 raise EntryProfileBusy('daily_limit')
             settings=_ensure(conn,entry_id,stamp)
-            material={'evidence':evidence,'settings':settings,'runtime':config,
+            material={'format_version':PROFILE_FORMAT,'evidence':evidence,'settings':settings,'runtime':config,
+                      'output_limits':{'max_items':MAX_ITEMS,'max_chars':config['max_chars'],'max_tokens':MAX_PROFILE_TOKENS},
                       'previous':previous['content'] if previous else '',
                       'admin_sentences':[s for s in previous['sentences'] if s['author']=='admin'] if previous else []}
             attempt=conn.execute('''INSERT INTO entry_profile_attempts(entry_id,run_id,base_version,state,local_day,
@@ -694,17 +820,17 @@ class EntryProfileEngine:
                  gateway, evidence, material, attempt):
         outputs={}; calls=[]; sentences=None
         try:
-            checks={'passed':False,'errors':[],'deleted_sentences':[],'model':None}
+            checks={'format_version':PROFILE_FORMAT,'passed':False,'errors':[],'deleted_sentences':[],'model':None}
             degree='large'
             try:
                 generated=self._call(gateway,'generate',material,outputs,calls,config)
-                sentences,deleted,errors,count=_resolve(generated,evidence,previous)
-                checks.update(errors=errors,deleted_sentences=deleted,original_sentence_count=count,
-                              original_sentences=generated.get('sentences'),deterministic={'passed':not errors and not deleted})
+                sentences,deleted,errors,count,quote_stats=_resolve(generated,evidence,previous)
+                checks.update(errors=errors,deleted_sentences=deleted,original_sentence_count=count,original_item_count=count,quote_validation=quote_stats,
+                              original_sentences=generated.get('items'),deterministic={'passed':not errors and not deleted})
                 content=''.join(s['text'] for s in sentences)
-                if len(deleted)*10>count*3:
+                if len(deleted)*2>count:
                     checks['errors'].append('too_many_deleted')
-                checks['errors']+=_length_errors(content,config)
+                checks['errors']+=_length_errors(content,config,structured=True)
                 if not checks['errors']:
                     checks['checked_sentences']=sentences
                     # Persist progress without holding a transaction over network IO.
@@ -714,20 +840,22 @@ class EntryProfileEngine:
                     checks['model_input']=_check_input(material,sentences)
                     output=self._call(gateway,'check',checks['model_input'],outputs,calls,config)
                     checks['model']=output
-                    sentences,removed,warnings,degree=_check(output,sentences)
+                    sentences,removed,warnings,degree,removed_meanings=_check(output,sentences)
+                    checks['removed_meanings']=removed_meanings
                     checks['deleted_sentences']+=removed
                     checks['admin_warnings']=warnings
                     content=''.join(s['text'] for s in sentences)
-                    if len(checks['deleted_sentences'])*10>count*3:
+                    if len(checks['deleted_sentences'])*2>count:
                         checks['errors'].append('too_many_deleted')
-                    checks['errors']+=_length_errors(content,config)
+                    checks['errors']+=_length_errors(content,config,structured=True)
                     # A checker saw the larger draft; do not pretend it judged the
                     # final deletion's degree. Auto mode permits large changes too.
-                    if removed:
+                    if removed or removed_meanings:
                         degree='large'
                 checks['passed']=not checks['errors']
                 checks['deterministic']={'passed':not checks['errors'],'errors':list(checks['errors']),
-                    'characters':len(content.strip()),'deleted_count':len(checks['deleted_sentences'])}
+                    'characters':len(content),'tokens':estimate_tokens(content),
+                    'deleted_count':len(checks['deleted_sentences'])}
             except (ModelError,ValueError) as error:
                 reason=(error.reason or error.category) if isinstance(error,ModelError) else 'invalid_output'
                 checks.update(reason=reason,errors=[*checks['errors'],reason],passed=False)

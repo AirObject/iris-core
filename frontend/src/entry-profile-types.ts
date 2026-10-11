@@ -16,12 +16,24 @@ export type ProfileBasis = {
 };
 export type ProfileSentence = {
   text: string;
+  kind?: "topic" | "saying" | "rule";
+  label?: string;
+  meaning?: string;
+  quotes?: {
+    message_id: number;
+    text: string;
+    field?: string;
+    speaker?: string;
+    speaker_name?: string | null;
+  }[];
+  format_version?: number;
   author: "model" | "admin";
   admin_written?: boolean;
   basis: ProfileBasis[];
 };
 export type ProfileVersion = {
   version: number;
+  format_version?: number;
   content: string;
   status: "candidate" | "published" | "rejected";
   is_current: boolean;
@@ -35,6 +47,7 @@ export type ProfileCheck = {
   index: number;
   supported: boolean;
   scene_qualified: boolean;
+  meaning_supported?: boolean;
   violations: string[];
   reason: string;
 };
@@ -43,14 +56,25 @@ export type ProfileDetail = ProfileVersion & {
   stale_basis: ProfileBasis[];
   checks: {
     passed: boolean;
+    format_version?: number;
+    quote_validation_items?: {
+      index: number;
+      total: number;
+      passed: number;
+      quotes: { index: number; passed: boolean; reason?: string | null }[];
+    }[];
+    quote_validation?: { total: number; passed: number };
+    removed_meanings?: { index: number; meaning: string; reason: string }[];
+    admin_warnings?: { index: number; result: ProfileCheck }[];
     reason?: string;
     errors?: string[];
-    deterministic?: { passed: boolean };
+    deterministic?: { passed: boolean; characters?: number; tokens?: number };
     model?: { reason: string; sentences: ProfileCheck[] } | null;
     checked_sentences?: ProfileSentence[];
     deleted_sentences?: {
       index: number;
-      sentence?: { text?: string };
+      sentence?: { text?: string; label?: string; quotes?: unknown[] };
+      stage?: string;
       reason: string;
     }[];
     admin_edit?: boolean;
@@ -68,6 +92,7 @@ export type ProfileAttempt = {
 export type ProfileSnapshot = {
   supported: boolean;
   global_enabled: boolean;
+  edit_limits?: { max_items: number; max_chars: number; max_tokens: number };
   settings: {
     enabled: boolean;
     publish_mode: "check_auto" | "all_manual";

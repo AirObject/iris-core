@@ -108,6 +108,7 @@ def test_migration_006_preserves_old_calls_with_unknown_diagnostics(tmp_path):
             row = dict(conn.execute("SELECT * FROM model_calls").fetchone())
         assert row["model"] == "legacy"
         assert row["reasoning_effort"] is row["reasoning_present"] is row["reasoning_chars"] is None
+        assert row["leading_think_stripped"] is None
         assert list(tmp_path.glob("old.db.*.bak"))
     finally:
         store.close()

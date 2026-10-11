@@ -46,6 +46,7 @@ def summarize(rows):
         'merge_recognition': ratio(sum(r['recognized'] for r in merge_cases), len(merge_cases)),
         'separate_possible_rate': ratio(sum(bool(r['possible_targets']) for r in separate), len(separate)),
         'uncertain_possible_rate': ratio(sum(bool(r['possible_targets']) for r in uncertain), len(uncertain)),
+        'nonmerge_possible_rate': ratio(sum(bool(r['possible_targets']) for r in [*separate,*uncertain]), len(separate)+len(uncertain)),
         'uncertain_candidate_hit_rate': ratio(sum(r['possible_candidate_hit'] for r in candidates), len(candidates)),
         'uncertain_candidate_outside_cases': sum(bool(r['possible_outside_candidates']) for r in candidates),
         'degraded_cases': degraded, 'pending_cases': sum(r['decision']['status'] == 'pending' for r in rows),

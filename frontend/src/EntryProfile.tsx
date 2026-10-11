@@ -1,3 +1,11 @@
+import {
+  ProfileItemView,
+  StructuredProfileEditor,
+  editItem,
+  itemRequest,
+  profileDraftBudget,
+  type ProfileDraft,
+} from "./EntryProfileItems";
 import { useEffect, useRef, useState } from "react";
 import { api, errorText, json, useData } from "./api";
 import { Badge, Dialog, Notice, Pagination, fullTime } from "./ui";
@@ -51,13 +59,33 @@ const reasons: Record<string, string> = {
   invalid_output: "模型输出格式无效，未发布",
   invalid_sentence: "候选句格式无效",
   too_many_deleted: "检查删除了超过 30% 的候选句",
-  too_short: "删句后的正文不足 150 字",
-  too_long: "正文超过 500 字",
+  too_short: "正文低于旧版摘要的最少字数要求",
+  too_long: "正文超过该版本的字数上限",
   superseded: "已被新候选或编辑取代",
   paused: "对话用途已暂停",
+  invalid_items: "候选条目列表格式无效",
+  invalid_item: "条目类型、名称或含义格式无效",
+  invalid_quotes: "每个模型条目需要 1—3 条引语",
+  invalid_quote: "引语格式无效或超过 100 字",
+  invalid_quote_reference: "引语消息编号不在本入口材料中",
+  quote_not_found: "引语不是消息正文或转引原话的连续片段",
+  invalid_evidence_reference: "含义引用的记忆依据无效",
+  duplicate_item: "条目重复",
+  account_identifier: "包含账号标识或长数字号段",
+  insufficient_topic_recurrence: "常聊话题缺少跨日期的独立消息正文依据",
+  too_many_items: "条目数超过 6 条（包含手写条目）",
+  token_budget: "超过画像的估算 token 预算",
+  empty: "检查后没有可保留内容",
   administrator_rejected: "管理员拒绝",
 };
-const reason = (value: string) => reasons[value] || value;
+const reason = (value: string, format?: number) =>
+  value === "too_many_deleted"
+    ? format === 2
+      ? "检查累计删除了超过 50% 的模型条目"
+      : format === 1
+        ? "检查删除了超过 30% 的候选句"
+        : "检查删除比例超出该版本上限，请查看版本检查记录"
+    : reasons[value] || value;
 const basisName = (basis: ProfileBasis) =>
   basis.memory_id
     ? `记忆 #${basis.memory_id} · 修订 ${basis.revision}`
@@ -83,10 +111,12 @@ export function EntryProfileDialog({
   const detail = useData<ProfileDetail>(
     selected === null ? null : `${base}/versions/${selected}`,
   );
-  const [draft, setDraft] = useState<{
-    content: string;
-    expected_version: number;
-  } | null>(null);
+  const [draft, setDraft] = useState<ProfileDraft | null>(null);
+  const currentDetail = useData<ProfileDetail>(
+    snapshot.data?.current?.format_version === 2
+      ? `${base}/versions/${snapshot.data.current.version}`
+      : null,
+  );
   const [settings, setSettings] = useState<{
     enabled: boolean;
     publish_mode: string;
@@ -169,8 +199,36 @@ export function EntryProfileDialog({
     setError("");
   };
   const expected = { expected_version: value?.settings.current_version || 0 };
+  const currentReady = currentDetail.data?.version === value?.current?.version;
   const working = value?.latest_attempt?.state === "running";
-  const size = Array.from(draft?.content.trim() || "").length;
+  const budget = profileDraftBudget(
+    draft || { expected_version: 0, content: "" },
+  );
+  const limits = value?.edit_limits || {
+    max_items: 6,
+    max_chars: 500,
+    max_tokens: 500,
+  };
+  const size = budget.characters;
+  const draftInvalid =
+    !draft ||
+    size > limits.max_chars ||
+    (draft.items
+      ? !draft.items.length ||
+        draft.items.length > limits.max_items ||
+        budget.tokens > limits.max_tokens ||
+        draft.items.some((item) =>
+          item.kind
+            ? !item.label.trim() ||
+              item.quotes.some(
+                (q) =>
+                  !Number.isSafeInteger(q.message_id) ||
+                  q.message_id < 1 ||
+                  !q.text.trim(),
+              )
+            : !item.text.trim(),
+        )
+      : size < 150);
   return (
     <Dialog
       title={`入口画像 · ${entry.name}`}
@@ -300,9 +358,39 @@ export function EntryProfileDialog({
                     {source(value.current.source)} · 变化
                     {degree(value.current.change_degree)}
                   </p>
-                  <p className="entry-profile-content">
-                    {value.current.content}
-                  </p>
+                  {value.current.format_version === 2 ? (
+                    currentDetail.data && currentReady ? (
+                      currentDetail.data.sentences.map((item, i) => (
+                        <div key={i}>
+                          <ProfileItemView value={item} />
+                          <Badge>
+                            {item.admin_written
+                              ? "管理员手写 · 受保护"
+                              : "模型生成"}
+                          </Badge>
+                        </div>
+                      ))
+                    ) : currentDetail.error ? (
+                      <Notice error>
+                        {currentDetail.error}
+                        <button
+                          className="text-button"
+                          onClick={currentDetail.refresh}
+                        >
+                          重试当前条目
+                        </button>
+                      </Notice>
+                    ) : (
+                      <p>正在读取条目…</p>
+                    )
+                  ) : (
+                    <>
+                      <Badge>旧版摘要</Badge>
+                      <p className="entry-profile-content">
+                        {value.current.content}
+                      </p>
+                    </>
+                  )}
                 </>
               )}
               {value.possibly_stale && (
@@ -328,10 +416,21 @@ export function EntryProfileDialog({
                 )}
                 <button
                   className="secondary"
-                  disabled={busy || !!draft}
+                  disabled={
+                    busy ||
+                    !!draft ||
+                    (value.current?.format_version === 2 && !currentReady)
+                  }
                   onClick={() => {
                     setDraft({
                       content: value.current?.content || "",
+                      ...(value.current?.format_version === 2 &&
+                      currentDetail.data &&
+                      currentReady
+                        ? { items: currentDetail.data.sentences.map(editItem) }
+                        : !value.current
+                          ? { items: [] }
+                          : {}),
                       ...expected,
                     });
                     setError("");
@@ -405,7 +504,12 @@ export function EntryProfileDialog({
                     await change(
                       "",
                       "PUT",
-                      draft,
+                      draft.items
+                        ? {
+                            expected_version: draft.expected_version,
+                            items: draft.items.map(itemRequest),
+                          }
+                        : draft,
                       "编辑已发布，新写句子将按管理员手写保护。",
                     )
                   )
@@ -416,19 +520,31 @@ export function EntryProfileDialog({
                 <p>
                   新增或改写的句子标为管理员手写，后续模型生成会原样保留；未改动句子保留原依据。
                 </p>
-                <label>
-                  画像正文
-                  <textarea
-                    rows={8}
-                    value={draft.content}
+                {draft.items ? (
+                  <StructuredProfileEditor
+                    items={draft.items}
                     disabled={busy}
-                    onChange={(e) =>
-                      setDraft({ ...draft, content: e.target.value })
-                    }
+                    maxItems={limits.max_items}
+                    onChange={(items) => setDraft({ ...draft, items })}
                   />
-                </label>
+                ) : (
+                  <label>
+                    画像正文
+                    <textarea
+                      rows={8}
+                      value={draft.content}
+                      disabled={busy}
+                      onChange={(e) =>
+                        setDraft({ ...draft, content: e.target.value })
+                      }
+                    />
+                  </label>
+                )}
                 <p>
-                  {size} 字 / 150—500 字 · 编辑基于 v{draft.expected_version}
+                  {draft.items
+                    ? `${draft.items.length} / ${limits.max_items} 条 · ${size} / ${limits.max_chars} 字 · ${budget.tokens} / ${limits.max_tokens} 估算 token（含分类、引语和标点，无最低字数）`
+                    : `${size} 字 / 150—500 字（旧版摘要）`}{" "}
+                  · 编辑基于 v{draft.expected_version}
                 </p>
                 {draft.expected_version !== value.settings.current_version && (
                   <Notice>
@@ -439,8 +555,7 @@ export function EntryProfileDialog({
                   <button
                     disabled={
                       busy ||
-                      size < 150 ||
-                      size > 500 ||
+                      draftInvalid ||
                       draft.expected_version !== value.settings.current_version
                     }
                   >
@@ -693,6 +808,7 @@ function ProfileDetails({
 }) {
   const checks = value.checks;
   const model = checks.model;
+  const format = checks.format_version || 1;
   // Rejected versions retain invalid model JSON for audit; it is not a typed result.
   const validModel =
     checks.reason !== "invalid_output" &&
@@ -717,11 +833,12 @@ function ProfileDetails({
         {status(value.status)} · {source(value.source)} · 变化
         {degree(value.change_degree)} · {fullTime(value.generated_at)}
       </p>
+      {format === 1 && <Badge>旧版摘要</Badge>}
       {value.possibly_stale && <Notice>此版本依据可能过时。</Notice>}
       <ol className="entry-profile-sentences">
         {value.sentences.map((sentence, index) => (
           <li key={index}>
-            <p>{sentence.text}</p>
+            <ProfileItemView value={sentence} />
             <Badge>
               {sentence.admin_written ? "管理员手写 · 受保护" : "模型生成"}
             </Badge>
@@ -773,7 +890,40 @@ function ProfileDetails({
         ))}
       </ol>
       <h4>检查结果：{checks.passed ? "通过" : "未通过"}</h4>
-      {checks.reason && <p>{reason(checks.reason)}</p>}
+      {checks.reason && <p>{reason(checks.reason, format)}</p>}
+      {checks.quote_validation && (
+        <p>
+          引用原话核对：{checks.quote_validation.passed} /{" "}
+          {checks.quote_validation.total}{" "}
+          条通过（含被删条目的引语；不代表语义支持）
+        </p>
+      )}
+      {!!checks.quote_validation_items?.length && (
+        <details>
+          <summary>逐条引用核对</summary>
+          <ul>
+            {checks.quote_validation_items.map((item) => (
+              <li key={item.index}>
+                候选第 {item.index} 项：{item.passed} / {item.total} 条原话通过
+                {item.quotes
+                  .filter((quote) => !quote.passed)
+                  .map((quote) => (
+                    <p key={quote.index}>
+                      引语 {quote.index}：
+                      {reason(quote.reason || "invalid_quote", format)}
+                    </p>
+                  ))}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {checks.deterministic?.characters != null && (
+        <p>
+          正文 {checks.deterministic.characters} 字 ·{" "}
+          {checks.deterministic.tokens ?? "未记录"} 估算 token
+        </p>
+      )}
       <p>
         确定性检查：
         {checks.deterministic?.passed ? "通过" : "存在删句或错误，见下方记录"}
@@ -781,7 +931,7 @@ function ProfileDetails({
       {checks.errors?.length ? (
         <ul>
           {checks.errors.map((e, i) => (
-            <li key={i}>{reason(e)}</li>
+            <li key={i}>{reason(e, format)}</li>
           ))}
         </ul>
       ) : null}
@@ -795,6 +945,10 @@ function ProfileDetails({
                 <p>
                   依据{s.supported ? "支持" : "不支持"} · 场景限定
                   {s.scene_qualified ? "通过" : "未通过"} ·{" "}
+                  {checks.checked_sentences?.[i]?.meaning &&
+                  typeof s.meaning_supported === "boolean"
+                    ? `含义${s.meaning_supported ? "有依据" : "无依据，已移除"} · `
+                    : ""}
                   {s.violations.length
                     ? s.violations.join("、")
                     : "未发现禁止内容"}
@@ -813,9 +967,36 @@ function ProfileDetails({
               : "本版未执行模型检查。"}
         </p>
       )}
+      {!!checks.removed_meanings?.length && (
+        <>
+          <h4>已删含义记录</h4>
+          <p>说法本身可以保留；没有含义不表示生成失败。</p>
+          <ul>
+            {checks.removed_meanings.map((item, i) => (
+              <li key={i}>
+                候选第 {item.index} 项：{item.meaning}
+                <p>{reason(item.reason, format)}</p>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {!!checks.admin_warnings?.length && (
+        <>
+          <h4>手写条目检查提醒</h4>
+          <ul>
+            {checks.admin_warnings.map((item, i) => (
+              <li key={i}>
+                第 {item.index} 项：{item.result.violations.join("、")} ·{" "}
+                {item.result.reason}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       {!!checks.deleted_sentences?.length && (
         <>
-          <h4>已删句记录</h4>
+          <h4>{format === 2 ? "已删条目记录" : "已删句记录"}</h4>
           <ul>
             {checks.deleted_sentences.map((s, i) => (
               <li key={i}>
@@ -824,7 +1005,14 @@ function ProfileDetails({
                     ? s.sentence.text
                     : `候选第 ${s.index} 项`}
                 </p>
-                <p>{reason(s.reason)}</p>
+                <p>
+                  {s.stage === "deterministic"
+                    ? "引用与格式核对："
+                    : s.stage === "model"
+                      ? "模型检查："
+                      : ""}
+                  {reason(s.reason, format)}
+                </p>
               </li>
             ))}
           </ul>
@@ -837,7 +1025,7 @@ function ProfileDetails({
 function DiffSentence({ value }: { value: ProfileSentence }) {
   return (
     <div>
-      <p>{value.text}</p>
+      <ProfileItemView value={value} />
       <small>
         {value.author === "admin" ? "管理员手写" : "模型生成"}
         {value.basis?.length
