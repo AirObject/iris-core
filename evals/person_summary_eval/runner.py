@@ -17,7 +17,9 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from iris.db import Store, dumps
-from iris.person_summary import PersonSummaryEngine, VIOLATIONS, admin_edit, _instant
+from iris.person_summary import (
+    PersonSummaryEngine, VIOLATIONS, admin_edit, select_material, summary_due, _instant,
+)
 from iris.evaluation import _json_sha256, _read_json, _write_json, _verified_material_file, _percentile
 from iris.models import Gateway, ModelReply, load_test_models
 
@@ -54,8 +56,8 @@ def load_corpus(path):
             raise ValueError('duplicate or invalid case id')
         ids.add(case['id']); current=_instant(case['as_of']); ZoneInfo(case.get('timezone','Asia/Shanghai'))
         entries=case['entries']; subjects=case['subjects']; memories=case['memories']
-        if not all(isinstance(values,list) and values for values in (entries,subjects,memories)):
-            raise ValueError('entries, subjects and memories must be nonempty arrays')
+        if not all(isinstance(values,list) and values for values in (entries,subjects)) or not isinstance(memories,list):
+            raise ValueError('entries and subjects must be nonempty arrays; memories must be an array')
         def identities(values):
             result=[v['id'] for v in values]
             if any(not isinstance(v,str) or not v for v in result) or len(set(result))!=len(result):
@@ -79,8 +81,8 @@ def load_corpus(path):
                     or any(value is not None and (not isinstance(value,str) or value not in eids) for value in origins.values())):
                 raise ValueError('alias_source_entries must map declared aliases to declared entries or null')
         for m in memories:
-            if (not isinstance(m.get('content'),str) or not m['content'].strip() or m.get('speaker') not in sids|{'self','scene'}
-                    or m.get('lifecycle','active') not in ('active','forgotten','deleted')):
+            if (not isinstance(m.get('content'),str) or (not m['content'].strip() and m.get('lifecycle')!='purged') or m.get('speaker') not in sids|{'self','scene'}
+                    or m.get('lifecycle','active') not in ('active','forgotten','deleted','purged')):
                 raise ValueError('invalid memory content, speaker or lifecycle')
             for key in ('about','source_entries','derived_from','tags'):
                 _texts(m.get(key,[]),key)
@@ -93,6 +95,10 @@ def load_corpus(path):
                 if _instant(m.get(key,m['created_at']))>current:
                     raise ValueError('future memory metadata')
         _texts(case.get('must_cover',[]),'must_cover'); _texts(case.get('forbidden',[]),'forbidden')
+        if type(case.get('expect_none',False)) is not bool:
+            raise ValueError('expect_none must be a boolean')
+        if case.get('expect_none',False) and case.get('must_cover',[]):
+            raise ValueError('expect_none requires an empty must_cover array')
         private=_restricted(case); by_id={m['id']:m for m in memories}
         probes=case.get('leak_probes',[])
         if not isinstance(probes,list):
@@ -129,11 +135,13 @@ def _load_case(store, case):
                              (subject['id'],alias,message))
         for m in case['memories']:
             mids[m['id']]=conn.execute("""INSERT INTO memories(content,kind,speaker_subject_id,stance,belief,importance,
-                retention,lifecycle,revision,event_time,world,created_at,updated_at,first_confirmed_at,last_confirmed_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(m['content'],m.get('kind','事实'),m['speaker'],m.get('stance','亲历'),
-                m.get('belief',90),m.get('importance',50),m.get('retention',80),m.get('lifecycle','active'),m.get('revision',1),
+                retention,lifecycle,revision,event_time,world,created_at,updated_at,first_confirmed_at,last_confirmed_at,purged_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",('' if m.get('lifecycle')=='purged' else m['content'],m.get('kind','事实'),m['speaker'],m.get('stance','亲历'),
+                m.get('belief',90),m.get('importance',50),m.get('retention',80),
+                'deleted' if m.get('lifecycle')=='purged' else m.get('lifecycle','active'),m.get('revision',1),
                 m.get('event_time'),m.get('world','real'),m['created_at'],m.get('updated_at',m['created_at']),
-                m.get('first_confirmed_at',m['created_at']),m.get('last_confirmed_at',m['created_at']))).lastrowid
+                m.get('first_confirmed_at',m['created_at']),m.get('last_confirmed_at',m['created_at']),
+                stamp if m.get('lifecycle')=='purged' else None)).lastrowid
         for m in case['memories']:
             mid=mids[m['id']]
             conn.executemany('INSERT INTO memory_subjects(memory_id,subject_id) VALUES(?,?)',((mid,s) for s in set(m.get('about',[]))))
@@ -237,6 +245,89 @@ def _completed(result, attempts, calls):
     return bool(any(json.loads(a['outputs_json']) for a in attempts)) and all(c['result']=='success' for c in traces)
 
 
+def _expect_none_check(row):
+    """A skipped audit row is allowed; any evidence of generation is a failure."""
+    if not row['case'].get('expect_none',False):
+        return None
+    violations=[]; versions={v['version']:v['status'] for v in row.get('generated_versions',[])}
+    profile=row['result'].get('version')
+    if profile:
+        versions[profile['version']]=profile['status']
+    for version,status in sorted(versions.items()):
+        violations.append({'kind':'unexpected_version','version':version,'status':status})
+    if not versions and row['result']['status'] in ('published','candidate','rejected'):
+        violations.append({'kind':'unexpected_generation_result','status':row['result']['status']})
+    for attempt in row['attempts']:
+        artifacts=[key for key in ('material_json','outputs_json','calls_json') if json.loads(attempt[key])]
+        if attempt['state']!='skipped' or artifacts or attempt.get('version') is not None or attempt.get('cleared_at'):
+            violations.append({'kind':'unexpected_attempt','attempt_id':attempt['id'],'state':attempt['state'],
+                               'artifacts':artifacts,'version':attempt.get('version')})
+    if row['calls']:
+        violations.append({'kind':'unexpected_model_calls','count':len(row['calls'])})
+    expected_skip=row['result']['status']=='skipped' and row['result'].get('reason')=='insufficient_memories'
+    return {'status':'failed' if violations else 'passed' if expected_skip else 'incomplete',
+            'global_memories':row.get('due',row['result'].get('due',{})).get('global_memories'),
+            'violations':violations}
+
+
+def _row_complete(row):
+    check=_expect_none_check(row)
+    # An unexpected attempt is already a decisive failure of an absence case,
+    # including a provider failure with no output. It needs no semantic judgment.
+    if check is not None:
+        return check['status']!='incomplete'
+    return _completed(row['result'],row['attempts'],row['calls'])
+
+
+def _material_diagnostics(selected, attempts, mapping):
+    if selected is None:
+        return None
+    available={int(mid) for mid in selected['memory_state']}
+    actual={m['memory_id'] for m in selected['memories']}
+    source='pre_generation_snapshot'; attempt_id=None
+    # A run makes one regenerate request per isolated case. Prefer its recorded
+    # material; the pre-call snapshot also diagnoses no_evidence/health skips.
+    for attempt in attempts:
+        material=json.loads(attempt['material_json'])
+        if 'evidence' in material:
+            available={int(mid) for mid in json.loads(attempt['memory_state_json'])}
+            actual={m['memory_id'] for m in material['evidence'].get('memories',[])}
+            source='attempt'; attempt_id=attempt['id']
+    excluded=available-actual
+    return {'selection_source':source,'attempt_id':attempt_id,'global_memories':len(available),
+            'selected_memories':len(actual),'material_truncated':len(actual)<len(available),
+            'excluded_memory_ids':[key for key,mid in mapping.items() if mid in excluded],
+            'excluded_database_memory_ids':sorted(excluded)}
+
+
+def _material_memory_ids(material):
+    evidence=material.get('evidence',{})
+    return set(material.get('dependency_ids',[])) | {m['memory_id'] for m in evidence.get('memories',[])} | {
+        b['memory_id'] for b in evidence.get('previous_basis',[])} | {
+        b['memory_id'] for s in material.get('admin_sentences',[]) for b in s.get('basis',[])}
+
+
+def _non_active(row):
+    # Compute eligibility from immutable corpus annotations, not DB lifecycle,
+    # the product selector, model checks or an external grader's decision.
+    inactive={m['id']:m.get('lifecycle','active') for m in row['case']['memories']
+              if m.get('lifecycle','active')!='active'}
+    mapping=row['memory_ids']; violations=[]
+    if set(mapping)!={m['id'] for m in row['case']['memories']}:
+        return {'non_active_memories':len(inactive),'violations':[{'kind':'incomplete_seed_mapping'}]}
+    by_id={mapping[key]:{'corpus_memory_id':key,'lifecycle':state} for key,state in inactive.items()}
+    def audit(ids, kind, **location):
+        for mid in sorted(ids & by_id.keys()):
+            violations.append({'kind':kind,'memory_id':mid,**by_id[mid],**location})
+    for attempt in row['attempts']:
+        audit(_material_memory_ids(json.loads(attempt['material_json'])),'non_active_material',attempt_id=attempt['id'])
+    profile=row['result'].get('version')
+    if profile:
+        audit(_material_memory_ids(profile.get('material',{})),'non_active_material',location='version_material')
+        audit({b['memory_id'] for s in profile['sentences'] for b in s['basis']},'non_active_reference')
+    return {'non_active_memories':len(inactive),'violations':violations}
+
+
 def _leaks(row):
     private=_restricted(row['case']); mapping=row['memory_ids']; violations=[]
     if set(mapping)!={m['id'] for m in row['case']['memories']}:
@@ -276,13 +367,20 @@ def _leaks(row):
 
 
 def _payload(row):
-    profile=row['result'].get('version')
-    return {'subject_id':row['case']['subject_id'],'as_of':row['case']['as_of'],
-            'profile':profile,'evidence':profile['material']['evidence'] if profile else None,
+    profile=row['result'].get('version'); expect_none=row['case'].get('expect_none',False)
+    payload={'subject_id':row['case']['subject_id'],'as_of':row['case']['as_of'],
+            'profile':profile,'evidence':profile['material'].get('evidence') if profile else None,
             'previous':profile['material'].get('previous','') if profile else '',
             'source_case':row['case'],'memory_ids':row['memory_ids'],'leak_check':_leaks(row),
-            'must_cover':row['case'].get('must_cover',[]),'forbidden':row['case'].get('forbidden',[]),
+            'must_cover':[] if expect_none else row['case'].get('must_cover',[]),
+            'forbidden':[] if expect_none else row['case'].get('forbidden',[]),
             'status':row['result']['status'],'reason':row['result'].get('reason')}
+    # Preserve the document shape of older immutable v1 bundles when scoring.
+    if 'expect_none_check' in row:
+        payload.update(expect_none=expect_none,judgment_mode='empty' if expect_none else 'semantic',
+                       expect_none_check=_expect_none_check(row),due=row['due'],
+                       material_diagnostics=row['material_diagnostics'],non_active_check=_non_active(row))
+    return payload
 
 
 def _document(row, metadata):
@@ -309,24 +407,34 @@ def run_eval(corpus, out, *, configs=None, gateway_factory=Gateway, extra_input=
     # Always a fresh DB/run: no completed result is selected or reused by score.
     for index,case in enumerate(cases):
         store=Store(directory/'databases'/f'{index:04}.db'); gateway=None; mapping={}
+        due={}; selected=None; base_version=0
         try:
-            mapping=_load_case(store,case)
-            gateway=gateway_factory(configs,store)
-            engine=PersonSummaryEngine(store,gateway,clock=lambda:_instant(case['as_of']))
-            with store.read() as conn:
-                saved=conn.execute('SELECT current_version FROM person_summary_settings WHERE subject_id=?',(case['subject_id'],)).fetchone()
-            result=engine.regenerate(case['subject_id'],expected_version=saved[0] if saved else 0)
+            try:
+                mapping=_load_case(store,case)
+                with store.read() as conn:
+                    saved=conn.execute('SELECT current_version FROM person_summary_settings WHERE subject_id=?',(case['subject_id'],)).fetchone()
+                    base_version=saved[0] if saved else 0
+                gateway=gateway_factory(configs,store)
+                clock=lambda:_instant(case['as_of'])
+                due=summary_due(store,case['subject_id'],clock=clock)
+                if not case.get('expect_none',False):
+                    selected=select_material(store,case['subject_id'],clock=clock)
+                engine=PersonSummaryEngine(store,gateway,clock=clock)
+                result=engine.regenerate(case['subject_id'],expected_version=base_version)
+            except Exception as error:
+                # Never echo exception text from providers, payloads or configuration.
+                result={'status':'failed','reason':type(error).__name__,'version':None}
             with store.read() as conn:
                 attempts=[dict(r) for r in conn.execute('SELECT * FROM person_summary_attempts ORDER BY id')]
                 calls=[dict(r) for r in conn.execute('SELECT * FROM model_calls ORDER BY id')]
-            rows.append({'case':case,'memory_ids':mapping,'result':result,'attempts':attempts,'calls':calls,'complete':_completed(result,attempts,calls)})
-        except Exception as error:
-            # Never echo exception text from providers, payloads or configuration.
-            with store.read() as conn:
-                attempts=[dict(r) for r in conn.execute('SELECT * FROM person_summary_attempts ORDER BY id')]
-                calls=[dict(r) for r in conn.execute('SELECT * FROM model_calls ORDER BY id')]
-            rows.append({'case':case,'memory_ids':mapping,'result':{'status':'failed','reason':type(error).__name__,'version':None},
-                         'attempts':attempts,'calls':calls,'complete':False})
+                versions=[dict(r) for r in conn.execute("""SELECT version,status,author,source FROM person_summary_versions
+                    WHERE subject_id=? AND version>? ORDER BY version""",(case['subject_id'],base_version))]
+            row={'case':case,'memory_ids':mapping,'result':result,'attempts':attempts,'calls':calls,
+                 'due':due,'generated_versions':versions}
+            row.update(complete=_row_complete(row),expect_none_check=_expect_none_check(row),
+                       non_active_check=_non_active(row),
+                       material_diagnostics=_material_diagnostics(selected,attempts,mapping))
+            rows.append(row)
         finally:
             if gateway and callable(getattr(gateway,'close',None)):
                 gateway.close()
@@ -380,6 +488,10 @@ def _load_materials(path):
 def _validate(vote,row):
     if not isinstance(vote,dict) or set(vote)!={'item_results','must_cover','forbidden'}:
         raise ValueError('invalid judgment fields')
+    if row['case'].get('expect_none',False):
+        if any(vote[key]!=[] for key in ('item_results','must_cover','forbidden')):
+            raise ValueError('expect_none judgments must contain only empty arrays')
+        return vote
     profile=row['result'].get('version'); sentences=profile['sentences'] if profile else []
     if not isinstance(vote['item_results'],list) or len(vote['item_results'])!=len(sentences):
         raise ValueError('judgment item count mismatch')
@@ -421,7 +533,22 @@ def _combine(votes):
 def _metrics(rows, votes=None):
     candidates=[r['result']['version'] for r in rows if r['result'].get('version')]
     checks=[_leaks(r) for r in rows]; calls=[c for r in rows for a in r['attempts'] for c in json.loads(a['calls_json'])]
-    metrics={'cases':len(rows),'incomplete_cases':sum(not r['complete'] for r in rows),
+    none_checks=[{'case_id':r['case']['id'],**check} for r in rows if (check:=_expect_none_check(r)) is not None]
+    inactive_checks=[{'case_id':r['case']['id'],**_non_active(r)} for r in rows]
+    truncations=[{'case_id':r['case']['id'],**r['material_diagnostics']} for r in rows
+                 if r.get('material_diagnostics') and r['material_diagnostics']['material_truncated']]
+    metrics={'cases':len(rows),'incomplete_cases':sum(not _row_complete(r) for r in rows),
+        'expect_none_cases':len(none_checks),'expect_none_passed':sum(c['status']=='passed' for c in none_checks),
+        'expect_none_failed':sum(c['status']=='failed' for c in none_checks),
+        'expect_none_incomplete':sum(c['status']=='incomplete' for c in none_checks),
+        'expect_none_violations':sum(len(c['violations']) for c in none_checks),'expect_none_results':none_checks,
+        'material_truncated_cases':len(truncations),
+        'material_truncated_memories':sum(len(c['excluded_memory_ids']) for c in truncations),
+        'material_truncations':truncations,
+        'material_diagnostics_unavailable':sum(not r['case'].get('expect_none',False) and not r.get('material_diagnostics') for r in rows),
+        'non_active_violations':sum(len(c['violations']) for c in inactive_checks),
+        'non_active_memories_checked':sum(c['non_active_memories'] for c in inactive_checks),
+        'non_active_results':inactive_checks,
         'generated_candidates':len(candidates),'rejected_candidates':sum(v['status']=='rejected' for v in candidates),
         'published':sum(v['status']=='published' for v in candidates),'candidate':sum(v['status']=='candidate' for v in candidates),
         'deleted_items':sum(len(v['checks'].get('deleted_sentences',[])) for v in candidates),
@@ -442,6 +569,8 @@ def _metrics(rows, votes=None):
     if votes is not None:
         total=supported=admin=covered=expected=forbidden=0; violations=Counter(); rejected=Counter()
         for row,vote in zip(rows,votes,strict=True):
+            if row['case'].get('expect_none',False):
+                continue
             profile=row['result'].get('version'); expected+=len(vote['must_cover'])
             if not profile or profile['status']=='rejected':
                 rejected.update(v for s in vote['item_results'] for v in s['violations'])
@@ -457,7 +586,8 @@ def _metrics(rows, votes=None):
             violations=dict(violations),prohibited_violations=prohibited,rejected_violations=dict(rejected),
             must_cover_covered=covered,must_cover_total=expected,must_cover_coverage=covered/expected if expected else None,
             forbidden_occurrences=forbidden,meets_threshold=ratio is not None and ratio>=.9 and not prohibited
-            and not forbidden and not metrics['scoped_leaks'] and not metrics['incomplete_cases'])
+            and not forbidden and not metrics['scoped_leaks'] and not metrics['non_active_violations']
+            and not metrics['expect_none_violations'] and not metrics['incomplete_cases'])
     return metrics
 
 

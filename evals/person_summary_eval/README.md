@@ -1,10 +1,10 @@
-# 人物摘要运行器（PS1）
+# 人物摘要运行器（PS1／PS-E）
 
 只读取显式 `--corpus` 文件，不扫描目录，不默认读取 person_summary_v1。GD 的 dev 集须手写并单独冻结；本 PR 未读取或修改该集。仓库内测试仅为假模型机制夹具。完整材料、原始输出、隔离数据库和判分应写到仓库外 `iris-eval-artifacts`。
 
 ## 给 GD 的语料格式
 
-UTF-8 JSON，顶层 `{"format_version":1,"cases":[...]}`。每个 case 是一个目标人物，在独立数据库载入全部声明的入口、主体和记忆；同名人物用不同 subject ID。建议按规格手写 8—10 个案例，每人 10—30 条记忆。
+UTF-8 JSON，顶层 `{"format_version":1,"cases":[...]}`。每个 case 是一个目标人物，在独立数据库载入全部声明的入口、主体和记忆；同名人物用不同 subject ID。普通生成案例建议按规格手写 8—10 个，每人 10—30 条记忆；不生成案例可用不足 8 条全局可用记忆（包括零条）。
 
 | case 字段 | 格式／要求 |
 | --- | --- |
@@ -14,8 +14,9 @@ UTF-8 JSON，顶层 `{"format_version":1,"cases":[...]}`。每个 case 是一个
 | `timezone`、`role_name` | 可选；默认 Asia/Shanghai、Iris |
 | `subjects` | 非空数组：`{id,name,aliases?:[字符串],alias_source_entries?:{别名:入口ID或null}}`；名字允许重名，ID 不重名；self／scene 自动存在，勿重复声明 |
 | `entries` | 非空数组：`{id,name?,kind?,visibility?,visible_in?:[入口ID]}`；kind 默认 group，可用 group/live/private；visibility 默认 shared，可用 shared/entry_only/entries |
-| `memories` | 非空数组，格式见下表；顺序决定隔离库的数字 ID，模型本地 M 编号另由选材排序分配 |
-| `must_cover` | 应覆盖要点字符串数组，全部适用，计分时不自动剔除 |
+| `memories` | 数组，可为空以验证零记忆不生成；格式见下表，顺序决定隔离库的数字 ID，模型本地 M 编号另由选材排序分配 |
+| `must_cover` | 应覆盖要点字符串数组，默认 []；全部适用，计分时不自动剔除；expect_none=true 时必须为空 |
+| `expect_none` | 可选真布尔值，默认 false；true 表示本例应因全局可用记忆不足而不生成，详见下文 |
 | `forbidden` | 禁止说法字符串数组，建议明确写出隐私、来源越界、泛化、转述、过期等边界 |
 | `leak_probes` | 可选数组：`{memory_id:语料记忆ID,text:原文连续子串}`；只可指向入口限定记忆／其派生后代，text 必须出现于该记忆且不能出现在任何全局记忆中；请手写独特短语，避免通用词造成误报 |
 | `initial_summary` | 可选短正文，用管理员编辑方式入库；无需为首版评测提供 |
@@ -28,13 +29,13 @@ UTF-8 JSON，顶层 `{"format_version":1,"cases":[...]}`。每个 case 是一个
 | `derived_from` | 语料记忆 ID 数组，默认 []；可引用数组中任意位置，来源限制递归继承，环会终止 |
 | `kind`、`stance`、`belief` | 默认 事实、亲历、90；请按语义标记亲历／转述／推断等 |
 | `importance`、`retention` | 默认 50、80，整数 0—100；用于确定性选材排序 |
-| `lifecycle`、`revision` | 默认 active、1；生命周期可 active/forgotten/deleted，修订号为正整数 |
+| `lifecycle`、`revision` | 默认 active、1；生命周期可 active/forgotten/deleted/purged，修订号为正整数；purged 仅为语料标记，入库为 deleted＋purged_at=as_of，正文置空（content 可填空字符串） |
 | `updated_at`、`first_confirmed_at`、`last_confirmed_at` | 默认 created_at；不把确认日期本身当多日互动依据 |
 | `event_time`、`tags`、`world` | 默认 null、[]、real；时间语义和保密等标签供生成／检查读取 |
 
 `aliases` 保持原字符串数组，新增的 `alias_source_entries` 完全可选。映射的键必须在 aliases 中，值必须是本例已声明的入口 ID 或 null；省略某别名的映射或填写 null，均按 shared／手工别名处理。例：`"aliases":["夜猫"],"alias_source_entries":{"夜猫":"local"}`，当 local 为 entry_only 时，“夜猫”的身份关联不能把全局记忆归给这个主体。运行器仅为显式来源建空正文的消息元数据行，不虚构原话；独立检查同时核对受限别名和仅通过受限别名关联的材料／依据 ID。
 
-入口 `entries` 即使 visible_in 覆盖当前所有入口，也视为声明受限。请覆盖单入口 entry_only、混合来源、受限祖先、同名主体，以及全局敏感信息（后者由语义检查负责）。至少 8 条与目标有关的全局 active 记忆才能生成，受限或遗忘内容不计入这个门槛。must_cover／forbidden 和 leak_probes 不进入模型提示词；memories.tags 属于供生成和检查读取的记忆材料。
+入口 `entries` 即使 visible_in 覆盖当前所有入口，也视为声明受限。请覆盖单入口 entry_only、混合来源、受限祖先、同名主体，以及全局敏感信息（后者由语义检查负责）。至少 8 条与目标有关的全局 active 记忆才能生成，受限或遗忘内容不计入这个门槛。expect_none／must_cover／forbidden 和 leak_probes 不进入模型提示词；memories.tags 属于供生成和检查读取的记忆材料。
 
 ## 执行和外部判分
 
@@ -47,6 +48,26 @@ uv run python -m evals.person_summary_eval score --materials /外部/运行/judg
 
 沿用 PR #7：format_version=1、evaluation=person_summary、manifest.json、run.json、scoring.md、cases/*.json、round-template.json。源码、语料、提示词、评分说明和假响应／模型身份指纹绑定材料。完整原始输出保存在 attempts.outputs_json，逐条检查在 profile.checks；不作基于分数的缓存挑选或重用。
 
-每轮将 round-template.json 复制成该轮目录的 manifest.json，按材料清单的 judgment_file 存评分 JSON；详见 [scoring.md](scoring.md)。计分无需模型配置，不调用对话模型，严格校验编号／真布尔值／数组长度／文件路径／指纹。双判取不利结论并列分歧；候选和发布版计主指标，被拒版单列诊断。失败案例仍占覆盖率分母，不填造模型结果。unconfigured、paused、usage_limit、temporary_unavailable 等跳过，以及任何模型调用错误（包括生成后检查失败），都算未完成；实际输出经引用、长度、语义或 invalid_output 判定后才算完成。
+每轮将 round-template.json 复制成该轮目录的 manifest.json，按材料清单的 judgment_file 存评分 JSON；详见 [scoring.md](scoring.md)。计分无需模型配置，不调用对话模型，严格校验编号／真布尔值／数组长度／文件路径／指纹。双判取不利结论并列分歧；候选和发布版计主指标，被拒版单列诊断。失败案例仍占覆盖率分母，不填造模型结果。unconfigured、paused、usage_limit、temporary_unavailable 等跳过，以及任何模型调用错误（包括生成后检查失败），对普通生成案例都算未完成；实际输出经引用、长度、语义或 invalid_output 判定后才算完成。expect_none 案例采用下述确定性完成口径。
 
 确定性泄漏检查单独从语料来源图计算受限记忆，核对材料 ID、最终依据 ID，以及全部尝试中材料和原始输出的 leak_probes 子串。它不会被人工打分覆盖；同义改写仍须由外部判分的依据和 forbidden 检查捕获。报告列 probe 数和检查数，避免把没有标注探针误说成全面语义证明。
+
+## PS-E：预期不生成与确定性诊断
+
+`expect_none` 不填写时沿用普通生成及判分方式；仅接受 JSON 的 true/false（不能用 0、1、字符串或 null）。true 时 must_cover 必须为 []（省略时也按 []），加载时拒绝非空要点。可以保留 forbidden 与 leak_probes 作为原始案例标注，但本例没有语义判分项；来源泄漏检查仍对所有尝试执行。
+
+正确不生成须同时满足：结果为 `skipped`、原因是 `insufficient_memories`，且不存在非 skipped 的尝试、材料、模型输出、调用或新增版本。正常的空 skipped 操作记录允许存在。运行器独立读取新增版本元数据，不能通过丢失返回版本或把结果改标为 skipped 隐藏生成；入库时的 initial_summary 不属于新增生成。每例和汇总中列出 `due.global_memories`。
+
+报告的 `expect_none_check.status` 为 passed／failed／incomplete。生成任何 published／candidate／rejected 版本，或开始了任何生成尝试（包括失败、冲突、清除后已无正文的尝试），均为 failed，累计 `expect_none_violations` 并阻止门槛通过。此时已有确定性失败结论，`complete=true` 不表示通过。没有上述违规但因 unconfigured、paused、usage_limit、temporary_unavailable、call_budget、disabled、no_evidence 等跳过，或基础设施异常，则为 incomplete，仍阻止门槛通过。
+
+**采用空判分任务**，保留每例 cases/*.json 和 judgment_file，`input.judgment_mode="empty"`。无论是否意外生成了版本，该任务的评分 JSON 都必须严格为：
+
+```json
+{"item_results":[],"must_cover":[],"forbidden":[]}
+```
+
+本例不进入有依据条目率、must_cover 或 forbidden 的语义分母；违规不能由空判分覆盖。普通任务为 `judgment_mode="semantic"`。如果全体案例都为 expect_none，可看到不生成检查的通过数，但有依据条目率为 null，不能据此宣布 ≥90% 的质量门槛通过。旧的未声明 expect_none 的语料不需要改动。
+
+每个普通生成案例记录 `material_diagnostics`：`selected_memories`（入选条数）、`global_memories`（与目标人物有关、全局可用的 active 记忆条数）、`material_truncated`、`excluded_memory_ids`（语料 ID）与 `excluded_database_memory_ids`（隔离库数字 ID）。优先使用生成尝试中的实际材料和候选快照，`selection_source="attempt"`；若因健康状态或 no_evidence 等跳过尚无材料，记录生成前只读选材快照，`selection_source="pre_generation_snapshot"`，不冒充实际模型输入。expect_none 不选材，诊断为 null。汇总列 `material_truncated_cases`、`material_truncated_memories`、逐例 `material_truncations`；快照获取失败单列 `material_diagnostics_unavailable`。截断仅作诊断，不剔除 must_cover，不单独改变门槛。该指标指预算挤出的整条记忆，不等同于正文 excerpt 的字符截断。
+
+非 active 检查独立从语料 lifecycle 算出 forgotten／deleted／purged 集合。它检查所有尝试（含 skipped／失败／被拒）的选入记忆、上一版依据、管理员条目依据、随生成材料传入的 `dependency_ids` 祖先依赖 ID，以及最终版本保存的材料和逐条依据。详情列语料 ID、数据库 ID、lifecycle、尝试／位置，`non_active_violations` 与 `scoped_leaks` 并列，任何一项非零都阻止门槛通过，外部判分不能覆盖。计数按检查位置记录，同一记忆出现在材料和最终依据时分别记违规；`non_active_memories_checked` 是语料中非 active 记忆的数量。以上检查也适用于 expect_none，源语料保持冻结不改。
