@@ -393,7 +393,9 @@ def run_recall_eval(configs, root: Path, split='all', *, corpus: Path | None = N
                          dimension, 'default_judged', judging=True)
             for context in contexts:
                 with context['store'].read() as conn:
-                    usage.extend(dict(r) for r in conn.execute('SELECT purpose,model,model_kind,reasoning_effort,result_category,duration_ms,prompt_tokens,completion_tokens,reasoning_tokens,timed_out FROM model_calls'))
+                    usage.extend(dict(r) for r in conn.execute('''SELECT purpose,model,model_kind,reasoning_effort,
+                        reasoning_present,reasoning_chars,leading_think_stripped,result_category,duration_ms,
+                        prompt_tokens,completion_tokens,reasoning_tokens,timed_out FROM model_calls'''))
     # Keep the global quality band within each retrieval path. A hybrid winner
     # cannot set the full-text fallback's thresholds (or vice versa).
     all_choices = [t for choices in evaluated.values() for t in choices]

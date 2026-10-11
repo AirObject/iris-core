@@ -166,7 +166,8 @@ class RuntimeConfig:
                 reference = row.get('api_key_ref')
                 if reference and not keys.get(reference):
                     unavailable.add(kind)
-                result[kind] = ModelConfig(row['base_url'], keys.get(reference, ''), row['model'], row.get('dimensions'), row.get('reasoning_effort'))
+                result[kind] = ModelConfig(row['base_url'], keys.get(reference, ''), row['model'], row.get('dimensions'),
+                                           row.get('reasoning_effort'), vision=row.get('vision', False))
         return result, unavailable
 
     def _load_local(self):
@@ -183,9 +184,11 @@ class RuntimeConfig:
         else:
             with self.locked(timeout=timeout):
                 raw, unavailable = self._local_values()
+        configs = effective_configs(raw)
         if 'chat' in unavailable:
-            unavailable.update(kind for kind in JUDGMENT_KINDS if not raw.get(kind))
-        return raw, effective_configs(raw), unavailable
+            unavailable.update(kind for kind in (*JUDGMENT_KINDS, 'image_understanding')
+                               if not raw.get(kind) and configs.get(kind))
+        return raw, configs, unavailable
 
     def editable(self, kind, *, timeout=0.0):
         """Fresh saved endpoint and credential availability, including inheritance."""
@@ -239,11 +242,13 @@ class RuntimeConfig:
 
     def public(self, *, timeout=0.0):
         raw, configs, unavailable = self._editable_configs(timeout=timeout)
-        return {kind: {'inherited': kind in JUDGMENT_KINDS and not raw.get(kind),
+        return {kind: {'inherited': (kind in JUDGMENT_KINDS or
+                                    kind == 'image_understanding' and bool(configs.get(kind))) and not raw.get(kind),
                        'enabled': bool(configs.get(kind) and configs[kind].base_url and configs[kind].model),
                        'base_url': configs[kind].base_url if configs.get(kind) else '',
                        'model': configs[kind].model if configs.get(kind) else '',
                        'dimensions': configs[kind].dimensions if configs.get(kind) else None,
                        'reasoning_effort': configs[kind].reasoning_effort if configs.get(kind) else None,
+                       'vision': configs[kind].vision if configs.get(kind) else False,
                        'key_set': bool(configs.get(kind) and configs[kind].api_key),
                        **({'key_missing': True} if kind in unavailable else {})} for kind in KINDS}

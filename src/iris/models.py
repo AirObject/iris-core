@@ -40,21 +40,27 @@ class ModelConfig:
     model: str
     dimensions: int | None = None
     reasoning_effort: str | None = None
+    vision: bool = False
 
     def __post_init__(self):
         # Values are provider-defined; do not impose Ark's enum on other providers.
         if self.reasoning_effort is not None and (
                 not isinstance(self.reasoning_effort, str) or not self.reasoning_effort.strip()):
             raise ValueError("reasoning_effort must be a nonempty string when configured")
+        if type(self.vision) is not bool:
+            raise ValueError("vision must be a boolean")
 
 
 def effective_configs(configs):
     result = dict(configs)
     for kind in JUDGMENT_KINDS:
         if result.get(kind) is None and result.get('chat'):
-            result[kind] = replace(result['chat'], dimensions=None, reasoning_effort='high')
+            result[kind] = replace(result['chat'], dimensions=None)
         elif result.get(kind) and result[kind].reasoning_effort is None:
             result[kind] = replace(result[kind], reasoning_effort='high')
+    chat = result.get('chat')
+    if result.get('image_understanding') is None and chat and chat.vision:
+        result['image_understanding'] = replace(chat, dimensions=None)
     return result
 
 
@@ -83,11 +89,25 @@ class ModelError(Exception):
 def load_test_models(path: str | Path | None = None) -> dict[str, ModelConfig]:
     chosen = Path(path or os.environ.get("IRIS_TEST_MODELS", "test-models.toml"))
     data = tomllib.loads(chosen.read_text(encoding="utf-8"))
+    profile = os.environ.get('IRIS_TEST_MODEL_PROFILE')
+    if profile is not None:
+        group = data.get(profile)
+        if not isinstance(group, dict):
+            raise ValueError(f"IRIS_TEST_MODEL_PROFILE section [{profile}] is missing or is not a table")
+        for field_name in ('base_url', 'model'):
+            if not isinstance(group.get(field_name), str) or not group[field_name].strip():
+                raise ValueError(f"IRIS_TEST_MODEL_PROFILE section [{profile}] requires {field_name}")
+        if 'api_key' not in group and 'api_key_env' not in group:
+            raise ValueError(f"IRIS_TEST_MODEL_PROFILE section [{profile}] requires api_key (empty allowed) or api_key_env")
     result = {}
     for name in MODEL_KINDS:
+        # A selected provider owns every chat-derived purpose. Do not parse
+        # independent sections (even their credential refs) in profile mode.
+        if profile is not None and name not in ('chat', 'embedding'):
+            continue
         if name in (*JUDGMENT_KINDS, "image_understanding") and name not in data:
             continue
-        group = data.get(name, {})
+        group = data.get(profile if name == 'chat' and profile is not None else name, {})
         api_key = str(group.get("api_key", ""))
         if "api_key_env" in group:
             env_name = group["api_key_env"]
@@ -100,6 +120,7 @@ def load_test_models(path: str | Path | None = None) -> dict[str, ModelConfig]:
             str(group.get("model", "")),
             group.get("dimensions"),
             group.get("reasoning_effort", "high" if name in JUDGMENT_KINDS else None) if name != "embedding" else None,
+            vision=group.get('vision', False),
         )
     return result
 
@@ -179,6 +200,17 @@ def _reasoning_diagnostics(message: dict[str, Any]) -> tuple[bool, int | None]:
     return bool(values), chars
 
 
+def _strip_leading_think(content: str) -> tuple[str, bool, int]:
+    """Remove one complete leading provider block, never interior/partial text."""
+    start = content.lstrip()
+    if not start.startswith('<think>'):
+        return content, False, 0
+    end = start.find('</think>', len('<think>'))
+    if end < 0:
+        return content, False, 0
+    return start[end + len('</think>'):].lstrip(), True, end - len('<think>')
+
+
 def repair_unescaped_value_quotes(candidate: str) -> str:
     """Replace likely bare quotes inside JSON string values, leaving valid JSON intact."""
     try:
@@ -224,8 +256,9 @@ def repair_unescaped_value_quotes(candidate: str) -> str:
 
 
 def parse_json_object_with_status(raw: str) -> tuple[dict[str, Any], str]:
-    stripped = re.sub(r"<think\b[^>]*>.*?</think>", "", raw, flags=re.I | re.S)
-    stripped = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", stripped.strip(), flags=re.I)
+    # Provider prefixes have already been handled once at the response boundary.
+    # In particular, literal think tags inside JSON string values are data.
+    stripped = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", raw.strip(), flags=re.I)
     start = stripped.find("{")
     if start < 0:
         raise ValueError("no JSON object")
@@ -282,7 +315,8 @@ class Gateway:
                 usage: dict[str, Any] | None = None, flags: dict[str, Any] | None = None, status_code: int | None = None,
                 *, finish_reason: str | None = None, batch_id: int | None = None,
                 kind: str | None = None, timed_out: bool = False, reasoning_effort: str | None = None,
-                reasoning_present: bool | None = None, reasoning_chars: int | None = None) -> None:
+                reasoning_present: bool | None = None, reasoning_chars: int | None = None,
+                leading_think_stripped: bool = False) -> None:
         if not self.store:
             return
         usage = usage or {}
@@ -292,12 +326,12 @@ class Gateway:
             conn.execute("""INSERT INTO model_calls
                 (purpose,model,duration_ms,prompt_tokens,completion_tokens,reasoning_tokens,result_category,
                  error_summary,input_sensitive,output_sensitive,status_code,created_at,finish_reason,batch_id,model_kind,timed_out,
-                 reasoning_effort,reasoning_present,reasoning_chars)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                 reasoning_effort,reasoning_present,reasoning_chars,leading_think_stripped)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (purpose, model, duration_ms, usage.get("prompt_tokens"), usage.get("completion_tokens"),
                  details.get("reasoning_tokens"), category, error, flags.get("input_sensitive"),
                  flags.get("output_sensitive"), status_code, self.clock().isoformat(), finish_reason, batch_id, kind, int(timed_out),
-                 reasoning_effort, reasoning_present, reasoning_chars))
+                 reasoning_effort, reasoning_present, reasoning_chars, int(leading_think_stripped)))
 
     def replace_config(self, kind: str, config: ModelConfig) -> bool:
         if self.health:
@@ -403,6 +437,7 @@ class Gateway:
             retry_after = None
             rate_limited = False
             reasoning_present, reasoning_chars = None, None
+            leading_think_stripped = False
             reasoning_effort = config.reasoning_effort if kind != "embedding" else None
             request_payload = {**payload, "model": config.model}
             if reasoning_effort is not None:
@@ -442,6 +477,13 @@ class Gateway:
                     content = message.get("content")
                     if kind != "embedding":
                         reasoning_present, reasoning_chars = _reasoning_diagnostics(message)
+                        if isinstance(content, str):
+                            content, leading_think_stripped, stripped_chars = _strip_leading_think(content)
+                            if leading_think_stripped:
+                                message['content'] = content
+                                reasoning_present = True
+                                if reasoning_chars is not None:
+                                    reasoning_chars += stripped_chars
                     finish_reason = choice.get("finish_reason")
                     if kind != "embedding" and (finish_reason == "content_filter" or
                             (choice.get("message") or {}).get("refusal") or (any(flags.values()) and not content)):
@@ -480,7 +522,8 @@ class Gateway:
                 category, summary, timed_out = "retryable", "total timeout", True
             self._record(purpose, config.model, duration, category, summary, usage, flags, status_code,
                          finish_reason=finish_reason, batch_id=batch_id, kind=kind, timed_out=timed_out,
-                         reasoning_effort=reasoning_effort, reasoning_present=reasoning_present, reasoning_chars=reasoning_chars)
+                         reasoning_effort=reasoning_effort, reasoning_present=reasoning_present, reasoning_chars=reasoning_chars,
+                         leading_think_stripped=leading_think_stripped)
             item_key = None
             if category in ('item_error', 'invalid_output'):
                 identity = ('batch:' + str(batch_id) if kind == 'chat' and batch_id is not None
