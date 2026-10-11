@@ -120,7 +120,7 @@ def test_vector_candidates_filter_before_relative_cutoff(store, scene):
 
 def test_goals_intersection_global_injection_and_dedup(store, scene):
     scope(store, 'A')
-    store.set_setting('goal_dedup', {'method':'A'})
+    store.set_setting('goal_dedup_judge', {'method':'A'})
     goals = Goals(store)
     private = goals.create(content='准备天文摄影', entry_id='A', origin='internal', evidence=[scene['A']])['goal']['id']
     public = goals.create(content='准备天文摄影', entry_id='B', origin='internal', evidence=[scene['B']])['goal']['id']
