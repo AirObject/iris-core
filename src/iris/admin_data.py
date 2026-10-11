@@ -21,6 +21,14 @@ MEMORY_COLUMNS = """m.id,m.content,m.kind,m.speaker_subject_id,m.stance,m.belief
     m.retention,m.event_time,m.lifecycle,m.forgotten_at,m.pinned,m.revision,m.entry_id,m.world,m.created_at,m.updated_at"""
 
 
+def _redaction(conn, table, row, *, row_id=None):
+    """Only metadata; this projection never causes erasure or model calls."""
+    value = dict(row)
+    marker = conn.execute('SELECT reason FROM purge_redactions WHERE table_name=? AND row_id=?',
+                          (table,str(value.get('id') if row_id is None else row_id))).fetchone()
+    return {**value,'redacted':bool(marker),'redaction_reason':marker[0] if marker else None}
+
+
 def memory_rows(conn, sql, args=()):
     rows = [dict(r) for r in conn.execute(sql, args)]
     for row in rows:
@@ -93,19 +101,24 @@ def list_memories(store, *, text="", person_id=None, kind=None, entry_id=None,
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
-def media_projection(item):
+def media_projection(item, *, store=None, conn=None):
     """Administrator-only projection; no filesystem or provider internals."""
+    if store is not None:
+        with store.read() as reader:
+            return media_projection(item, conn=reader)
+    flags = _redaction(conn, 'media_objects', item) if conn is not None else item
     return {key: item[key] for key in ('id', 'kind', 'content_type', 'size_bytes',
             'understanding_text', 'understanding_source', 'completed_at')} | {
         'understanding_source_label': SOURCES[item['understanding_source']],
-        'file_url': f"/admin/api/media/{quote(item['id'], safe='')}/file"}
+        'file_url': f"/admin/api/media/{quote(item['id'], safe='')}/file",
+        'redacted':flags.get('redacted',False), 'redaction_reason':flags.get('redaction_reason')}
 
 
 def with_message_media(conn, rows):
     attached = message_media(conn, list(dict.fromkeys(row['id'] for row in rows if not row.get('missing'))))
     for row in rows:
         if not row.get('missing'):
-            row['media'] = [media_projection(item) for item in attached.get(row['id'], [])]
+            row['media'] = [media_projection(item, conn=conn) for item in attached.get(row['id'], [])]
     return rows
 
 
@@ -193,6 +206,8 @@ def memory_detail(store, memory_id):
                     "action": "delete" if revision["after"].get("lifecycle") == "deleted" else "edit"})
         counts = conn.execute("SELECT COUNT(*),COUNT(used_at) FROM recall_items WHERE memory_id=?", (memory_id,)).fetchone()
         detail.update(recall_count=counts[0], used_count=counts[1])
+        from .memory_ops import purge_preview
+        detail["purge_preview"] = purge_preview(conn, [memory_id])
         return detail
 
 
@@ -347,6 +362,7 @@ def batch_detail(store, batch_id):
         if row is None:
             raise KeyError(batch_id)
         detail = batch_summary(dict(row) | {"targets_missing": bool(missing_batch_targets(conn, batch_id))})
+        detail = _redaction(conn, "batches", detail)
         detail["result"] = json.loads(row["result_json"])
         snapshot = detail.pop("entry_settings_json")
         detail["entry_settings"] = json.loads(snapshot) if snapshot else None
@@ -364,6 +380,8 @@ def batch_detail(store, batch_id):
         # whitelist of call diagnostics, never provider envelopes or reasoning.
         calls = [dict(r) for r in conn.execute(f"""SELECT {CALL_COLUMNS} FROM model_calls
             WHERE batch_id=? AND purpose IN ('learning','learning_repair') ORDER BY id""", (batch_id,))]
+        attempts = [_redaction(conn,"batch_attempts",a) for a in attempts]
+        calls = [_redaction(conn,"model_calls",c) for c in calls]
         for attempt in attempts:
             attempt["calls"] = []
         unassigned = []
@@ -430,6 +448,7 @@ def operations(store, *, action=None, actor=None, object_type=None, object_id=No
         items = [dict(r) for r in conn.execute(f"SELECT o.* FROM admin_operations o WHERE {where} ORDER BY julianday(o.created_at) DESC,o.id DESC LIMIT ? OFFSET ?", [*args, limit, offset])]
         for item in items:
             item["details"] = json.loads(item.pop("details_json"))
+            item.update(_redaction(conn,"admin_operations",item))
         return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
@@ -497,7 +516,8 @@ def notifications(store, **filters):
 
 
 PERSONA_COLUMNS = """id,content,is_current,status,source,change_degree,created_at AS generated_at,
-    published_at,base_version_id,rollback_of"""
+    published_at,base_version_id,rollback_of,author,
+    COALESCE(json_extract(checks_json,'$.needs_regeneration'),0) AS needs_regeneration"""
 PERSONA_ATTEMPT_COLUMNS = """id,source,base_version_id,state,reason,version_id,created_at,finished_at,
     CASE WHEN state='queued' THEN 'queued'
          WHEN state!='running' THEN 'finished'
@@ -505,9 +525,10 @@ PERSONA_ATTEMPT_COLUMNS = """id,source,base_version_id,state,reason,version_id,c
          ELSE 'generating' END AS stage"""
 
 
-def _persona_summary(row):
-    item = dict(row)
+def _persona_summary(row, conn):
+    item = _redaction(conn,"persona_versions",row)
     item['is_current'] = bool(item['is_current'])
+    item['needs_regeneration'] = bool(item.get('needs_regeneration'))
     return item
 
 
@@ -522,7 +543,7 @@ def _persona_detail(conn, version_id):
         FROM persona_versions WHERE id=?''', (version_id,)).fetchone()
     if row is None:
         raise KeyError(version_id)
-    result = _persona_summary(row)
+    result = _persona_summary(row, conn)
     result['sentences'] = json.loads(result.pop('sentences_json'))
     result['checks'] = json.loads(result.pop('checks_json'))
     material = json.loads(result.pop('material_json'))
@@ -568,7 +589,7 @@ def persona_versions(store, *, status=None, source=None, limit=30, offset=0):
     where = ' AND '.join(clauses) or '1'
     with store.read() as conn:
         total = conn.execute(f'SELECT COUNT(*) FROM persona_versions WHERE {where}', args).fetchone()[0]
-        items = [_persona_summary(r) for r in conn.execute(f'''SELECT {PERSONA_COLUMNS} FROM persona_versions
+        items = [_persona_summary(r, conn) for r in conn.execute(f'''SELECT {PERSONA_COLUMNS} FROM persona_versions
             WHERE {where} ORDER BY id DESC LIMIT ? OFFSET ?''', [*args, limit, offset])]
     return {'items': items, 'total': total, 'limit': limit, 'offset': offset}
 
@@ -582,10 +603,10 @@ def persona_snapshot(store):
         latest = conn.execute(f'SELECT {PERSONA_ATTEMPT_COLUMNS} FROM persona_attempts ORDER BY id DESC LIMIT 1').fetchone()
         for basis in context['stale_basis']:
             basis['memory'] = _persona_memory(conn, basis['memory_id'])
-        return {'current': _persona_summary(current) if current else None,
-                'pending': _persona_summary(pending) if pending else None,
-                'needs_update': context['needs_update'], 'stale_basis_count': context['stale_basis_count'],
-                'stale_basis': context['stale_basis'], 'latest_attempt': dict(latest) if latest else None}
+        return {'current': _persona_summary(current, conn) if current else None,
+                'pending': _persona_summary(pending, conn) if pending else None,
+                'needs_update': context['needs_update'] or bool(current and current['needs_regeneration']), 'stale_basis_count': context['stale_basis_count'],
+                'stale_basis': context['stale_basis'], 'latest_attempt': _redaction(conn,'persona_attempts',latest) if latest else None}
 
 
 def persona_attempt(store, attempt_id):
@@ -593,7 +614,7 @@ def persona_attempt(store, attempt_id):
         row = conn.execute(f'SELECT {PERSONA_ATTEMPT_COLUMNS} FROM persona_attempts WHERE id=?', (attempt_id,)).fetchone()
         if row is None:
             raise KeyError(attempt_id)
-        return dict(row)
+        return _redaction(conn,"persona_attempts",row)
 
 
 def persona_attempts(store, *, limit=30, offset=0):
@@ -601,6 +622,7 @@ def persona_attempts(store, *, limit=30, offset=0):
         total = conn.execute('SELECT COUNT(*) FROM persona_attempts').fetchone()[0]
         items = [dict(r) for r in conn.execute(f'''SELECT {PERSONA_ATTEMPT_COLUMNS} FROM persona_attempts
             ORDER BY id DESC LIMIT ? OFFSET ?''', (limit, offset))]
+        items = [_redaction(conn,'persona_attempts',r) for r in items]
     return {'items': items, 'total': total, 'limit': limit, 'offset': offset}
 
 
@@ -625,7 +647,7 @@ def host_tokens(store):
 
 def bulk_memory_preview(store, *, subject_id=None, entry_id=None, action, include_pinned=False):
     """An explicit privacy scope, independent of management/recall filters."""
-    from .memory_ops import bulk_memory_rows, remember_bulk_preview, purge_backup_notice
+    from .memory_ops import bulk_memory_rows, remember_bulk_preview, purge_preview
     if bool(subject_id) == bool(entry_id) or action not in ("forget", "delete", "purge") or type(include_pinned) is not bool:
         raise ValueError("请选择一个人物或入口及有效的操作")
     scope = {"subject_id": subject_id} if subject_id else {"entry_id": entry_id}
@@ -649,7 +671,10 @@ def bulk_memory_preview(store, *, subject_id=None, entry_id=None, action, includ
                              "truncated": len(content) > 160})
         token, expires = remember_bulk_preview(store, scope=scope, action=action, include_pinned=include_pinned,
                                                rows=rows, settings=lifecycle_settings(conn))
-        notice = {"backup_notice": purge_backup_notice(conn)} if action == "purge" else {}
+        notice = {}
+        if action == "purge":
+            impact = purge_preview(conn, rows)
+            notice = {"backup_notice": impact["backup_notice"], "purge_preview": impact}
     return {**notice, "scope": scope, "action": action, "include_pinned": include_pinned, "total": len(rows),
             "counts": counts, "pinned_count": sum(r["pinned"] for r in rows.values()),
             "excluded_pinned_count": len(all_rows) - len(rows),
@@ -658,7 +683,7 @@ def bulk_memory_preview(store, *, subject_id=None, entry_id=None, action, includ
 
 
 ENTRY_PROFILE_COLUMNS = '''id,entry_id,version,base_version,content,status,source,author,
-    change_degree,generated_at,published_at'''
+    change_degree,generated_at,published_at,COALESCE(json_extract(checks_json,'$.needs_regeneration'),0) AS needs_regeneration'''
 ENTRY_PROFILE_ATTEMPT_COLUMNS = '''id,entry_id,base_version,state,reason,version,started_at,finished_at,
     (SELECT status FROM entry_profile_versions v WHERE v.entry_id=entry_profile_attempts.entry_id
         AND v.version=entry_profile_attempts.version) AS version_status,
@@ -667,8 +692,8 @@ ENTRY_PROFILE_ATTEMPT_COLUMNS = '''id,entry_id,base_version,state,reason,version
          ELSE 'generating' END AS stage'''
 
 
-def _entry_profile_summary(row, current):
-    return dict(row) | {'is_current': row['version'] == current}
+def _entry_profile_summary(row, current, conn):
+    return _redaction(conn,'entry_profile_versions',row) | {'is_current':row['version']==current,'needs_regeneration':bool(row['needs_regeneration'])}
 
 
 def entry_profile_snapshot(store, entry_id):
@@ -685,11 +710,11 @@ def entry_profile_snapshot(store, entry_id):
         value = profiles._view(conn, profiles._current(conn, entry_id))
         return {'entry': entry, 'supported': entry['kind'] in ('group', 'live'),
                 'global_enabled': profiles._runtime(conn)['enabled'], 'settings': settings,
-                'current': _entry_profile_summary(current, settings['current_version']) if current else None,
-                'pending': _entry_profile_summary(pending[0], settings['current_version']) if pending else None,
+                'current': _entry_profile_summary(current, settings['current_version'], conn) if current else None,
+                'pending': _entry_profile_summary(pending[0], settings['current_version'], conn) if pending else None,
                 'pending_count': len(pending), 'possibly_stale': bool(value and value['possibly_stale']),
                 'stale_basis': value['stale_basis'] if value else [],
-                'latest_attempt': dict(latest) if latest else None}
+                'latest_attempt': _redaction(conn,'entry_profile_attempts',latest) if latest else None}
 
 
 def entry_profile_versions(store, entry_id, *, limit=30, offset=0):
@@ -697,7 +722,7 @@ def entry_profile_versions(store, entry_id, *, limit=30, offset=0):
     with store.read() as conn:
         current = _settings(conn, entry_id)['current_version']
         total = conn.execute('SELECT COUNT(*) FROM entry_profile_versions WHERE entry_id=?', (entry_id,)).fetchone()[0]
-        items = [_entry_profile_summary(r, current) for r in conn.execute(f'''SELECT {ENTRY_PROFILE_COLUMNS}
+        items = [_entry_profile_summary(r, current, conn) for r in conn.execute(f'''SELECT {ENTRY_PROFILE_COLUMNS}
             FROM entry_profile_versions WHERE entry_id=? ORDER BY version DESC LIMIT ? OFFSET ?''', (entry_id, limit, offset))]
         return {'items': items, 'total': total, 'limit': limit, 'offset': offset}
 
@@ -705,7 +730,7 @@ def entry_profile_versions(store, entry_id, *, limit=30, offset=0):
 def entry_profile_version(store, entry_id, version):
     from .entry_profile import _view, _version
     with store.read() as conn:
-        value = _view(conn, _version(conn, entry_id, version))
+        value = _redaction(conn,'entry_profile_versions',_view(conn, _version(conn, entry_id, version)))
         evidence = value.pop('material').get('evidence', {})
         # Only cited snippets, never the full sampled conversation or model input.
         indexed = {item['sha256']: item for kind in ('messages', 'memories') for item in evidence.get(kind, [])}
@@ -727,4 +752,17 @@ def entry_profile_attempt(store, entry_id, attempt_id):
                            (entry_id, attempt_id)).fetchone()
         if row is None:
             raise KeyError(attempt_id)
-        return dict(row)
+        return _redaction(conn,'entry_profile_attempts',row)
+
+
+def maintenance_redactions(store, report):
+    """Attach administrative redaction diagnostics to an existing run report."""
+    result = dict(report)
+    with store.read() as conn:
+        result['items'] = [_redaction(conn,'maintenance_items',item,
+            row_id=json.dumps([report['id'],item['phase'],item['item_key']],ensure_ascii=False,separators=(',',':')))
+            for item in report.get('items',[])]
+        result['consolidation_calls'] = [_redaction(conn,'consolidation_calls',row) for row in conn.execute(
+            'SELECT id,purpose,work_id,created_at,result,duration_ms,prompt_tokens,completion_tokens,finish_reason FROM consolidation_calls WHERE run_id=? ORDER BY id',
+            (report['id'],))]
+    return result

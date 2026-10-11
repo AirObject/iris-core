@@ -155,7 +155,7 @@ def test_source_only_snapshot_is_cleared_but_protected_message_stays(store):
     assert record(store, 'persona_versions', 1)['content'] == ''
 
 
-def test_inflight_learning_revision_conflict_cannot_restore_raw_output(store):
+def test_inflight_learning_revision_conflict_and_linked_batch_redaction(store):
     source, _, mid = learned(store)
     msg(store, 2, PROSE + '需要修正')
     formed = form_batch(store, 'A', PROMPT_VERSION, target_count=1, history_count=2)
@@ -169,8 +169,11 @@ def test_inflight_learning_revision_conflict_cannot_restore_raw_output(store):
     assert record(store, 'memories', mid)['revision'] == 2
     assert record(store, 'memories', mid)['content'] == ''
     with store.read() as conn:
-        assert all(r[0] is None for r in conn.execute('SELECT raw_output FROM batch_attempts'))
-        assert PROSE not in conn.execute('SELECT result_json FROM batches WHERE id=?', (formed.id,)).fetchone()[0]
+        # This running batch has only a retained history message and transient
+        # M1: the new scope explicitly does not taint every batch seeing it.
+        attempts = conn.execute('SELECT batch_id,raw_output FROM batch_attempts ORDER BY id').fetchall()
+        assert attempts[0]['raw_output'] is None
+        assert attempts[-1]['batch_id'] == formed.id and attempts[-1]['raw_output'] is not None
 
 
 def test_revision_mismatch_has_no_redaction_side_effects(store):
@@ -186,8 +189,8 @@ def test_late_inserts_use_typed_evidence_and_recall_judgment_ids(store):
     with store.write() as conn:
         call = insert(conn, 'model_calls', purpose='learning_repair', model='fake', duration_ms=9,
                       result_category='invalid_output', error_summary=PROSE, created_at=now(), batch_id=bid)
-        persona = insert(conn, 'persona_versions', content=PROSE, created_at=now(), is_current=1,
-                         sentences_json=dumps([{'text': PROSE, 'basis': [{'memory_id': mid}]}]))
+        persona = insert(conn, 'persona_versions', content=PROSE, created_at=now(), is_current=0,
+                         sentences_json=dumps([{'text': PROSE, 'basis': [{'memory_id': mid, 'revision': 1}]}]))
         profile = insert(conn, 'entry_profile_versions', entry_id='A', version=1, base_version=0,
                          content=PROSE, sentences_json='[]', checks_json='{}', change_degree='small',
                          status='candidate', generated_at=now(), author='model', source='regenerate',
@@ -234,20 +237,23 @@ def test_initial_setting_clears_linked_persona_background_and_preserves_other_me
     assert record(store, 'memories', mid + 1)['content'] == '另一个初始事实'
 
 
-def test_upgrade_scrubs_identifiable_previously_purged_batch(tmp_path):
+def test_upgrade_scrubs_identifiable_previously_purged_batch(tmp_path, monkeypatch):
     from iris.db import Store
     path = tmp_path / 'upgrade.db'
-    old = Store(path)
+    from importlib.resources import files
+    from types import SimpleNamespace
+    root = files('iris')
+    class BeforePurge:
+        def joinpath(self, name):
+            if name == 'migrations':
+                return SimpleNamespace(iterdir=lambda: [p for p in root.joinpath(name).iterdir()
+                    if not p.name.endswith('_purge_raw_outputs.sql')])
+            return root.joinpath(name)
+    with monkeypatch.context() as patch:
+        patch.setattr('iris.db.files', lambda package: BeforePurge())
+        old = Store(path)
     source, bid, mid = learned(old)
     with old.write() as conn:
-        # Reconstruct the pre-027 schema without touching any real user database.
-        for name, in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'purge_%'").fetchall():
-            conn.execute(f'DROP TRIGGER {name}')
-        conn.execute('DROP VIEW purge_redaction_candidates')
-        conn.execute('DROP TABLE purge_redactions')
-        conn.execute('DROP TABLE purge_message_tombstones')
-        conn.execute('DROP INDEX memories_purged_ids')
-        conn.execute("DELETE FROM schema_migrations WHERE version='027_purge_raw_outputs.sql'")
         conn.execute("UPDATE memories SET content='',lifecycle='deleted',purged_at=?,revision=2 WHERE id=?", (now(), mid))
         conn.execute('DELETE FROM sources WHERE memory_id=?', (mid,))
         conn.execute('DELETE FROM messages WHERE id=?', (source,))
@@ -278,11 +284,11 @@ def test_new_persona_after_prior_purge_survives_unrelated_purge(store):
     setup_role(store, 'Iris', PROSE)
     purge_memory(store, 1, 1, confirm=True)
     with store.write() as conn:
-        insert(conn, 'persona_versions', content='后来的独立版本', created_at=now(), is_current=0,
+        independent = insert(conn, 'persona_versions', content='后来的独立版本', created_at=now(), is_current=0,
                base_version_id=1, sentences_json='[]', material_json='{}')
     other = put(store, '无关记忆')
     purge_memory(store, other, 1, confirm=True)
-    assert record(store, 'persona_versions', 2)['content'] == '后来的独立版本'
+    assert record(store, 'persona_versions', independent)['content'] == '后来的独立版本'
 
 
 def test_descendant_redaction_keeps_numeric_evidence_metadata(store):
@@ -291,7 +297,7 @@ def test_descendant_redaction_keeps_numeric_evidence_metadata(store):
     with store.write() as conn:
         parent = insert(conn, 'persona_versions', content=PROSE, created_at=now(), is_current=0,
                         sentences_json=dumps([{'text': PROSE, 'basis': [{'memory_id': mid, 'revision': 1}]}]))
-        child = insert(conn, 'persona_versions', content=PROSE, created_at=now(), is_current=0, base_version_id=parent,
+        child = insert(conn, 'persona_versions', content=PROSE, created_at=now(), is_current=0, source='regenerate', base_version_id=parent,
                        material_json=dumps({'memory_id': other, 'revision': 3, 'content': PROSE}))
     purge_memory(store, mid, 1, confirm=True)
     assert record(store, 'persona_versions', child)['content'] == ''
