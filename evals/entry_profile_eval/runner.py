@@ -21,7 +21,7 @@ from iris.evaluation import _json_sha256, _read_json, _write_json, _verified_mat
 from iris.models import Gateway, ModelReply, load_test_models
 
 FORMAT_VERSION=1
-SCORING_VERSION='entry_profile_scoring_v1'
+SCORING_VERSION='entry_profile_scoring_v2'
 HERE=Path(__file__).resolve().parent
 
 
@@ -142,7 +142,7 @@ def _load_case(store, case):
 def _source_hash():
     iris=Path(__import__('iris').__file__).parent
     paths=sorted([*iris.rglob('*.py'),*iris.joinpath('migrations').glob('*.sql'),
-                  *iris.joinpath('prompts').glob('*.md'),*HERE.glob('*.py'),HERE/'scoring.md'])
+                  *iris.joinpath('prompts').glob('*.md'),*HERE.glob('*.py'),*HERE.glob('scoring*.md'),HERE/'coverage_v2.json'])
     # Deliberately excludes evals corpora, credentials and external material directories.
     return _json_sha256([(str(p.relative_to(iris)) if p.is_relative_to(iris) else 'entry_profile_eval/'+p.name,
                           hashlib.sha256(p.read_bytes()).hexdigest()) for p in paths])
@@ -161,31 +161,71 @@ def _redacted(value, configs):
     return json.loads(encoded)
 
 
+def coverage_policy(cases, corpus_sha256, policy_path=None):
+    """An explicit, fingerprint-bound review proposal; never infer from keywords."""
+    policy=_read_json(Path(policy_path) if policy_path else HERE/'coverage_v2.json')
+    if not isinstance(policy,dict) or not isinstance(policy.get('corpus_file_sha256'),str):
+        raise ValueError('invalid coverage policy')
+    if policy['corpus_file_sha256']!=corpus_sha256:
+        if policy_path:
+            raise ValueError('coverage policy corpus fingerprint mismatch')
+        return {'status':'all_applicable','not_applicable':[]}
+    by_id={case['id']:case for case in cases}; seen=set()
+    if policy.get('format_version')!=1 or policy.get('status') not in ('proposed_pending_planner_confirmation','planner_confirmed'):
+        raise ValueError('invalid coverage policy')
+    if not isinstance(policy.get('not_applicable'),list):
+        raise ValueError('invalid coverage policy')
+    for point in policy['not_applicable']:
+        if (not isinstance(point,dict) or set(point)!={'case_id','index','text','reason'}
+                or not isinstance(point['case_id'],str) or type(point['index']) is not int):
+            raise ValueError('invalid coverage policy point')
+        key=(point['case_id'],point['index'])
+        case=by_id.get(point['case_id'])
+        if (key in seen or case is None or type(point['index']) is not int
+                or not 1<=point['index']<=len(case.get('must_cover',[]))
+                or case['must_cover'][point['index']-1]!=point['text']
+                or not isinstance(point.get('reason'),str) or not point['reason'].strip()):
+            raise ValueError('coverage policy annotation mismatch')
+        seen.add(key)
+    return policy
+
+
+def _coverage(case, policy):
+    original=case.get('must_cover',[])
+    omitted=[p for p in policy['not_applicable'] if p['case_id']==case['id']]
+    indices=[i for i in range(1,len(original)+1) if i not in {p['index'] for p in omitted}]
+    return {'coverage_status':policy['status'],'must_cover_original':original,'must_cover_indices':indices,
+            'must_cover':[original[i-1] for i in indices],'not_applicable':omitted}
+
+
 def _payload(row):
     profile=row['result'].get('version')
     return {'entry':row['case']['entry'],'as_of':row['case']['as_of'],
             'profile':profile,'evidence':profile['material']['evidence'] if profile else None,
             'previous':profile['material'].get('previous','') if profile else '',
-            'must_cover':row['case'].get('must_cover',[]),'forbidden':row['case'].get('forbidden',[]),
+            **row.get('coverage',{'must_cover':row['case'].get('must_cover',[])}),
+            'forbidden':row['case'].get('forbidden',[]),
             'status':row['result']['status'],'reason':row['result'].get('reason')}
 
 
 def _document(row, metadata):
     return {'format_version':1,'evaluation':'entry_profile','case_id':row['case']['id'],
             'source_sha256':metadata['source_sha256'],'corpus_sha256':metadata['corpus_sha256'],
-            'scoring_version':SCORING_VERSION,'input':_payload(row)}
+            'scoring_version':metadata['scoring_version'],'input':_payload(row)}
 
 
-def run_eval(corpus, out, *, configs=None, gateway_factory=Gateway, extra_input=None):
+def run_eval(corpus, out, *, configs=None, gateway_factory=Gateway, extra_input=None, coverage_policy_path=None):
     cases=load_corpus(corpus); configs=configs or {}; root=Path(out)
+    corpus_file_sha256=hashlib.sha256(Path(corpus).read_bytes()).hexdigest()
+    policy=coverage_policy(cases,corpus_file_sha256,coverage_policy_path)
     root.mkdir(parents=True,exist_ok=True)
     directory=root/('entry-profile-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')+'-'+uuid4().hex[:8])
     directory.mkdir()
-    scoring=(HERE/'scoring.md').read_text(encoding='utf-8')
+    scoring=(HERE/'scoring_v2.md').read_text(encoding='utf-8')
     metadata={'source_sha256':_source_hash(),'corpus_sha256':_json_sha256(cases),
-        'corpus_file_sha256':hashlib.sha256(Path(corpus).read_bytes()).hexdigest(),
+        'corpus_file_sha256':corpus_file_sha256,'coverage_policy':policy,
         'models':_model_metadata(configs),'extra_input_sha256':_json_sha256(extra_input),
-        'prompt_versions':['entry_profile_generate_v1','entry_profile_check_v1'],
+        'prompt_versions':['entry_profile_generate_v2','entry_profile_check_v2'],
         'scoring_version':SCORING_VERSION,'scoring_sha256':hashlib.sha256(scoring.encode()).hexdigest(),
         'timeouts_seconds':{'generate':120,'check':120}}
     metadata['input_sha256']=_json_sha256(metadata)
@@ -203,14 +243,14 @@ def run_eval(corpus, out, *, configs=None, gateway_factory=Gateway, extra_input=
             with store.read() as conn:
                 attempts=[dict(r) for r in conn.execute('SELECT * FROM entry_profile_attempts ORDER BY id')]
                 calls=[dict(r) for r in conn.execute('SELECT * FROM model_calls ORDER BY id')]
-            rows.append({'case':case,'result':result,'attempts':attempts,'calls':calls,'complete':result['status']!='failed' and result.get('reason')!='timeout'
+            rows.append({'case':case,'coverage':_coverage(case,policy),'result':result,'attempts':attempts,'calls':calls,'complete':result['status']!='failed' and result.get('reason')!='timeout'
                          and not any(c.get('timed_out') for c in calls)})
         except Exception as error:
             # Never echo exception text from providers, payloads or configuration.
             with store.read() as conn:
                 attempts=[dict(r) for r in conn.execute('SELECT * FROM entry_profile_attempts ORDER BY id')]
                 calls=[dict(r) for r in conn.execute('SELECT * FROM model_calls ORDER BY id')]
-            rows.append({'case':case,'result':{'status':'failed','reason':type(error).__name__,'version':None},
+            rows.append({'case':case,'coverage':_coverage(case,policy),'result':{'status':'failed','reason':type(error).__name__,'version':None},
                          'attempts':attempts,'calls':calls,'complete':False})
         finally:
             if gateway and callable(getattr(gateway,'close',None)):
@@ -245,7 +285,7 @@ def _load_materials(path):
         rows=_read_json(_verified_material_file(path,'run.json',manifest['run_sha256']))['rows']
         scoring=_verified_material_file(path,'scoring.md',manifest['scoring_sha256'])
         meta=manifest['run']
-        if (meta['corpus_sha256']!=_json_sha256([r['case'] for r in rows]) or meta['scoring_version']!=SCORING_VERSION
+        if (meta['corpus_sha256']!=_json_sha256([r['case'] for r in rows]) or meta['scoring_version'] not in ('entry_profile_scoring_v1',SCORING_VERSION)
                 or meta['scoring_sha256']!=hashlib.sha256(scoring.read_bytes()).hexdigest()
                 or meta['input_sha256']!=_json_sha256({k:v for k,v in meta.items() if k!='input_sha256'})):
             raise ValueError('run input fingerprint mismatch')
@@ -277,7 +317,7 @@ def _validate(vote,row):
                 or ('无依据' in result['violations'] and result['supported'])):
             raise ValueError('invalid sentence judgment')
     for name in ('must_cover','forbidden'):
-        if not isinstance(vote[name],list) or len(vote[name])!=len(row['case'].get(name,[])) or any(type(x) is not bool for x in vote[name]):
+        if not isinstance(vote[name],list) or len(vote[name])!=len(_payload(row).get(name,[])) or any(type(x) is not bool for x in vote[name]):
             raise ValueError('invalid reference judgments')
     if profile is None and any(vote['must_cover']):
         raise ValueError('missing profiles cannot cover reference points')
@@ -321,7 +361,13 @@ def _metrics(rows, votes=None):
                  'completion_tokens':sum(c.get('completion_tokens') or 0 for c in calls),
                  'reasoning_tokens':sum(c.get('reasoning_tokens') or 0 for c in calls),
                  'timed_out':sum(bool(c.get('timed_out')) for c in calls)},
-        'grounded_sentence_ratio':None,'must_cover_coverage':None,'forbidden_occurrences':None,'meets_threshold':False}
+        'grounded_sentence_ratio':None,'grounded_item_ratio':None,'must_cover_coverage':None,'forbidden_occurrences':None,'meets_threshold':False}
+    metrics['not_applicable']=[p for row in rows for p in row.get('coverage',{}).get('not_applicable',[])]
+    metrics['not_applicable_count']=len(metrics['not_applicable'])
+    total=sum(v['checks'].get('quote_validation',{}).get('total',0) for v in candidates)
+    passed=sum(v['checks'].get('quote_validation',{}).get('passed',0) for v in candidates)
+    metrics.update(quote_validation_total=total,quote_validation_passed=passed,
+                   quote_validation_pass_rate=passed/total if total else None)
     metrics['rejected_ratio']=metrics['rejected_candidates']/len(candidates) if candidates else None
     metrics['deleted_ratio']=metrics['deleted_sentences']/metrics['original_sentences'] if metrics['original_sentences'] else None
     if votes is not None:
@@ -341,7 +387,8 @@ def _metrics(rows, votes=None):
                     total+=1; supported+=result['supported']
         ratio=supported/total if total else None
         prohibited={key:value for key,value in violations.items() if key!='无依据'}
-        metrics.update(grounded_sentence_ratio=ratio,grounded_sentences=supported,model_sentences=total,admin_sentences=admin,
+        metrics.update(grounded_item_ratio=ratio,grounded_items=supported,model_items=total,
+            grounded_sentence_ratio=ratio,grounded_sentences=supported,model_sentences=total,admin_sentences=admin,
             violations=dict(violations),prohibited_violations=prohibited,rejected_violations=dict(rejected),must_cover_covered=covered,must_cover_total=expected,
             must_cover_coverage=covered/expected if expected else None,forbidden_occurrences=forbidden,
             meets_threshold=ratio is not None and ratio>=.9 and not prohibited and not forbidden and not metrics['incomplete_cases'])
@@ -389,6 +436,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     commands=parser.add_subparsers(dest='command',required=True)
     run=commands.add_parser('run');run.add_argument('--corpus',required=True);run.add_argument('--out',required=True)
+    run.add_argument('--coverage-policy',help='Explicit fingerprint-bound applicability review JSON')
     run.add_argument('--fake-responses',help='Explicit JSON array of fake responses; never loads model configuration')
     grade=commands.add_parser('score');grade.add_argument('--materials',required=True);grade.add_argument('--judgments',action='append',required=True)
     grade.add_argument('--judge-model',required=True);grade.add_argument('--out',required=True)
@@ -399,9 +447,9 @@ def main():
             if not isinstance(values,list):
                 parser.error('fake responses must be a JSON array')
             gateway=_Responses(values)
-            result=run_eval(args.corpus,args.out,configs={},gateway_factory=lambda configs,store:gateway,extra_input=values)
+            result=run_eval(args.corpus,args.out,configs={},gateway_factory=lambda configs,store:gateway,extra_input=values,coverage_policy_path=args.coverage_policy)
         else:
-            result=run_eval(args.corpus,args.out,configs=load_test_models())
+            result=run_eval(args.corpus,args.out,configs=load_test_models(),coverage_policy_path=args.coverage_policy)
         print('Materials: '+result['materials'])
         print(dumps(result['metrics']))
     else:

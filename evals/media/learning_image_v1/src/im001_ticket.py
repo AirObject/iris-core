@@ -1,0 +1,32 @@
+"""手绘 IM001 行程卡；仅生成本图。Python 3 + Pillow，macOS 系统字体。"""
+from pathlib import Path
+from PIL import Image, ImageDraw, ImageFont
+
+im = Image.new('RGB', (960, 660), '#edf3f6')
+d = ImageDraw.Draw(im)
+font = '/System/Library/Fonts/Hiragino Sans GB.ttc'
+f18 = ImageFont.truetype(font, 18)
+f24 = ImageFont.truetype(font, 24)
+f30 = ImageFont.truetype(font, 30)
+f42 = ImageFont.truetype(font, 42)
+f54 = ImageFont.truetype(font, 54)
+d.rounded_rectangle((34, 28, 926, 630), radius=24, fill='white')
+d.rounded_rectangle((34, 28, 926, 136), radius=24, fill='#214e73')
+d.rectangle((34, 94, 926, 136), fill='#214e73')
+d.text((64, 53), '我的铁路行程', font=f30, fill='white')
+d.text((735, 60), '已出票', font=f24, fill='#d2f2e0')
+d.text((67, 162), '乘车人  戚晏', font=f24, fill='#35445a')
+d.text((67, 212), '2026年10月24日', font=f30, fill='#214e73')
+d.text((82, 286), '苍麓', font=f42, fill='#162d41')
+d.text((668, 286), '汀原', font=f42, fill='#162d41')
+d.line((340, 322, 591, 322), fill='#7897ad', width=4)
+d.polygon(((591, 322), (574, 313), (574, 331)), fill='#7897ad')
+d.text((360, 276), '直达 · 二等座', font=f24, fill='#6a8090')
+d.text((74, 350), '07:26', font=f54, fill='#162d41')
+d.text((664, 350), '10:52', font=f54, fill='#162d41')
+d.text((82, 423), '出发', font=f24, fill='#62778c')
+d.text((677, 423), '到达（当日）', font=f24, fill='#62778c')
+d.line((66, 484, 893, 484), fill='#ccd8e0', width=2)
+d.text((67, 510), '用途备注：全国业余围棋定段赛', font=f24, fill='#35445a')
+d.text((67, 569), '时间为当地时间 · 请核对出发站与到达站', font=f18, fill='#74808b')
+im.save(Path(__file__).resolve().parent.parent / 'im001_ticket.png', optimize=True)
