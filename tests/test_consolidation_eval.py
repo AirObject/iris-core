@@ -221,7 +221,7 @@ def format_failure_row(tmp_path):
             assert not self.store._writer.in_transaction
             return ModelReply(json.dumps(answer,ensure_ascii=False),'stop',{'prompt_tokens':20,'completion_tokens':10})
     row=runner.case_run(case,tmp_path/'format.db',lambda store,clock:InvalidFormat(store),'broad','report_only_v1')
-    assert not row['valid'] and len(row['calls'])==2
+    assert row['valid'] and len(row['calls'])==2
     assert all(call['result']=='success' for call in row['calls'])
     return row
 
@@ -230,7 +230,7 @@ def test_format_failure_keeps_full_scoring_denominator_and_original_materials(tm
     row=format_failure_row
     original=copy.deepcopy(row)
     assessment=scorer.run_validity(row)
-    assert assessment['valid'] and not assessment['original_valid']
+    assert assessment['valid'] and assessment['original_valid']
     assert assessment['format_failures']==1 and not assessment['invalid_reasons']
     metadata={'source_sha256':runner.source_hash(),'scoring_version':runner.SCORING_VERSION,'method':'broad',
         'resolution':'rewrite_v2','corpus':{'sha256':runner._json_sha256([row['input']['case']])}}
@@ -241,7 +241,7 @@ def test_format_failure_keeps_full_scoring_denominator_and_original_materials(tm
     runner._write_json(directory/'0000.json',{'format_version':1,'case_id':'CS001','merge_results':[],
         'contradiction_results':[],'dependency_results':[],'protection_results':[]})
     report=scorer.score(materials,[directory],tmp_path/'score','fake independent judge')
-    assert report['valid'] and not report['original_valid'] and report['format_failures']==1
+    assert report['valid'] and report['original_valid'] and report['format_failures']==1
     assert report['recognition']=={'numerator':0,'denominator':1,'rate':0.}
     assert report['calls']['count']==2
     assert row==original and scorer.load_materials(materials)[1]==[original]
@@ -265,6 +265,7 @@ def test_format_failure_does_not_hide_degradation_or_incomplete_work(format_fail
     elif failure=='usage_limit':
         row['report']['consolidation']['skip_reason']='usage_limit'
     elif failure=='unexplained_original_invalid':
+        row['valid']=False
         row['report']['items'].remove(failed)
         row['report']['consolidation']['deferred']=0
     else:

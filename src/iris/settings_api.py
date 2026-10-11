@@ -74,6 +74,7 @@ class Model(Input):
     api_key: SecretStr | None = Field(default=None, max_length=4096)
     dimensions: int | None = Field(default=None, ge=1, le=65536, strict=True)
     reasoning_effort: str | None = Field(default=None, max_length=50)
+    vision: bool = Field(default=False, strict=True)
 
     @model_validator(mode='after')
     def valid_endpoint(self):
@@ -103,7 +104,8 @@ class Model(Input):
             effort = 'high'
         return ModelConfig(self.base_url.rstrip('/'), key, self.model.strip(),
                            self.dimensions if kind == 'embedding' else None,
-                           effort if kind != 'embedding' else None)
+                           effort if kind != 'embedding' else None,
+                           vision=self.vision if 'vision' in self.model_fields_set else (saved.vision if saved else False))
 
 
 class RecallJudge(Input):
@@ -186,6 +188,8 @@ def install_settings(app):
         return max(0.0, deadline - time.monotonic()) if deadline is not None else 0.0
 
     def snapshot(*, lock_deadline=None):
+        if lock_deadline is None:
+            lock_deadline = time.monotonic() + CONFIG_LOCK_WAIT_SECONDS
         store = app.state.store
         with store.read() as conn:
             lifecycle = lifecycle_settings(conn)
@@ -213,9 +217,10 @@ def install_settings(app):
 
     @router.get('/settings')
     def settings():
+        lock_deadline = time.monotonic() + CONFIG_LOCK_WAIT_SECONDS
         if not app.state.runtime_config.external_loader:
-            sync_models()
-        return snapshot()
+            sync_models(lock_deadline=lock_deadline)
+        return snapshot(lock_deadline=lock_deadline)
 
     @router.post('/setup/complete')
     def complete(payload: Role, request: Request):

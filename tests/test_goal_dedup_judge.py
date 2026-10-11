@@ -64,7 +64,7 @@ def test_goal_judgment_is_an_independent_inherited_purpose(store):
     def respond(request):
         assert not store._writer.in_transaction
         body=json.loads(request.content)
-        assert body['reasoning_effort']=='high'
+        assert 'reasoning_effort' not in body
         return httpx.Response(200,json={'choices':[{'message':{'content':'{"decisions":[{"id":1,"verdict":"same"}]}'},
                                                     'finish_reason':'stop'}],
                                       'usage':{'prompt_tokens':12,'completion_tokens':7}})

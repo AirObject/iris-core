@@ -59,6 +59,9 @@ export default function People({
           <h1>人物</h1>
           <p>核对身份与证据，再决定是否为同一个人。</p>
         </div>
+        <a className="button" href="#/people-graph">
+          人物关系图 →
+        </a>
       </div>
       {mergeNotice && <Notice>{mergeNotice}</Notice>}
       {selected ? (

@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError, field_validator, model_validator
 
-from . import admin_data, trial, people, persona, backup, media, entry_profile
+from . import admin_data, admin_graph, trial, people, persona, backup, media, entry_profile
 from .models import IMAGE_TOTAL_TIMEOUT
 from .auth import audit, error
 from .tokens import NewToken, RateLimits
@@ -556,6 +556,14 @@ def install_admin(app):
     @router.get("/catalog")
     def catalog():
         return admin_data.catalog(app.state.store)
+
+    @router.get("/people-graph")
+    def people_graph(query: Annotated[admin_graph.GraphQuery, Query()]):
+        return admin_graph.people_graph(app.state.store, **query.model_dump())
+
+    @router.get("/people-graph/edge")
+    def graph_edge(query: Annotated[admin_graph.EdgeQuery, Query()]):
+        return admin_graph.edge_evidence(app.state.store, **query.model_dump())
 
     @router.get("/people")
     def people_list(query: Annotated[PeopleQuery, Query()]):

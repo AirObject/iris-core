@@ -66,7 +66,7 @@ def test_filter_records_feedback_no_refill_or_highlight_judging(store):
         body = json.loads(request.content)
         payload = json.loads(body['messages'][1]['content'])
         seen.append(payload)
-        assert body['reasoning_effort'] == 'high'
+        assert body['reasoning_effort'] == 'low'
         assert other not in [int(c['id']) for c in payload['candidates']]
         return httpx.Response(200, json=response(scores([c['id'] for c in payload['candidates']], [49, 50])))
     with gateway(store, handler) as g:
@@ -234,7 +234,7 @@ def test_config_inheritance_and_override_do_not_share_pause(store):
     from dataclasses import replace
     chat = ModelConfig('https://example.invalid/v1', '', 'first', reasoning_effort='low')
     health = ModelHealth(store, {'chat': chat})
-    assert health.configs['recall_judge'].reasoning_effort == 'high'
+    assert health.configs['recall_judge'].reasoning_effort == 'low'
     token = health.check('recall_judge', 'recall_judge')
     health.observe('recall_judge', token, 'authentication', 'HTTP 401')
     assert health.learning_allowed()

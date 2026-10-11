@@ -16,6 +16,7 @@ from pathlib import Path
 
 import httpx
 
+from iris import goal_dedup_judge
 from iris.db import Store
 from iris.goals import Goals, _deadline, write_learning_goal
 from iris.model_health import ModelHealth
@@ -140,7 +141,7 @@ def fake_transport(verdict):
     return httpx.MockTransport(respond)
 
 
-def run_case(case,corpus,out,method,configs,budget,*,fake=None):
+def run_case(case,corpus,out,method,configs,budget,*,fake=None,possible_min_similarity=None):
     directory=out/case['id']
     directory.mkdir()
     store=Store(directory/'iris.db')
@@ -149,7 +150,9 @@ def run_case(case,corpus,out,method,configs,budget,*,fake=None):
     current=utc(case['now'])
     try:
         keys,evidence=seed_case(store,case,corpus)
-        store.set_setting('goal_dedup_judge',{'enabled':method!='A','method':method,
+        threshold=goal_dedup_judge.validate_similarity(goal_dedup_judge.DEFAULTS['possible_min_similarity']
+            if possible_min_similarity is None else possible_min_similarity)
+        store.set_setting('goal_dedup_judge',{'enabled':method!='A','method':method,'possible_min_similarity':threshold,
                                              'budget_seconds':budget,'concurrency':1,'queue_limit':8})
         if method!='A':
             health=ModelHealth(store,configs,clock=lambda:current)
@@ -204,6 +207,8 @@ def main():
     parser.add_argument('--out',type=Path,required=True)
     parser.add_argument('--method',choices=('A','B','C','C2'),required=True)
     parser.add_argument('--budget-seconds',type=float,default=60)
+    parser.add_argument('--possible-min-similarity',type=float,default=goal_dedup_judge.DEFAULTS['possible_min_similarity'],
+                        help='weak possible-duplicate hint threshold, 0 reproduces the old policy; does not relax merge guards')
     parser.add_argument('--fake',choices=('same','different','uncertain','timeout','invalid'),
                         help='offline transport self-check; no configuration read or network calls; excluded from selection')
     args=parser.parse_args()
@@ -212,6 +217,10 @@ def main():
         parser.error('--out must be outside the repository')
     if not 0<args.budget_seconds<=60:
         parser.error('--budget-seconds must be >0 and <=60')
+    try:
+        goal_dedup_judge.validate_similarity(args.possible_min_similarity)
+    except ValueError as exc:
+        parser.error(str(exc))
     out.mkdir(parents=True,exist_ok=False)
     corpus_bytes=args.corpus.read_bytes()
     corpus=json.loads(corpus_bytes)
@@ -223,7 +232,7 @@ def main():
                  if args.fake else load_test_models())
     if configs:
         configs['goal_dedup_judge']=replace(configs['chat'],dimensions=None,reasoning_effort='high')
-    metadata={'method':args.method,'simulation':bool(args.fake),'fake_verdict':args.fake,'budget_seconds':args.budget_seconds,'corpus_sha256':hashlib.sha256(corpus_bytes).hexdigest(),
+    metadata={'possible_min_similarity':args.possible_min_similarity,'method':args.method,'simulation':bool(args.fake),'fake_verdict':args.fake,'budget_seconds':args.budget_seconds,'corpus_sha256':hashlib.sha256(corpus_bytes).hexdigest(),
               'prompt_sha256':hashlib.sha256((ROOT/'src/iris/prompts/goal_dedup_judge_v1.md').read_bytes()).hexdigest(),
               'runner_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
               'scoring_sha256':hashlib.sha256(Path(__file__).with_name('scoring.py').read_bytes()).hexdigest(),
@@ -234,7 +243,7 @@ def main():
     save(out/'metadata.json',metadata)
     rows=[]
     for case in corpus['cases']:
-        row=run_case(case,corpus,out,args.method,configs,args.budget_seconds,fake=args.fake)
+        row=run_case(case,corpus,out,args.method,configs,args.budget_seconds,fake=args.fake,possible_min_similarity=args.possible_min_similarity)
         rows.append(row)
         print(json.dumps({'case':case['id'],'method':args.method,'duration_ms':round(row['duration_ms'],1),
                           'degraded':row['degraded']},ensure_ascii=False),flush=True)
