@@ -55,10 +55,15 @@ export type MemorySuggestion = Suggestion & {
     run_id: number;
     work_id: number;
     reason?: string;
+    suggestion_type?: string;
+    unique_details?: MergeDetails | null;
+    detail_memory_ids?: number[];
     source_excerpts?: SourceExcerpts;
   };
 };
 export type ConsolidationDetails = {
+  suggestion_type?: string;
+  unique_details?: MergeDetails | null;
   result_id?: number;
   absorbed_ids?: number[];
   source_messages?: number[];
@@ -95,3 +100,5 @@ export type ConsolidationProjection = {
   };
   goal_review?: { enabled: boolean; checked: number; skip_reason?: string };
 };
+
+export type MergeDetails = { a: string[]; b: string[] };

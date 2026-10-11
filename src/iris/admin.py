@@ -21,7 +21,7 @@ from . import admin_data, admin_graph, trial, people, persona, backup, media, en
 from .models import IMAGE_TOTAL_TIMEOUT
 from .auth import audit, error
 from .tokens import NewToken, RateLimits
-from .queue import reset_batch, update_entry_settings, pace_parameters, filter_parameters, FILTER_DEFAULTS, PACE
+from .queue import estimate_tokens, reset_batch, update_entry_settings, pace_parameters, filter_parameters, FILTER_DEFAULTS, PACE
 from .memory_ops import edit_memory, delete_memory, manage_memory, purge_memory, recreate_memory, operation, missing_batch_targets
 from .retrieval import Retrieval
 from .service_status import service_status, add_health_hints
@@ -202,8 +202,118 @@ class EntryProfileRevision(Input):
     expected_version: int = Field(ge=0, le=9223372036854775807, strict=True)
 
 
+class EntryProfileQuoteEdit(Input):
+    message_id: int = Field(gt=0, strict=True)
+    text: str = Field(min_length=1, max_length=100)
+
+
+class EntryProfileItemEdit(Input):
+    original_index: int | None = Field(default=None, ge=0, strict=True)
+    kind: Literal['topic', 'saying', 'rule'] | None = None
+    label: str = Field(default='', max_length=40)
+    meaning: str = Field(default='', max_length=80)
+    quotes: list[EntryProfileQuoteEdit] = Field(default_factory=list, max_length=3)
+    text: str = Field(default='', max_length=500)
+
+    @model_validator(mode='after')
+    def shape(self):
+        if self.kind is None:
+            if not self.text.strip() or self.label or self.meaning or self.quotes:
+                raise ValueError('旧手写条目只编辑正文')
+        elif not self.label.strip() or self.text or (self.meaning and self.kind != 'saying'):
+            raise ValueError('请填写条目名称；只有群内说法可以填写含义')
+        return self
+
+
 class EntryProfileEdit(EntryProfileRevision):
-    content: str = Field(min_length=150, max_length=500)
+    content: str | None = Field(default=None, min_length=1, max_length=500)
+    items: list[EntryProfileItemEdit] | None = Field(default=None, min_length=1, max_length=entry_profile.MAX_ITEMS)
+
+    @model_validator(mode='after')
+    def one_form(self):
+        if (self.content is None) == (self.items is None):
+            raise ValueError('提供正文或结构化条目之一')
+        indices = [item.original_index for item in self.items or [] if item.original_index is not None]
+        if len(indices) != len(set(indices)):
+            raise ValueError('原条目不能重复引用')
+        return self
+
+
+def _edit_entry_profile(store, entry_id, payload):
+    # Keep v1 on its original editing path. The v2 adapter uses the same CAS,
+    # version insertion, supersession and audit helpers; no generation changes.
+    with store.read() as conn:
+        previous = entry_profile._expect(conn, entry_id, payload.expected_version)
+        structured = bool(previous and previous['checks'].get('format_version') == entry_profile.PROFILE_FORMAT)
+        if previous and not structured and payload.items is not None:
+            raise ValueError('旧版摘要请按原正文编辑规则保存')
+    if payload.items is None and not structured:
+        return entry_profile.admin_edit(store, entry_id, payload.content, expected_version=payload.expected_version)
+    stamp = entry_profile.utc_now().isoformat()
+    with store.write() as conn:
+        previous = entry_profile._expect(conn, entry_id, payload.expected_version)
+        if entry_profile._entry(conn, entry_id)['kind'] not in ('group', 'live'):
+            raise ValueError('私聊入口不支持画像')
+        old = previous['sentences'] if previous else []
+        sentences = []
+        if payload.items is None:
+            # Compatibility with clients sending rendered text; unchanged v2 rows
+            # still retain evidence/author, including punctuation inside quotes.
+            remaining = list(old)
+            for text in entry_profile._edit_segments(payload.content, previous):
+                match = next((item for item in remaining if item['text'] == text), None)
+                if match is not None:
+                    sentences.append(match)
+                    remaining.remove(match)
+                else:
+                    sentences.append({'text': text, 'basis': [], 'author': 'admin', 'message_count': 0})
+            content = payload.content
+        else:
+            for item in payload.items:
+                original = None
+                if item.original_index is not None:
+                    if item.original_index >= len(old):
+                        raise ValueError('原条目不存在，请重新载入版本')
+                    original = old[item.original_index]
+                fields = item.model_dump(exclude={'original_index', 'text'})
+                if item.kind is None:
+                    unchanged = original and not original.get('kind') and item.text == original['text']
+                    sentence = {'text': item.text, 'basis': [], 'author': 'admin', 'message_count': 0}
+                else:
+                    unchanged = original and all(fields[key] == original.get(key, '' if key != 'quotes' else [])
+                        for key in ('kind', 'label', 'meaning')) and fields['quotes'] == [
+                            {key: quote[key] for key in ('message_id', 'text')} for quote in original.get('quotes', [])]
+                    quotes = []
+                    if not unchanged:
+                        for quote in fields['quotes']:
+                            row = conn.execute('SELECT * FROM messages WHERE id=? AND entry_id=?',
+                                               (quote['message_id'], entry_id)).fetchone()
+                            messages = {} if row is None else {row['id']: {
+                                'content': row['content'], 'speaker': row['sender_subject_id'],
+                                'quote': {'content': row['quote_content'] or '', 'speaker': row['quote_author_subject_id']}}}
+                            resolved, issue = entry_profile._quote(quote, messages)
+                            if issue:
+                                raise ValueError('引用须来自本入口现存消息的连续原话，请核对消息编号与引文')
+                            quotes.append(resolved)
+                    sentence = {**fields, 'quotes': quotes, 'basis': [], 'author': 'admin',
+                                'message_count': len({q['message_id'] for q in quotes}), 'format_version': entry_profile.PROFILE_FORMAT}
+                    sentence['text'] = (entry_profile._render_item(sentence) if quotes else
+                        entry_profile.ITEM_LABELS[item.kind] + '：' + item.label +
+                        ('——' + item.meaning if item.meaning else '') + '。\n')
+                sentences.append(original if unchanged else sentence)
+            content = ''.join(item['text'] if item['text'].endswith('\n') else item['text'] + '\n' for item in sentences)
+        config = entry_profile._runtime(conn)
+        if len(sentences) > entry_profile.MAX_ITEMS:
+            raise ValueError(f'画像最多 {entry_profile.MAX_ITEMS} 条')
+        if entry_profile._length_errors(content, config, structured=True):
+            raise ValueError(f'画像不能为空，最多 {config["max_chars"]} 字、{entry_profile.MAX_PROFILE_TOKENS} 个估算 token（含分类、引语及标点）')
+        settings = entry_profile._ensure(conn, entry_id, stamp)
+        through = conn.execute('SELECT COALESCE(MAX(id),0) FROM messages WHERE entry_id=?', (entry_id,)).fetchone()[0]
+        return entry_profile._insert(conn, entry_id, previous=payload.expected_version, content=content, sentences=sentences,
+            checks={'format_version': entry_profile.PROFILE_FORMAT, 'passed': True, 'admin_edit': True, 'model': None,
+                    'deterministic': {'passed': True, 'characters': len(content), 'tokens': estimate_tokens(content)}},
+            degree='large', status='published', stamp=stamp, author='admin', source='edit',
+            material=previous['material'] if previous else {}, message_through=through, settings_revision=settings['revision'])
 
 
 class EntryProfileReject(EntryProfileRevision):
@@ -777,7 +887,7 @@ def install_admin(app):
 
     @router.put('/entries/{entry_id}/profile')
     def edit_entry_profile(entry_id: str, payload: EntryProfileEdit):
-        version = entry_profile.admin_edit(app.state.store, entry_id, **payload.model_dump())
+        version = _edit_entry_profile(app.state.store, entry_id, payload)
         return admin_data.entry_profile_version(app.state.store, entry_id, version['version'])
 
     @router.patch('/entries/{entry_id}/profile/settings')
@@ -999,7 +1109,8 @@ def install_admin(app):
 
     @app.exception_handler(trial.TrialReplyFailed)
     async def failed(request, error):
-        return JSONResponse({"error": {"code": "reply_failed", "message": "角色回复失败，原消息已保存；可查看运行状态后重试"}}, status_code=502)
+        return JSONResponse({"error": {"code": "reply_failed", "message": "角色回复失败，原消息已保存；可查看运行状态后重试"},
+                             "result": {"diagnostic": error.diagnostic}}, status_code=502)
 
     @app.exception_handler(people.PeopleConflict)
     async def people_conflict(request, exc):
