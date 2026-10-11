@@ -141,7 +141,7 @@ def test_stale_and_admin_sentences_protected(client, store):
 def test_rejected_check_keeps_current_and_shows_deleted_sentences(client):
     first = client.put(BASE, json={'expected_version': 0, 'content': ''.join(TEXTS)}).json()
     # Different model sentences avoid duplicate admin sentences.
-    engine(client).gateway = Model(engine(client).store, texts=[t.replace('这次', '当次') for t in TEXTS], bad=range(5))
+    engine(client).gateway = Model(engine(client).store, texts=[TEXTS[0].replace('这次', '当次')], bad=(0,))
     task = finished(client, start(client, first['version']))
     assert task['state'] == 'rejected'
     detail = client.get(BASE + f"/versions/{task['version']}").json()
