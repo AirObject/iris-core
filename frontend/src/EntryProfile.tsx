@@ -59,8 +59,8 @@ const reasons: Record<string, string> = {
   invalid_output: "模型输出格式无效，未发布",
   invalid_sentence: "候选句格式无效",
   too_many_deleted: "检查删除了超过 30% 的候选句",
-  too_short: "删句后的正文不足 150 字",
-  too_long: "正文超过 500 字",
+  too_short: "正文低于旧版摘要的最少字数要求",
+  too_long: "正文超过该版本的字数上限",
   superseded: "已被新候选或编辑取代",
   paused: "对话用途已暂停",
   invalid_items: "候选条目列表格式无效",
@@ -78,9 +78,13 @@ const reasons: Record<string, string> = {
   empty: "检查后没有可保留内容",
   administrator_rejected: "管理员拒绝",
 };
-const reason = (value: string, format = 1) =>
-  value === "too_many_deleted" && format === 2
-    ? "检查累计删除了超过 50% 的模型条目"
+const reason = (value: string, format?: number) =>
+  value === "too_many_deleted"
+    ? format === 2
+      ? "检查累计删除了超过 50% 的模型条目"
+      : format === 1
+        ? "检查删除了超过 30% 的候选句"
+        : "检查删除比例超出该版本上限，请查看版本检查记录"
     : reasons[value] || value;
 const basisName = (basis: ProfileBasis) =>
   basis.memory_id
@@ -355,7 +359,7 @@ export function EntryProfileDialog({
                     {degree(value.current.change_degree)}
                   </p>
                   {value.current.format_version === 2 ? (
-                    currentDetail.data ? (
+                    currentDetail.data && currentReady ? (
                       currentDetail.data.sentences.map((item, i) => (
                         <div key={i}>
                           <ProfileItemView value={item} />
@@ -366,8 +370,18 @@ export function EntryProfileDialog({
                           </Badge>
                         </div>
                       ))
+                    ) : currentDetail.error ? (
+                      <Notice error>
+                        {currentDetail.error}
+                        <button
+                          className="text-button"
+                          onClick={currentDetail.refresh}
+                        >
+                          重试当前条目
+                        </button>
+                      </Notice>
                     ) : (
-                      <p>{currentDetail.error || "正在读取条目…"}</p>
+                      <p>正在读取条目…</p>
                     )
                   ) : (
                     <>

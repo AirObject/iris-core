@@ -251,3 +251,51 @@ test("总预算与条目上限限制编辑，空含义有效", async () => {
   }
   expect(screen.getByRole("button", { name: "添加画像条目" })).toBeDisabled();
 });
+
+test("当前条目读取失败可重试，成功前不能误用旧条目编辑", async () => {
+  const original = vi.mocked(fetch).getMockImplementation()!;
+  let failRead = true;
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    if (String(input).endsWith("/versions/1") && failRead) {
+      failRead = false;
+      return response(
+        { error: { code: "unavailable", message: "条目读取失败" } },
+        503,
+      );
+    }
+    return original(input, init);
+  });
+  panel();
+  expect(await screen.findByText("条目读取失败")).toBeVisible();
+  expect(screen.getByRole("button", { name: "编辑正文" })).toBeDisabled();
+  await userEvent.click(screen.getByRole("button", { name: "重试当前条目" }));
+  expect(await screen.findByText("翻面")).toBeVisible();
+  expect(screen.getByRole("button", { name: "编辑正文" })).toBeEnabled();
+  expect(writes).toEqual([]);
+});
+
+test("删条阈值按版本说明，任务摘要不误用旧版 30%", async () => {
+  version.checks = {
+    ...version.checks,
+    passed: false,
+    reason: "too_many_deleted",
+  };
+  snapshot.latest_attempt = {
+    id: 5,
+    state: "rejected",
+    stage: "finished",
+    reason: "too_many_deleted",
+    version: 1,
+  };
+  panel();
+  expect(
+    await screen.findByText("检查删除比例超出该版本上限，请查看版本检查记录"),
+  ).toBeVisible();
+  await userEvent.click(
+    screen.getByRole("button", { name: "查看当前依据与检查" }),
+  );
+  expect(
+    await screen.findByText("检查累计删除了超过 50% 的模型条目"),
+  ).toBeVisible();
+  expect(screen.queryByText(/超过 30%/)).not.toBeInTheDocument();
+});
