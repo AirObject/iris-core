@@ -904,8 +904,7 @@ CREATE TEMP TABLE purge_upgrade_entry_profile_versions AS
 
 INSERT INTO entry_profile_versions(entry_id,version,base_version,content,sentences_json,checks_json,change_degree,status,generated_at,published_at,author,source,message_through,settings_revision)
  SELECT v.entry_id,(SELECT MAX(version)+1 FROM entry_profile_versions WHERE entry_id=v.entry_id),v.version,
- COALESCE((SELECT group_concat(json_extract(value,'$.text'),'
-') FROM json_each(v.kept)),''),v.kept,
+ COALESCE((SELECT group_concat(json_extract(value,'$.text'),'') FROM json_each(v.kept)),''),v.kept,
  json_object('format_version',COALESCE(json_extract(v.checks_json,'$.format_version'),1),'passed',json('true'),'purge',json('true'),'needs_regeneration',json(CASE WHEN json_array_length(v.kept)=0 THEN 'true' ELSE 'false' END)),
  'small','published',strftime('%Y-%m-%dT%H:%M:%fZ','now'),strftime('%Y-%m-%dT%H:%M:%fZ','now'),'purge','purge',v.message_through,v.settings_revision
  FROM purge_upgrade_entry_profile_versions v;

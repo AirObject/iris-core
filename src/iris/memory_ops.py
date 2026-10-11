@@ -405,7 +405,7 @@ def _purge_publish_versions(conn, versions, stamp):
             conn.execute('''INSERT INTO entry_profile_versions(entry_id,version,base_version,content,sentences_json,
                 checks_json,change_degree,status,generated_at,published_at,author,source,message_through,material_json,settings_revision)
                 VALUES(?,?,?,?,?,?,'small','published',?,?,'purge','purge',?,?,?)''',
-                (row['entry_id'],version,row['version'],'\n'.join(s['text'] for s in keep),dumps(keep),dumps(checks),stamp,stamp,
+                (row['entry_id'],version,row['version'],''.join(s['text'] for s in keep),dumps(keep),dumps(checks),stamp,stamp,
                  row['message_through'],dumps(material),row['settings_revision']))
             changed = conn.execute('''UPDATE entry_profile_settings SET current_version=?
                 WHERE entry_id=? AND current_version=?''',(version,row['entry_id'],row['version'])).rowcount

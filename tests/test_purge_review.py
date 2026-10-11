@@ -552,3 +552,35 @@ def test_profile_format_survives_purge_upgrade(tmp_path,monkeypatch):
         assert admin_data.entry_profile_snapshot(store,'group')['current']['format_version']==2
     finally:
         store.close()
+
+
+@pytest.mark.parametrize('upgrade',[False,True])
+def test_profile_purge_keeps_item_text_without_adding_line_breaks(tmp_path,monkeypatch,upgrade):
+    from iris.db import Store
+    from iris import entry_profile
+    path=tmp_path/'line-breaks.db'
+    store=before_purge_store(path,monkeypatch) if upgrade else Store(path)
+    try:
+        private=put(store,PROSE);safe=put(store,'其余画像依据保持原样')
+        with store.write() as conn:
+            conn.execute("INSERT INTO entries(id,name,platform,kind) VALUES('group','入口','test','group')")
+            setting=entry_profile._ensure(conn,'group',now())
+            sentences=[]
+            for mid,text in ((private,'被删除条目。\n'),(safe,'第一条保留文字。\n'),(safe,'第二条保留文字。\n')):
+                row=conn.execute('SELECT * FROM memories WHERE id=?',(mid,)).fetchone()
+                sentences.append({'text':text,'author':'model','format_version':2,
+                    'basis':[{'memory_id':mid,'revision':1,'sha256':entry_profile._memory_hash(row,[])}]})
+            entry_profile._insert(conn,'group',previous=0,content=''.join(s['text'] for s in sentences),sentences=sentences,
+                checks={'passed':True,'format_version':2},degree='small',status='published',stamp=now(),author='model',
+                source='regenerate',material={},message_through=0,settings_revision=setting['revision'])
+            if upgrade:
+                conn.execute("UPDATE memories SET content='',lifecycle='deleted',purged_at=?,revision=2 WHERE id=?",(now(),private))
+        if upgrade:
+            store.close();store=Store(path)
+        else:
+            purge_memory(store,private,1,confirm=True)
+        current=entry_profile.current_profile(store,'group')
+        assert current['sentences']==sentences[1:]
+        assert current['content']=='第一条保留文字。\n第二条保留文字。\n'
+    finally:
+        store.close()
