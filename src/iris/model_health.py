@@ -146,10 +146,11 @@ class ModelHealth:
         # Image understanding is opt-in. An absent/disabled image model is an
         # ordinary placeholder path, not an outage hint on every host request.
         image = self.configs.get('image_understanding')
-        if not image or not image.base_url or not image.model:
+        if not image or not image.model:
             result.pop('image_understanding', None)
         else:
             result['image_understanding']['timeout_seconds'] = IMAGE_TOTAL_TIMEOUT
+            result['image_understanding']['inherited'] = not self._raw_configs.get('image_understanding')
         budget = self.budget()
         self._journal_sync(budget=budget)
         for kind in ('chat', *JUDGMENT_KINDS, 'image_understanding'):
@@ -289,8 +290,12 @@ class ModelHealth:
             changed = False
             for purpose in MODEL_KINDS:
                 candidate = updated.get(purpose)
-                if fingerprint(candidate) != self._states[purpose]['fingerprint']:
+                # Capability flags affect routing without invalidating the
+                # provider's existing circuit state or in-flight call token.
+                if self.configs.get(purpose) != candidate:
                     self.configs[purpose] = candidate
+                    changed = True
+                if fingerprint(candidate) != self._states[purpose]['fingerprint']:
                     self._states[purpose] = self._fresh(purpose)
                     self._save(purpose)
                     self._journal_sync("configuration_change", kinds=(purpose,), force=True, budget=budget)
