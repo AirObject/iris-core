@@ -584,3 +584,32 @@ def test_profile_purge_keeps_item_text_without_adding_line_breaks(tmp_path,monke
         assert current['content']=='第一条保留文字。\n第二条保留文字。\n'
     finally:
         store.close()
+
+
+def test_upgrade_clears_pre_hook_person_summary_copies(tmp_path,monkeypatch):
+    from iris.db import Store
+    from test_person_summary import Clock,seed,generate,current_summary
+    path=tmp_path/'summary-upgrade.db';store=before_purge_store(path,monkeypatch)
+    clock=Clock();mids=seed(store,clock);generate(store,clock)
+    with store.write() as conn:
+        run=run_row(conn,mids[-1])
+        conn.execute('UPDATE person_summary_attempts SET run_id=?',(run,))
+        summary_call=insert(conn,'consolidation_calls',run_id=run,purpose='consolidation_person_summary_generate',raw_output=PROSE,created_at=now())
+        other_call=insert(conn,'consolidation_calls',run_id=run,purpose='consolidation_dependency',raw_output='独立的依赖建议',created_at=now())
+        conn.execute("UPDATE memories SET content='',lifecycle='deleted',purged_at=?,revision=2 WHERE id=?",(now(),mids[0]))
+    store.close();store=Store(path)
+    try:
+        value=current_summary(store,'a')
+        assert value['content']=='' and value['material']=={}
+        assert value['sentences'][0]['kind']=='fact'
+        assert value['sentences'][0]['basis'][0]=={'memory_id':mids[0],'revision':1}
+        assert value['checks']['cleared_reason']==memory_ops.PURGE_REASON
+        with store.read() as conn:
+            row=conn.execute('SELECT * FROM person_summary_attempts').fetchone()
+            assert row['material_json']==row['outputs_json']=='{}' and row['cleared_at']
+            assert conn.execute("SELECT needs_regeneration FROM person_summary_settings WHERE subject_id='a'").fetchone()[0]==1
+            assert not conn.execute('PRAGMA foreign_key_check').fetchall()
+        assert record(store,'consolidation_calls',summary_call)['raw_output'] is None
+        assert record(store,'consolidation_calls',other_call)['raw_output']=='独立的依赖建议'
+    finally:
+        store.close()

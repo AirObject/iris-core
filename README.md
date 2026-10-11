@@ -809,7 +809,7 @@ EP2 本回合只做假模型机制验证，未运行真实模型或质量双判�
 
 整理待接入函数要求至少 8 条相关全局 active 记忆：首版，或至少 5 条相关记忆新增／变化，或满 14 天且有变化；已过时版本可提前满足重生成条件，处理顺序仍按最近活跃排序。依据已删除／遗忘／彻底清除或近期事项到期的条目在返回前移除，剩余为空不返回。近期事项未给明确截止日时，默认从依据的最新事件时间（无则创建时间）起 30 天到期。失败或被拒后，相关记忆发生新变化才会再尝试；普通确认不算变化。默认每次至多 10 人，最近活跃者优先，与整理共享 max_calls 和每日 token 上限。主体合并后，被并入方版本作废，存续方下次重生成。手动生成也受初始数量、开关和模型预算约束。
 
-**本阶段只提供数据层，不接入 prepare、管理路由、整理流程或界面。** `person_summary.summary_context(conn, subject_id, entry_id)` 返回下一阶段使用的 `{subject_id,name,text,version,generated_at,possibly_stale}`；`PersonSummaryEngine.regenerate`、编辑、回滚和设置写函数均要求 expected_version。CF 合并后须在彻底清除的同一写事务调用 `purge_memory_references(conn, memory_ids)`：它整段清空关联的所有摘要版本、材料和模型输出，保留结构字段并标“因彻底清除而清空”。未接入前不应在服务中启用人物摘要生成。
+**本阶段只提供数据层，不接入 prepare、管理路由、整理流程或界面。** `person_summary.summary_context(conn, subject_id, entry_id)` 返回下一阶段使用的 `{subject_id,name,text,version,generated_at,possibly_stale}`；`PersonSummaryEngine.regenerate`、编辑、回滚和设置写函数均要求 expected_version。单条和批量彻底清除已在同一写事务调用 `purge_memory_references(conn, memory_ids)`：它整段清空关联的所有摘要版本、材料和模型输出，保留结构字段并标“因彻底清除而清空”；人物摘要与记忆一同提交或回滚，清除数量包含在结果中。
 
 新提示词为 `person_summary_generate_v1`／`person_summary_check_v1`。运行器只加载显式 dev 文件，提供隔离库、外部判分材料、双判取不利和独立可见性泄漏检查；GD 格式及命令见 [人物摘要评测说明](evals/person_summary_eval/README.md)，接口衔接和本轮验证见 [PS1 报告](evals/person_summary_eval/PS1-report.md)。本轮仅用假模型，真实质量评测待规划者通知。
 

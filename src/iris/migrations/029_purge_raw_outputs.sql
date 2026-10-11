@@ -954,3 +954,37 @@ UPDATE media_objects SET understanding_text=understanding_text WHERE EXISTS(SELE
 UPDATE admin_operations SET details_json=details_json WHERE EXISTS(SELECT 1 FROM memories WHERE purged_at IS NOT NULL) AND (CAST(id AS TEXT) IN (SELECT row_id FROM purge_upgrade_targets WHERE table_name='admin_operations') OR EXISTS(SELECT 1 FROM purge_record_refs r JOIN purge_redactions p ON p.table_name=r.ref_kind AND p.row_id=r.ref_id WHERE r.table_name='admin_operations' AND r.row_id=CAST(admin_operations.id AS TEXT) AND r.ref_kind IN ('batches','consolidation_work','persona_attempts','entry_profile_attempts')));
 
 DROP TABLE purge_upgrade_targets;
+
+-- #92 could persist summaries before its purge hook was connected. Use its
+-- evidence indexes once on upgrade; runtime cleanup calls the shared function.
+CREATE TEMP TABLE purge_upgrade_summary_versions AS
+ SELECT DISTINCT r.version_id AS id FROM memories m
+ JOIN person_summary_version_memories r ON r.memory_id=m.id
+ WHERE EXISTS(SELECT 1 FROM memories WHERE purged_at IS NOT NULL) AND m.purged_at IS NOT NULL;
+CREATE TEMP TABLE purge_upgrade_summary_attempts AS
+ SELECT DISTINCT r.attempt_id AS id FROM memories m
+ JOIN person_summary_attempt_memories r ON r.memory_id=m.id
+ WHERE EXISTS(SELECT 1 FROM memories WHERE purged_at IS NOT NULL) AND m.purged_at IS NOT NULL;
+UPDATE consolidation_calls SET raw_output=NULL,error='因彻底清除而清空'
+ WHERE purpose IN ('consolidation_person_summary_generate','consolidation_person_summary_check')
+ AND run_id IN (SELECT run_id FROM person_summary_attempts WHERE id IN (SELECT id FROM purge_upgrade_summary_attempts));
+UPDATE person_summary_versions SET content='',material_json='{}',
+ sentences_json=COALESCE((SELECT json_group_array(json_set(
+   (SELECT json_group_object(k.key,k.value) FROM json_each(s.value) k
+    WHERE k.key IN ('kind','author','valid_until','expires_at')),
+   '$.text','','$.basis',json(COALESCE((SELECT json_group_array(json(
+     (SELECT json_group_object(k.key,k.value) FROM json_each(b.value) k WHERE k.key IN ('memory_id','revision'))))
+     FROM json_each(s.value,'$.basis') b),'[]')))) FROM json_each(sentences_json) s),'[]'),
+ checks_json='{"passed":false,"reason":"memory_purged","cleared_reason":"因彻底清除而清空"}',
+ invalidated_reason='memory_purged',cleared_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+ WHERE cleared_at IS NULL AND id IN (SELECT id FROM purge_upgrade_summary_versions);
+UPDATE person_summary_settings SET needs_regeneration=1 WHERE EXISTS(
+ SELECT 1 FROM person_summary_versions v WHERE v.id IN (SELECT id FROM purge_upgrade_summary_versions)
+ AND v.subject_id=person_summary_settings.subject_id AND v.version=person_summary_settings.current_version);
+UPDATE person_summary_attempts SET material_json='{}',outputs_json='{}',
+ cleared_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),reason='因彻底清除而清空',
+ finished_at=COALESCE(finished_at,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+ state=CASE WHEN state='running' THEN 'conflict' ELSE state END
+ WHERE cleared_at IS NULL AND id IN (SELECT id FROM purge_upgrade_summary_attempts);
+DROP TABLE purge_upgrade_summary_versions;
+DROP TABLE purge_upgrade_summary_attempts;

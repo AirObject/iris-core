@@ -462,8 +462,9 @@ def _purge_linked_outputs(conn, records, stamp):
 
 
 def _purge_person_summaries(conn, memory_ids):
-    """Integration seam for PR #92; called under the same writer transaction."""
-    return None
+    """Clear person summaries under the same writer transaction as memories."""
+    from .person_summary import purge_memory_references
+    return purge_memory_references(conn, memory_ids)
 
 
 def _purge_memories(conn, expected):
@@ -503,7 +504,8 @@ def _purge_memories(conn, expected):
     # Existing annotations about other memories retain their effective state.
     conn.execute('''UPDATE consolidation_annotations SET cleared_at=COALESCE(cleared_at,?),cleared_by=COALESCE(cleared_by,'purge')
         WHERE memory_id IN (SELECT value FROM json_each(?))''',(stamp,dumps(ids)))
-    _purge_person_summaries(conn,ids)
+    summary_counts = _purge_person_summaries(conn,ids) or {}
+    counts.update({'person_summary_'+table:count for table,count in summary_counts.items() if count})
     conn.executemany('DELETE FROM messages WHERE id=?',((mid,) for mid in deleted))
     return {'deleted_message_ids':deleted,'retained_messages':retained,'redaction_counts':counts,
             'published_versions':published}

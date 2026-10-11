@@ -86,7 +86,6 @@ def test_replay_repairs_report_even_when_limit_filled_and_activity_order_changes
 
 def test_purge_clears_shared_consolidation_raw_output_and_late_response(store):
     from iris.memory_ops import purge_memory
-    from iris.person_summary import purge_memory_references
     clock,model,gateway,run,config=prepare(store,limit=1)
     update_summaries_for_run(store,gateway,run,config,clock=clock)
     with store.read() as conn:
@@ -94,7 +93,6 @@ def test_purge_clears_shared_consolidation_raw_output_and_late_response(store):
         assert conn.execute('SELECT COUNT(*) FROM consolidation_calls WHERE raw_output IS NOT NULL').fetchone()[0]==2
     with store.write() as conn:
         purge_memory(store,mid,1,confirm=True,_conn=conn)
-        purge_memory_references(conn,[mid],clock=clock)
     with store.read() as conn:
         rows=list(conn.execute('SELECT * FROM consolidation_calls'))
         assert len(rows)==2 and all(r['raw_output'] is None and r['error']=='因彻底清除而清空' for r in rows)
@@ -102,15 +100,25 @@ def test_purge_clears_shared_consolidation_raw_output_and_late_response(store):
 
 def test_purge_during_budgeted_generation_clears_late_ledger_output(store):
     from iris.memory_ops import purge_memory
-    from iris.person_summary import purge_memory_references
     clock,model,gateway,run,config=prepare(store,limit=1)
     def clear():
         with store.write() as conn:
             purge_memory(store,1,1,confirm=True,_conn=conn)
-            purge_memory_references(conn,[1],clock=clock)
     model.hook=clear
     update_summaries_for_run(store,gateway,run,config,clock=clock)
     with store.read() as conn:
         rows=list(conn.execute('SELECT * FROM consolidation_calls'))
         assert len(rows)==1 and rows[0]['raw_output'] is None
         assert conn.execute('SELECT COUNT(*) FROM person_summary_versions').fetchone()[0]==0
+
+
+def test_person_summary_purge_read_projection_marks_late_ledger(store):
+    from iris import admin_data
+    from iris.memory_ops import purge_memory
+    clock,model,gateway,run,config=prepare(store,limit=1)
+    model.hook=lambda:purge_memory(store,1,1,confirm=True)
+    update_summaries_for_run(store,gateway,run,config,clock=clock)
+    report=admin_data.maintenance_redactions(store,{'id':run['id'],'items':[]})
+    assert len(report['consolidation_calls'])==1
+    assert report['consolidation_calls'][0]['redacted']
+    assert report['consolidation_calls'][0]['redaction_reason']=='因彻底清除而清空'

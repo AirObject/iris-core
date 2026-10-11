@@ -26,7 +26,9 @@ def _redaction(conn, table, row, *, row_id=None):
     value = dict(row)
     marker = conn.execute('SELECT reason FROM purge_redactions WHERE table_name=? AND row_id=?',
                           (table,str(value.get('id') if row_id is None else row_id))).fetchone()
-    return {**value,'redacted':bool(marker),'redaction_reason':marker[0] if marker else None}
+    summary_reason = value.pop('_redaction_reason',None)
+    reason = marker[0] if marker else summary_reason
+    return {**value,'redacted':bool(reason),'redaction_reason':reason}
 
 
 def memory_rows(conn, sql, args=()):
@@ -790,6 +792,6 @@ def maintenance_redactions(store, report):
             row_id=json.dumps([report['id'],item['phase'],item['item_key']],ensure_ascii=False,separators=(',',':')))
             for item in report.get('items',[])]
         result['consolidation_calls'] = [_redaction(conn,'consolidation_calls',row) for row in conn.execute(
-            'SELECT id,purpose,work_id,created_at,result,duration_ms,prompt_tokens,completion_tokens,finish_reason FROM consolidation_calls WHERE run_id=? ORDER BY id',
+            "SELECT id,purpose,work_id,created_at,result,duration_ms,prompt_tokens,completion_tokens,finish_reason,CASE WHEN error='因彻底清除而清空' THEN error END AS _redaction_reason FROM consolidation_calls WHERE run_id=? ORDER BY id",
             (report['id'],))]
     return result
