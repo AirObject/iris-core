@@ -117,3 +117,73 @@ def test_quoted_multiline_probe_uses_text_not_json_serialization(tmp_path):
          'change_degree':'small','reason':'格式测试'}])
     report=run_eval(path,tmp_path/'out',gateway_factory=lambda configs,store:model)
     assert report['metrics']['scoped_leaks']>0
+
+
+@pytest.mark.parametrize('reason', ['server_error','rate_limit','paused','usage_limit','temporary_unavailable'])
+def test_check_model_error_is_incomplete_even_with_rejected_version(tmp_path, reason):
+    from iris.models import ModelError
+    class Unavailable(_Responses):
+        def chat(self, messages, purpose, **kwargs):
+            if purpose.endswith('check'):
+                raise ModelError('paused' if reason in ('paused','usage_limit') else 'server_error',
+                                 'synthetic unavailable response', reason=reason)
+            return super().chat(messages, purpose, **kwargs)
+    path=tmp_path/'tiny.json'; path.write_text(dumps({'format_version':1,'cases':[fixture_case()]}))
+    model=Unavailable([{'items':[{'kind':'fact','text':'公开机制测试内容','memory_refs':['M1']}]}])
+    report=run_eval(path,tmp_path/'out',gateway_factory=lambda configs,store:model)
+    assert report['metrics']['incomplete_cases']==1
+    assert report['rows'][0]['complete'] is False
+
+
+@pytest.mark.parametrize('reason', ['unconfigured','paused','usage_limit','temporary_unavailable'])
+def test_unavailable_before_generation_is_incomplete(tmp_path, reason):
+    from iris.models import ModelError
+    class Health:
+        def check(self, *args, **kwargs):
+            raise ModelError('paused','synthetic unavailable response',reason=reason)
+    model=_Responses([]); model.health=Health()
+    path=tmp_path/'tiny.json'; path.write_text(dumps({'format_version':1,'cases':[fixture_case()]}))
+    report=run_eval(path,tmp_path/'out',gateway_factory=lambda configs,store:model)
+    assert report['metrics']['incomplete_cases']==1
+
+
+def test_invalid_actual_output_is_a_completed_judgment(tmp_path):
+    from iris.models import ModelReply
+    class Invalid:
+        def chat(self, *args, **kwargs):
+            return ModelReply('invalid JSON', 'stop', {})
+    path=tmp_path/'tiny.json'; path.write_text(dumps({'format_version':1,'cases':[fixture_case()]}))
+    report=run_eval(path,tmp_path/'out',gateway_factory=lambda configs,store:Invalid())
+    assert report['metrics']['incomplete_cases']==0
+    assert report['rows'][0]['result']['reason']=='invalid_output'
+
+
+def test_alias_source_extension_is_backward_compatible_and_audited_independently(tmp_path):
+    case=fixture_case()
+    case['subjects'][0].update(aliases=['夜猫'],alias_source_entries={'夜猫':'local'})
+    case['memories'].append({'id':'alias-only','content':'夜猫最近在学日语','speaker':'self',
+        'importance':100,'created_at':'2026-10-01T00:00:00+00:00'})
+    path=tmp_path/'tiny.json';path.write_text(dumps({'format_version':1,'cases':[case]}))
+    model=_Responses([{'items':[{'kind':'fact','text':'公开机制测试内容','memory_refs':['M1']}]},
+        {'items':[{'index':1,'supported':True,'scene_qualified':True,'violations':[],'reason':'机制检查'}],
+         'change_degree':'small','reason':'机制检查'}])
+    report=run_eval(path,tmp_path/'out',gateway_factory=lambda configs,store:model)
+    row=report['rows'][0]; mid=row['memory_ids']['alias-only']
+    material=json.loads(row['attempts'][0]['material_json'])
+    assert mid not in {m['memory_id'] for m in material['evidence']['memories']}
+    assert report['metrics']['scoped_leaks']==0
+    material['evidence']['memories'].append({'memory_id':mid})
+    row['attempts'][0]['material_json']=dumps(material)
+    assert any(v['kind']=='restricted_identity_material' for v in runner._leaks(row)['violations'])
+    del case['subjects'][0]['alias_source_entries']
+    path.write_text(dumps({'format_version':1,'cases':[case]}))
+    assert load_corpus(path)[0]['subjects'][0]['aliases']==['夜猫']
+
+
+def test_private_alias_audit_does_not_use_ambiguous_role_name_as_public_link():
+    case = fixture_case()
+    case['subjects'][0].update(aliases=['夜猫', 'Iris'], alias_source_entries={'夜猫':'local'})
+    case['memories'].append({'id':'alias-only', 'content':'夜猫最近在与 Iris 聊日语', 'speaker':'self'})
+    identity, private = runner._private_identity(case)
+    assert 'alias-only' in identity
+    assert private == ['夜猫']

@@ -1,16 +1,16 @@
 # PS1：人物摘要后端第一阶段
 
-实现基线：main `38c257cb42651ac2351df14d7e3fd4160580b373`（含 #82、#83、#84）。本轮仅假模型／假 HTTP 传输，不读取人物摘要 dev 集或隐藏集，不运行真实模型。不改整理、宿主接口、管理路由、学习、召回、记忆操作或前端文件。
+实现基线：main `199278b157da94bdc38e4c3f21f71ff7c5c4878a`，已通过普通 merge 跟进（合并提交 `13d26a2`），保留已推送历史。本轮仅假模型／假 HTTP 传输，不读取人物摘要 dev 集或隐藏集，不运行真实模型。不改整理、宿主接口、管理路由、学习、召回、记忆操作或前端文件。
 
 ## 数据与内容
 
-迁移 `027_person_summary.sql`，接在当前 main 的 026 之后：
+迁移 `028_person_summary.sql`，接在 main 的 `027_leading_think_diagnostics.sql` 之后：
 
 | 表／设置 | 主要字段与用途 |
 | --- | --- |
 | `person_summary_versions` | subject_id＋version 唯一；base_version、content、sentences_json（类别、正文、依据 ID／revision／指纹、作者、时间范围）、checks_json、change_degree、status（candidate/published/rejected）、author、source、generated_at/published_at、settings_revision/subject_revision、material_json、memory_state_json、invalidated_reason/cleared_at |
 | `person_summary_settings` | 每人 enabled、publish_mode（check_auto/all_manual）、revision、current_version、needs_regeneration、updated_at |
-| `person_summary_attempts` | subject_id、run_id、base_version、状态／原因／起止时间／版本、材料、原始输出、调用统计、清空时间；同人最多一个 running，同一整理 run 每人仅一次 |
+| `person_summary_attempts` | subject_id、run_id、base_version、状态／原因／起止时间／版本、材料、原始输出、调用统计、memory_state_json（尝试时相关事实指纹）、清空时间；subject_id/id 与 run_id 索引；同人最多一个 running，同一整理 run 每人仅一次 |
 | `person_summary_version_memories`／`person_summary_attempt_memories` | 只保存数字依赖 ID，关联最终条目、选入材料、旧版参考文字的依据和已知祖先；不以外键阻止记忆清除，也不在来源边被删后丢失关联 |
 | `runtime_settings.person_summary` | enabled=true、publish_mode=check_auto、memory_tokens=3000、min_memories=8、min_changed=5、update_days=14、max_subjects_per_run=10、max_items=5、max_chars=200、max_tokens=250、生成／检查各 120 秒 |
 
@@ -25,16 +25,16 @@
 
 ## 生成、核对和发布
 
-1. 排除 self／scene、非 person、已被合并主体及关闭的人物。相关记忆通过 speaker／about 或唯一、边界匹配的姓名／别名确定；同名且没有明确 speaker/about 时不借用。
-2. active、未彻底清除，且同时满足有效全局可见和声明 shared。递归检查直接消息来源、保留的范围根和派生祖先；不读取消息正文。单入口 entry_only 或 entries 覆盖当前全集仍排除。排序为重要度、保留强度、新近程度、ID；材料最多 3000 token，单条正文最多约 600 token 并标 truncated。
-3. 有至少 8 条合格记忆才生成。首版；之后至少 5 条记忆新增／变化，或 14 天且有变化；已过时或主体合并标记可触发提前重生成。保留强度衰减本身不算变化。手动重生成跳过更新等待条件，但不跳过数量／开关／预算。
-4. 生成在事务外，严格 JSON；M 编号只解析本次选材，拒绝未知、重复或超过 3 个引用、错误类别／结构／时间范围、多条关系。逐条检查只提供该条绑定的记忆，检查完整支持、单次泛化、敏感／保密、性别、评价、转述、他人事项、指令和到期。
+1. 排除 self／scene、非 person、已被合并主体及关闭的人物。相关记忆通过 speaker／about 或唯一、边界匹配的姓名／别名确定；同名且没有明确 speaker/about 时不借用。人物摘要专用匹配器仅加载主体名、source_message_id=NULL 的手工／合并别名及来源入口声明 shared 的别名；选材、材料别名、过时与写回复核共用该口径，不调用全局未过滤的 SubjectNames 构造函数。
+2. active、未彻底清除，且同时满足有效全局可见和声明 shared。递归检查直接消息来源、保留的范围根和派生祖先；不读取消息正文。单入口 entry_only 或 entries 覆盖当前全集仍排除。先以 speaker_subject_id 索引、memory_subjects_by_subject 及过滤后名字／别名的全文查询取候选，再做最长名字与正文边界核对。三个字符及以上用 trigram 短语，短名用 jieba；始终保留纯姓名关联的候选通路。来源检查只沿候选 ID 向祖先递归，不计算整库闭包，不读 embedding。排序为重要度、保留强度、新近程度、ID；材料最多 3000 token，单条正文最多约 600 token 并标 truncated；累加 JSON 字符分类数精确计算现有 token 估算，预算满即停止摘录。
+3. 有至少 8 条合格记忆才生成。首版；之后至少 5 条记忆新增／变化，或 14 天且有变化；已过时或主体合并标记可触发提前重生成。确认与保留强度衰减不算变化；指纹只含修订、正文、主体、立场、相信程度、事件时间、标签和 world。手动重生成跳过更新等待条件，但不跳过数量／开关／预算。失败或被拒（含管理员拒绝）后，相关事实指纹未变化则不再尝试，手动请求同样遵守；普通 not_due 等跳过不会覆盖上次失败快照。
+4. 生成在事务外，严格 JSON；近期事项没有 valid_until 时，取该条依据的最新事件时间（缺省或不可解析则用创建时间）加 30 天作为 expires_at，到时逐条失效；M 编号只解析本次选材，拒绝未知、重复或超过 3 个引用、错误类别／结构／时间范围、多条关系。逐条检查只提供该条绑定的记忆，检查完整支持、单次泛化、敏感／保密、性别、评价、转述、他人事项、指令和到期。
 5. 代码删条与检查删条共用分母：模型原始条目数（管理员条目不稀释分母），超过一半整版 rejected；恰好一半可保留剩余合格条目。空、超长或检查失败也保留上一版。默认检查通过即发布；all_manual 或手写条目违规警告保留候选，管理员内容不会被模型删掉。
-6. 写回复核当前版本、主体／设置修订、运行设置、选入记忆及旧版参考依据的修订／内容指纹／生命周期／可见声明，检查在途清除。一个人在途仅一个生成。中断保存为失败，同整理 run 不自动重跑；编辑、回滚、开关和生成请求留操作记录。
+6. 写回复核当前版本、主体／设置修订、运行设置、选入记忆及旧版参考依据的修订／内容指纹／生命周期／可见声明，检查在途清除。一个人在途仅一个生成。due 和 admin_edit 的选材均在读快照进行；写事务只做有界依据／版本核对、接纳人数 CAS 和记录写入。编辑保留的旧条目同时复核当前依据及版本清空标记，阻止读快照后彻底清除的正文被重新写回。中断保存为失败，同整理 run 不自动重跑；编辑、回滚、开关和生成请求留操作记录。
 
-读取不触发模型或写操作。当前依据变更、删除、遗忘、可见范围变化、主体变化标 possibly_stale；依据受限、被清空或事项到期时宿主整份不返回。声明受限的版本在原入口也不返回，保持摘要全局派生的边界；管理投影仍能看到过时原因。
+读取不触发模型或写操作。依据删除、遗忘或彻底清除时，宿主先移除含这些依据的条目；到期近期事项同样逐条移除，渲染剩余条目，空则不返回，同时标 possibly_stale 并满足提前重生成条件。其他依据变化或主体变化也标过时。来源或身份关联因可见声明变化而失效时整份隐藏，在原入口也不返回。宿主读取只递归所引依据的祖先与来源，不构建整库闭包；管理详情保留过时原因。CF 已整段清空的版本没有可返回的剩余正文。
 
-主体合并通过新迁移中的触发器原子处理：源版本作废，源候选拒绝，源／目标在途生成 conflict；目标标 needs_regeneration。保留历史记录，不迁移源摘要文字到目标。
+主体合并通过新迁移中的触发器原子处理：源版本作废，源候选拒绝，源／目标在途生成 conflict；目标标 needs_regeneration；updated_at 在 merged_at 缺省时用当前时间兜底。保留历史记录，不迁移源摘要文字到目标。
 
 ## CF 清除衔接
 
@@ -52,36 +52,24 @@
 
 | 接入点 | 已提供的函数／第二阶段工作 |
 | --- | --- |
-| prepare | `summary_context(conn, subject_id, entry_id, clock=...)` 只读返回 `{subject_id,name,text,version,generated_at,possibly_stale}` 或 None；调用者按显式参与者顺序／最近发言顺序取至多 3 人，独立 people_limit token 预算，0 禁用，search 不调用。每人最多 250 token；合计预算默认值由第二阶段接口规格确定。继续使用请求的授权入口 |
+| prepare | `summary_context(conn, subject_id, entry_id, clock=...)` 只读返回 `{subject_id,name,text,version,generated_at,possibly_stale}` 或 None；调用者按显式参与者顺序／最近发言顺序取至多 3 人，独立 people_limit token 预算，0 禁用，search 不调用。每人最多 250 token；合计预算默认值由第二阶段接口规格确定。继续使用请求的授权入口。第二阶段考虑让 people[].name 使用宿主传入的参与者名；本阶段仍返回主体当前名字 |
 | 管理只读 | `current_summary(store, subject_id)`、`summary_settings`、`list_versions(limit,offset)`、`get_version`、`version_diff`；current_summary 指定 entry_id 时返回与 summary_context 相同的六字段宿主投影，不带管理材料快照。管理页面可展示类别、正文、依据、检查、删除记录、变化程度、候选／发布／清空／过时状态 |
 | 管理写入 | `admin_edit`、`rollback`、`confirm_candidate`、`reject_candidate`、`set_settings`、`regenerate_summary(store,gateway,subject_id,expected_version=...)`；均需 expected_version。路由继续使用管理员会话／CSRF；Conflict/Busy 映射 409，其他校验映射适当 400/404；异步任务与前端后续接 |
-| 整理 | `update_summaries_for_run(store,gateway,run,config,clock=...,stop=...)`；默认最多 10 人，最近消息时间（只读元数据）优先，无消息则用最近记忆确认时间。传现有整理的预算记账 gateway（与入口画像／persona 相同）；预检两次调用空间，每个 HTTP 尝试由 gateway 记入 consolidation_calls 并检查共享额度。维护报告 outcome=person_summary，返回 False 表示中断／另一个在途任务 |
+| 整理 | `update_summaries_for_run(store,gateway,run,config,clock=...,stop=...)`；默认最多 10 人，最近消息时间（只读元数据）优先，无消息则用最近记忆确认时间；过时只提前满足条件，不改变活跃排序。先按索引预筛不足 8 条的主体，再在读快照计算 due；接纳满 N 人立即停止计算后续 due。已接纳人物的报告修复单独执行。传现有整理的预算记账 gateway（与入口画像／persona 相同）；预检两次调用空间，每个 HTTP 尝试由 gateway 记入 consolidation_calls 并检查共享额度。维护报告 outcome=person_summary，返回 False 表示中断／另一个在途任务 |
 | CO 后续改动 | 在整理中选定步骤调用上述函数。当前通用调用账本已能计入新 purpose；若希望重试生成时仍预留一次检查调用，可由 CO 将 `consolidation_person_summary_generate` 加入 `Consolidation.reserve` 的 required=2 分支（本阶段不改 consolidation.py） |
 | CF 后续改动 | 按上一节在同一清除事务调用 purge 函数，启用生成前先完成衔接 |
 | UX | 人物页支持短正文（无需 150 字下限）、分类／时间范围、逐条记忆依据、检查与删条记录、版本／对比／候选确认、编辑／回滚／重生成／开关。清空状态展示固定原因，禁止从清空旧版回滚复活正文 |
 
 ## 给 GD 的格式与评测
 
-详见 [运行器与语料格式](README.md) 和 [判分说明](scoring.md)。顶层 format_version=1＋cases；每例声明 target subject、其他 subjects、entries、memories、as_of、must_cover、forbidden，可手写 leak_probes。语料记忆用字符串 ID，source_entries 和 derived_from 表示来源范围。入口限定内容不进入模型材料，must_cover／forbidden 标签只供导出和判分，记忆自身的 tags 仍进入材料。
+详见 [运行器与语料格式](README.md) 和 [判分说明](scoring.md)。顶层 format_version=1＋cases；每例声明 target subject、其他 subjects、entries、memories、as_of、must_cover、forbidden，可手写 leak_probes。语料记忆用字符串 ID，source_entries 和 derived_from 表示来源范围。入口限定内容不进入模型材料，must_cover／forbidden 标签只供导出和判分，记忆自身的 tags 仍进入材料。aliases 字符串数组保持原样，新增可选 alias_source_entries 映射（别名 → 入口 ID 或 null），未填或 null 视为 shared；旧格式不用修改。
 
-运行器输出 PR #7 风格 manifest／run／cases／scoring／round-template，全量指纹绑定。严格校验外部判分的 item_results、must_cover、forbidden；双判正项 AND、禁项 OR、违规并集。独立泄漏检查覆盖实际材料 ID、最终依据 ID、所有尝试的解码后原始输出、最终渲染和精确探针；报告 probe 数，语义改写还需外部 forbidden／依据判断。覆盖率是诊断，不为分数放宽标注。
+运行器输出 PR #7 风格 manifest／run／cases／scoring／round-template，全量指纹绑定。严格校验外部判分的 item_results、must_cover、forbidden；双判正项 AND、禁项 OR、违规并集。独立泄漏检查覆盖实际材料 ID、最终依据 ID、所有尝试的解码后原始输出、最终渲染和精确探针；报告 probe 数，语义改写还需外部 forbidden／依据判断。独立检查也覆盖仅通过受限别名关联的全局记忆和材料中的受限别名。检查调用 ModelError 或 unconfigured／paused／usage_limit／temporary_unavailable 等跳过均算未完成；只有实际输出经引用、长度、语义或 invalid_output 判定才算完成。覆盖率是诊断，不为分数放宽标注。
 
 ## 验证结果
 
-按要求依次完成以下验证，两个 Python 版本没有并行运行：
+定向测试 86 passed（含原有 53 项和本轮新增 33 项）；先以回归探针确认失败，再修复。全量 3.13／3.12、构建、最新 main 的学习／召回／入口画像对照与一次性规模计时正在完成，最终结果将在提交前补齐。
 
-| 命令 | 结果 |
-| --- | --- |
-| `uv run pytest` | Python 3.13.15；2490 passed，1047.20 秒 |
-| `uv run --locked --isolated --python 3.12 pytest` | Python 3.12.14；2490 passed，716.78 秒 |
-| `uv build` | wheel、sdist 均成功；新增模块／迁移／提示词及入口画像 v1／v2 提示词共 9 个文件逐字匹配源码；敏感配置未打包 |
+一次性计时脚本为仓库外 measure_once.py：50,000 条合成记忆、1,000 个主体，每条附 8192 字节未使用的向量数据，并包含 speaker／about、受限 roots 和派生来源。只调用一次 update_summaries_for_run，接纳默认 10 人；使用确定性假响应并扣除 fake chat 方法耗时，不调用真实模型。写事务计时包含锁获取、BEGIN、事务体、COMMIT 及 Store 提交后 bookkeeping，作为保守上界。等待其他重负载结束后单独测量，不做压测。
 
-两轮各有 4 条既有第三方警告（jieba 转义、Starlette TestClient 弃用），无失败。工作区虚拟环境仍为 Python 3.13.15。人物摘要新增测试共 53 项，包含假 HTTP Gateway、可见性声明、删条门槛、并发、事务外调用、人工保留、清除、合并、共享额度和运行器；入口画像原测试保持不改。运行器 10 项测试包括 Unicode 转义及带引号／换行的泄漏探针。
-
-提交前再次 fetch 的 origin/main 为 `28495ed13fd48ef5046e9d9e89d17e8dcfc42edb`（后续 #85、#88、#90），最新迁移仍为 026，027 没有冲突。上述全量测试和下列对照均使用报告开头的固定实现基线 `38c257c`。
-
-已完成的假模型对照：五份公开学习语料 116 案例／272 批次，请求逐字一致，SHA-256 同为 `9988666d3634cdde81ded0d1a540cf92cbda5d30b65bf8ae5a85301274861092`；七份召回语料 228 查询、全文／混合／判断后三路径 684 返回零差异，216 判断请求一致（仅排除 recall_id 与耗时）。入口画像五种流程的完整提示词／参数／版本／渲染／依据／检查结果与 main 相同。
-
-极小手写临时样例完成 CLI 生成、材料导出及固定布尔值的外部计分格式演练，入口限定泄漏为 0，引用核对 1/1。`fake-format-only` 的布尔值不是语义评分；不据此宣称 dev 或隐藏门槛通过。
-
-完整日志／请求／返回／极小手写样例位于仓库外 `/Users/cassia/Local/Code/iris-eval-artifacts/PS1-20261011/`。其中 `baseline/` 是本任务通过 git worktree add 建立的固定 main 对照 worktree，留给规划者清理；未删除任何 worktree 或分支。
+完整日志、请求／返回对照和合成规模数据位于仓库外 `/Users/cassia/Local/Code/iris-eval-artifacts/PS1-review-20261012/`。其中 baseline/ 是本任务通过 git worktree add 新建的固定 main 对照，留给规划者清理；本轮未读取 person_summary_v1 dev 集或隐藏集。

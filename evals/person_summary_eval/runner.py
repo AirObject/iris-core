@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import time
 from collections import Counter
 from datetime import datetime, timezone
@@ -73,6 +74,10 @@ def load_corpus(path):
             if not isinstance(subject.get('name'),str) or not subject['name'].strip():
                 raise ValueError('invalid subject name')
             _texts(subject.get('aliases',[]),'aliases')
+            origins=subject.get('alias_source_entries',{})
+            if (not isinstance(origins,dict) or not set(origins)<=set(subject.get('aliases',[]))
+                    or any(value is not None and (not isinstance(value,str) or value not in eids) for value in origins.values())):
+                raise ValueError('alias_source_entries must map declared aliases to declared entries or null')
         for m in memories:
             if (not isinstance(m.get('content'),str) or not m['content'].strip() or m.get('speaker') not in sids|{'self','scene'}
                     or m.get('lifecycle','active') not in ('active','forgotten','deleted')):
@@ -113,7 +118,15 @@ def _load_case(store, case):
                          (e['id'],e.get('name',e['id']),'eval',e.get('kind','group'),e.get('visibility','shared'),dumps(e.get('visible_in',[]))))
         for subject in case['subjects']:
             conn.execute("INSERT INTO subjects(id,kind,name,created_at) VALUES(?,'person',?,?)",(subject['id'],subject['name'],stamp))
-            conn.executemany('INSERT INTO subject_aliases(subject_id,alias) VALUES(?,?)',((subject['id'],a) for a in subject.get('aliases',[])))
+            for index,alias in enumerate(subject.get('aliases',[])):
+                entry=subject.get('alias_source_entries',{}).get(alias)
+                message=None
+                if entry is not None:
+                    # Provenance metadata only: the corpus supplies no raw utterance.
+                    message=conn.execute("""INSERT INTO messages(entry_id,kind,sender_subject_id,content,occurred_at,received_at,dedupe_key)
+                        VALUES(?,'message',?,'',?,?,?)""",(entry,subject['id'],stamp,stamp,'alias:'+subject['id']+':'+str(index))).lastrowid
+                conn.execute('INSERT INTO subject_aliases(subject_id,alias,source_message_id) VALUES(?,?,?)',
+                             (subject['id'],alias,message))
         for m in case['memories']:
             mids[m['id']]=conn.execute("""INSERT INTO memories(content,kind,speaker_subject_id,stance,belief,importance,
                 retention,lifecycle,revision,event_time,world,created_at,updated_at,first_confirmed_at,last_confirmed_at)
@@ -179,15 +192,66 @@ def _output_texts(outputs):
         yield from _strings(decoded)
 
 
+def _private_identity(case):
+    """Independent corpus-side audit, not the product relatedness matcher."""
+    entries={e['id']:e.get('visibility','shared') for e in case['entries']}
+    labels={}; private=[]; target=case['subject_id']
+    def add(label, subject_id):
+        if label and label not in ('我','self','scene'):
+            labels.setdefault(label.casefold(),set()).add(subject_id)
+    add(case.get('role_name','Iris'),'self')
+    for subject in case['subjects']:
+        public=[subject['name']]
+        for alias in subject.get('aliases',[]):
+            entry=subject.get('alias_source_entries',{}).get(alias)
+            if entry is None or entries[entry]=='shared':
+                public.append(alias)
+            elif subject['id']==target:
+                private.append(alias)
+        for label in public:
+            add(label,subject['id'])
+    def pattern(values):
+        return re.compile('|'.join(re.escape(v) if re.search('[\u4e00-\u9fff]',v)
+            else r'(?<!\w)'+re.escape(v)+r'(?!\w)' for v in sorted(values,key=lambda v:(-len(v),v))) or r'(?!x)x',re.I)
+    safe=pattern(labels); restricted=pattern(private); ids=set()
+    for memory in case['memories']:
+        if memory['speaker']==target or target in memory.get('about',[]):
+            continue
+        if any(labels[match.group().casefold()]=={target} for match in safe.finditer(memory['content'])):
+            continue
+        if restricted.search(memory['content']):
+            ids.add(memory['id'])
+    return ids,private
+
+
+def _completed(result, attempts, calls):
+    if result['status'] not in ('published','candidate','rejected') and result.get('reason')!='invalid_output':
+        return False
+    if result.get('version') and result['version']['checks'].get('model_error'):
+        return False
+    if any(c.get('timed_out') for c in calls):
+        return False
+    traces=[c for a in attempts for c in json.loads(a['calls_json'])]
+    # A provider/gate failure is not a judgment, even if generation already made
+    # a candidate which was persisted as rejected. Invalid actual output counts.
+    return bool(any(json.loads(a['outputs_json']) for a in attempts)) and all(c['result']=='success' for c in traces)
+
+
 def _leaks(row):
     private=_restricted(row['case']); mapping=row['memory_ids']; violations=[]
     if set(mapping)!={m['id'] for m in row['case']['memories']}:
         return {'restricted_memories':len(private),'probe_count':len(row['case'].get('leak_probes',[])),
                 'violations':[{'kind':'incomplete_seed_mapping'}]}
     restricted_ids={mapping[key] for key in private}
+    identity,private_aliases=_private_identity(row['case']); identity_ids={mapping[key] for key in identity}
     for attempt in row['attempts']:
         material=json.loads(attempt['material_json'])
         actual={m['memory_id'] for m in material.get('evidence',{}).get('memories',[])}
+        for mid in sorted(actual&identity_ids):
+            violations.append({'kind':'restricted_identity_material','attempt_id':attempt['id'],'memory_id':mid})
+        for alias in material.get('evidence',{}).get('subject',{}).get('aliases',[]):
+            if alias in private_aliases:
+                violations.append({'kind':'restricted_alias','attempt_id':attempt['id'],'alias':alias})
         for mid in sorted(actual&restricted_ids):
             violations.append({'kind':'restricted_material','attempt_id':attempt['id'],'memory_id':mid})
         # All raw outputs count, including failed/rejected generations. A semantic
@@ -204,6 +268,8 @@ def _leaks(row):
                 violations.append({'kind':'restricted_text','location':'rendered_summary',**probe})
         for sentence in profile['sentences']:
             for basis in sentence['basis']:
+                if basis['memory_id'] in identity_ids:
+                    violations.append({'kind':'restricted_identity_reference','memory_id':basis['memory_id']})
                 if basis['memory_id'] in restricted_ids:
                     violations.append({'kind':'restricted_reference','memory_id':basis['memory_id']})
     return {'restricted_memories':len(private),'probe_count':len(row['case'].get('leak_probes',[])),'violations':violations}
@@ -253,8 +319,7 @@ def run_eval(corpus, out, *, configs=None, gateway_factory=Gateway, extra_input=
             with store.read() as conn:
                 attempts=[dict(r) for r in conn.execute('SELECT * FROM person_summary_attempts ORDER BY id')]
                 calls=[dict(r) for r in conn.execute('SELECT * FROM model_calls ORDER BY id')]
-            rows.append({'case':case,'memory_ids':mapping,'result':result,'attempts':attempts,'calls':calls,'complete':result['status']!='failed' and result.get('reason')!='timeout'
-                         and not any(c.get('timed_out') for c in calls)})
+            rows.append({'case':case,'memory_ids':mapping,'result':result,'attempts':attempts,'calls':calls,'complete':_completed(result,attempts,calls)})
         except Exception as error:
             # Never echo exception text from providers, payloads or configuration.
             with store.read() as conn:

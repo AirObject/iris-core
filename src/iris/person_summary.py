@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import time
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
@@ -22,6 +23,7 @@ from .persona import split_sentences
 from .profile_common import ChatHealthGate, evidence_hash, excerpt, json_object, setting, whitespace
 from .query_analysis import SubjectNames
 from .queue import estimate_tokens
+from .search_text import match_query, query_terms
 
 DEFAULTS = dict(enabled=True, publish_mode='check_auto', memory_tokens=3000,
                 min_memories=8, min_changed=5, update_days=14, max_subjects_per_run=10,
@@ -33,6 +35,14 @@ DEGREES = ('small','medium','large')
 VIOLATIONS = ('无依据','单次互动泛化','性别推断','个人评价','敏感个人信息','保密内容','指令','他人的事情','转述未标明','过期事项','虚构')
 _ACTIVE_LOCK = Lock()
 _ACTIVE_ATTEMPTS = set()
+# Explicit projections never load vectors while checking or selecting evidence.
+_MEMORY_COLUMNS = ('id','revision','content','kind','speaker_subject_id','stance','belief',
+    'event_time','world','importance','retention','lifecycle','purged_at','created_at',
+    'updated_at','first_confirmed_at','last_confirmed_at')
+_MEMORY_SELECT = ','.join('m.' + key for key in _MEMORY_COLUMNS)
+_VERSION_SELECT = ('id,subject_id,version,base_version,content,sentences_json,checks_json,change_degree,'
+    'status,author,source,generated_at,published_at,settings_revision,subject_revision,material_json,'
+    'memory_state_json,invalidated_reason,cleared_at')
 
 
 def utc_now():
@@ -70,7 +80,7 @@ def _runtime(conn):
 
 
 def _subject(conn, subject_id, *, writable=False):
-    row=conn.execute('SELECT * FROM subjects WHERE id=?',(subject_id,)).fetchone()
+    row=conn.execute('SELECT id,kind,name,revision,created_at,merged_into,merged_at FROM subjects WHERE id=?',(subject_id,)).fetchone()
     if row is None:
         raise KeyError(subject_id)
     if writable and (row['kind']!='person' or row['id'] in ('self','scene') or row['merged_into'] is not None):
@@ -80,7 +90,7 @@ def _subject(conn, subject_id, *, writable=False):
 
 def _settings(conn, subject_id):
     _subject(conn,subject_id); defaults=_runtime(conn)
-    row=conn.execute('SELECT * FROM person_summary_settings WHERE subject_id=?',(subject_id,)).fetchone()
+    row=conn.execute('SELECT subject_id,enabled,publish_mode,revision,current_version,needs_regeneration,updated_at FROM person_summary_settings WHERE subject_id=?',(subject_id,)).fetchone()
     return (dict(row)|{'enabled':bool(row['enabled'])}) if row else dict(subject_id=subject_id,enabled=True,
         publish_mode=defaults['publish_mode'],revision=0,current_version=0,needs_regeneration=0,updated_at=None)
 
@@ -108,7 +118,7 @@ def _decode(row):
 
 
 def _version(conn, subject_id, version):
-    row=conn.execute('SELECT * FROM person_summary_versions WHERE subject_id=? AND version=?',(subject_id,version)).fetchone()
+    row=conn.execute(f'SELECT {_VERSION_SELECT} FROM person_summary_versions WHERE subject_id=? AND version=?',(subject_id,version)).fetchone()
     if row is None:
         raise KeyError((subject_id,version))
     return _decode(row)
@@ -133,34 +143,74 @@ def _about(conn, memory_id):
         JOIN subjects s ON s.id=ms.subject_id WHERE ms.memory_id=? ORDER BY s.id''',(memory_id,))]
 
 
+class _SummaryNames(SubjectNames):
+    """Use the same label boundaries, with exclusively public identity links.
+
+    Do not call SubjectNames.__init__: its unfiltered aliases belong to other
+    features. Both material aliases and all relatedness checks use this view.
+    """
+    def __init__(self, conn):
+        self.labels = {}; self.aliases = defaultdict(list)
+        self.names = {r['id']:r['name'] for r in conn.execute(
+            "SELECT id,name FROM subjects WHERE id!='scene' AND merged_into IS NULL")}
+        for sid, name in self.names.items():
+            if sid != 'self':
+                self.add(name, sid)
+        self.add(setting(conn, 'role_name', 'Iris'), 'self')
+        for row in conn.execute("""SELECT a.subject_id,a.alias FROM subject_aliases a
+            JOIN subjects s ON s.id=a.subject_id
+            LEFT JOIN messages x ON x.id=a.source_message_id LEFT JOIN entries e ON e.id=x.entry_id
+            WHERE s.id!='scene' AND s.merged_into IS NULL AND a.folded_into IS NULL
+            AND (a.source_message_id IS NULL OR e.visibility='shared') ORDER BY a.alias"""):
+            self.add(row['alias'], row['subject_id'])
+            self.aliases[row['subject_id']].append(row['alias'])
+        labels = sorted(self.labels, key=lambda value:(-len(value), value))
+        pattern = '|'.join(re.escape(label) if re.search('[\u4e00-\u9fff]', label)
+            else r'(?<!\w)' + re.escape(label) + r'(?!\w)' for label in labels)
+        self.pattern = re.compile(pattern or r'(?!x)x', re.I)
+
+
 def _related(row, about, subject_id, names):
     if row['speaker_subject_id']==subject_id or any(s['id']==subject_id for s in about):
         return True
-    # Reuse longest-label and word boundaries. An ambiguous name alone does not
-    # identify a particular person; explicit about/speaker still works normally.
     return any(names.labels[m.group().casefold()]=={subject_id} for m in names.pattern.finditer(row['content']))
 
 
 def _memory_hash(row, about):
-    keys=('id','revision','content','kind','speaker_subject_id','stance','belief','event_time','world','last_confirmed_at')
+    # Confirmation and retention affect ordering, never facts or change counts.
+    keys=('revision','content','speaker_subject_id','stance','belief','event_time','world')
     return evidence_hash({**{key:row[key] for key in keys},'about':[s['id'] for s in about],'tags':row.get('tags',[])})
 
 
-def _restricted_memories(conn):
-    """Declared restrictions, including preserved roots and all descendants.
+def _scopes(conn, memory_ids):
+    """Declared and effective visibility, walking only requested ancestors.
 
-    Unlike effective Visibility, this never treats a restricted declaration as
-    global merely because its allowed set happens to contain every current entry.
-    The UNION recursion terminates on cycles and reads no message prose.
+    This is the candidate-scoped equivalent of Visibility.memory. Its effective
+    scope check and strict shared-declaration check are intentionally separate.
+    No descendant closure, raw message body, or memory vector is read.
     """
-    return {r[0] for r in conn.execute("""WITH RECURSIVE restricted(id) AS (
-        SELECT s.memory_id FROM sources s JOIN messages x ON x.id=s.message_id
-            JOIN entries e ON e.id=x.entry_id WHERE s.kind='message' AND e.visibility!='shared'
-        UNION SELECT v.memory_id FROM memory_visibility_roots v JOIN entries e ON e.id=v.entry_id
-            WHERE e.visibility!='shared'
-        UNION SELECT s.memory_id FROM restricted r JOIN sources s ON s.source_memory_id=r.id
-            WHERE s.kind='memory'
-    ) SELECT id FROM restricted""")}
+    ids=sorted(set(memory_ids)); declared=set(); effective={mid:None for mid in ids}
+    if not ids:
+        return declared,effective
+    universe=frozenset(r[0] for r in conn.execute('SELECT id FROM entries'))
+    for row in conn.execute("""WITH RECURSIVE ancestry(root,id) AS (
+        SELECT value,value FROM json_each(?) UNION SELECT a.root,s.source_memory_id
+        FROM ancestry a JOIN sources s ON s.memory_id=a.id
+        WHERE s.kind='memory' AND s.source_memory_id IS NOT NULL
+    ), origins(root,entry_id) AS (
+        SELECT a.root,x.entry_id FROM ancestry a JOIN sources s ON s.memory_id=a.id
+        JOIN messages x ON x.id=s.message_id WHERE s.kind='message'
+        UNION SELECT a.root,v.entry_id FROM ancestry a JOIN memory_visibility_roots v ON v.memory_id=a.id
+    ) SELECT o.root,e.id,e.visibility,e.visible_in_json FROM origins o JOIN entries e ON e.id=o.entry_id""",
+        (dumps(ids),)):
+        mode=row['visibility']; root=row['root']
+        if mode!='shared':
+            declared.add(root)
+        allowed=(universe if mode=='shared' else frozenset({row['id']}) if mode=='entry_only'
+                 else frozenset([row['id'],*json.loads(row['visible_in_json'])]) & universe)
+        scope=None if allowed==universe else allowed
+        effective[root]=Visibility.intersect(effective[root],scope)
+    return declared,effective
 
 
 def _dependencies(conn, memory_ids):
@@ -170,26 +220,66 @@ def _dependencies(conn, memory_ids):
     ) SELECT id FROM ancestry""",(dumps(sorted(set(memory_ids))),))}
 
 
-def _eligible(conn, subject_id, current):
-    visibility=Visibility(conn); names=SubjectNames(conn)
-    where=visibility.memory_sql(None)
-    restricted=dumps(sorted(_restricted_memories(conn)))
-    rows=[]
-    for row in conn.execute(f'''SELECT m.* FROM memories m WHERE m.lifecycle='active' AND m.purged_at IS NULL
-        AND julianday(m.created_at)<=julianday(?) AND {where}
-        AND m.id NOT IN (SELECT value FROM json_each(?))
-        ORDER BY m.importance DESC,m.retention DESC,
-                 MAX(julianday(m.updated_at),julianday(m.last_confirmed_at)) DESC,m.id''',(current.isoformat(),restricted)):
-        row=dict(row); row['tags']=[r[0] for r in conn.execute('SELECT tag FROM memory_tags WHERE memory_id=? ORDER BY tag',(row['id'],))]
-        about=_about(conn,row['id'])
+def _direct_ids(conn, subject_id, current, *, limit=None):
+    sql="""SELECT m.id FROM memories m INDEXED BY memories_dedupe
+        WHERE m.speaker_subject_id=? AND m.lifecycle='active' AND m.purged_at IS NULL
+        AND julianday(m.created_at)<=julianday(?) UNION
+        SELECT m.id FROM memory_subjects ms INDEXED BY memory_subjects_by_subject
+        JOIN memories m ON m.id=ms.memory_id WHERE ms.subject_id=? AND m.lifecycle='active'
+        AND m.purged_at IS NULL AND julianday(m.created_at)<=julianday(?)"""
+    args=[subject_id,current.isoformat(),subject_id,current.isoformat()]
+    if limit is not None:
+        sql+=' LIMIT ?'; args.append(limit)
+    return {r[0] for r in conn.execute(sql,args)}
+
+
+def _named_ids(conn, subject_id, names):
+    found=set()
+    for label,sids in names.labels.items():
+        if sids!={subject_id}:
+            continue
+        tokenizer='trigram' if len(label)>=3 else 'jieba'
+        tokens=[label] if tokenizer=='trigram' else query_terms(label,'jieba')
+        if not tokens:
+            continue
+        table='memory_fts_'+tokenizer
+        found.update(r[0] for r in conn.execute(
+            f'SELECT rowid FROM {table} WHERE {table} MATCH ?', ('content : ('+match_query(tokens)+')',)))
+    return found
+
+
+def _enough_candidates(conn, subject_id, current, minimum, names):
+    # The direct relationship indexes make obviously undersized subjects cheap.
+    # Name-only subjects still get their FTS route; they are never rejected just
+    # because they have fewer than eight speaker/about links.
+    direct=_direct_ids(conn,subject_id,current,limit=minimum)
+    return len(direct)>=minimum or len(direct|_named_ids(conn,subject_id,names))>=minimum
+
+
+def _eligible(conn, subject_id, current, *, names=None):
+    names=names or _SummaryNames(conn)
+    ids=_direct_ids(conn,subject_id,current)|_named_ids(conn,subject_id,names)
+    if not ids:
+        return []
+    restricted,scopes=_scopes(conn,ids); rows=[]
+    for item in conn.execute(f"""SELECT {_MEMORY_SELECT} FROM memories m
+        WHERE m.id IN (SELECT value FROM json_each(?)) AND m.lifecycle='active' AND m.purged_at IS NULL
+        AND julianday(m.created_at)<=julianday(?) ORDER BY m.importance DESC,m.retention DESC,
+        MAX(julianday(m.updated_at),julianday(m.last_confirmed_at)) DESC,m.id""",(dumps(sorted(ids)),current.isoformat())):
+        if item['id'] in restricted or scopes[item['id']] is not None:
+            continue
+        row=dict(item); about=_about(conn,row['id'])
         if _related(row,about,subject_id,names):
-            rows.append((dict(row),about))
+            row['tags']=[r[0] for r in conn.execute('SELECT tag FROM memory_tags WHERE memory_id=? ORDER BY tag',(row['id'],))]
+            rows.append((row,about))
     return rows
 
 
-def _select(conn, subject_id, current):
+def _select(conn, subject_id, current, *, rows=None, names=None):
     subject=_subject(conn,subject_id,writable=True); config=_runtime(conn)
-    rows=_eligible(conn,subject_id,current); selected=[]
+    names=names or _SummaryNames(conn)
+    rows=_eligible(conn,subject_id,current,names=names) if rows is None else rows
+    selected=[]; han=0; other=2  # JSON list brackets, then exactly one comma between items.
     state={str(row['id']):_memory_hash(row,about) for row,about in rows}
     for row,about in rows:
         speaker=_subject(conn,row['speaker_subject_id'])
@@ -198,13 +288,15 @@ def _select(conn, subject_id, current):
         item.update(ref=f'M{len(selected)+1}',memory_id=row['id'],content=excerpt(row['content'],600),
                     speaker={'id':speaker['id'],'name':speaker['name']},about=about,sha256=state[str(row['id'])])
         item['truncated']=item['content']!=row['content']
-        if estimate_tokens(dumps([*selected,item]))<=config['memory_tokens']:
-            selected.append(item)
-    aliases=[r[0] for r in conn.execute("SELECT a.alias FROM subject_aliases a LEFT JOIN messages x ON x.id=a.source_message_id LEFT JOIN entries e ON e.id=x.entry_id WHERE a.subject_id=? AND a.folded_into IS NULL AND (a.source_message_id IS NULL OR e.visibility='shared') ORDER BY a.alias",(subject_id,))]
-    return {'subject':{key:subject[key] for key in ('id','name','revision')}|{'aliases':aliases},
+        encoded=dumps(item); added_han=sum('\u4e00'<=ch<='\u9fff' for ch in encoded)
+        added_other=len(encoded)-added_han+bool(selected)
+        if han+added_han+(other+added_other+2)//3>config['memory_tokens']:
+            break
+        selected.append(item); han+=added_han; other+=added_other
+    return {'subject':{key:subject[key] for key in ('id','name','revision')}|{'aliases':names.aliases[subject_id]},
             'as_of':current.isoformat(),'timezone':setting(conn,'timezone','Asia/Shanghai'),
             'role_name':setting(conn,'role_name','Iris'),'memories':selected,
-            'memory_count':len(rows),'memory_tokens':estimate_tokens(dumps(selected)),'memory_state':state}
+            'memory_count':len(rows),'memory_tokens':han+(other+2)//3,'memory_state':state}
 
 
 def select_material(store, subject_id, *, clock=utc_now):
@@ -216,28 +308,51 @@ def _basis(item):
     return {key:item[key] for key in ('memory_id','revision','sha256')}
 
 
-def _stale(conn, subject_id, sentences, *, current=None):
-    result=[]; seen=set(); visibility=Visibility(conn); names=SubjectNames(conn)
-    restricted=_restricted_memories(conn)
+def _recent_deadline(memories):
+    dates=[]
+    for row in memories:
+        try:
+            value=datetime.fromisoformat(row['event_time']) if row.get('event_time') else None
+        except (ValueError,TypeError):
+            value=None
+        if value is None:
+            value=_instant(row['created_at'])
+        elif value.tzinfo is None:
+            value=value.replace(tzinfo=timezone.utc)
+        dates.append(value)
+    return max(dates)+timedelta(days=30) if dates else None
+
+
+def _stale(conn, subject_id, sentences, *, current=None, names=None):
+    result=[]; seen=set(); names=names or _SummaryNames(conn)
+    ids={b['memory_id'] for s in sentences for b in s['basis']}
+    restricted,scopes=_scopes(conn,ids)
+    rows={r['id']:dict(r) for r in conn.execute(
+        f'SELECT {_MEMORY_SELECT} FROM memories m WHERE m.id IN (SELECT value FROM json_each(?))',(dumps(sorted(ids)),))}
     today=current.astimezone(ZoneInfo(setting(conn,'timezone','Asia/Shanghai'))).date() if current else None
-    for sentence in sentences:
-        if sentence.get('valid_until') and current and date.fromisoformat(sentence['valid_until'])<today:
-            result.append({'reason':'time_range_expired','valid_until':sentence['valid_until']})
+    for index,sentence in enumerate(sentences):
+        expired=False
+        if current and sentence.get('valid_until'):
+            expired=date.fromisoformat(sentence['valid_until'])<today
+        elif current and sentence.get('kind')=='recent':
+            deadline=(_instant(sentence['expires_at']) if sentence.get('expires_at') else
+                      _recent_deadline([rows[b['memory_id']] for b in sentence['basis'] if b['memory_id'] in rows]))
+            expired=deadline is not None and current>=deadline
+        if expired:
+            result.append({'reason':'time_range_expired','sentence_index':index})
         for basis in sentence['basis']:
             key=dumps(basis)
             if key in seen:
                 continue
-            seen.add(key)
-            row=conn.execute('SELECT * FROM memories WHERE id=?',(basis['memory_id'],)).fetchone()
-            reason=None
+            seen.add(key); row=rows.get(basis['memory_id']); reason=None
             if row is None or row['purged_at']:
                 reason='memory_purged'
             elif row['lifecycle']!='active':
                 reason='memory_unavailable'
-            elif row['id'] in restricted or visibility.memory(row['id']) is not None:
+            elif row['id'] in restricted or scopes[row['id']] is not None:
                 reason='visibility_changed'
             else:
-                row=dict(row); row['tags']=[r[0] for r in conn.execute('SELECT tag FROM memory_tags WHERE memory_id=? ORDER BY tag',(row['id'],))]
+                row['tags']=[r[0] for r in conn.execute('SELECT tag FROM memory_tags WHERE memory_id=? ORDER BY tag',(row['id'],))]
                 about=_about(conn,row['id'])
                 if not _related(row,about,subject_id,names):
                     reason='no_longer_related'
@@ -262,13 +377,6 @@ def _view(conn, value, *, current=None):
     return value
 
 
-def _visible(conn, value, entry_id):
-    visibility=Visibility(conn); visibility.entry(entry_id)
-    restricted=_restricted_memories(conn)
-    ids={b['memory_id'] for s in value['sentences'] for b in s['basis']}
-    unavailable={r[0] for r in conn.execute('SELECT value FROM json_each(?) WHERE value NOT IN (SELECT id FROM memories WHERE purged_at IS NULL)',(dumps(sorted(ids)),))}
-    return not (ids & restricted or unavailable) and all(visibility.memory_visible(mid,entry_id) for mid in ids)
-
 
 def current_summary(store, subject_id, *, entry_id=None, clock=utc_now):
     """Admin detail without an entry; otherwise only the safe host projection."""
@@ -279,16 +387,25 @@ def current_summary(store, subject_id, *, entry_id=None, clock=utc_now):
 
 
 def summary_context(conn, subject_id, entry_id, *, clock=utc_now):
-    """Future prepare item. No writes/calls; callers supply an authorized entry."""
+    """Future prepare item, with only cited ancestors checked on this snapshot."""
+    if entry_id is not None and not conn.execute('SELECT 1 FROM entries WHERE id=?',(entry_id,)).fetchone():
+        raise KeyError(entry_id)
     subject=_subject(conn,subject_id); settings=_settings(conn,subject_id)
     if (subject['kind']!='person' or subject_id in ('self','scene') or subject['merged_into'] is not None or not settings['enabled'] or not _runtime(conn)['enabled']):
         return None
     value=_view(conn,_current(conn,subject_id),current=_instant(clock()))
     if (value is None or not value['content'] or value['status']!='published' or value['invalidated_reason']
-            or value['cleared_at'] or not _visible(conn,value,entry_id)
-            or any(s['reason']=='time_range_expired' for s in value['stale_basis'])):
+            or value['cleared_at'] or any(s['reason'] in ('visibility_changed','no_longer_related') for s in value['stale_basis'])):
         return None
-    return {'subject_id':subject_id,'name':subject['name'],'text':value['content'],'version':value['version'],
+    # _stale checks effective global scope as well as the stricter declaration;
+    # a globally valid basis is visible at this authorized entry too.
+    unavailable={s['memory_id'] for s in value['stale_basis'] if s['reason'] in ('memory_unavailable','memory_purged') and 'memory_id' in s}
+    expired={s['sentence_index'] for s in value['stale_basis'] if s['reason']=='time_range_expired'}
+    kept=[s for i,s in enumerate(value['sentences']) if i not in expired and not any(b['memory_id'] in unavailable for b in s['basis'])]
+    if not kept:
+        return None
+    content=value['content'] if len(kept)==len(value['sentences']) else ''.join(s['text'] for s in kept)
+    return {'subject_id':subject_id,'name':subject['name'],'text':content,'version':value['version'],
             'generated_at':value['generated_at'],'possibly_stale':value['possibly_stale']}
 
 
@@ -303,14 +420,15 @@ def list_versions(store, subject_id, *, limit=50, offset=0, clock=utc_now):
     with store.read() as conn:
         _subject(conn,subject_id)
         return [_view(conn,_decode(row),current=_instant(clock())) for row in conn.execute(
-            'SELECT * FROM person_summary_versions WHERE subject_id=? ORDER BY version DESC LIMIT ? OFFSET ?',
+            f'SELECT {_VERSION_SELECT} FROM person_summary_versions WHERE subject_id=? ORDER BY version DESC LIMIT ? OFFSET ?',
             (subject_id,limit,offset))]
 
 
-def _due(conn, subject_id, current):
+def _due(conn, subject_id, current, *, rows=None, names=None):
     subject=_subject(conn,subject_id); config=_runtime(conn); settings=_settings(conn,subject_id)
     previous=_current(conn,subject_id)
-    rows=_eligible(conn,subject_id,current) if subject['kind']=='person' and subject_id not in ('self','scene') and not subject['merged_into'] else []
+    available=subject['kind']=='person' and subject_id not in ('self','scene') and not subject['merged_into']
+    rows=(_eligible(conn,subject_id,current,names=names) if available else []) if rows is None else rows
     state={str(row['id']):_memory_hash(row,about) for row,about in rows}
     old=previous['memory_state'] if previous else {}
     changed=sum(state.get(mid)!=old.get(mid) for mid in state.keys()|old.keys())
@@ -318,6 +436,10 @@ def _due(conn, subject_id, current):
     reason=('subject_kind' if subject['kind']!='person' or subject_id in ('self','scene') else 'subject_merged' if subject['merged_into'] else
             'disabled' if not config['enabled'] or not settings['enabled'] else
             'insufficient_memories' if len(rows)<config['min_memories'] else None)
+    last=conn.execute("""SELECT state,memory_state_json FROM person_summary_attempts
+        WHERE subject_id=? AND state!='skipped' ORDER BY id DESC LIMIT 1""",(subject_id,)).fetchone()
+    if reason is None and last and last['state'] in ('failed','rejected') and json.loads(last['memory_state_json'])==state:
+        reason='no_changes_since_attempt'
     if reason is None and previous and not (stale or settings['needs_regeneration'] or changed>=config['min_changed'] or
             changed and current-_instant(previous['generated_at'])>=timedelta(days=config['update_days'])):
         reason='not_due'
@@ -395,18 +517,30 @@ def _edit_segments(content, previous):
 
 def admin_edit(store, subject_id, content, *, expected_version, clock=utc_now):
     stamp=_instant(clock()).isoformat()
-    with store.write() as conn:
+    if not isinstance(content,str):
+        raise ValueError('summary must be text')
+    with store.read() as conn:
         subject=_subject(conn,subject_id,writable=True); previous=_expect(conn,subject_id,expected_version)
-        if not isinstance(content,str):
-            raise ValueError('summary must be text')
-        old=defaultdict(list)
-        for item in previous['sentences'] if previous else []:
-            old[item['text']].append(item)
-        sentences=[old[text].pop(0) if old[text] else {'text':text,'basis':[],'author':'admin'}
-                   for text in _edit_segments(content,previous)]
-        if _length_errors(content,sentences,_runtime(conn)):
-            raise ValueError('summary must be nonempty, at most 5 items / 200 characters / 250 tokens')
-        settings=_ensure(conn,subject_id,stamp); selected=_select(conn,subject_id,_instant(stamp))
+        config=_runtime(conn); snapshot_settings=_settings(conn,subject_id)
+        selected=_select(conn,subject_id,_instant(stamp))
+    old=defaultdict(list)
+    for item in previous['sentences'] if previous else []:
+        old[item['text']].append(item)
+    sentences=[old[text].pop(0) if old[text] else {'text':text,'basis':[],'author':'admin'}
+               for text in _edit_segments(content,previous)]
+    if _length_errors(content,sentences,config):
+        raise ValueError('summary must be nonempty, at most 5 items / 200 characters / 250 tokens')
+    with store.write() as conn:
+        current_subject=_subject(conn,subject_id,writable=True); latest=_expect(conn,subject_id,expected_version)
+        if (current_subject['revision']!=subject['revision'] or _runtime(conn)!=config
+                or _settings(conn,subject_id)['revision']!=snapshot_settings['revision']):
+            raise PersonSummaryConflict('settings_or_subject_changed')
+        # Purge mutates a version in place without advancing current_version.
+        # Retained model lines must not restore prose cleared after our snapshot.
+        if ((previous and any(latest[key]!=previous[key] for key in ('cleared_at','invalidated_reason')))
+                or _stale(conn,subject_id,sentences,current=_instant(stamp))):
+            raise PersonSummaryConflict('evidence_changed')
+        settings=_ensure(conn,subject_id,stamp)
         return _insert(conn,subject_id,previous=expected_version,content=content,sentences=sentences,
             checks={'passed':True,'deterministic':{'passed':True},'model':None,'admin_edit':True},degree='large',
             status='published',stamp=stamp,author='admin',source='edit',material={},memory_state=selected['memory_state'],
@@ -461,6 +595,8 @@ def reject_candidate(store, subject_id, version, *, expected_version, reason='ad
             raise PersonSummaryConflict('candidate_changed')
         conn.execute("UPDATE person_summary_versions SET status='rejected',checks_json=? WHERE subject_id=? AND version=?",
                      (dumps({**value['checks'],'reason':reason}),subject_id,version))
+        conn.execute("""UPDATE person_summary_attempts SET state='rejected',reason=?
+            WHERE subject_id=? AND version=? AND state='candidate'""",(reason,subject_id,version))
         _audit(conn,'reject',subject_id,stamp,version=version)
         return _view(conn,_version(conn,subject_id,version),current=_instant(stamp))
 
@@ -500,6 +636,11 @@ def _resolve(generated, evidence, previous, current):
                             raise ValueError('expired')
                         valid['valid_until']=until.isoformat()
                     except (TypeError,ValueError):
+                        reason='invalid_or_expired_time_range'
+                else:
+                    deadline=_recent_deadline([refs[ref] for ref in item['memory_refs']])
+                    valid['expires_at']=deadline.isoformat()
+                    if current>=deadline:
                         reason='invalid_or_expired_time_range'
             elif 'time_range' in item or 'valid_until' in item:
                 reason='unexpected_time_range'
@@ -569,6 +710,16 @@ def _recover_interrupted(conn, store, subject_id, stamp):
             _audit(conn,'generation_interrupted',subject_id,stamp,attempt_id=row['id'])
 
 
+def _check_run_admission(conn, subject_id, run_id):
+    if run_id is None:
+        return
+    if conn.execute('SELECT 1 FROM person_summary_attempts WHERE subject_id=? AND run_id=?',(subject_id,run_id)).fetchone():
+        raise PersonSummaryConflict('attempt_changed')
+    count=conn.execute('SELECT COUNT(*) FROM person_summary_attempts WHERE run_id=?',(run_id,)).fetchone()[0]
+    if count>=_runtime(conn)['max_subjects_per_run']:
+        raise PersonSummaryConflict('run_limit')
+
+
 class PersonSummaryEngine:
     def __init__(self, store, gateway, *, clock=utc_now):
         self.store,self.gateway,self.clock=store,gateway,clock
@@ -628,6 +779,7 @@ class PersonSummaryEngine:
     def _skip(self, subject_id, expected, source, due, reason, run_id, stamp):
         with self.store.write() as conn:
             _expect(conn,subject_id,expected)
+            _check_run_admission(conn,subject_id,run_id)
             _audit(conn,'generation_skipped',subject_id,stamp,base_version=expected,reason=reason,source=source)
             inserted=conn.execute('''INSERT OR IGNORE INTO person_summary_attempts(subject_id,run_id,base_version,state,
                 reason,started_at,finished_at) VALUES(?,?,?,'skipped',?,?,?)''',(subject_id,run_id,expected,reason,stamp,stamp))
@@ -656,8 +808,9 @@ class PersonSummaryEngine:
         current=_instant(self.clock()); stamp=current.isoformat()
         with self.store.write() as conn:
             _recover_interrupted(conn,self.store,subject_id,stamp)
+        with self.store.read() as conn:
             if run_id is not None:
-                saved=conn.execute('SELECT * FROM person_summary_attempts WHERE subject_id=? AND run_id=?',(subject_id,run_id)).fetchone()
+                saved=conn.execute('SELECT id,state,reason,version FROM person_summary_attempts WHERE subject_id=? AND run_id=?',(subject_id,run_id)).fetchone()
                 if saved and saved['state']!='running':
                     return {'status':saved['state'],'reason':saved['reason'],'attempt_id':saved['id'],
                             'version':_view(conn,_version(conn,subject_id,saved['version'])) if saved['version'] else None}
@@ -682,6 +835,7 @@ class PersonSummaryEngine:
         if not evidence['memories']:
             return self._skip(subject_id,expected,source,due,'no_evidence',run_id,stamp)
         with self.store.write() as conn:
+            _check_run_admission(conn,subject_id,run_id)
             self._validate_snapshot(conn,subject_id,expected,config,settings,evidence)
             if conn.execute("SELECT 1 FROM person_summary_attempts WHERE subject_id=? AND state='running'",(subject_id,)).fetchone():
                 raise PersonSummaryBusy('generation_in_progress')
@@ -690,7 +844,7 @@ class PersonSummaryEngine:
                       'output_limits':{k:config[k] for k in ('max_items','max_chars','max_tokens')},
                       'dependency_ids':sorted(_dependencies(conn,[m['memory_id'] for m in evidence['memories']]+[b['memory_id'] for b in previous_basis]))}
             attempt=conn.execute('''INSERT INTO person_summary_attempts(subject_id,run_id,base_version,state,started_at,
-                material_json) VALUES(?,?,?,'running',?,?)''',(subject_id,run_id,expected,stamp,dumps(material))).lastrowid
+                material_json,memory_state_json) VALUES(?,?,?,'running',?,?,?)''',(subject_id,run_id,expected,stamp,dumps(material),dumps(state))).lastrowid
             conn.executemany('INSERT INTO person_summary_attempt_memories(attempt_id,memory_id) VALUES(?,?)',
                              ((attempt,mid) for mid in material['dependency_ids']))
             _audit(conn,'regenerate_requested' if source=='regenerate' else 'generation_requested',subject_id,stamp,
@@ -734,7 +888,7 @@ class PersonSummaryEngine:
                 if isinstance(error,PersonSummaryConflict):
                     raise
                 reason=(error.reason or error.category) if isinstance(error,ModelError) else 'invalid_output'
-                checks.update(reason=reason,errors=[*checks['errors'],reason],passed=False)
+                checks.update(reason=reason,errors=[*checks['errors'],reason],passed=False,model_error=isinstance(error,ModelError))
                 if sentences is None:
                     saved=self._finish(attempt,'failed',reason,outputs,calls)
                     return {'status':saved['state'],'reason':saved['reason'],'version':None,'attempt_id':attempt,'due':due}
@@ -786,13 +940,13 @@ def purge_memory_references(conn, memory_ids, *, clock=utc_now):
         AND run_id IN (SELECT a.run_id FROM person_summary_attempts a
             JOIN person_summary_attempt_memories d ON d.attempt_id=a.id
             WHERE d.memory_id IN (SELECT value FROM json_each(?)))''',(dumps(ids),))
-    for row in conn.execute('''SELECT * FROM person_summary_versions WHERE cleared_at IS NULL AND id IN (
+    for row in conn.execute('''SELECT id,subject_id,version,sentences_json FROM person_summary_versions WHERE cleared_at IS NULL AND id IN (
         SELECT version_id FROM person_summary_version_memories WHERE memory_id IN (SELECT value FROM json_each(?)))''',
         (dumps(ids),)).fetchall():
         sentences=[]
         for item in json.loads(row['sentences_json']):
             # Whitelist structure: model explanations/time_range/body may all copy prose.
-            kept={key:item[key] for key in ('kind','author','valid_until') if key in item}
+            kept={key:item[key] for key in ('kind','author','valid_until','expires_at') if key in item}
             kept.update(text='',basis=[{key:b[key] for key in ('memory_id','revision') if key in b}
                                       for b in item.get('basis',[])])
             sentences.append(kept)
@@ -817,66 +971,89 @@ def regenerate_summary(store, gateway, subject_id, *, expected_version, clock=ut
     return PersonSummaryEngine(store,gateway,clock=clock).regenerate(subject_id,expected_version=expected_version)
 
 
-def update_summaries_for_run(store, gateway, run, config, *, clock=utc_now, stop=None):
-    """Future consolidation step. Supply its existing budget-accounting gateway.
+def _report_attempt(conn, attempt, stamp):
+    conn.execute("""INSERT OR IGNORE INTO maintenance_items(run_id,phase,item_key,object_id,outcome,reason,details_json,created_at)
+        VALUES(?,'consolidation',?,?,'person_summary',?,?,?)""",
+        (attempt['run_id'],'person_summary:'+attempt['subject_id'],attempt['id'],attempt['reason'],
+         dumps({'subject_id':attempt['subject_id'],'status':attempt['state'],'version':attempt['version'],
+                'attempt_id':attempt['id']}),stamp))
 
-    The gateway must admit every HTTP attempt into consolidation_calls and apply
-    its daily-token gate, just as the existing entry-profile/persona adapter does.
-    This function only preflights two calls; retries still consume shared budget.
-    Durable attempts bound both repeat runs and the configured person count.
+
+def update_summaries_for_run(store, gateway, run, config, *, clock=utc_now, stop=None):
+    """Read-snapshot admission; bounded CAS writes and the shared call ledger.
+
+    Replay/report repair is separate from discovery so reaching N stops all due
+    calculations without losing previously admitted people after activity changes.
     """
     if not config.get('person_summary_enabled',True) or not config.get('enabled',True):
         return True
-    current=_instant(clock()); run_id=run['id']
+    if stop and stop():
+        return False
+    current=_instant(clock()); stamp=current.isoformat(); run_id=run['id']
     with store.read() as conn:
         runtime=_runtime(conn)
         if not runtime['enabled']:
             return True
-        # Message metadata orders recent participants; no raw message text is read.
-        subjects=[r[0] for r in conn.execute("""SELECT s.id FROM subjects s WHERE s.kind='person'
-            AND s.id NOT IN ('self','scene') AND s.merged_into IS NULL ORDER BY
-            COALESCE((SELECT MAX(julianday(x.occurred_at)) FROM messages x WHERE x.sender_subject_id=s.id),
-                     (SELECT MAX(julianday(m.last_confirmed_at)) FROM memories m WHERE m.speaker_subject_id=s.id),
-                     julianday(s.created_at)) DESC,s.id""")]
+        saved=[dict(r) for r in conn.execute("""SELECT id,subject_id,run_id,state,reason,version
+            FROM person_summary_attempts WHERE run_id=? ORDER BY id""",(run_id,))]
+    for attempt in saved:
+        with store.write() as conn:
+            if attempt['state']=='running':
+                _recover_interrupted(conn,store,attempt['subject_id'],stamp)
+            row=conn.execute("""SELECT id,subject_id,run_id,state,reason,version
+                FROM person_summary_attempts WHERE id=?""",(attempt['id'],)).fetchone()
+            if row['state']=='running':
+                return False
+            _report_attempt(conn,row,stamp)
+    admitted=len(saved)
+    if admitted>=runtime['max_subjects_per_run']:
+        return True
+    with store.read() as conn:
+        # Aggregate metadata once rather than scanning all messages per subject.
+        subjects=[r[0] for r in conn.execute("""WITH activity AS (
+            SELECT sender_subject_id AS subject_id,MAX(julianday(occurred_at)) AS recent FROM messages GROUP BY sender_subject_id
+        ), confirmations AS (
+            SELECT speaker_subject_id AS subject_id,MAX(julianday(last_confirmed_at)) AS recent
+            FROM memories GROUP BY speaker_subject_id
+        ) SELECT s.id FROM subjects s LEFT JOIN activity a ON a.subject_id=s.id
+        LEFT JOIN confirmations c ON c.subject_id=s.id LEFT JOIN person_summary_settings p ON p.subject_id=s.id
+        WHERE s.kind='person' AND s.id NOT IN ('self','scene') AND s.merged_into IS NULL AND COALESCE(p.enabled,1)=1
+        ORDER BY COALESCE(a.recent,c.recent,julianday(s.created_at)) DESC,s.id""")]
+    done={a['subject_id'] for a in saved}
     for subject_id in subjects:
+        if admitted>=runtime['max_subjects_per_run']:
+            break
+        if subject_id in done:
+            continue
         if stop and stop():
             return False
-        with store.write() as conn:
-            _recover_interrupted(conn,store,subject_id,current.isoformat())
-            saved=conn.execute('SELECT * FROM person_summary_attempts WHERE subject_id=? AND run_id=?',(subject_id,run_id)).fetchone()
-            admitted=conn.execute('SELECT COUNT(*) FROM person_summary_attempts WHERE run_id=?',(run_id,)).fetchone()[0]
-            expected=_settings(conn,subject_id)['current_version']
+        with store.read() as conn:
+            names=_SummaryNames(conn)
+            if not _enough_candidates(conn,subject_id,current,runtime['min_memories'],names):
+                continue
+            due=_due(conn,subject_id,current,names=names)
+            if not due['due']:
+                continue
+            expected=due['current_version']
             count=conn.execute('SELECT COUNT(*) FROM consolidation_calls WHERE run_id=?',(run_id,)).fetchone()[0]
-            due=_due(conn,subject_id,current)
-        if saved and saved['state']=='running':
-            return False
-        if saved:
-            result={'status':saved['state'],'reason':saved['reason']}
-        elif admitted>=runtime['max_subjects_per_run']:
-            continue  # Still recover report rows for already-admitted people later in the order.
-        elif not due['due']:
-            continue
-        else:
-            engine=PersonSummaryEngine(store,gateway,clock=clock)
+        engine=PersonSummaryEngine(store,gateway,clock=clock)
+        try:
             if count+2>config['max_calls']:
-                engine._skip(subject_id,expected,'periodic',due,'call_budget',run_id,current.isoformat())
-                result={'status':'skipped','reason':'call_budget'}
+                result=engine._skip(subject_id,expected,'periodic',due,'call_budget',run_id,stamp)
             else:
-                try:
-                    result=engine.update(subject_id,expected_version=expected,run_id=run_id)
-                except PersonSummaryBusy:
-                    return False
-                except PersonSummaryConflict as error:
-                    result={'status':'conflict','reason':str(error)}
+                result=engine.update(subject_id,expected_version=expected,run_id=run_id)
+        except PersonSummaryBusy:
+            return False
+        except PersonSummaryConflict as error:
+            result={'status':'conflict','reason':str(error)}
         with store.write() as conn:
-            attempt=conn.execute('SELECT * FROM person_summary_attempts WHERE subject_id=? AND run_id=?',(subject_id,run_id)).fetchone()
+            attempt=conn.execute("""SELECT id,subject_id,run_id,state,reason,version FROM person_summary_attempts
+                WHERE subject_id=? AND run_id=?""",(subject_id,run_id)).fetchone()
             if attempt:
-                conn.execute('''INSERT OR IGNORE INTO maintenance_items(run_id,phase,item_key,object_id,outcome,reason,details_json,created_at)
-                    VALUES(?,'consolidation',?,?,'person_summary',?,?,?)''',
-                    (run_id,'person_summary:'+subject_id,attempt['id'],result.get('reason'),
-                     dumps({'subject_id':subject_id,'status':result['status'],'version':attempt['version'],'attempt_id':attempt['id']}),current.isoformat()))
+                _report_attempt(conn,attempt,stamp)
+            admitted=conn.execute('SELECT COUNT(*) FROM person_summary_attempts WHERE run_id=?',(run_id,)).fetchone()[0]
         if result.get('reason')=='interrupted':
             return False
-        if result.get('reason') in ('call_budget','usage_limit','paused','temporary_unavailable'):
+        if result.get('reason') in ('call_budget','usage_limit','paused','temporary_unavailable','unconfigured'):
             break
     return True

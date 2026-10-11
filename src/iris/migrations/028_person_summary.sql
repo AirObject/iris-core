@@ -47,9 +47,12 @@ CREATE TABLE person_summary_attempts (
  material_json TEXT NOT NULL DEFAULT '{}',
  outputs_json TEXT NOT NULL DEFAULT '{}',
  calls_json TEXT NOT NULL DEFAULT '[]',
+ memory_state_json TEXT NOT NULL DEFAULT '{}',
  cleared_at TEXT,
  UNIQUE(subject_id,run_id)
 );
+CREATE INDEX person_summary_attempts_subject ON person_summary_attempts(subject_id,id DESC);
+CREATE INDEX person_summary_attempts_run ON person_summary_attempts(run_id,id);
 CREATE UNIQUE INDEX person_summary_one_running ON person_summary_attempts(subject_id) WHERE state='running';
 -- Numeric evidence identities do not pin memories or retain their prose.
 CREATE TABLE person_summary_version_memories (
@@ -72,7 +75,7 @@ WHEN new.merged_into IS NOT NULL AND old.merged_into IS NULL
 BEGIN
  UPDATE person_summary_versions SET invalidated_reason='subject_merged' WHERE subject_id=new.id;
  UPDATE person_summary_versions SET status='rejected' WHERE subject_id=new.id AND status='candidate';
- UPDATE person_summary_settings SET revision=revision+1,needs_regeneration=1,updated_at=new.merged_at
+ UPDATE person_summary_settings SET revision=revision+1,needs_regeneration=1,updated_at=COALESCE(new.merged_at,strftime('%Y-%m-%dT%H:%M:%f+00:00','now'))
  WHERE subject_id IN (new.id,new.merged_into);
  UPDATE person_summary_attempts SET state='conflict',reason='subject_merged',finished_at=new.merged_at
  WHERE subject_id IN (new.id,new.merged_into) AND state='running';
