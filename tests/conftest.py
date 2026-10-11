@@ -82,7 +82,9 @@ def login_admin(client):
     assert response.status_code == 200, response.text
     client.headers['X-Iris-CSRF'] = client.get('/admin/api/session').json()['csrf_token']
     if not state['configured']:
-        role = client.get('/admin/api/settings').json()['role']
+        response = client.get('/admin/api/settings')
+        assert response.status_code == 200, response.text
+        role = response.json()['role']
         role['timezone'] = role['timezone'] or 'Asia/Shanghai'
         response = client.post('/admin/api/setup/complete', json=role)
         assert response.status_code == 200, response.text

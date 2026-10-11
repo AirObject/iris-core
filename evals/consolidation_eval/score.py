@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 import argparse
+import copy
+from collections import Counter
 import itertools
 import json
 from pathlib import Path
 
 import numpy as np
-from run import ROOT, SCORING, SCORING_VERSION, SOURCE_FIELDS, REPORT_ONLY_SCORING
+from run import (ROOT, SCORING, SCORING_VERSION, SOURCE_FIELDS, REPORT_ONLY_SCORING,
+                 DETAIL_SCORING, DETAIL_SCORING_V1, WRITE_AUDIT, EVALUATION_POLICY,
+                 mutual_pairs, protected_merge_error, blocker_type, run_validity as current_run_validity)
 from iris.evaluation import _json_sha256, _read_json, _write_json, _verified_material_file
 
 
@@ -29,6 +33,7 @@ def validate_payload(p):
     case=p['case']
     keymap=p['before']['key_map']
     keys=[m['key'] for m in case['memories']]
+    mutual_pairs(case['expected'],keys)
     require(set(keymap)==set(keys) and len(set(keymap.values()))==len(keys),'invalid key map')
     require(all(type(i) is int for i in keymap.values()),'non-integer ID')
     require(p['after']['key_map']==keymap,'key map changed')
@@ -83,6 +88,29 @@ def validate_payload(p):
         require(isinstance(action['report'],str) and set(action['keys'])<=set(keys),'invalid action keys/report')
         for m in [*action['before_memories'],*action['after_memories']]:
             memory(m)
+    if 'merge_version' in p:
+        require(isinstance(p.get('merge_checks'),list),'missing merge detail checks')
+        seen=set()
+        for check in p['merge_checks']:
+            require(isinstance(check['check_id'],str) and check['check_id'] not in seen,'duplicate merge check')
+            seen.add(check['check_id'])
+            require(len(check['pair_ids'])==2 and len(set(check['pair_ids']))==2,'invalid check pair')
+            require(check['pair_ids']==[keymap[k] for k in check['pair_keys']],'merge check keys mismatch')
+            require([m['id'] for m in check['before_memories']]==check['pair_ids'],'merge check snapshot mismatch')
+            for m in check['before_memories']:
+                memory(m)
+            boolean(check['merge_allowed'])
+            require(check['result'] is None or isinstance(check['result'],dict),'invalid merge check result')
+            if p.get('evaluation_policy')==EVALUATION_POLICY:
+                require(check.get('failure_code') in (None,'merge_forbidden'),'invalid observed failure code')
+                require(isinstance(check.get('blocked_by'),list),'missing blocker observations')
+                for block in check['blocked_by']:
+                    exact(block,('check_id','pair_ids','pair_keys','type'))
+                    require(isinstance(block['type'],str) and bool(block['type']),'missing blocker type')
+                    require(bool(block['pair_keys']) and set(block['pair_keys'])<=set(keys),'invalid blocker pair')
+                    require(block['pair_ids']==[keymap[k] for k in block['pair_keys']],'blocker pair mismatch')
+                    require(set(block['pair_ids']) & set(check['pair_ids']),'blocker does not share memory')
+                    require(block['check_id'] is None or isinstance(block['check_id'],str),'invalid blocker check')
     values={keymap[m['key']]:m['retention'] for m in case['memories']}
     for i,r in enumerate(p['retention_changes']):
         require(type(r['index']) is int and r['index']==i,'retention order mismatch')
@@ -104,6 +132,15 @@ def load_materials(directory):
     require(_verified_material_file(directory,'scoring.md',manifest['scoring_sha256']).read_text(encoding='utf-8')==SCORING,'scoring rules differ')
     if manifest['run'].get('resolution')=='report_only_v1':
         require(_verified_material_file(directory,'report-only-scoring.md',manifest.get('report_only_scoring_sha256','')).read_text(encoding='utf-8')==REPORT_ONLY_SCORING,'report-only scoring policy differs')
+    policy=manifest.get('evaluation_policy')
+    require(policy in (None,EVALUATION_POLICY),'unknown evaluation policy')
+    require(all(r['input'].get('evaluation_policy')==policy for r in rows),'evaluation policy binding mismatch')
+    if policy:
+        require(_verified_material_file(directory,'write-audit.md',manifest.get('write_audit_sha256','')).read_text(encoding='utf-8')==WRITE_AUDIT,'write audit rules differ')
+        require(all(isinstance(r.get('work_results'),list) for r in rows),'missing execution receipts')
+    if any('merge_version' in row['input'] for row in rows):
+        instructions=DETAIL_SCORING if policy else DETAIL_SCORING_V1
+        require(_verified_material_file(directory,'merge-details-scoring.md',manifest.get('merge_details_scoring_sha256','')).read_text(encoding='utf-8')==instructions,'merge detail scoring differs')
     require(len(rows)==len(manifest['cases']),'case count mismatch')
     for i,(row,entry) in enumerate(zip(rows,manifest['cases'],strict=True)):
         exact(entry,('case_id','file','sha256','judgment_file'))
@@ -114,6 +151,22 @@ def load_materials(directory):
         require(doc['corpus_sha256']==manifest['run']['corpus']['sha256'] and doc['source_sha256']==manifest['run']['source_sha256'] and doc['scoring_version']==SCORING_VERSION,'run binding mismatch')
         require(type(doc['format_version']) is int and doc['format_version']==1 and doc['evaluation']=='consolidation','case format mismatch')
         validate_payload(row['input'])
+        if policy:
+            works={w['check_id']:w for w in row['work_results']}
+            require(len(works)==len(row['work_results']),'duplicate execution receipt')
+            checks=row['input']['merge_checks']
+            require({c['check_id'] for c in checks}=={k for k,w in works.items() if w['kind']=='pair'},'pair receipt mismatch')
+            for check in checks:
+                work=works[check['check_id']]
+                require(all(check[k]==work[k] for k in ('outcome','reason','failure_code','result')),'check receipt mismatch')
+                require(check['pair_ids']==work['memory_ids'],'check receipt pair mismatch')
+                for block in check['blocked_by']:
+                    if block['check_id'] is None:
+                        require(block['type']=='planning_error','unknown blocker origin')
+                    else:
+                        require(block['check_id'] in works,'unknown blocker check')
+                        source=works[block['check_id']]
+                        require(set(block['pair_ids'])==set(source['memory_ids']) and block['type']==blocker_type(source),'blocker receipt mismatch')
     return manifest,rows
 
 
@@ -172,6 +225,12 @@ def ratio(n,d):
 
 
 def run_validity(row):
+    if row['input'].get('evaluation_policy')==EVALUATION_POLICY:
+        return current_run_validity(row)
+    return legacy_run_validity(row)
+
+
+def legacy_run_validity(row):
     """Keep completed output failures in quality scoring, without retry filtering.
 
     Frozen runners marked invalid_output as an invalid execution. Reclassify only
@@ -201,6 +260,45 @@ def run_validity(row):
         reasons.append('unexplained_original_invalid')
     return {'case_id':row['input']['case']['id'],'original_valid':row['valid'],
         'valid':not reasons,'format_failures':len(formats),'invalid_reasons':reasons}
+
+
+def merge_diagnostics(p, recognized):
+    checks=p.get('merge_checks',[])
+    expected=p['case']['expected']
+    labels=mutual_pairs(expected,p['before']['key_map'])
+    labeled={frozenset(pair) for pair in labels}
+    def is_suggestion(check):
+        return (check['outcome']=='conflicts' and
+                (check.get('result') or {}).get('merge_detail_check',{}).get('outcome')=='mutual_details')
+    def record(check):
+        return {'check_id':check['check_id'],'pair':check['pair_keys']}
+    false_positives=[record(c) for c in checks if is_suggestion(c) and frozenset(c['pair_keys']) not in labeled]
+    protected_errors=[{**record(c),'merge_exclusion':c['merge_exclusion']} for c in checks if protected_merge_error(c)]
+    blocked=[]
+    for i,pair in enumerate(expected.get('merges',[])):
+        if pair in recognized:
+            continue
+        for check in checks:
+            if (set(check['pair_keys'])==set(pair) and check['outcome']=='skipped'
+                and check['reason']=='unresolved_conflict'):
+                blocked.append({'index':i,'pair':pair,'check_id':check['check_id'],
+                                'reason':check['reason'],'blocked_by':check.get('blocked_by',[])})
+    mutual=[]
+    misses=Counter()
+    for i,pair in enumerate(labels):
+        matching=[c for c in checks if set(c['pair_keys'])==set(pair)]
+        hit=any(is_suggestion(c) for c in matching)
+        outcomes=sorted({(c.get('result') or {}).get('merge_detail_check',{}).get('outcome','missing_detail_check')
+                         for c in matching}) if matching else ['not_evaluated']
+        if not hit:
+            misses.update(outcomes)  # one count per pair / distinct outcome
+        mutual.append({'index':i,'pair':pair,'hit':hit,'outcomes':outcomes,
+                       'checks':[{'check_id':c['check_id'],'outcome':c['outcome'],'reason':c['reason']} for c in matching]})
+    return {'blocked_merges':blocked,
+            'protected_merge_errors':{'count':len(protected_errors),'items':protected_errors},
+            'suggestion_false_positives':{'count':len(false_positives),'items':false_positives},
+            'mutual_details':{**ratio(sum(m['hit'] for m in mutual),len(mutual)),
+                              'misses_by_outcome':dict(sorted(misses.items())),'pairs':mutual}}
 
 
 def score_case(p,j):
@@ -274,7 +372,8 @@ def score_case(p,j):
         'recognition':ratio(len(recognized),len(exp.get('merges',[]))), 'merge_failures':failures,
         'recognized_semantic_failures':[pair for pair in recognized if set(pair)&semantic_failed],
         'contradictions':ratio(sum(contradictions),len(contradictions)),'dependencies':ratio(sum(dependencies),len(dependencies)),
-        'protection':protection,'belief_cap':belief_checks,'source_inheritance':source_checks,'judgments':j}
+        'protection':protection,'belief_cap':belief_checks,'source_inheritance':source_checks,'judgments':j,
+        **merge_diagnostics(p,recognized)}
 
 
 
@@ -301,9 +400,60 @@ def audit_writes(manifest, paths):
     return {'write_audit_rounds':len(rounds),'write_damage':ratio(sum(d['has_damage'] for d in details),len(details)),
             'write_audit_details':details}
 
-def score(materials,judgments,out,judge_model,write_audits=()):
+
+def validate_detail_judgment(j,p):
+    exact(j,('format_version','case_id','merge_detail_results','refusal_results'))
+    require(type(j['format_version']) is int and j['format_version']==1 and j['case_id']==p['case']['id'],'detail judgment case mismatch')
+    merges=p['actual_merges']
+    pairs=p['case']['expected'].get('merges',[])
+    require(isinstance(j['merge_detail_results'],list) and len(j['merge_detail_results'])==len(merges),'detail merge length mismatch')
+    require(isinstance(j['refusal_results'],list) and len(j['refusal_results'])==len(pairs),'detail refusal length mismatch')
+    for item,merge in zip(j['merge_detail_results'],merges,strict=True):
+        exact(item,('action_id','all_facts_preserved','reason'))
+        require(item['action_id']==merge['action_id'],'detail action mismatch')
+        boolean(item['all_facts_preserved'])
+    # Refusals refer to frozen expected pairs, not a changing number of attempts.
+    keymap=p['before']['key_map']
+    edges={m['id']:merge['result']['id'] for merge in merges for m in merge['absorbed_memories']}
+    def destination(mid):
+        seen=set()
+        while mid in edges:
+            require(mid not in seen,'cyclic merge lineage')
+            seen.add(mid)
+            mid=edges[mid]
+        return mid
+    for index,(item,pair) in enumerate(zip(j['refusal_results'],pairs,strict=True)):
+        exact(item,('index','pair','no_false_refusal','reason'))
+        require(type(item['index']) is int and item['index']==index and item['pair']==pair,'detail pair/order mismatch')
+        boolean(item['no_false_refusal'])
+        require(item['no_false_refusal'] or destination(keymap[pair[0]])!=destination(keymap[pair[1]]),'merged pair cannot be a refusal')
+    for item in [*j['merge_detail_results'],*j['refusal_results']]:
+        require(isinstance(item['reason'],str) and bool(item['reason'].strip()),'detail reason required')
+    return j
+
+
+def load_detail_rounds(manifest,rows,directories):
+    rounds=[]
+    for directory in directories:
+        document=_read_json(directory/'manifest.json')
+        exact(document,('materials_sha256',))
+        require(document['materials_sha256']==manifest['materials_sha256'],'detail material mismatch')
+        expected={'manifest.json',*(e['judgment_file'] for e in manifest['cases'])}
+        require({p.name for p in directory.iterdir() if p.is_file()}==expected,'detail files missing or unexpected')
+        rounds.append([validate_detail_judgment(_read_json(directory/e['judgment_file']),row['input'])
+                       for e,row in zip(manifest['cases'],rows,strict=True)])
+    return rounds
+
+
+def score(materials,judgments,out,judge_model,write_audits=(),*,detail_judgments=()):
     require(1<=len(judgments)<=2 and judge_model.strip(),'one or two rounds and judge model required')
     manifest,rows=load_materials(materials)
+    if detail_judgments:
+        require(len(detail_judgments)==len(judgments),'detail and scoring round counts must match')
+        require('merge_details_scoring_sha256' in manifest and all('merge_checks' in r['input'] for r in rows),'materials lack merge detail checks')
+    detail_rounds=load_detail_rounds(manifest,rows,detail_judgments)
+    detail_results=[]
+    detail_disagreements=[]
     if write_audits:
         require(len(write_audits)==len(judgments),'write audit and scoring round counts must match')
         require('write_audit_sha256' in manifest,'materials lack frozen write audit instructions')
@@ -322,6 +472,17 @@ def score(materials,judgments,out,judge_model,write_audits=()):
         j=rounds[0][i]
         if len(rounds)==2:
             j=combine(j,rounds[1][i],row['input']['case']['id'],disagreements)
+        if detail_rounds:
+            detail=detail_rounds[0][i]
+            if len(detail_rounds)==2:
+                detail=combine(detail,detail_rounds[1][i],row['input']['case']['id'],detail_disagreements)
+            j=copy.deepcopy(j)
+            for base,extra in zip(j['merge_results'],detail['merge_detail_results'],strict=True):
+                base['key_facts_preserved'] &= extra['all_facts_preserved']
+            detail_results.append({'case_id':row['input']['case']['id'],
+                'detail_loss':ratio(sum(not d['all_facts_preserved'] for d in detail['merge_detail_results']),len(detail['merge_detail_results'])),
+                'false_refusal':ratio(sum(not d['no_false_refusal'] for d in detail['refusal_results']),len(detail['refusal_results'])),
+                'judgment':detail,'rounds':[r[i] for r in detail_rounds]})
         results.append(score_case(row['input'],j))
     validity=[run_validity(row) for row in rows]
     report={'format_version':1,'evaluation':'consolidation','method':manifest['run']['method'],
@@ -330,6 +491,21 @@ def score(materials,judgments,out,judge_model,write_audits=()):
         'judge_model':judge_model,'judge_rounds':len(rounds),'valid':all(r['valid'] for r in validity),
         'original_valid':all(r['valid'] for r in rows),'run_validity':validity,
         'format_failures':sum(r['format_failures'] for r in validity),'cases':results,'disagreements':disagreements}
+    report['evaluation_policy']=manifest.get('evaluation_policy','legacy_v1')
+    report.update(detail_judge_rounds=len(detail_rounds),detail_disagreements=detail_disagreements,detail_cases=detail_results)
+    for metric in ('detail_loss','false_refusal'):
+        report[metric]=ratio(sum(r[metric]['numerator'] for r in detail_results),sum(r[metric]['denominator'] for r in detail_results)) if detail_rounds else None
+    report['blocked_merges']=[{'case_id':r['case_id'],**item} for r in results for item in r['blocked_merges']]
+    for field in ('protected_merge_errors','suggestion_false_positives'):
+        report[field]={'count':sum(r[field]['count'] for r in results),
+                       'items':[{'case_id':r['case_id'],**item} for r in results for item in r[field]['items']]}
+    missed=Counter()
+    for r in results:
+        missed.update(r['mutual_details']['misses_by_outcome'])
+    report['mutual_details']={**ratio(sum(r['mutual_details']['numerator'] for r in results),
+                                     sum(r['mutual_details']['denominator'] for r in results)),
+        'misses_by_outcome':dict(sorted(missed.items())),
+        'pairs':[{'case_id':r['case_id'],**pair} for r in results for pair in r['mutual_details']['pairs']]}
     report['safety_rejections']=sum(r.get('safety_rejections',0) for r in rows)
     if write_audits:
         report.update(audit_writes(manifest,write_audits))
@@ -360,11 +536,12 @@ def main():
     parser.add_argument('--materials',type=Path,required=True)
     parser.add_argument('--judgments',type=Path,action='append',required=True)
     parser.add_argument('--judge-model',required=True)
+    parser.add_argument('--detail-judgments',type=Path,action='append',default=[])
     parser.add_argument('--write-audit',type=Path,action='append',default=[])
     parser.add_argument('--out',type=Path,required=True)
     args=parser.parse_args()
-    report=score(args.materials,args.judgments,args.out,args.judge_model,args.write_audit)
-    print(json.dumps({k:v for k,v in report.items() if k not in ('cases','disagreements')},ensure_ascii=False,indent=2))
+    report=score(args.materials,args.judgments,args.out,args.judge_model,args.write_audit,detail_judgments=args.detail_judgments)
+    print(json.dumps({k:v for k,v in report.items() if k not in ('cases','disagreements','detail_cases','detail_disagreements')},ensure_ascii=False,indent=2))
 
 
 if __name__=='__main__':
