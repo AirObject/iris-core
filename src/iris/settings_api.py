@@ -215,7 +215,7 @@ def install_settings(app):
 
     @router.post('/setup/complete')
     def complete(payload: Role, request: Request):
-        if not local(request):
+        if not local(request) and not app.state.container:
             return error('local_setup_only', '首次设置只允许从本机完成', 403)
         with app.state.store.write() as conn:
             row = conn.execute("SELECT value_json FROM runtime_settings WHERE key='setup_complete'").fetchone()

@@ -204,14 +204,14 @@ def test_deployment_precedence_and_config_relative_data_dir(tmp_path, monkeypatc
     config = tmp_path / 'iris.toml'
     config.write_text('data_dir="files"\nhost="localhost"\nport=8090\n')
     assert deployment(config=config) == {
-        'data_dir': tmp_path / 'files', 'host': 'localhost', 'port': 8090}
+        'data_dir': tmp_path / 'files', 'host': 'localhost', 'port': 8090, 'allowed_hosts': []}
     monkeypatch.setenv('IRIS_DATA_DIR', str(tmp_path / 'environment'))
     monkeypatch.setenv('IRIS_HOST', '127.0.0.1')
     monkeypatch.setenv('IRIS_PORT', '8091')
     assert deployment(config=config) == {
-        'data_dir': tmp_path / 'environment', 'host': '127.0.0.1', 'port': 8091}
+        'data_dir': tmp_path / 'environment', 'host': '127.0.0.1', 'port': 8091, 'allowed_hosts': []}
     assert deployment(config=config, data_dir=tmp_path / 'command', host='::1', port=8092) == {
-        'data_dir': tmp_path / 'command', 'host': '::1', 'port': 8092}
+        'data_dir': tmp_path / 'command', 'host': '::1', 'port': 8092, 'allowed_hosts': []}
 
 
 def test_import_updates_db_and_secret_without_printing_and_reloads(client, store, monkeypatch, capsys, tmp_path):

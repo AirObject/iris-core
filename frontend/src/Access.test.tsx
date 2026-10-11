@@ -6,7 +6,8 @@ import App from "./App";
 import { lifecycleFixture } from "./lifecycle-fixtures";
 let configured = false,
   authenticated = false,
-  admin = false;
+  admin = false,
+  setupCodeRequired = false;
 let calls: { path: string; init?: RequestInit }[];
 const blank = {
   enabled: false,
@@ -18,7 +19,7 @@ const blank = {
 };
 let settings: any;
 beforeEach(() => {
-  configured = authenticated = admin = false;
+  configured = authenticated = admin = setupCodeRequired = false;
   calls = [];
   location.hash = "#/trial";
   settings = {
@@ -61,6 +62,7 @@ beforeEach(() => {
           configured,
           authenticated,
           admin_exists: admin,
+          setup_code_required: setupCodeRequired,
           csrf_token: "csrf-test",
         };
       else if (path.endsWith("/setup/password") || path.endsWith("/login")) {
@@ -188,4 +190,30 @@ test("外部模型配置只读", async () => {
   expect((saved?.init?.headers as Record<string, string>)["X-Iris-CSRF"]).toBe(
     "csrf-test",
   );
+});
+
+test("容器远程首次设置显示设置码并随密码提交，登录不发送", async () => {
+  setupCodeRequired = true;
+  const user = userEvent.setup();
+  render(<App />);
+  const code = await screen.findByLabelText("设置码");
+  expect(code).toHaveAttribute("type", "password");
+  expect(code).toHaveAttribute("autocomplete", "off");
+  await user.type(code, "synthetic-setup-code");
+  await user.type(screen.getByLabelText("管理员密码"), "local-password");
+  await user.type(screen.getByLabelText("确认密码"), "local-password");
+  await user.click(screen.getByRole("button", { name: "设置密码并继续" }));
+  await screen.findByLabelText("角色名");
+  expect(screen.queryByLabelText("设置码")).not.toBeInTheDocument();
+  const request = calls.find((c) => c.path.endsWith("/setup/password"))!;
+  expect(JSON.parse(String(request.init?.body)).setup_code).toBe(
+    "synthetic-setup-code",
+  );
+  expect(localStorage.getItem("setup_code")).toBeNull();
+});
+
+test("本机首次设置不需要设置码输入框", async () => {
+  render(<App />);
+  await screen.findByLabelText("管理员密码");
+  expect(screen.queryByLabelText("设置码")).not.toBeInTheDocument();
 });
