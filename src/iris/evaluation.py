@@ -6,7 +6,9 @@ import ast
 import hashlib
 import json
 import math
+import os
 import random
+import stat
 import tempfile
 import time
 from collections.abc import Sequence
@@ -20,6 +22,8 @@ from typing import Any
 from .db import Store
 from .learning import LearningEngine, PROMPT_VERSION, _same_goal
 from .memory_ops import setup_role
+from .media import (CONTENT_TYPES, DEFAULT_MAX_BYTES, _matches, message_media,
+                    native_learning_enabled, prepare_media, save_media)
 from .models import LEARNING_TOTAL_TIMEOUT, JUDGE_TOTAL_TIMEOUT, Gateway, ModelConfig, ModelError
 from .queue import add_message, form_batch, get_batch
 from .retrieval import Retrieval
@@ -48,6 +52,11 @@ def _case_data(store: Store) -> dict[str, Any]:
                 FROM sources src JOIN messages x ON x.id=src.message_id
                 JOIN subjects s ON s.id=x.sender_subject_id LEFT JOIN subjects q ON q.id=x.quote_author_subject_id
                 WHERE src.memory_id=? AND src.kind='message' ORDER BY x.id""", (memory["id"],))]
+            attachments = message_media(conn, [row['id'] for row in evidence])
+            for row in evidence:
+                if row['id'] in attachments:
+                    row['media'] = [{key: item[key] for key in ('id', 'sha256', 'content_type')}
+                                    for item in attachments[row['id']]]
             memories.append({**dict(memory), "about": [p["name"] for p in about],
                              "about_subject_ids": [p["id"] for p in about], "evidence": evidence})
         links = [dict(r) for r in conn.execute("""SELECT l.kind,l.belief,l.status,a.name AS a,b.name AS b,
@@ -581,8 +590,55 @@ def _report_markdown(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _read_eval_media(root: Path, item: dict[str, Any]) -> bytes:
+    """Only regular raster files beneath the supplied media root; never follow links."""
+    try:
+        name, content_type = item['file'], item['content_type']
+        if not isinstance(name, str) or not name or CONTENT_TYPES.get(content_type) != 'image':
+            raise ValueError('invalid evaluation media')
+        relative = Path(name)
+        if relative.is_absolute() or '..' in relative.parts or not relative.parts:
+            raise ValueError('invalid evaluation media path')
+        directory = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            for component in relative.parts[:-1]:
+                child = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory)
+                os.close(directory)
+                directory = child
+            descriptor = os.open(relative.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+        finally:
+            os.close(directory)
+        with os.fdopen(descriptor, 'rb') as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= DEFAULT_MAX_BYTES:
+                raise ValueError('invalid evaluation media size')
+            data = stream.read(DEFAULT_MAX_BYTES + 1)
+        if len(data) != info.st_size or not _matches(content_type, data[:512]):
+            raise ValueError('invalid evaluation media contents')
+        return data
+    except (OSError, KeyError, TypeError):
+        raise ValueError('invalid evaluation media') from None
+
+
+def _image_assets(cases, root):
+    assets = {}
+    for case in cases:
+        for message in case['messages']:
+            media = message.get('media', [])
+            if not isinstance(media, list):
+                raise ValueError('evaluation message media must be a list')
+            for item in media:
+                data = _read_eval_media(root, item)
+                value = {'file': item['file'], 'content_type': item['content_type'],
+                         'sha256': hashlib.sha256(data).hexdigest(), 'size_bytes': len(data)}
+                if item['file'] in assets and assets[item['file']] != value:
+                    raise ValueError('inconsistent evaluation media')
+                assets[item['file']] = value
+    return list(assets.values())
+
+
 def _run_case(configs: dict[str, ModelConfig], case: dict[str, Any], judge_runs: int = 2,
-              judge_mode: str = "model") -> dict[str, Any]:
+              judge_mode: str = "model", *, media_root: Path | None = None) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="iris-eval-") as temporary:
         store = Store(Path(temporary) / "iris.db")
         store.recover_inflight()
@@ -590,21 +646,34 @@ def _run_case(configs: dict[str, ModelConfig], case: dict[str, Any], judge_runs:
         gateway = Gateway(configs, store)
         engine = LearningEngine(store, gateway)
         try:
+            media_messages = []
             for index, message in enumerate(case["messages"]):
-                add_message(store, entry_id=case["id"], entry_name=case["id"], platform="fictional",
+                media_ids = []
+                for item in message.get('media', []):
+                    if media_root is None:
+                        raise ValueError('image evaluation requires a media root')
+                    media_ids.append(save_media(store, _read_eval_media(media_root, item),
+                                                content_type=item['content_type'])['id'])
+                mid = add_message(store, entry_id=case["id"], entry_name=case["id"], platform="fictional",
                             entry_kind=case["entry_type"], kind=message["type"], sender=message["speaker"],
                             content=message["content"], occurred_at=message["at"], dedupe_key=f"{case['id']}-{index}",
                             account_id=message.get("account_id", f"{case['id']}:{message['speaker']}"),
                             quote_author=message.get("quote_author"),
                             quote_author_account_id=message.get("quote_author_account_id"),
                             quote_content=message.get("quote_content"),
-                            pace=_pace_for_entry(case["entry_type"]))
+                            pace=_pace_for_entry(case["entry_type"]), media_ids=media_ids)
+                if media_ids:
+                    media_messages.append(mid)
             while True:
                 batch = form_batch(store, case["id"], PROMPT_VERSION)
                 if batch is None:
                     break
                 while get_batch(store, batch.id).state == "waiting":
                     engine.run_batch(batch.id, force=True)
+            if media_messages and native_learning_enabled(gateway):
+                # Offline evaluation drains the same description operation only
+                # after learning, keeping it outside learning's measured latency.
+                prepare_media(store, gateway, media_messages)
             actual = _case_data(store)
             if judge_mode == "external":
                 return {"case": case, "actual": actual}
@@ -625,7 +694,7 @@ def _run_case(configs: dict[str, ModelConfig], case: dict[str, Any], judge_runs:
 
 def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = "all", *,
                       corpus: Path | None = None, out: Path | None = None, judge_runs: int = 2,
-                      judge_mode: str = "model") -> tuple[Path, dict[str, Any]]:
+                      judge_mode: str = "model", concurrency: int = 4) -> tuple[Path, dict[str, Any]]:
     root = root.resolve()
     if judge_mode not in ("model", "external"):
         raise ValueError("judge_mode must be model or external")
@@ -633,6 +702,8 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
         raise ValueError("judge_runs must be 1 or 2")
     if split not in ("dev", "holdout", "all"):
         raise ValueError("invalid split")
+    if type(concurrency) is not int or not 1 <= concurrency <= 4:
+        raise ValueError('evaluation concurrency must be 1..4')
     paths = [corpus.resolve()] if corpus is not None else [root / "evals" / (name + ".jsonl")
                                                          for name in PUBLIC_LEARNING_CORPORA]
     inputs = [(json.loads(line), path.stem) for path in paths
@@ -645,12 +716,17 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
         cases = [case for case in cases if case["split"] == split]
     if not cases:
         raise ValueError("no evaluation cases for requested split")
+    media_root = root / 'evals' / 'media'
+    media_assets = _image_assets(cases, media_root)
+    if media_assets and judge_mode != 'external':
+        raise ValueError('image evaluation requires external judging with original media')
     started = time.monotonic()
     reports = out.resolve() if out is not None else root / "evals" / "reports"
     sources = sorted(p for p in Path(__file__).parent.rglob("*") if p.suffix in (".py", ".md", ".sql", ".json"))
     source_hash = hashlib.sha256(b"".join(p.name.encode() + p.read_bytes() for p in sources)).hexdigest()
     signature = hashlib.sha256(json.dumps({"sources": source_hash, "cases": cases, "judge_runs": judge_runs if judge_mode == "model" else 0,
-        "models": {k: (v.base_url, v.model, v.dimensions, v.reasoning_effort if k == "chat" else None) for k, v in configs.items()}}, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+        "media_assets": media_assets,
+        "models": {k: (v.base_url, v.model, v.dimensions, v.reasoning_effort if k == "chat" else None, v.vision) for k, v in configs.items()}}, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
     checkpoints = (reports / ".lc" if not reports.is_relative_to(root) else root / "data/lc") / signature[:16]
     checkpoints.mkdir(parents=True, exist_ok=True)
     # The shortened path is not the identity: verify all 256 bits before reuse.
@@ -669,7 +745,7 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
     resumed = 0
     failures = []
     ordered: list[dict[str, Any] | None] = [None] * len(cases)
-    with ThreadPoolExecutor(max_workers=4, thread_name_prefix="iris-eval") as pool:
+    with ThreadPoolExecutor(max_workers=concurrency, thread_name_prefix="iris-eval") as pool:
         pending = {}
         for index, case in enumerate(cases):
             checkpoint = checkpoints / f"{index:04}.json"
@@ -678,7 +754,8 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
                 ordered[index]["corpus_group"] = groups[case["id"]]
                 resumed += 1
             else:
-                pending[pool.submit(_run_case, configs, case, judge_runs, judge_mode)] = index
+                kwargs = {'media_root': media_root} if any(m.get('media') for m in case['messages']) else {}
+                pending[pool.submit(_run_case, configs, case, judge_runs, judge_mode, **kwargs)] = index
         for completed, future in enumerate(as_completed(pending), 1):
             index = pending[future]
             try:
@@ -695,12 +772,16 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
                   f"{len(actual['memories'])} memories, {len(actual['batches'])} batches", flush=True)
     if failures:
         raise RuntimeError(f"{len(failures)} evaluation cases failed; completed cases retained in {checkpoints}")
+    if _image_assets(cases, media_root) != media_assets:
+        raise ValueError('evaluation media changed during run')
     rows = [row for row in ordered if row is not None]
     metadata = {"split": split, "checkpoint_signature": signature, "source_sha256": source_hash,
                 "resumed_cases": resumed, "elapsed_seconds": round(time.monotonic() - started, 1),
                 "prompt_version": PROMPT_VERSION, "scoring_version": SCORING_VERSION,
                 "timeouts_seconds": {"learning": LEARNING_TOTAL_TIMEOUT, "judge": JUDGE_TOTAL_TIMEOUT},
                 "chat_model": configs["chat"].model, "chat_reasoning_effort": configs["chat"].reasoning_effort,
+                "chat_vision": configs['chat'].vision, "evaluation_concurrency": concurrency,
+                **({'media_assets': media_assets, 'media_root': str(media_root)} if media_assets else {}),
                 "embedding_model": configs["embedding"].model or "unconfigured",
                 "corpus": _corpus_info(cases), "cases": [{"id": case["id"]} for case in cases]}
     save_checkpoint(checkpoints / "metadata.json", metadata)
@@ -798,7 +879,7 @@ def _write_learning_report(rows: list[dict[str, Any]], root: Path, reports: Path
 MATERIAL_FORMAT_VERSION = 1
 _RUN_FIELDS = ("split", "checkpoint_signature", "source_sha256", "resumed_cases", "elapsed_seconds",
                "prompt_version", "scoring_version", "timeouts_seconds", "chat_model", "embedding_model", "corpus")
-_OPTIONAL_RUN_FIELDS = ("chat_reasoning_effort",)  # Older materials remain scoreable without inventing a setting.
+_OPTIONAL_RUN_FIELDS = ("chat_reasoning_effort", "chat_vision", "media_assets", "evaluation_concurrency")
 _ACTUAL_FIELDS = ("memories", "links", "goals", "attempts", "calls", "batches", "identities", "aliases")
 _MEMORY_VERDICTS = ("correct_worth", "forbidden", "evidence_correct", "attribution_correct")
 
@@ -916,6 +997,13 @@ def export_learning_judgments(checkpoints: Path, out: Path, *,
     if out.exists() and any(out.iterdir()):
         raise ValueError(f"material output directory must be empty: {out}")
     out.mkdir(parents=True, exist_ok=True)
+    for asset in metadata.get('media_assets', []):
+        data = _read_eval_media(Path(metadata['media_root']), asset)
+        if hashlib.sha256(data).hexdigest() != asset['sha256']:
+            raise ValueError('evaluation media fingerprint mismatch')
+        destination = out / 'media' / asset['file']
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(data)
     run = {key: metadata[key] for key in (*_RUN_FIELDS, *_OPTIONAL_RUN_FIELDS) if key in metadata}
     manifest = {"format_version": MATERIAL_FORMAT_VERSION, "evaluation": "learning", "run": run,
                 "run_sha256": _write_json(out / "run.json", {"rows": rows}), "cases": []}
@@ -953,6 +1041,10 @@ def _load_learning_materials(directory: Path) -> tuple[dict[str, Any], list[dict
             raise ValueError("unsupported material format or evaluation kind")
         if manifest["materials_sha256"] != _json_sha256({k: v for k, v in manifest.items() if k != "materials_sha256"}):
             raise ValueError("manifest fingerprint mismatch")
+        for asset in manifest['run'].get('media_assets', []):
+            data = _read_eval_media(directory / 'media', asset)
+            if hashlib.sha256(data).hexdigest() != asset['sha256']:
+                raise ValueError('evaluation media fingerprint mismatch')
         rows = _read_json(_verified_material_file(directory, "run.json", manifest["run_sha256"]))["rows"]
         scoring = _verified_material_file(directory, "scoring.md", manifest["scoring_sha256"])
         if scoring.read_text(encoding="utf-8") != SCORING:

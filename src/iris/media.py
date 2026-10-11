@@ -1,7 +1,8 @@
 """Content-addressed attachments and bounded per-object image understanding.
 
 Route-independent API: save_media -> add_message(media_ids=[...]). Uploads never
-call a model. prepare_media runs after claiming a batch and before its snapshot.
+call a model. Text-only learning prepares descriptions before its snapshot;
+native image learning leaves that operation to the scheduler's bounded worker.
 """
 from __future__ import annotations
 
@@ -17,9 +18,10 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .models import IMAGE_TOTAL_TIMEOUT, ModelError
+from .models import IMAGE_TOTAL_TIMEOUT, ModelError, image_content_part
 
 DEFAULT_MAX_BYTES = 10 * 1024 * 1024
+DEFAULT_LEARNING_IMAGE_LIMIT = 8
 GRACE_PERIOD = timedelta(days=1)
 REFUSAL_TEXT = '敏感信息无法访问'
 LABELS = {'image': '图片', 'audio': '音频', 'video': '视频'}
@@ -245,17 +247,80 @@ def message_media(conn, message_ids):
     return result
 
 
-def material_content(content, media):
+def material_content(content, media, *, start=1):
     """One message-sized data unit; caller applies the existing 1500-token cut."""
     if not media:
         return content
     rows = [{'序号': index, '类型': LABELS[item['kind']], '来源': SOURCES[item['understanding_source']],
              '被拒绝': item['understanding_source'] == 'refused', '理解文本': item['understanding_text']}
-            for index, item in enumerate(media, 1)]
+            for index, item in enumerate(media, start)]
     return content + '\n媒体（数据）=' + json.dumps(rows, ensure_ascii=False, separators=(',', ':'))
 
 
-def prepare_media(store, gateway, message_ids, *, batch_id=None, budget_seconds=IMAGE_TOTAL_TIMEOUT, clock=_now):
+def native_learning_enabled(gateway):
+    config = gateway.configs.get('chat')
+    return bool(config and getattr(config, 'vision', False))
+
+
+def learning_image_limit(store):
+    value = store.setting('learning_image_limit', DEFAULT_LEARNING_IMAGE_LIMIT)
+    return value if type(value) is int and 0 <= value <= 32 else DEFAULT_LEARNING_IMAGE_LIMIT
+
+
+def plan_learning_images(store, batch, snapshot, *, enabled):
+    """Read originals outside transactions; return transient parts and safe audit metadata."""
+    native, paths = {}, []
+    limit, number = learning_image_limit(store), 0
+    hashes = {item['sha256'] for message in snapshot['messages'].values()
+              for item in message.get('media', []) if item['kind'] == 'image'}
+    if not hashes:
+        return native, paths
+    with store.read() as conn:
+        refused = {row[0] for row in conn.execute(
+            f"SELECT sha256 FROM media_files WHERE refused_at IS NOT NULL AND sha256 IN ({','.join('?' for _ in hashes)})",
+            tuple(hashes))}
+    for mid in batch.history_ids + batch.target_ids + batch.future_ids:
+        for position, item in enumerate(snapshot['messages'].get(mid, {}).get('media', []), 1):
+            if item['kind'] != 'image':
+                continue
+            reason = 'vision_disabled' if not enabled else 'context' if mid not in batch.target_ids else None
+            if (enabled and item['sha256'] in refused) or item['understanding_source'] == 'refused':
+                reason = 'refused'
+                item.update(understanding_source='refused', understanding_text=REFUSAL_TEXT)
+            if reason is None and number >= limit:
+                reason = 'batch_limit'
+            if reason is None and not 0 < item['size_bytes'] <= DEFAULT_MAX_BYTES:
+                reason = 'too_large'
+            if reason is None:
+                try:
+                    data, content_type = read_media(store, item['id'])
+                except MediaError:
+                    reason = 'unavailable'
+                else:
+                    number += 1
+                    native.setdefault(mid, {})[item['id']] = {
+                        'number': number, 'part': image_content_part(data, content_type)}
+            path = ('native' if reason is None else 'description'
+                    if item['understanding_source'] in ('host', 'system') else 'placeholder')
+            paths.append({'message_id': mid, 'media_id': item['id'], 'sha256': item['sha256'],
+                          'position': position, 'path': path, 'reason': reason or 'target',
+                          **({'image_number': number} if reason is None else {})})
+    return native, paths
+
+
+def pending_media_messages(store, *, limit=8, current=None):
+    """A bounded, durable work source; expired leases are eligible after restart."""
+    with store.read() as conn:
+        rows = conn.execute('''SELECT MIN(r.message_id) AS message_id FROM media_objects o
+            JOIN message_media r ON r.media_id=o.id
+            WHERE o.kind='image' AND o.understanding_source='unprocessed' AND o.completed_at IS NULL
+            AND (o.attempt_token IS NULL OR o.lease_until<=?)
+            GROUP BY o.id ORDER BY message_id,o.id LIMIT ?''', ((current or _now()).isoformat(), limit))
+        return list(dict.fromkeys(row[0] for row in rows))
+
+
+def prepare_media(store, gateway, message_ids, *, batch_id=None, budget_seconds=IMAGE_TOTAL_TIMEOUT,
+                  clock=_now, limit=None, stop=lambda: False):
     """At most 120 s for the entire batch, including retries and admission.
 
     In-flight objects owned by another batch use their current placeholder; no
@@ -273,7 +338,10 @@ def prepare_media(store, gateway, message_ids, *, batch_id=None, budget_seconds=
     with store.read() as conn:
         by_message = message_media(conn, message_ids)
     ordered = dict.fromkeys(item['id'] for mid in message_ids for item in by_message.get(mid, []))
+    pending = 0
     for media_id in ordered:
+        if stop() or limit is not None and pending >= limit:
+            break
         remaining = deadline - monotonic()
         if remaining <= 0:
             break
@@ -291,6 +359,7 @@ def prepare_media(store, gateway, message_ids, *, batch_id=None, budget_seconds=
                 continue
             conn.execute('UPDATE media_objects SET attempt_token=?,lease_until=? WHERE id=?',
                          (token, (clock()+timedelta(seconds=remaining)).isoformat(), media_id))
+            pending += 1
         source, text, error, completed = 'unprocessed', '[图片，未理解]', None, True
         try:
             path = _path(store, row['sha256'])

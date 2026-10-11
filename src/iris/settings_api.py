@@ -14,6 +14,7 @@ from .auth import audit, error, local
 from .configuration import CONFIG_LOCK_WAIT_SECONDS, ConfigurationBusy
 from .db import dumps
 from .memory_ops import update_role, lifecycle_settings, operation
+from .media import DEFAULT_LEARNING_IMAGE_LIMIT, learning_image_limit
 from .models import JUDGMENT_KINDS, MODEL_KINDS, Gateway, ModelConfig, ModelError
 from .recall_judge import settings as judge_settings
 from .persona import DEFAULT_GOAL, DEFAULT_RULES, DEFAULT_PUBLISH_MODE, persona_settings
@@ -150,6 +151,7 @@ class GoalsSettings(Input):
 class Limits(Input):
     daily_token_limit: int | None = Field(default=None, ge=1, strict=True)
     learning_concurrency: int = Field(default=2, ge=1, le=32, strict=True)
+    learning_image_limit: int = Field(default=DEFAULT_LEARNING_IMAGE_LIMIT, ge=0, le=32, strict=True)
 
 
 class Lifecycle(Input):
@@ -206,6 +208,7 @@ def install_settings(app):
                 'model_source': 'external' if app.state.runtime_config.external_loader else 'local',
                 'daily_token_limit': store.setting('daily_token_limit'),
                 'learning_concurrency': store.setting('learning_concurrency', 2),
+                'learning_image_limit': learning_image_limit(store),
                 'consolidation': consolidation, 'persona': persona, 'lifecycle': lifecycle, 'recall_judge': judge_settings(store), 'state': state, 'goals': goals,
                 'goal_dedup_judge': goal_judge_settings(store),
                 'health': model_health_snapshot(app.state.health), 'presets': PRESETS, 'operations': operations}
@@ -331,10 +334,14 @@ def install_settings(app):
 
     @router.patch('/settings/limits')
     def limits(payload: Limits):
+        changes = payload.model_dump()
+        # Existing clients do not know this field; omission preserves its value.
+        if 'learning_image_limit' not in payload.model_fields_set:
+            changes.pop('learning_image_limit')
         with app.state.store.write() as conn:
-            for key, value in payload.model_dump().items():
+            for key, value in changes.items():
                 conn.execute('INSERT OR REPLACE INTO runtime_settings VALUES(?,?)', (key, dumps(value)))
-            audit(conn, 'limits_saved', payload.model_dump())
+            audit(conn, 'limits_saved', changes)
         app.state.health.set_daily_token_limit(payload.daily_token_limit)
         app.state.scheduler.set_concurrency(payload.learning_concurrency)
         return snapshot()
