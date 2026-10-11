@@ -1,4 +1,4 @@
-"""Saving model settings waits for reloads throughout one bounded request."""
+"""Settings requests wait for reloads throughout one bounded request."""
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 from types import SimpleNamespace
@@ -138,3 +138,127 @@ def test_model_save_lock_timeout_keeps_fixed_error(client, store, monkeypatch, a
     with store.read() as conn:
         saved = conn.execute("SELECT COUNT(*) FROM admin_operations WHERE action='models_saved'").fetchone()[0]
     assert saved == int(acquired_before_timeout >= 2)
+
+
+@pytest.mark.parametrize('stage', ['load', 'public', 'lifecycle'])
+def test_settings_snapshot_waits_for_reload(client, store, monkeypatch, stage):
+    runtime = client.app.state.runtime_config
+    entered, release, reloaded, reading_lock = (Event() for _ in range(4))
+    method_name = 'public' if stage == 'lifecycle' else stage
+    load, local, method, lock = runtime.load, runtime._load_local, getattr(runtime, method_name), runtime._lock
+    waits = []
+    monkeypatch.setattr(configuration, 'monotonic', lambda: 0.0)
+    monkeypatch.setattr(settings_api, 'time', SimpleNamespace(monotonic=lambda: 0.0))
+
+    class ObservedLock:
+        def acquire(self, *, timeout):
+            waits.append(timeout)
+            reading_lock.set()
+            if timeout > 0:
+                assert reloaded.wait(THREAD_WAIT)
+            return lock.acquire(timeout=timeout)
+
+        def release(self):
+            lock.release()
+
+    def held_load():
+        entered.set()
+        assert release.wait(THREAD_WAIT), 'test did not release reload'
+        return local()
+
+    def reload():
+        try:
+            return load()
+        finally:
+            reloaded.set()
+
+    def at_stage(*args, **kwargs):
+        monkeypatch.setattr(runtime, method_name, method)
+        monkeypatch.setattr(runtime, '_load_local', held_load)
+        reloading.append(executor.submit(reload))
+        assert entered.wait(THREAD_WAIT)
+        monkeypatch.setattr(runtime, '_lock', ObservedLock())
+        return method(*args, **kwargs)
+
+    monkeypatch.setattr(runtime, method_name, at_stage)
+    reloading = []
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        if stage == 'lifecycle':
+            reading = executor.submit(client.patch, '/admin/api/settings/lifecycle',
+                                      json={'maintenance_time': '04:05'})
+        else:
+            reading = executor.submit(client.get, '/admin/api/settings')
+        try:
+            assert reading_lock.wait(THREAD_WAIT)
+            assert waits[0] == configuration.CONFIG_LOCK_WAIT_SECONDS
+            assert not reading.done()
+        finally:
+            release.set()
+        response = reading.result(timeout=THREAD_WAIT)
+        reloading[0].result(timeout=THREAD_WAIT)
+    assert response.status_code == 200, response.text
+    assert 'role' in response.json() and 'models' in response.json()
+    if stage == 'lifecycle':
+        assert response.json()['lifecycle']['maintenance_time'] == '04:05'
+    with store.read() as conn:
+        saved = conn.execute("SELECT COUNT(*) FROM admin_operations WHERE action='lifecycle_saved'").fetchone()[0]
+        assert saved == int(stage == 'lifecycle')
+        assert conn.execute('SELECT COUNT(*) FROM model_calls').fetchone()[0] == 0
+
+
+def test_settings_snapshot_shares_one_wait_budget(client, monkeypatch):
+    runtime = client.app.state.runtime_config
+    clock = SimpleNamespace(now=0.0)
+    monkeypatch.setattr(configuration, 'monotonic', lambda: clock.now)
+    monkeypatch.setattr(settings_api, 'time', SimpleNamespace(monotonic=lambda: clock.now))
+    lock, waits = runtime._lock, []
+
+    class DelayedLock:
+        def acquire(self, *, timeout):
+            waits.append(timeout)
+            clock.now += .5
+            return lock.acquire(timeout=0)
+
+        def release(self):
+            lock.release()
+
+    monkeypatch.setattr(runtime, '_lock', DelayedLock())
+    response = client.get('/admin/api/settings')
+    assert response.status_code == 200, response.text
+    assert waits == pytest.approx([3, 2.5])
+    # Background reloads still use a nonblocking read unless a caller opts in.
+    runtime.load()
+    assert waits[-1] == 0
+
+
+@pytest.mark.parametrize(('route', 'acquired_before_timeout'), [('get', 0), ('get', 1), ('lifecycle', 0)])
+def test_settings_snapshot_lock_timeout_is_bounded(client, monkeypatch, route, acquired_before_timeout):
+    runtime = client.app.state.runtime_config
+    clock = SimpleNamespace(now=0.0)
+    monkeypatch.setattr(configuration, 'monotonic', lambda: clock.now)
+    monkeypatch.setattr(settings_api, 'time', SimpleNamespace(monotonic=lambda: clock.now))
+    lock, waits = runtime._lock, []
+
+    class BusyLock:
+        def acquire(self, *, timeout):
+            waits.append(timeout)
+            if len(waits) > acquired_before_timeout:
+                clock.now += timeout
+                return False
+            clock.now += .5
+            return lock.acquire(timeout=0)
+
+        def release(self):
+            lock.release()
+
+    monkeypatch.setattr(runtime, '_lock', BusyLock())
+    if route == 'lifecycle':
+        response = client.patch('/admin/api/settings/lifecycle', json={'maintenance_time': '04:05'})
+    else:
+        response = client.get('/admin/api/settings')
+    assert response.status_code == 400, response.text
+    remaining = 3 - acquired_before_timeout * .5
+    assert response.json()['error'] == {
+        'code': 'invalid_request', 'message': f'配置锁等待超时（{remaining:g} 秒），请稍后重试'}
+    assert clock.now == pytest.approx(3)
+    assert waits == pytest.approx([3, 2.5][:acquired_before_timeout + 1])
