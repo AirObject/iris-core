@@ -24,6 +24,7 @@ DEFAULTS = {'enabled': True, 'max_calls': 50, 'method': 'broad', 'resolution': '
             'merge_enabled': True, 'conflict_enabled': True, 'dependency_enabled': True,
             'persona_enabled': True, 'goal_review_enabled': True, 'entry_profile_enabled': True}
 PROMPT_VERSION = 'consolidation_report_only_v1'
+MERGE_PROMPT_VERSION = 'consolidation_pair_v2'
 MAX_ANCESTORS = 64
 
 
@@ -360,12 +361,60 @@ def work_fingerprint(kind,payload,method):
     value = {'version':PROMPT_VERSION,'method':method,'kind':kind,
              'memories':[semantic(m) for m in payload['memories']],
              'losses':payload.get('losses',[]), 'resolution':payload.get('resolution','original_v1')}
-    # Preserve already-completed default work across this upgrade. Only a
-    # changed pair policy needs its own receipt; dependency work is independent.
+    # Pair checks cannot reuse pre-MG2 receipts. Dependencies keep their old
+    # fingerprints; legacy resumed merges also pass the write-time detail guard.
+    if kind == 'pair' and 'merge_version' in payload:
+        value['merge_version'] = payload['merge_version']
     policy = payload.get('policy', pair_policy(DEFAULTS))
     if kind == 'pair' and policy != pair_policy(DEFAULTS):
         value['policy'] = policy
     return digest(value)
+
+
+def merge_detail_decision(payload, result):
+    """Check quoted differences, then select an existing body, including on resume.
+
+    Semantic containment is a model judgment; substring checks establish only that
+    each claimed detail occurs in the corresponding original. Invalid details are
+    final uncertainty, never an invitation to rewrite.
+    """
+    result = dict(result)
+    previous = result.get('merge_detail_check', {})
+    decision = previous.get('model_decision', result['decision'])
+    keep_id = previous.get('model_keep_id', result.get('keep_id'))
+    reason = previous.get('model_reason', result['reason'])
+    detail = result.get('unique_details')
+    pair = [next(m for m in payload['memories'] if m['id'] == mid) for mid in payload['pair_ids']]
+    normalize = lambda text: ' '.join(text.split())
+    valid = isinstance(detail, dict) and set(detail) == {'a', 'b'}
+    if valid:
+        for side, memory in zip(('a', 'b'), pair):
+            quotes = detail[side]
+            if not isinstance(quotes, list) or any(
+                not isinstance(q, str) or not normalize(q) or normalize(q) not in normalize(memory['content'])
+                for q in quotes
+            ):
+                valid = False
+                break
+    outcome = 'not_merge'
+    if not valid:
+        outcome = 'invalid_details'
+        result.update(decision='uncertain', updates=[])
+        result.pop('keep_id', None)
+    elif decision == 'merge':
+        if detail['a'] and detail['b']:
+            outcome = 'mutual_details'
+            result.update(decision='uncertain', updates=[])
+            result.pop('keep_id', None)
+        else:
+            outcome = 'one_sided' if detail['a'] or detail['b'] else 'equivalent'
+            result['decision'] = 'merge'
+            result['keep_id'] = pair[0 if detail['a'] else 1]['id'] if outcome == 'one_sided' else keep_id
+            result['reason'] = (f"保留记忆 {result['keep_id']} 的原正文："+
+                                ('仅此条有独有细节。' if outcome == 'one_sided' else '双方无独有细节，沿用已有正文选择。')+
+                                '模型理由：'+reason)
+    result['merge_detail_check'] = {'outcome': outcome, 'model_decision': decision, 'model_keep_id': keep_id, 'model_reason': reason}
+    return result
 
 
 class _CallHealth:
@@ -422,7 +471,7 @@ class Consolidation:
         elif report_only:
             name='conflict_report_only_v1'
         else:
-            name='pair_v1'  # Complete original broad prompt frozen in 3d31c95.
+            name='pair_v2'  # MG2: same broad candidates, explicit detail containment.
         prompt=files('iris').joinpath(f'prompts/consolidation_{name}.md').read_text(encoding='utf-8')
         public={k:v for k,v in payload.items() if k not in ('resolution','policy')}
         public['memories']=[material(m) for m in payload['memories']]
@@ -466,6 +515,8 @@ class Consolidation:
                     raise ValueError('incomplete_output')
                 result=json.loads(reply.content,object_pairs_hook=unique)
                 self.validate(result,work,payload,report_only=report_only or work['kind']=='dependency')
+                if work['kind']=='pair' and not report_only:
+                    result=merge_detail_decision(payload,result)
                 return result
             except UnsafeWrite:
                 raise
@@ -486,6 +537,8 @@ class Consolidation:
     @staticmethod
     def validate(value,work,payload,*,report_only=False):
         allowed={'decision','reason','evidence','updates','keep_id'}
+        if work['kind']=='pair' and not report_only:
+            allowed.add('unique_details')
         if not isinstance(value,dict) or set(value)-allowed or not {'decision','reason','evidence','updates'}<=set(value):
             raise ValueError('invalid_fields')
         decisions=('keep','weaken','review') if work['kind']=='dependency' else ('merge','conflict','separate','uncertain')
@@ -568,7 +621,7 @@ class Consolidation:
             return None
         preferred=sorted((a,b),key=lambda x:(-len(x['content']),x['created_at'],x['id']))[0]['id']
         pair=(a['id'],b['id'])
-        return {'pair_ids':list(pair),'memories':[a,b,*[get(i) for i in sorted(ma | na) if i not in pair]],
+        return {'merge_version':MERGE_PROMPT_VERSION,'pair_ids':list(pair),'memories':[a,b,*[get(i) for i in sorted(ma | na) if i not in pair]],
             'merge_allowed':eligible,'merge_exclusion':exclusion or (
                 'disabled' if not settings['merge_enabled'] else 'similarity' if not eligible else None),
             'preferred_keep_id':preferred}
@@ -606,7 +659,7 @@ class Consolidation:
                     cache[mid]=attempt(f'plan:memory:{mid}',[mid],lambda:snapshot(conn,mid))
                 return cache[mid]
             def peers(m):
-                scan_key=[PROMPT_VERSION,settings['method'],settings['resolution'],semantic(m)]
+                scan_key=[PROMPT_VERSION,MERGE_PROMPT_VERSION,settings['method'],settings['resolution'],semantic(m)]
                 if pair_policy(settings) != pair_policy(DEFAULTS):
                     scan_key.append(pair_policy(settings))
                 fp=digest(scan_key)
@@ -673,12 +726,13 @@ class Consolidation:
             conn.execute('''INSERT OR IGNORE INTO consolidation_run_work(run_id,work_id)
                 SELECT ?,id FROM consolidation_work WHERE state IN ('pending','classified','decided')
                 AND COALESCE(json_extract(payload_json,'$.resolution'),'original_v1')=?
+                AND (kind!='pair' OR json_extract(payload_json,'$.merge_version')=?)
                 AND ((kind='dependency' AND ?)
                      OR (kind='pair' AND (? OR ?)
                          AND COALESCE(json_extract(payload_json,'$.policy.merge_enabled'),1)=?
                          AND COALESCE(json_extract(payload_json,'$.policy.conflict_enabled'),1)=?))
                 ORDER BY importance DESC,julianday(changed_at) DESC,id LIMIT 256''',
-                (run['id'],settings['resolution'],settings['dependency_enabled'],settings['merge_enabled'],
+                (run['id'],settings['resolution'],MERGE_PROMPT_VERSION,settings['dependency_enabled'],settings['merge_enabled'],
                  settings['conflict_enabled'],settings['merge_enabled'],settings['conflict_enabled']))
             conn.execute('UPDATE consolidation_runs SET planned=1 WHERE run_id=?',(run['id'],))
 
@@ -783,7 +837,7 @@ class Consolidation:
                 result=json.loads(work['result_json']) if work['result_json'] else {}
                 if not isinstance(result,dict):
                     raise ValueError('invalid_result')
-                if work['kind']=='pair' and (work['state'] in ('pending','classified') or work['outcome']=='failed' or result.get('decision')=='conflict'):
+                if work['kind']=='pair' and (work['state'] in ('pending','classified') or work['outcome']=='failed' or result.get('decision')=='conflict' or result.get('merge_detail_check',{}).get('outcome') in ('mutual_details','invalid_details')):
                     blocked.add(frozenset(payload['pair_ids']))
                 if work['state']=='decided' and work['outcome'] is None:
                     decisions.append((work,payload,result))
@@ -836,6 +890,10 @@ class Consolidation:
                     return False
         if work['kind']=='pair' and classification['decision']=='conflict' and config['conflict_enabled']:
             result=self.call(work,payload,report_only=True)
+            # Retain the pair's detail comparison for offline judging.
+            for key in ('unique_details','merge_detail_check'):
+                if key in classification:
+                    result[key]=classification[key]
         else:
             result=classification
         with self.store.write() as conn:
@@ -843,6 +901,10 @@ class Consolidation:
         return True
 
     def _apply_work(self,work,payload,result,config,blocked):
+        if work['kind']=='pair' and (result['decision']=='merge' or 'merge_detail_check' in result):
+            result=merge_detail_decision(payload,result)
+            with self.store.write() as conn:
+                conn.execute('UPDATE consolidation_work SET result_json=? WHERE id=?',(dumps(result),work['id']))
         ids=set(payload.get('pair_ids',[payload.get('target_id')]))
         if result['decision']=='merge' and any(ids & pair for pair in blocked):
             with self.store.write() as conn:
@@ -872,17 +934,50 @@ class Consolidation:
         conn.execute('''INSERT INTO memory_revisions(memory_id,revision_before,revision_after,before_json,after_json,reason,actor,created_at)
             VALUES(?,?,?,?,?,?,'consolidation',?)''',(old['id'],old['revision'],after['revision'],dumps(old),dumps(after),reason,self.clock().isoformat()))
 
+    def suggest_merge_details(self,conn,work,payload,result,before,details):
+        # Use the current admin-only suggestion UI. "disputed" here means the
+        # merge needs review, not that either memory's facts have been disproved.
+        a,b=payload['pair_ids']
+        unique=result['unique_details']
+        report=(f'合并待核对（双方互有细节，不代表事实矛盾）：记忆 {a} 独有 '+dumps(unique['a'])+
+                f'；记忆 {b} 独有 '+dumps(unique['b'])+'。未自动合并；请管理员核对后手动整理，或清除建议。'+
+                '采纳仅确认建议，不执行合并。模型理由：'+result['reason'])
+        conclusion=digest(['merge_details',payload['pair_ids'],
+                          [sorted({' '.join(q.split()) for q in unique[k]}) for k in ('a','b')]])
+        inserted=0
+        for mid in (a,b):
+            memory=next(m for m in before if m['id']==mid)
+            inserted+=conn.execute("""INSERT OR IGNORE INTO consolidation_annotations(
+                memory_id,work_id,text,evidence_json,created_at,kind,memory_revision,
+                related_ids_json,run_id,dedupe_key) VALUES(?,?,?,?,?,'disputed',?,?,?,?)""",
+                (mid,work['id'],report,dumps(result['evidence']),self.clock().isoformat(),
+                 memory['revision'],dumps([a,b]),self.run_id,conclusion)).rowcount
+        if not inserted:
+            return 'checked',{}
+        details.update(report=report,suggestion_type='merge_details',
+                       after_memories=[snapshot(conn,m['id']) for m in before])
+        operation(conn,'consolidation_merge_suggestion','memory',a,
+                  {'run_id':self.run_id,'work_id':work['id'],'memory_ids':[a,b]},
+                  actor='consolidation',stamp=self.clock().isoformat())
+        return 'conflicts',details
+
     def apply(self,conn,work,payload,result):
         before=[snapshot(conn,m['id']) for m in payload['memories']]
         if any(m is None or m['revision'] != old['revision'] for m,old in zip(before,payload['memories'])):
             raise UnsafeWrite('revision_conflict')
         if len({dumps(m.get('_visibility')) for m in before}) > 1:
             raise UnsafeWrite('visibility')
+        if work['kind']=='pair' and (result['decision']=='merge' or 'merge_detail_check' in result):
+            result=merge_detail_decision(payload,result)
         decision=result['decision']
         details={'action_id':f'co-{work["id"]}','decision':decision,'before_memories':before,
                  'report':result['reason'],'evidence':result['evidence'],
                  'source_excerpts':[{'memory_id':m['id'],'sources':material(m)['sources']} for m in before],
                  'conclusions':result['updates']}
+        if 'merge_detail_check' in result:
+            details.update(unique_details=result.get('unique_details'),merge_detail_check=result['merge_detail_check'])
+            if result['merge_detail_check']['outcome']=='mutual_details':
+                return self.suggest_merge_details(conn,work,payload,result,before,details)
         if decision in ('separate','uncertain','keep'):
             return 'checked',{}
         if decision=='merge':
