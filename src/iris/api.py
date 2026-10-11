@@ -34,7 +34,7 @@ from .process_lock import StoreLease
 from .admin import install_admin, NewGoal, GoalPatch, GoalQuery, GoalId
 from .trial import TrialReplies
 from .auth import Sessions, install_auth
-from .configuration import RuntimeConfig
+from .configuration import RuntimeConfig, allowed_hostnames, container_mode, environment_hosts
 from .settings_api import install_settings
 from .memory_ops import operation
 from .goals import Goals, GoalError, GoalConflict, GoalMerged, goal_list, goal_partition
@@ -212,7 +212,7 @@ class RevisionConflict(Exception):
 
 
 def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = None, configs=None,
-               gateway: Gateway | None = None, config_loader=None, learning_concurrency=None, open_browser_url=None) -> FastAPI:
+               gateway: Gateway | None = None, config_loader=None, learning_concurrency=None, open_browser_url=None, allowed_hosts=None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app):
         resources = ExitStack()
@@ -244,6 +244,7 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
             app.state.goals = Goals(active_store, gateway=active_gateway)
             app.state.runtime_config = runtime
             app.state.sessions = Sessions(active_store)
+            app.state.sessions.start_setup()
             app.state.tokens = Tokens(active_store)
             app.state.gateway = active_gateway
             app.state.health = health
@@ -267,8 +268,10 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
             await asyncio.to_thread(resources.close)
 
     app = FastAPI(title="Iris 宿主接口", version="1.0.0", lifespan=lifespan,
-                  description="接收消息、回复准备、记忆查询和使用反馈。接收不等于学习，召回不等于使用。v1 宿主契约已冻结；仅供本机 Bearer 令牌接入，管理接口不属于 v1 承诺。")
+                  description="接收消息、回复准备、记忆查询和使用反馈。接收不等于学习，召回不等于使用。v1 宿主契约已冻结；供本机或可信容器网络中的 Bearer 令牌接入，管理接口不属于 v1 承诺。")
     app.state.ready = False
+    app.state.container = container_mode()
+    extra_hosts = environment_hosts() if allowed_hosts is None else allowed_hostnames(allowed_hosts)
 
     @app.middleware("http")
     async def readiness(request, call_next):
@@ -316,7 +319,7 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
     install_tokens(app)
 
     # Registered last so Host is checked before readiness and every API/static route.
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "[::1]"],
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "[::1]", *extra_hosts],
                        www_redirect=False)
 
     @app.middleware("http")

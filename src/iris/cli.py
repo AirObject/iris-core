@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from importlib.metadata import version
 import os
 import sys
 import time
@@ -21,6 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(prog="iris")
+    parser.add_argument("--version", action="version", version=f"iris {version('iris-core')}")
     parser.add_argument("--db", help="Explicit SQLite database path (legacy/development override)")
     parser.add_argument("--data-dir", type=Path, help="Data directory; overrides IRIS_DATA_DIR and iris.toml")
     parser.add_argument("--config", type=Path, help="Deployment iris.toml path")
@@ -84,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
     evaluation.add_argument("--compare-embeddings", action="store_true", help="Compare 1024/2048 dimensions and query prefix on dev only")
     args = parser.parse_args(argv)
     args.command = args.command or "serve"
-    from .configuration import RuntimeConfig, SecretsUnavailable, deployment
+    from .configuration import RuntimeConfig, SecretsUnavailable, deployment, container_mode
     try:
         deploy = deployment(config=args.config, data_dir=args.data_dir, host=args.host, port=args.port)
         args.db = str(Path(args.db).resolve()) if args.db else str(deploy['data_dir'] / 'iris.db')
@@ -142,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
         from .api import create_app, loopback_host
         import uvicorn
         try:
-            host = loopback_host(deploy['host'])
+            host = deploy['host'] if container_mode() else loopback_host(deploy['host'])
             port = deploy['port']
             if not 1 <= port <= 65535:
                 raise ValueError("port must be 1..65535")
@@ -151,17 +153,20 @@ def main(argv: list[str] | None = None) -> int:
             if args.learning_concurrency is not None and not 1 <= args.learning_concurrency <= 32:
                 raise ValueError("learning concurrency must be 1..32")
             from .runtime_logging import configure_logging
-            configure_logging(data_dir, configs or {})
+            logger = configure_logging(data_dir, configs or {})
+            if container_mode():
+                logger.warning("请只把端口映射到本机（-p 127.0.0.1:8080:8080）或放在可信的 Docker 网络中；不要直接暴露到公网，本服务不提供 TLS")
             loader = (lambda: load_test_models(path)) if path else None
             # External evaluation subprocesses do not open a browser.
-            browser_url = None if args.no_open or path else f"http://{'['+host+']' if ':' in host else host}:{port}"
+            browser_url = None if args.no_open or path or container_mode() else f"http://{'['+host+']' if ':' in host else host}:{port}"
             print(f"Iris 已启动： http://{'['+host+']' if ':' in host else host}:{port}")
             uvicorn.run(create_app(args.db, configs=configs, config_loader=loader,
-                                  learning_concurrency=args.learning_concurrency, open_browser_url=browser_url),
+                                  learning_concurrency=args.learning_concurrency, open_browser_url=browser_url,
+                                  allowed_hosts=deploy['allowed_hosts']),
                         host=host, port=port, workers=1, proxy_headers=False)
             return 0
         except (ValueError, OSError):
-            print("服务配置无效：请检查回环监听地址、端口、并发和模型文件。", file=sys.stderr)
+            print("服务配置无效：请检查监听地址（非容器模式须回环）、端口、主机名白名单、并发和模型文件。", file=sys.stderr)
             return 1
     if args.command == "eval":
         try:

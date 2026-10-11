@@ -45,7 +45,7 @@ class FakeGateway:
 @pytest.fixture(autouse=True)
 def isolate_deployment_environment(monkeypatch):
     """Deployment settings must come from each test, not the caller's shell."""
-    for name in ("IRIS_DATA_DIR", "IRIS_HOST", "IRIS_PORT"):
+    for name in ("IRIS_DATA_DIR", "IRIS_HOST", "IRIS_PORT", "IRIS_CONTAINER", "IRIS_ALLOWED_HOSTS"):
         monkeypatch.delenv(name, raising=False)
 
 

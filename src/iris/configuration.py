@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import ipaddress
+import re
 import logging
 import os
 import secrets
@@ -37,6 +39,35 @@ def _lock_busy(timeout):
     return ValueError('配置正在更新，请稍后重试')
 
 
+def container_mode():
+    # Deliberately explicit: truthy strings and config files cannot enable it.
+    return os.environ.get('IRIS_CONTAINER') == '1'
+
+
+def allowed_hostnames(values):
+    """Exact Host names, no wildcard, URL, userinfo or DNS resolution."""
+    if not isinstance(values, (list, tuple)):
+        raise ValueError('allowed_hosts 必须是主机名列表')
+    result = []
+    for value in values:
+        if not isinstance(value, str):
+            raise ValueError('allowed_hosts 必须是主机名列表')
+        match = re.fullmatch(r'(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9_]+(?:[.-][A-Za-z0-9_-]+)*)(?::([0-9]{1,5}))?', value)
+        if not match or (match[2] and not 1 <= int(match[2]) <= 65535):
+            raise ValueError('allowed_hosts 只接受明确主机名，可带端口；不能使用通配符或 URL')
+        host = match[1]
+        if host.startswith('['):
+            ipaddress.IPv6Address(host[1:-1])
+        if host not in result:
+            result.append(host)
+    return result
+
+
+def environment_hosts():
+    raw = os.environ.get('IRIS_ALLOWED_HOSTS', '')
+    return allowed_hostnames([part.strip() for part in raw.split(',')] if raw else [])
+
+
 def deployment(*, config=None, data_dir=None, host=None, port=None):
     path = Path(config or 'iris.toml').resolve()
     try:
@@ -47,13 +78,14 @@ def deployment(*, config=None, data_dir=None, host=None, port=None):
         values = {}
     except (ValueError, OSError):
         raise ValueError('部署配置文件无效') from None
-    if set(values)-{'data_dir', 'host', 'port'}:
-        raise ValueError('iris.toml 只接受 data_dir、host、port')
+    if set(values)-{'data_dir', 'host', 'port', 'allowed_hosts'}:
+        raise ValueError('iris.toml 只接受 data_dir、host、port、allowed_hosts')
     directory = data_dir or os.environ.get('IRIS_DATA_DIR')
     if directory is None:
         directory = path.parent / str(values.get('data_dir', 'data'))
-    return {'data_dir': Path(directory).resolve(), 'host': host or os.environ.get('IRIS_HOST') or values.get('host', '127.0.0.1'),
-            'port': int(port if port is not None else os.environ.get('IRIS_PORT', values.get('port', 8080)))}
+    return {'data_dir': Path(directory).resolve(), 'host': host or os.environ.get('IRIS_HOST') or values.get('host', '0.0.0.0' if container_mode() else '127.0.0.1'),
+            'port': int(port if port is not None else os.environ.get('IRIS_PORT', values.get('port', 8080))),
+            'allowed_hosts': environment_hosts() if 'IRIS_ALLOWED_HOSTS' in os.environ else allowed_hostnames(values.get('allowed_hosts', []))}
 
 
 class RuntimeConfig:

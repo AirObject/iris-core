@@ -1,6 +1,6 @@
 # Iris 宿主接口 v1 接入契约
 
-路径前缀 `/api/v1`，请求与响应为 UTF-8 JSON；有正文时使用 `Content-Type: application/json`。Iris 只监听本机回环地址。完成首次设置并登录管理界面后，可在 `/docs` 浏览交互文档，在 `/openapi.json` 取得中文 OpenAPI 3.1 文档。管理接口 `/admin/api` 不属于本契约。
+路径前缀 `/api/v1`，请求与响应为 UTF-8 JSON；有正文时使用 `Content-Type: application/json`。普通模式下 Iris 只监听本机回环地址；仅 `IRIS_CONTAINER=1` 允许非回环监听，用于本机端口映射或可信 Docker 网络，不提供 TLS。Host 默认仅允许 `127.0.0.1`、`localhost`、`[::1]`（可带端口）；通过 `IRIS_ALLOWED_HOSTS=iris` 或 `iris.toml` 的 `allowed_hosts=["iris"]` 可增加明确服务名。Docker 网络内宿主可使用 `http://iris:8080`，仍必须携带 Bearer 令牌；不信任转发头、不启用 CORS。完成首次设置并登录管理界面后，可在 `/docs` 浏览交互文档，在 `/openapi.json` 取得中文 OpenAPI 3.1 文档。管理接口 `/admin/api` 不属于本契约。
 
 v1 冻结基线为 `tests/test_host_api_contract.py`。兼容更新可以增加可选请求字段、响应字段、操作和运行提示；不能删除、重命名已有字段，改变类型、含义或已承诺的默认行为，也不能把可选字段改成必填。宿主须忽略未知响应字段和未知 `hints[].code`。破坏性变更须由规划者记录决定并使用新版本，不在 v1 静默发生。本文明确标注的 VS 过渡行为不代表入口隐私过滤已经完成。
 

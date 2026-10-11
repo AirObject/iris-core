@@ -25,14 +25,15 @@ uv run iris eval learning
 uv run iris
 ```
 
-首次运行会创建 `./data` 并自动在系统浏览器打开 `http://127.0.0.1:8080/setup`。在页面设置管理员密码、角色名、可选背景和模型即可进入试用；不配置模型也可以完成，顶部持续提示“未配置模型，暂不学习”，接收与全文召回照常。`uv run iris serve --no-open` 关闭自动打开。运行服务无需 Node；Docker 与对外监听留到后续阶段，目前只在 macOS 验证。
+首次运行会创建 `./data` 并自动在系统浏览器打开 `http://127.0.0.1:8080/setup`。在页面设置管理员密码、角色名、可选背景和模型即可进入试用；不配置模型也可以完成，顶部持续提示“未配置模型，暂不学习”，接收与全文召回照常。`uv run iris serve --no-open` 关闭自动打开。运行服务无需 Node。默认仍只监听回环地址；Docker 镜像支持 Linux amd64／arm64，部署方式见下文。
 
-部署优先级为 **命令行 > 环境变量 > iris.toml > 默认值**。环境变量为 `IRIS_DATA_DIR`、`IRIS_HOST`、`IRIS_PORT`；当前目录的 `iris.toml` 只接受以下顶层项，可用 `--config <文件>` 指定其他文件。文件中的相对数据目录相对该配置文件解析。`--data-dir` 放在子命令前；兼容原来的 `--db`，显式传入时其父目录就是数据目录。
+部署优先级为 **命令行 > 环境变量 > iris.toml > 默认值**。环境变量为 `IRIS_DATA_DIR`、`IRIS_HOST`、`IRIS_PORT`、`IRIS_ALLOWED_HOSTS`；当前目录的 `iris.toml` 只接受以下顶层项，可用 `--config <文件>` 指定其他文件。文件中的相对数据目录相对该配置文件解析。`--data-dir` 放在子命令前；兼容原来的 `--db`，显式传入时其父目录就是数据目录。
 
 ```toml
 data_dir = "./data"
 host = "127.0.0.1"
 port = 8080
+allowed_hosts = []
 ```
 
 ```bash
@@ -50,9 +51,71 @@ IRIS_TEST_MODELS=/absolute/path/test-models.toml uv run iris --data-dir /path/to
 uv run iris --data-dir /path/to/iris-data serve
 ```
 
-`/setup`、`/login` 及其静态资源可在本机打开；完成设置后，试用／记忆／入口与学习／状态／设置页与管理接口均要求管理员会话。交互接口文档 `/docs`、`/openapi.json` 也要求登录。宿主 `/api/v1` 自 M4 起需要宿主令牌（见下文「宿主接入」）；服务继续只绑定回环地址。
+`/setup`、`/login` 及其静态资源可在本机打开；完成设置后，试用／记忆／入口与学习／状态／设置页与管理接口均要求管理员会话。交互接口文档 `/docs`、`/openapi.json` 也要求登录。宿主 `/api/v1` 自 M4 起需要宿主令牌（见下文「宿主接入」）；普通模式下服务只绑定回环地址；仅 `IRIS_CONTAINER=1` 允许非回环监听。
 
-服务还会在所有路由之前校验 HTTP `Host`，仅接受 `127.0.0.1`、`localhost`、`[::1]`（可带端口）。其他域名即使解析到回环地址，也返回 400，不返回业务数据或执行操作；界面、静态资源、`/admin/api`、`/api/v1`、接口文档均受保护。此检查用于阻断 DNS 重绑定，不解析域名、不信任转发 Host，也不启用 CORS。它与管理员会话和 CSRF 校验共同生效。浏览器和宿主客户端请使用上述本机地址，不使用自定义域名。
+服务还会在所有路由之前校验 HTTP `Host`，默认接受 `127.0.0.1`、`localhost`、`[::1]`（可带端口）；可用 `iris.toml` 的 `allowed_hosts` 列表或 `IRIS_ALLOWED_HOSTS` 逗号列表增加明确的主机名。其他域名即使解析到回环地址，也返回 400，不返回业务数据或执行操作；界面、静态资源、`/admin/api`、`/api/v1`、接口文档均受保护。此检查用于阻断 DNS 重绑定，不解析域名、不信任转发 Host，也不启用 CORS。它与管理员会话和 CSRF 校验共同生效。白名单不接受 URL 或通配符；请求可带端口，配置项若附端口也只取主机名。未列入白名单的 Docker 服务名同样被拒绝。浏览器通过本机映射地址访问时仍执行同源 Origin、Sec-Fetch-Site 与 CSRF 校验。
+
+## Docker 部署（0.0.1）
+
+镜像 `ghcr.io/airobject/iris-core:0.0.1` 同时提供 `linux/amd64`、`linux/arm64`，另有 `latest` 标签。推荐固定版本；`iris --version` 可查看已安装版本。镜像基于固定的官方 Python 3.13 小版本，以 UID/GID **10001:10001** 运行，默认 `0.0.0.0:8080`，数据目录 `/data`，健康检查只访问本机 `/login`，不需要宿主令牌。
+
+**只把端口映射到本机，或把 Iris 放在可信 Docker 网络中；不要直接暴露到公网，本服务不提供 TLS。** 只有环境变量严格等于 `IRIS_CONTAINER=1` 才允许非回环监听；`true` 等其他值不会开启。镜像已设此开关，普通安装默认关闭。Host 白名单、宿主令牌、管理员会话和 CSRF 仍全部生效，不信任代理头，也不启用 CORS。
+
+AstrBot 在宿主机时：
+
+```bash
+docker run -d --name iris -p 127.0.0.1:8080:8080 -v iris-data:/data ghcr.io/airobject/iris-core:0.0.1
+docker logs iris
+```
+
+从启动日志取得“首次设置码”，浏览器打开 <http://127.0.0.1:8080/setup>，按表单填写设置码、管理员密码、角色和模型。Docker 的端口转发通常使请求来自容器网桥地址，因此经本机映射访问也会要求设置码。插件地址填 `http://127.0.0.1:8080`，在管理页“接入”创建宿主令牌后填入插件。
+
+还没有管理员密码时，每次启动生成 256 位随机设置码；内存只存 SHA-256 摘要，明文只输出到服务控制台／`/data/logs/iris.log`，不会存入数据库或 API 响应。管理员密码建立后立即失效，不用等待其余设置完成；中途重启可用管理员密码登录继续。尚未建立密码就重启时，必须改用新日志中的设置码。回环客户端可沿用不填码的首次设置。请勿分享包含设置码的启动日志。
+
+AstrBot 也在 Docker 中时，将它的**现有服务配置**接入同一网络，保留原镜像、端口和数据卷；下面展示要合并的服务与网络配置，`ASTRBOT_IMAGE` 填目前使用的 AstrBot 镜像，不要求升级插件或连接器：
+
+```yaml
+services:
+  iris:
+    image: ghcr.io/airobject/iris-core:0.0.1
+    environment:
+      IRIS_ALLOWED_HOSTS: iris
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - iris-data:/data
+    networks: [iris-net]
+  astrbot:
+    image: ${ASTRBOT_IMAGE:?请填写现有 AstrBot 镜像}
+    # 保留现有 AstrBot 的数据卷和端口设置。
+    networks: [iris-net]
+networks:
+  iris-net:
+volumes:
+  iris-data:
+```
+
+用 `docker compose logs iris` 取设置码，经本机浏览器完成设置后，AstrBot 插件填 `http://iris:8080` 和宿主令牌。`IRIS_ALLOWED_HOSTS=iris` 只增加服务名，不允许其他任意 Host；默认白名单仍保留本机地址。允许访问 Iris 的网络应只加入可信容器。需要通过文件配置时，`iris.toml` 可写 `allowed_hosts = ["iris"]` 并以 `--config` 指定；环境变量优先，空字符串可清空附加名单。
+
+模型可在页面配置；也可在创建容器时把现有模型配置**只读挂载**到例如 `/config/models.toml`，再执行：
+
+```bash
+docker exec iris iris --data-dir /data models import --from /config/models.toml
+```
+
+配置文件和密钥不放进镜像，不在命令行参数中填写密钥。容器中的 `127.0.0.1` 指 Iris 容器本身；模型在其他容器时填该服务地址，模型在宿主机时按 Docker 的宿主网络配置填写可达地址。
+
+推荐在管理页“接入”创建令牌；离线命令须先停止服务，沿用相同数据卷，令牌仅在创建输出中显示一次：
+
+```bash
+docker stop iris
+docker run --rm -v iris-data:/data ghcr.io/airobject/iris-core:0.0.1 tokens create --host astrbot --prefix 'astrbot:'
+docker start iris
+```
+
+`/data` 包含数据库、媒体、模型密钥、日志和备份，重启或替换容器时保留同一数据卷。新命名卷会继承镜像的目录权限；绑定宿主目录时须事先让 UID/GID 10001 可写。每日定时备份默认在 `/data/backups`，保留 7 份且不含模型密钥；仍应把备份保存到数据卷之外，管理页也可下载在线导出。恢复使用停服后的 `backup import`，规则见“在线导出与离线导入”。不要把删除数据卷当作容器升级步骤。
+
+发布流程由维护者推送与 `pyproject.toml` 版本一致的 `v*` 标签触发：依次通过 Python 3.13、3.12 全量测试与 `uv build` 后，使用仓库自带的 `GITHUB_TOKEN` 推送双架构版本镜像和 `latest`，创建 GitHub Release 并附 wheel、sdist。版本不匹配或任何验证失败都会阻止发布，无需额外密钥。
 
 ## 首次设置、登录与设置
 
@@ -64,7 +127,7 @@ uv run iris --data-dir /path/to/iris-data serve
 
 设置页只提供本阶段的角色名称／背景／时区、对话和 embedding 模型、每日 token 上限、学习并发（1—32，默认 2）与模型立即重试。保存后调用既有内部接口对新工作生效，401 显示“密钥无效”；接收和召回仍可用，改对后恢复学习。API key 省略只在接口 origin（协议、主机、有效端口）未变时保留原值；测试或保存到新 origin 必须重新输入密钥，否则返回 `body.api_key` 字段错误且不发送请求。无密钥服务须显式传 `api_key=""`（页面勾选“移除”）；路径改变但 origin 相同仍可沿用。更换背景撤销旧的初始设定对象、保存修订并建立新设定，学习所得记忆保留；角色名变化不重复建立初始记忆，persona 保留版本历史。修改均写入操作记录，设置页显示最近 30 条。
 
-管理员密码以随机盐＋scrypt（N=32768、r=8、p=3）保存，使用 [OWASP 的 scrypt 参数组合](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#scrypt)。会话为 256 位随机值，数据库仅存摘要，绝对有效期 12 小时，登录轮换、退出撤销；Cookie 为 HttpOnly、SameSite=Strict、Path=/，HTTPS 时增加 Secure（M1 本机 HTTP 不启用 TLS）。写请求必须携带会话绑定的 `X-Iris-CSRF` 与 JSON Content-Type，同时检查 Origin 和 Sec-Fetch-Site；不能只依赖 SameSite。五分钟内五次错误密码后暂停登录一分钟，计数持久保存。首次设置核对实际客户端回环地址，serve 不信任代理转发地址；Host 白名单继续覆盖所有路由，不启用 CORS。
+管理员密码以随机盐＋scrypt（N=32768、r=8、p=3）保存，使用 [OWASP 的 scrypt 参数组合](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#scrypt)。会话为 256 位随机值，数据库仅存摘要，绝对有效期 12 小时，登录轮换、退出撤销；Cookie 为 HttpOnly、SameSite=Strict、Path=/，HTTPS 时增加 Secure（M1 本机 HTTP 不启用 TLS）。写请求必须携带会话绑定的 `X-Iris-CSRF` 与 JSON Content-Type，同时检查 Origin 和 Sec-Fetch-Site；不能只依赖 SameSite。五分钟内五次错误密码后暂停登录一分钟，计数持久保存。首次设置核对实际客户端地址：普通模式仍限回环；容器模式下非回环客户端需一次性设置码。serve 不信任代理转发地址；Host 白名单继续覆盖所有路由，不启用 CORS。
 
 管理接口未登录返回 401，未完成设置返回 409，JSON 的 error.redirect 指向 /login 或 /setup；页面本身返回 303。`GET /admin/api/session` 返回状态与 CSRF token，并建立短期匿名会话，首次设置和登录也需要该 token。跨站 Origin／Sec-Fetch-Site 的 session 请求返回 403，不创建会话。匿名会话有效期 30 分钟、最多 128 个，新建时淘汰最早过期的匿名项；读取 session 或签发会话时清理过期项，已登录会话不受匿名上限淘汰。匿名响应不含角色、记忆或模型配置。登录、设置密码和完成设置的请求体最多 16 KiB，含分块传输，超限返回 413。页面／管理响应不缓存，页面拒绝被 iframe 嵌入。
 
@@ -146,7 +209,7 @@ uv build
 
 宿主错误统一为 `{"error":{"code":"invalid_request","message":"请求格式或内容不合法","fields":[{"field":"body","message":"字段说明"}],"retry_after_seconds":null,"retry_at":null}}`。状态为 400／401／403／404／409／413／429／503；429 和 503 带 `Retry-After`、建议等待秒数及预计重试时间。状态和目标的超大请求统一返回 413，管理接口行为不变。
 
-宿主与 Iris 在同一台电脑运行，Iris 继续只监听回环地址并校验 Host。所有 `/api/v1` 请求都需要 `Authorization: Bearer <令牌>`；管理员 Cookie 不能代替宿主令牌，宿主令牌也不能登录管理界面。连接器经独立的 AstrBot 插件接入，平台不需要直接连接 Iris。下文及其他小节的宿主请求示例均须携带这个请求头。
+宿主与 Iris 可在同一台电脑运行，或位于同一可信 Docker 网络；普通模式只监听回环地址，两种方式都校验 Host。所有 `/api/v1` 请求都需要 `Authorization: Bearer <令牌>`；管理员 Cookie 不能代替宿主令牌，宿主令牌也不能登录管理界面。连接器经独立的 AstrBot 插件接入，平台不需要直接连接 Iris。下文及其他小节的宿主请求示例均须携带这个请求头。
 
 停服后可用离线命令创建、列出或撤销令牌（沿用服务的数据库互斥锁，服务运行时命令失败）：
 
