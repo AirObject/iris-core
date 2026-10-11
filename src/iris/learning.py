@@ -144,7 +144,13 @@ def _strip_memory_annotations(text: str) -> str:
 
 
 class LearningEngine:
-    def __init__(self, store: Store, gateway: Gateway, *, clock=None):
+    def __init__(self, store: Store, gateway: Gateway, *, clock=None,
+                 prompt_version: str = PROMPT_VERSION):
+        if prompt_version not in ("learning_v7", "learning_v8", "learning_v9"):
+            raise ValueError("unsupported learning prompt version")
+        self.prompt_version = prompt_version
+        self.prompt = (PROMPT if prompt_version == PROMPT_VERSION else
+                       files("iris").joinpath("prompts", prompt_version + ".md").read_text(encoding="utf-8"))
         self.store = store
         self.gateway = gateway
         self.retrieval = Retrieval(store, gateway)
@@ -900,7 +906,7 @@ class LearningEngine:
             related = self._related(batch, snapshot)
             material, numbers, refs = self._material(batch, snapshot, related)
             output, raw, repair, parse_status, *details = self._learning_output(
-                [{"role": "system", "content": PROMPT}, {"role": "user", "content": material}], batch.id)
+                [{"role": "system", "content": self.prompt}, {"role": "user", "content": material}], batch.id)
             attempt.update(raw_output=raw, repair_output=repair, parse_status=parse_status,
                            error=details[0] if details else None)
             output, snapshot["normalizations"] = self._normalize_output(output, refs)
