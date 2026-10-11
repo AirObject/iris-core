@@ -89,7 +89,7 @@ def test_explicit_corpus_only_and_source_times_checked(tmp_path):
 
 
 def test_rejected_candidate_exported_and_not_scored_as_published(tmp_path):
-    result=run_eval(corpus(tmp_path),tmp_path/'run',configs={},gateway_factory=lambda configs,store:Model(store,bad=(0,1)))
+    result=run_eval(corpus(tmp_path),tmp_path/'run',configs={},gateway_factory=lambda configs,store:Model(store,bad=(0,1,2)))
     materials=Path(result['materials'])
     assert result['rows'][0]['result']['status']=='rejected'
     a=judgments(materials,tmp_path/'a')
@@ -99,15 +99,14 @@ def test_rejected_candidate_exported_and_not_scored_as_published(tmp_path):
     assert not report['metrics']['meets_threshold']
 
 
-def test_ninety_percent_basis_and_no_prohibited_content_meets_spec(tmp_path):
-    texts=[f'在本次聊天的第{i+1}段讨论中，发言者描述了照片整理办法。' for i in range(10)]
+def test_grounded_items_and_no_prohibited_content_meet_spec(tmp_path):
+    texts=[f'格式测试说法{i+1}' for i in range(5)]
     result=run_eval(corpus(tmp_path),tmp_path/'run',configs={},gateway_factory=lambda configs,store:Model(store,texts=texts))
     materials=Path(result['materials']);a=judgments(materials,tmp_path/'a')
     path=a/'0000.json';vote=json.loads(path.read_text())
-    vote['sentence_results'][0].update(supported=False,violations=['无依据'])
     path.write_text(dumps(vote))
     report=score(materials,[a],judge_model='fake evaluator',out=tmp_path/'score')
-    assert report['metrics']['grounded_sentence_ratio']==.9
+    assert report['metrics']['grounded_item_ratio']==1
     assert report['metrics']['meets_threshold']
 
 
@@ -178,3 +177,49 @@ def test_recorded_check_timeout_is_incomplete_even_without_timeout_reason(tmp_pa
     # Older immutable runs may have set complete=True from the general reason.
     legacy=copy.deepcopy(result['rows']);legacy[0]['complete']=True
     assert _runner._metrics(legacy)['incomplete_cases']==1
+
+
+def test_frozen_v2_coverage_proposal_is_exact_and_annotation_bound(tmp_path):
+    import hashlib
+    frozen=Path(__file__).resolve().parents[1]/'evals/entry_profile_v1.json'
+    cases=load_corpus(frozen)
+    policy=_runner.coverage_policy(cases,hashlib.sha256(frozen.read_bytes()).hexdigest())
+    assert policy['status']=='proposed_pending_planner_confirmation'
+    assert len(policy['not_applicable'])==9
+    coverage=[_runner._coverage(c,policy) for c in cases]
+    assert sum(len(c['must_cover_original']) for c in coverage)==40
+    assert sum(len(c['must_cover']) for c in coverage)==31
+    assert coverage[0]['must_cover_indices']==[1,2,4,5,6,7,8]
+    original=copy.deepcopy(cases)
+    cases[0]['must_cover'][2]='不同标注'
+    with pytest.raises(ValueError,match='annotation mismatch'):
+        _runner.coverage_policy(cases,policy['corpus_file_sha256'])
+    assert _runner.coverage_policy(original,'unknown')['status']=='all_applicable'
+    path=tmp_path/'policy.json';path.write_text(dumps(policy),encoding='utf-8')
+    with pytest.raises(ValueError,match='fingerprint'):
+        _runner.coverage_policy(original,'unknown',path)
+
+
+def test_effective_coverage_scores_only_applicable_and_exports_reasons(tmp_path):
+    import hashlib
+    path=corpus(tmp_path)
+    policy={'format_version':1,'corpus_file_sha256':hashlib.sha256(path.read_bytes()).hexdigest(),
+        'status':'planner_confirmed','not_applicable':[{'case_id':'fixture','index':1,
+            'text':'格式测试要点','reason':'机制测试：验证不适用项保持可见且不进入分母'}]}
+    proposal=tmp_path/'policy.json';proposal.write_text(dumps(policy),encoding='utf-8')
+    result=run_eval(path,tmp_path/'run',configs={},gateway_factory=lambda configs,store:Model(store),coverage_policy_path=proposal)
+    materials=Path(result['materials']);vote_dir=judgments(materials,tmp_path/'a')
+    document=json.loads((materials/'cases/0000.json').read_text())['input']
+    assert document['must_cover']==[] and document['must_cover_original']==['格式测试要点']
+    assert document['not_applicable']==policy['not_applicable']
+    report=score(materials,[vote_dir],judge_model='fake evaluator',out=tmp_path/'score')
+    assert report['metrics']['must_cover_total']==0 and report['metrics']['must_cover_coverage'] is None
+    assert report['metrics']['not_applicable_count']==1
+    assert report['metrics']['quote_validation_total']==5
+    assert report['metrics']['quote_validation_pass_rate']==1
+
+
+def test_quote_diagnostic_counts_rejected_draft_quotes():
+    profile={'status':'rejected','checks':{'quote_validation':{'total':3,'passed':1}}}
+    rows=[{'complete':True,'result':{'version':profile},'calls':[],'attempts':[]}]
+    assert _runner._metrics(rows)['quote_validation_pass_rate']==1/3
