@@ -63,6 +63,7 @@ CREATE VIEW purge_stale_references AS
  WHERE r.ref_kind='message' AND r.revision=0;
 
 CREATE TRIGGER purge_batches_insert AFTER INSERT ON batches BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='batches' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'batches',CAST(new.id AS TEXT),* FROM (SELECT 'memory',CAST(x.value AS TEXT),-1 FROM json_each(new.result_json) a,json_each(CASE WHEN a.type='array' THEN a.value ELSE '[]' END) x WHERE a.key IN ('created','updated','confirmed') AND x.type='integer');
 
@@ -75,6 +76,7 @@ CREATE TRIGGER purge_batches_insert AFTER INSERT ON batches BEGIN
 END;
 
 CREATE TRIGGER purge_batches_update AFTER UPDATE ON batches BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='batches' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'batches',CAST(new.id AS TEXT),* FROM (SELECT 'memory',CAST(x.value AS TEXT),-1 FROM json_each(new.result_json) a,json_each(CASE WHEN a.type='array' THEN a.value ELSE '[]' END) x WHERE a.key IN ('created','updated','confirmed') AND x.type='integer');
 
@@ -92,6 +94,7 @@ CREATE TRIGGER purge_batches_delete AFTER DELETE ON batches BEGIN
 END;
 
 CREATE TRIGGER purge_batch_attempts_insert AFTER INSERT ON batch_attempts BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='batch_attempts' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'batch_attempts',CAST(new.id AS TEXT),* FROM (SELECT 'batches',CAST(new.batch_id AS TEXT),0 WHERE new.batch_id IS NOT NULL AND (1));
 
@@ -105,6 +108,7 @@ CREATE TRIGGER purge_batch_attempts_insert AFTER INSERT ON batch_attempts BEGIN
 END;
 
 CREATE TRIGGER purge_batch_attempts_update AFTER UPDATE ON batch_attempts BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='batch_attempts' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'batch_attempts',CAST(new.id AS TEXT),* FROM (SELECT 'batches',CAST(new.batch_id AS TEXT),0 WHERE new.batch_id IS NOT NULL AND (1));
 
@@ -123,6 +127,7 @@ CREATE TRIGGER purge_batch_attempts_delete AFTER DELETE ON batch_attempts BEGIN
 END;
 
 CREATE TRIGGER purge_model_calls_insert AFTER INSERT ON model_calls BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='model_calls' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'model_calls',CAST(new.id AS TEXT),* FROM (SELECT 'batches',CAST(new.batch_id AS TEXT),0 WHERE new.batch_id IS NOT NULL AND (1));
 
@@ -134,6 +139,7 @@ CREATE TRIGGER purge_model_calls_insert AFTER INSERT ON model_calls BEGIN
 END;
 
 CREATE TRIGGER purge_model_calls_update AFTER UPDATE ON model_calls BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='model_calls' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'model_calls',CAST(new.id AS TEXT),* FROM (SELECT 'batches',CAST(new.batch_id AS TEXT),0 WHERE new.batch_id IS NOT NULL AND (1));
 
@@ -150,6 +156,7 @@ CREATE TRIGGER purge_model_calls_delete AFTER DELETE ON model_calls BEGIN
 END;
 
 CREATE TRIGGER purge_recalls_insert AFTER INSERT ON recalls BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='recalls' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'recalls',CAST(new.id AS TEXT),* FROM (SELECT 'memory',CAST(j.atom AS TEXT),-1 FROM json_tree(new.request_json) j WHERE j.type='integer' AND replace(j.path,'"','') IN ('$.judgment.removed_memory_ids','$.judgment.stale_memory_ids'));
 
@@ -161,6 +168,7 @@ CREATE TRIGGER purge_recalls_insert AFTER INSERT ON recalls BEGIN
 END;
 
 CREATE TRIGGER purge_recalls_update AFTER UPDATE ON recalls BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='recalls' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'recalls',CAST(new.id AS TEXT),* FROM (SELECT 'memory',CAST(j.atom AS TEXT),-1 FROM json_tree(new.request_json) j WHERE j.type='integer' AND replace(j.path,'"','') IN ('$.judgment.removed_memory_ids','$.judgment.stale_memory_ids'));
 
@@ -177,6 +185,7 @@ CREATE TRIGGER purge_recalls_delete AFTER DELETE ON recalls BEGIN
 END;
 
 CREATE TRIGGER purge_consolidation_work_insert AFTER INSERT ON consolidation_work BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='consolidation_work' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'consolidation_work',CAST(new.id AS TEXT),* FROM (SELECT 'memory',CAST(json_extract(m.value,'$.id') AS TEXT),COALESCE(json_extract(m.value,'$.revision'),-1)
  FROM json_each(new.payload_json,'$.memories') m WHERE json_type(m.value,'$.id')='integer'
@@ -194,6 +203,7 @@ CREATE TRIGGER purge_consolidation_work_insert AFTER INSERT ON consolidation_wor
 END;
 
 CREATE TRIGGER purge_consolidation_work_update AFTER UPDATE ON consolidation_work BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='consolidation_work' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'consolidation_work',CAST(new.id AS TEXT),* FROM (SELECT 'memory',CAST(json_extract(m.value,'$.id') AS TEXT),COALESCE(json_extract(m.value,'$.revision'),-1)
  FROM json_each(new.payload_json,'$.memories') m WHERE json_type(m.value,'$.id')='integer'
@@ -216,6 +226,7 @@ CREATE TRIGGER purge_consolidation_work_delete AFTER DELETE ON consolidation_wor
 END;
 
 CREATE TRIGGER purge_consolidation_calls_insert AFTER INSERT ON consolidation_calls BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='consolidation_calls' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'consolidation_calls',CAST(new.id AS TEXT),* FROM (SELECT 'consolidation_work',CAST(new.work_id AS TEXT),0 WHERE new.work_id IS NOT NULL AND (1)
  UNION ALL SELECT 'persona_attempts',CAST(mp.attempt_id AS TEXT),0 FROM maintenance_persona mp WHERE mp.run_id=new.run_id AND new.purpose LIKE 'persona_%' AND mp.attempt_id IS NOT NULL
@@ -230,6 +241,7 @@ CREATE TRIGGER purge_consolidation_calls_insert AFTER INSERT ON consolidation_ca
 END;
 
 CREATE TRIGGER purge_consolidation_calls_update AFTER UPDATE ON consolidation_calls BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='consolidation_calls' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'consolidation_calls',CAST(new.id AS TEXT),* FROM (SELECT 'consolidation_work',CAST(new.work_id AS TEXT),0 WHERE new.work_id IS NOT NULL AND (1)
  UNION ALL SELECT 'persona_attempts',CAST(mp.attempt_id AS TEXT),0 FROM maintenance_persona mp WHERE mp.run_id=new.run_id AND new.purpose LIKE 'persona_%' AND mp.attempt_id IS NOT NULL
@@ -249,6 +261,7 @@ CREATE TRIGGER purge_consolidation_calls_delete AFTER DELETE ON consolidation_ca
 END;
 
 CREATE TRIGGER purge_consolidation_run_work_insert AFTER INSERT ON consolidation_run_work BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='consolidation_run_work' AND row_id=json_array(new.run_id,new.work_id);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'consolidation_run_work',json_array(new.run_id,new.work_id),* FROM (SELECT 'consolidation_work',CAST(new.work_id AS TEXT),0 WHERE new.work_id IS NOT NULL AND (1)
  UNION ALL SELECT 'memory',CAST(json_extract(j.value,'$.memory_id') AS TEXT),
@@ -268,6 +281,7 @@ CREATE TRIGGER purge_consolidation_run_work_insert AFTER INSERT ON consolidation
 END;
 
 CREATE TRIGGER purge_consolidation_run_work_update AFTER UPDATE ON consolidation_run_work BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='consolidation_run_work' AND row_id=json_array(new.run_id,new.work_id);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'consolidation_run_work',json_array(new.run_id,new.work_id),* FROM (SELECT 'consolidation_work',CAST(new.work_id AS TEXT),0 WHERE new.work_id IS NOT NULL AND (1)
  UNION ALL SELECT 'memory',CAST(json_extract(j.value,'$.memory_id') AS TEXT),
@@ -292,6 +306,7 @@ CREATE TRIGGER purge_consolidation_run_work_delete AFTER DELETE ON consolidation
 END;
 
 CREATE TRIGGER purge_consolidation_annotations_insert AFTER INSERT ON consolidation_annotations BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='consolidation_annotations' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'consolidation_annotations',CAST(new.id AS TEXT),* FROM (SELECT 'memory',CAST(new.memory_id AS TEXT),COALESCE(new.memory_revision,COALESCE((SELECT revision FROM memories WHERE id=new.memory_id),0))
  UNION ALL SELECT 'memory',CAST(j.value AS TEXT),COALESCE((SELECT revision FROM memories WHERE id=j.value),0) FROM json_each(new.related_ids_json) j WHERE j.type='integer'
@@ -306,6 +321,7 @@ CREATE TRIGGER purge_consolidation_annotations_insert AFTER INSERT ON consolidat
 END;
 
 CREATE TRIGGER purge_consolidation_annotations_update AFTER UPDATE ON consolidation_annotations BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='consolidation_annotations' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'consolidation_annotations',CAST(new.id AS TEXT),* FROM (SELECT 'memory',CAST(new.memory_id AS TEXT),COALESCE(new.memory_revision,COALESCE((SELECT revision FROM memories WHERE id=new.memory_id),0))
  UNION ALL SELECT 'memory',CAST(j.value AS TEXT),COALESCE((SELECT revision FROM memories WHERE id=j.value),0) FROM json_each(new.related_ids_json) j WHERE j.type='integer'
@@ -325,6 +341,7 @@ CREATE TRIGGER purge_consolidation_annotations_delete AFTER DELETE ON consolidat
 END;
 
 CREATE TRIGGER purge_persona_versions_insert AFTER INSERT ON persona_versions BEGIN
+    UPDATE persona_versions SET author=CASE WHEN new.source IN ('initial_setting','admin_edit','rollback') THEN 'admin' WHEN new.source='purge' THEN 'purge' ELSE 'model' END WHERE id=new.id AND author IS NOT (CASE WHEN new.source IN ('initial_setting','admin_edit','rollback') THEN 'admin' WHEN new.source='purge' THEN 'purge' ELSE 'model' END);
     DELETE FROM purge_record_refs WHERE table_name='persona_versions' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'persona_versions',CAST(new.id AS TEXT),* FROM (SELECT 'memory',CAST(json_extract(j.value,'$.memory_id') AS TEXT),
  COALESCE(json_extract(j.value,'$.revision'),CASE WHEN COALESCE(json_extract(j.value,'$.content'),json_extract(j.value,'$.excerpt'),'')!='' THEN -1 ELSE COALESCE((SELECT revision FROM memories WHERE id=json_extract(j.value,'$.memory_id')),0) END)
@@ -353,6 +370,7 @@ CREATE TRIGGER purge_persona_versions_insert AFTER INSERT ON persona_versions BE
 END;
 
 CREATE TRIGGER purge_persona_versions_update AFTER UPDATE ON persona_versions BEGIN
+    UPDATE persona_versions SET author=CASE WHEN new.source IN ('initial_setting','admin_edit','rollback') THEN 'admin' WHEN new.source='purge' THEN 'purge' ELSE 'model' END WHERE id=new.id AND author IS NOT (CASE WHEN new.source IN ('initial_setting','admin_edit','rollback') THEN 'admin' WHEN new.source='purge' THEN 'purge' ELSE 'model' END);
     DELETE FROM purge_record_refs WHERE table_name='persona_versions' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'persona_versions',CAST(new.id AS TEXT),* FROM (SELECT 'memory',CAST(json_extract(j.value,'$.memory_id') AS TEXT),
  COALESCE(json_extract(j.value,'$.revision'),CASE WHEN COALESCE(json_extract(j.value,'$.content'),json_extract(j.value,'$.excerpt'),'')!='' THEN -1 ELSE COALESCE((SELECT revision FROM memories WHERE id=json_extract(j.value,'$.memory_id')),0) END)
@@ -386,6 +404,7 @@ CREATE TRIGGER purge_persona_versions_delete AFTER DELETE ON persona_versions BE
 END;
 
 CREATE TRIGGER purge_entry_profile_versions_insert AFTER INSERT ON entry_profile_versions BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='entry_profile_versions' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'entry_profile_versions',CAST(new.id AS TEXT),* FROM (SELECT 'memory',CAST(json_extract(j.value,'$.memory_id') AS TEXT),
  COALESCE(json_extract(j.value,'$.revision'),CASE WHEN COALESCE(json_extract(j.value,'$.content'),json_extract(j.value,'$.excerpt'),'')!='' THEN -1 ELSE COALESCE((SELECT revision FROM memories WHERE id=json_extract(j.value,'$.memory_id')),0) END)
@@ -414,6 +433,7 @@ CREATE TRIGGER purge_entry_profile_versions_insert AFTER INSERT ON entry_profile
 END;
 
 CREATE TRIGGER purge_entry_profile_versions_update AFTER UPDATE ON entry_profile_versions BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='entry_profile_versions' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'entry_profile_versions',CAST(new.id AS TEXT),* FROM (SELECT 'memory',CAST(json_extract(j.value,'$.memory_id') AS TEXT),
  COALESCE(json_extract(j.value,'$.revision'),CASE WHEN COALESCE(json_extract(j.value,'$.content'),json_extract(j.value,'$.excerpt'),'')!='' THEN -1 ELSE COALESCE((SELECT revision FROM memories WHERE id=json_extract(j.value,'$.memory_id')),0) END)
@@ -447,6 +467,7 @@ CREATE TRIGGER purge_entry_profile_versions_delete AFTER DELETE ON entry_profile
 END;
 
 CREATE TRIGGER purge_persona_attempts_insert AFTER INSERT ON persona_attempts BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='persona_attempts' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'persona_attempts',CAST(new.id AS TEXT),* FROM (SELECT 'memory',CAST(json_extract(j.value,'$.memory_id') AS TEXT),
  COALESCE(json_extract(j.value,'$.revision'),CASE WHEN COALESCE(json_extract(j.value,'$.content'),json_extract(j.value,'$.excerpt'),'')!='' THEN -1 ELSE COALESCE((SELECT revision FROM memories WHERE id=json_extract(j.value,'$.memory_id')),0) END)
@@ -467,6 +488,7 @@ CREATE TRIGGER purge_persona_attempts_insert AFTER INSERT ON persona_attempts BE
 END;
 
 CREATE TRIGGER purge_persona_attempts_update AFTER UPDATE ON persona_attempts BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='persona_attempts' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'persona_attempts',CAST(new.id AS TEXT),* FROM (SELECT 'memory',CAST(json_extract(j.value,'$.memory_id') AS TEXT),
  COALESCE(json_extract(j.value,'$.revision'),CASE WHEN COALESCE(json_extract(j.value,'$.content'),json_extract(j.value,'$.excerpt'),'')!='' THEN -1 ELSE COALESCE((SELECT revision FROM memories WHERE id=json_extract(j.value,'$.memory_id')),0) END)
@@ -492,6 +514,7 @@ CREATE TRIGGER purge_persona_attempts_delete AFTER DELETE ON persona_attempts BE
 END;
 
 CREATE TRIGGER purge_entry_profile_attempts_insert AFTER INSERT ON entry_profile_attempts BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='entry_profile_attempts' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'entry_profile_attempts',CAST(new.id AS TEXT),* FROM (SELECT 'memory',CAST(json_extract(j.value,'$.memory_id') AS TEXT),
  COALESCE(json_extract(j.value,'$.revision'),CASE WHEN COALESCE(json_extract(j.value,'$.content'),json_extract(j.value,'$.excerpt'),'')!='' THEN -1 ELSE COALESCE((SELECT revision FROM memories WHERE id=json_extract(j.value,'$.memory_id')),0) END)
@@ -512,6 +535,7 @@ CREATE TRIGGER purge_entry_profile_attempts_insert AFTER INSERT ON entry_profile
 END;
 
 CREATE TRIGGER purge_entry_profile_attempts_update AFTER UPDATE ON entry_profile_attempts BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='entry_profile_attempts' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'entry_profile_attempts',CAST(new.id AS TEXT),* FROM (SELECT 'memory',CAST(json_extract(j.value,'$.memory_id') AS TEXT),
  COALESCE(json_extract(j.value,'$.revision'),CASE WHEN COALESCE(json_extract(j.value,'$.content'),json_extract(j.value,'$.excerpt'),'')!='' THEN -1 ELSE COALESCE((SELECT revision FROM memories WHERE id=json_extract(j.value,'$.memory_id')),0) END)
@@ -537,6 +561,7 @@ CREATE TRIGGER purge_entry_profile_attempts_delete AFTER DELETE ON entry_profile
 END;
 
 CREATE TRIGGER purge_maintenance_items_insert AFTER INSERT ON maintenance_items BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='maintenance_items' AND row_id=json_array(new.run_id,new.phase,new.item_key);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'maintenance_items',json_array(new.run_id,new.phase,new.item_key),* FROM (SELECT 'memory',CAST(json_extract(j.value,'$.memory_id') AS TEXT),
  COALESCE(json_extract(j.value,'$.revision'),CASE WHEN COALESCE(json_extract(j.value,'$.content'),json_extract(j.value,'$.excerpt'),'')!='' THEN -1 ELSE COALESCE((SELECT revision FROM memories WHERE id=json_extract(j.value,'$.memory_id')),0) END)
@@ -556,6 +581,7 @@ CREATE TRIGGER purge_maintenance_items_insert AFTER INSERT ON maintenance_items 
 END;
 
 CREATE TRIGGER purge_maintenance_items_update AFTER UPDATE ON maintenance_items BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='maintenance_items' AND row_id=json_array(new.run_id,new.phase,new.item_key);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'maintenance_items',json_array(new.run_id,new.phase,new.item_key),* FROM (SELECT 'memory',CAST(json_extract(j.value,'$.memory_id') AS TEXT),
  COALESCE(json_extract(j.value,'$.revision'),CASE WHEN COALESCE(json_extract(j.value,'$.content'),json_extract(j.value,'$.excerpt'),'')!='' THEN -1 ELSE COALESCE((SELECT revision FROM memories WHERE id=json_extract(j.value,'$.memory_id')),0) END)
@@ -580,6 +606,7 @@ CREATE TRIGGER purge_maintenance_items_delete AFTER DELETE ON maintenance_items 
 END;
 
 CREATE TRIGGER purge_maintenance_persona_insert AFTER INSERT ON maintenance_persona BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='maintenance_persona' AND row_id=CAST(new.run_id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'maintenance_persona',CAST(new.run_id AS TEXT),* FROM (SELECT 'persona_attempts',CAST(new.attempt_id AS TEXT),0 WHERE new.attempt_id IS NOT NULL AND (1));
 
@@ -591,6 +618,7 @@ CREATE TRIGGER purge_maintenance_persona_insert AFTER INSERT ON maintenance_pers
 END;
 
 CREATE TRIGGER purge_maintenance_persona_update AFTER UPDATE ON maintenance_persona BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='maintenance_persona' AND row_id=CAST(new.run_id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'maintenance_persona',CAST(new.run_id AS TEXT),* FROM (SELECT 'persona_attempts',CAST(new.attempt_id AS TEXT),0 WHERE new.attempt_id IS NOT NULL AND (1));
 
@@ -607,6 +635,7 @@ CREATE TRIGGER purge_maintenance_persona_delete AFTER DELETE ON maintenance_pers
 END;
 
 CREATE TRIGGER purge_sources_insert AFTER INSERT ON sources BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='sources' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'sources',CAST(new.id AS TEXT),* FROM (SELECT 'memory',CAST(new.source_memory_id AS TEXT),COALESCE((SELECT revision FROM memories WHERE id=new.source_memory_id),0) WHERE new.note IS NOT NULL AND new.source_memory_id IS NOT NULL);
 
@@ -618,6 +647,7 @@ CREATE TRIGGER purge_sources_insert AFTER INSERT ON sources BEGIN
 END;
 
 CREATE TRIGGER purge_sources_update AFTER UPDATE ON sources BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='sources' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'sources',CAST(new.id AS TEXT),* FROM (SELECT 'memory',CAST(new.source_memory_id AS TEXT),COALESCE((SELECT revision FROM memories WHERE id=new.source_memory_id),0) WHERE new.note IS NOT NULL AND new.source_memory_id IS NOT NULL);
 
@@ -634,6 +664,7 @@ CREATE TRIGGER purge_sources_delete AFTER DELETE ON sources BEGIN
 END;
 
 CREATE TRIGGER purge_media_objects_insert AFTER INSERT ON media_objects BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='media_objects' AND row_id=CAST(new.id AS TEXT);
 
 
@@ -646,6 +677,7 @@ CREATE TRIGGER purge_media_objects_insert AFTER INSERT ON media_objects BEGIN
 END;
 
 CREATE TRIGGER purge_media_objects_update AFTER UPDATE ON media_objects BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='media_objects' AND row_id=CAST(new.id AS TEXT);
 
 
@@ -663,6 +695,7 @@ CREATE TRIGGER purge_media_objects_delete AFTER DELETE ON media_objects BEGIN
 END;
 
 CREATE TRIGGER purge_admin_operations_insert AFTER INSERT ON admin_operations BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='admin_operations' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'admin_operations',CAST(new.id AS TEXT),* FROM (SELECT 'memory',CAST(new.object_id AS TEXT),COALESCE((SELECT revision FROM memories WHERE id=new.object_id),0) WHERE new.object_type='memory' AND EXISTS(SELECT 1 FROM json_tree(new.details_json) j WHERE j.key IN ('content','text','excerpt','raw_output','repair_output','error','report','reason_text','before_memories','after_memories','source_excerpts'))
  UNION ALL SELECT * FROM (SELECT 'memory',CAST(json_extract(j.value,'$.memory_id') AS TEXT),
@@ -681,6 +714,7 @@ CREATE TRIGGER purge_admin_operations_insert AFTER INSERT ON admin_operations BE
 END;
 
 CREATE TRIGGER purge_admin_operations_update AFTER UPDATE ON admin_operations BEGIN
+
     DELETE FROM purge_record_refs WHERE table_name='admin_operations' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'admin_operations',CAST(new.id AS TEXT),* FROM (SELECT 'memory',CAST(new.object_id AS TEXT),COALESCE((SELECT revision FROM memories WHERE id=new.object_id),0) WHERE new.object_type='memory' AND EXISTS(SELECT 1 FROM json_tree(new.details_json) j WHERE j.key IN ('content','text','excerpt','raw_output','repair_output','error','report','reason_text','before_memories','after_memories','source_excerpts'))
  UNION ALL SELECT * FROM (SELECT 'memory',CAST(json_extract(j.value,'$.memory_id') AS TEXT),
@@ -872,7 +906,7 @@ INSERT INTO entry_profile_versions(entry_id,version,base_version,content,sentenc
  SELECT v.entry_id,(SELECT MAX(version)+1 FROM entry_profile_versions WHERE entry_id=v.entry_id),v.version,
  COALESCE((SELECT group_concat(json_extract(value,'$.text'),'
 ') FROM json_each(v.kept)),''),v.kept,
- json_object('passed',json('true'),'purge',json('true'),'needs_regeneration',json(CASE WHEN json_array_length(v.kept)=0 THEN 'true' ELSE 'false' END)),
+ json_object('format_version',COALESCE(json_extract(v.checks_json,'$.format_version'),1),'passed',json('true'),'purge',json('true'),'needs_regeneration',json(CASE WHEN json_array_length(v.kept)=0 THEN 'true' ELSE 'false' END)),
  'small','published',strftime('%Y-%m-%dT%H:%M:%fZ','now'),strftime('%Y-%m-%dT%H:%M:%fZ','now'),'purge','purge',v.message_through,v.settings_revision
  FROM purge_upgrade_entry_profile_versions v;
 UPDATE entry_profile_settings SET current_version=(SELECT MAX(version) FROM entry_profile_versions WHERE entry_id=entry_profile_settings.entry_id)

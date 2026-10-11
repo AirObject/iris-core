@@ -278,7 +278,7 @@ def test_current_profile_selective_version_and_empty_regeneration_flag(store):
     with store.write() as conn:
         settings=entry_profile._ensure(conn,'group',now())
         entry_profile._insert(conn,'group',previous=0,content='\n'.join(s['text'] for s in sentences),sentences=sentences,
-            checks={'passed':True},degree='small',status='published',stamp=now(),author='model',source='regenerate',
+            checks={'passed':True,'format_version':2},degree='small',status='published',stamp=now(),author='model',source='regenerate',
             material={'evidence':material},message_through=max(mids),settings_revision=settings['revision'])
     preview=admin_data.memory_detail(store,private)['purge_preview']
     assert preview['entry_profiles']=={'versions':1,'sentences':1}
@@ -286,6 +286,8 @@ def test_current_profile_selective_version_and_empty_regeneration_flag(store):
     current=entry_profile.current_profile(store,'group')
     assert current['version']==2 and current['author']==current['source']=='purge'
     assert current['sentences']==sentences[1:] and current['content']=='保留的条目'
+    assert current['checks']['format_version']==2
+    assert admin_data.entry_profile_snapshot(store,'group')['current']['format_version']==2
     purge_memory(store,safe,1,confirm=True)
     current=entry_profile.current_profile(store,'group')
     assert current['version']==3 and current['content']==''
@@ -515,3 +517,38 @@ def test_write_failure_after_first_chunk_preserves_receipt_when_audit_is_unavail
     with store.read() as conn:
         audit=json.loads(conn.execute("SELECT details_json FROM admin_operations WHERE action='memory_bulk_purge'").fetchone()[0])
         assert audit['memory_ids']==[ids[0]] and 'backup_notice' not in audit
+
+
+@pytest.mark.parametrize('source,author',[('initial_setting','admin'),('admin_edit','admin'),('rollback','admin'),
+                                         ('regenerate','model'),('periodic','model'),('purge','purge')])
+def test_persona_author_metadata_matches_source(store,source,author):
+    with store.write() as conn:
+        vid=insert(conn,'persona_versions',content='独立正文。',created_at=now(),is_current=0,source=source)
+        assert conn.execute('SELECT author FROM persona_versions WHERE id=?',(vid,)).fetchone()[0]==author
+
+
+def test_profile_format_survives_purge_upgrade(tmp_path,monkeypatch):
+    from iris.db import Store
+    from iris import entry_profile
+    path=tmp_path/'profile-upgrade.db';store=before_purge_store(path,monkeypatch)
+    private=put(store,PROSE);safe=put(store,'保留的画像依据')
+    with store.write() as conn:
+        conn.execute("INSERT INTO entries(id,name,platform,kind) VALUES('group','入口','test','group')")
+        setting=entry_profile._ensure(conn,'group',now())
+        sentences=[]
+        for mid,text in ((private,'清除的条目'),(safe,'保留的条目')):
+            row=conn.execute('SELECT * FROM memories WHERE id=?',(mid,)).fetchone()
+            basis={'memory_id':mid,'revision':1,'sha256':entry_profile._memory_hash(row,[])}
+            sentences.append({'text':text,'author':'model','basis':[basis],'format_version':2})
+        entry_profile._insert(conn,'group',previous=0,content='清除的条目；保留的条目',sentences=sentences,
+            checks={'passed':True,'format_version':2},degree='small',status='published',stamp=now(),author='model',
+            source='regenerate',material={},message_through=0,settings_revision=setting['revision'])
+        conn.execute("UPDATE memories SET content='',lifecycle='deleted',purged_at=?,revision=2 WHERE id=?",(now(),private))
+    store.close();store=Store(path)
+    try:
+        current=entry_profile.current_profile(store,'group')
+        assert current['source']=='purge' and current['sentences']==sentences[1:]
+        assert current['checks']['format_version']==2
+        assert admin_data.entry_profile_snapshot(store,'group')['current']['format_version']==2
+    finally:
+        store.close()

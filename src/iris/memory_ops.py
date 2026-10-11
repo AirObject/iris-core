@@ -400,6 +400,7 @@ def _purge_publish_versions(conn, versions, stamp):
                 (''.join(s['text'] for s in keep),stamp,dumps(keep),dumps(checks),row['id'],stamp,dumps(material),dumps(snapshot))).lastrowid
             published['persona'].append(vid)
         else:
+            checks['format_version'] = json.loads(row['checks_json']).get('format_version', 1)
             version = conn.execute('SELECT COALESCE(MAX(version),0)+1 FROM entry_profile_versions WHERE entry_id=?',(row['entry_id'],)).fetchone()[0]
             conn.execute('''INSERT INTO entry_profile_versions(entry_id,version,base_version,content,sentences_json,
                 checks_json,change_degree,status,generated_at,published_at,author,source,message_through,material_json,settings_revision)
