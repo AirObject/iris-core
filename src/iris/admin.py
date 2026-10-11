@@ -812,7 +812,7 @@ def install_admin(app):
 
     @router.get("/maintenance/{run_id}")
     def maintenance_report(run_id: int):
-        return app.state.scheduler.lifecycle.report(run_id)
+        return admin_data.maintenance_redactions(app.state.store, app.state.scheduler.lifecycle.report(run_id))
 
     @router.post("/maintenance", status_code=202)
     def maintain(payload: Input):
