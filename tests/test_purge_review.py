@@ -281,7 +281,7 @@ def test_current_profile_selective_version_and_empty_regeneration_flag(store):
             checks={'passed':True,'format_version':2},degree='small',status='published',stamp=now(),author='model',source='regenerate',
             material={'evidence':material},message_through=max(mids),settings_revision=settings['revision'])
     preview=admin_data.memory_detail(store,private)['purge_preview']
-    assert preview['entry_profiles']=={'versions':1,'sentences':1}
+    assert preview['entry_profiles']=={'versions':1,'sentences':1,'retained_unbased_sentences':0}
     purge_memory(store,private,1,confirm=True)
     current=entry_profile.current_profile(store,'group')
     assert current['version']==2 and current['author']==current['source']=='purge'
@@ -482,7 +482,7 @@ def test_current_version_with_only_unused_cleared_material_keeps_all_sentences(s
             entry_profile._insert(conn,'group',previous=0,content=sentence['text'],sentences=[sentence],checks={'passed':True},degree='small',status='published',stamp=now(),author='model',source='regenerate',material=material,message_through=0,settings_revision=setting['revision'])
             old=conn.execute('SELECT id FROM entry_profile_versions').fetchone()[0]
     preview=admin_data.memory_detail(store,private)['purge_preview']
-    assert preview['persona' if family=='persona' else 'entry_profiles']=={'versions':1,'sentences':0}
+    assert preview['persona' if family=='persona' else 'entry_profiles']=={'versions':1,'sentences':0,'retained_unbased_sentences':0}
     purge_memory(store,private,1,confirm=True)
     current=current_persona(store) if family=='persona' else entry_profile.current_profile(store,'group')
     assert current['content']==sentence['text'] and current['sentences']==[sentence]

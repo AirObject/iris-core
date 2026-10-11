@@ -212,3 +212,33 @@ def test_trial_writes_have_operations_without_body(client,store):
     ops=client.get("/admin/api/operations").json()
     assert {i["action"] for i in ops["items"]} >= {"trial_entry_created","trial_speaker_created","trial_message_received","learn_requested"}
     assert "不要写到操作记录" not in json.dumps(ops,ensure_ascii=False)
+
+
+@pytest.mark.parametrize('link', ['attempt_id', 'version_id'])
+def test_persona_maintenance_http_hides_purged_version_body(client, store, link):
+    from datetime import datetime, timezone
+    from iris.consolidation import _persona_result
+    from iris.db import dumps, now
+    from iris.memory_ops import PURGE_REASON
+    from iris import persona
+    from test_purge_raw_outputs import PROSE, insert
+    mid = put(store, PROSE)
+    with store.write() as conn:
+        version = persona._insert(conn, content=PROSE, sentences=[{'text': PROSE, 'basis': [{'memory_id': mid, 'revision': 1}]}],
+            checks={'passed': True}, degree='small', status='current', source='regenerate', stamp=now())['id']
+        run = insert(conn, 'maintenance_runs', trigger='manual', state='completed', settings_json='{}', timezone='UTC',
+                     memory_through=1, message_through=0, batch_through=0, created_at=now(), finished_at=now())
+        attempt = insert(conn, 'persona_attempts', source='periodic', base_version_id=version, state='current',
+                         created_at=now(), material_json=dumps({'memory_id': mid, 'revision': 1}))
+        conn.execute("INSERT INTO maintenance_persona(run_id,status) VALUES(?,'running')", (run,))
+    _persona_result(store, run, 'published', None,
+                    {link: attempt if link == 'attempt_id' else version, 'content': PROSE, 'checks': {'reason': PROSE}},
+                    lambda: datetime.now(timezone.utc))
+    url = f'/admin/api/maintenance/{run}'
+    assert PROSE in client.get(url).text
+    assert client.post(f'/admin/api/memories/{mid}/purge', json={'expected_revision': 1, 'confirm': True}).status_code == 200
+    report = client.get(url)
+    assert report.status_code == 200 and PROSE not in report.text
+    item = next(item for item in report.json()['items'] if item['phase'] == 'persona')
+    assert item['redacted'] and item['redaction_reason'] == PURGE_REASON
+    assert item['outcome'] == 'persona_published'

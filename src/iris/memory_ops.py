@@ -259,6 +259,7 @@ def missing_batch_targets(conn, batch_id):
 
 PURGE_REASON = '因彻底清除而清空'
 PURGE_CHUNK_SIZE = 8
+PURGE_ROW_BUDGET = 400
 
 
 def purge_backup_notice(conn):
@@ -362,8 +363,15 @@ def purge_preview(conn, memory_ids):
     records = _purge_records(conn,memory_ids,deleted,affected)
     versions = _purge_versions(conn,affected,set(deleted),records)
     def counts(table):
+        current = 'v.is_current=1' if table == 'persona_versions' else '''EXISTS(SELECT 1 FROM entry_profile_settings s
+            WHERE s.entry_id=v.entry_id AND s.current_version=v.version)'''
+        # An unbased admin sentence may contain manually copied prose even when
+        # this version has no indexed link at all. Show it for human review too.
+        unbased = conn.execute(f'''SELECT COUNT(*) FROM {table} v,json_each(v.sentences_json) sentence
+            WHERE {current} AND COALESCE(json_array_length(sentence.value,'$.basis'),0)=0''').fetchone()[0]
         return {'versions':sum(name==table for name,_ in records),
-                'sentences':sum(count for name,_,_,count in versions if name==table)}
+                'sentences':sum(count for name,_,_,count in versions if name==table),
+                'retained_unbased_sentences':unbased}
     return {'persona':counts('persona_versions'), 'entry_profiles':counts('entry_profile_versions'),
             'backup_notice':purge_backup_notice(conn)}
 
@@ -389,15 +397,14 @@ def _purge_publish_versions(conn, versions, stamp):
                   'needs_regeneration':not keep,'reason':'需要重新生成' if not keep else PURGE_REASON}
         material = _purge_kept_material(row,keep)
         if table == 'persona_versions':
-            from .persona import _self_snapshot
-            snapshot = _self_snapshot(conn)
             changed = conn.execute("UPDATE persona_versions SET is_current=0,status='history' WHERE id=? AND is_current=1", (row['id'],)).rowcount
             if changed != 1:
                 raise BulkMemoryConflict('persona 版本已变化')
+            conn.execute("UPDATE persona_versions SET status='superseded' WHERE status='pending'")
             vid = conn.execute('''INSERT INTO persona_versions(content,created_at,is_current,status,source,author,
                 sentences_json,checks_json,change_degree,base_version_id,published_at,material_json,self_snapshot_json)
                 VALUES(?,?,1,'current','purge','purge',?,?,'small',?,?,?,?)''',
-                (''.join(s['text'] for s in keep),stamp,dumps(keep),dumps(checks),row['id'],stamp,dumps(material),dumps(snapshot))).lastrowid
+                (''.join(s['text'] for s in keep),stamp,dumps(keep),dumps(checks),row['id'],stamp,dumps(material),row['self_snapshot_json'])).lastrowid
             published['persona'].append(vid)
         else:
             checks['format_version'] = json.loads(row['checks_json']).get('format_version', 1)
@@ -411,6 +418,9 @@ def _purge_publish_versions(conn, versions, stamp):
                 WHERE entry_id=? AND current_version=?''',(version,row['entry_id'],row['version'])).rowcount
             if changed != 1:
                 raise BulkMemoryConflict('入口画像版本已变化')
+            conn.execute('''UPDATE entry_profile_versions SET status='rejected',
+                checks_json=json_set(checks_json,'$.reason','superseded','$.superseded_by',?)
+                WHERE entry_id=? AND status='candidate' ''',(version,row['entry_id']))
             published['entry_profiles'].append({'entry_id':row['entry_id'],'version':version})
     return published
 
@@ -776,6 +786,34 @@ def _bulk_audit_result(result):
     return {k:v for k,v in result.items() if k not in ('backup_notice','redaction_reason')}
 
 
+def _purge_chunk_row_count(conn, ids):
+    """Estimate indexed rows touched, including history outside the redaction map."""
+    deleted, _ = _purge_message_plan(conn, ids)
+    affected = _purge_descendants(conn, ids)
+    records = _purge_records(conn, ids, deleted, affected)
+    count = len(records) + len(ids) + len(deleted)
+    args = (dumps(ids),)
+    for table in ('memory_subjects', 'memory_tags', 'sources', 'memory_revisions'):
+        count += conn.execute(f'SELECT COUNT(*) FROM {table} WHERE memory_id IN (SELECT value FROM json_each(?))', args).fetchone()[0]
+    for table, column in (('person_summary_version_memories', 'version_id'),
+                          ('person_summary_attempt_memories', 'attempt_id')):
+        count += conn.execute(f'SELECT COUNT(DISTINCT {column}) FROM {table} WHERE memory_id IN (SELECT value FROM json_each(?))', args).fetchone()[0]
+    return count
+
+
+def _purge_budget_chunk(conn, ids):
+    # Planning runs on a read snapshot before taking the write lock. The actual
+    # purge recomputes current associations in its transaction, so a late call
+    # cannot escape cleanup. A single memory remains atomic even over budget.
+    chunk = ids[:min(BULK_BATCH_SIZE, PURGE_CHUNK_SIZE)]
+    while len(chunk) > 1:
+        rows = _purge_chunk_row_count(conn, chunk)
+        if rows <= PURGE_ROW_BUDGET:
+            break
+        chunk = chunk[:max(1, len(chunk) * PURGE_ROW_BUDGET // rows)]
+    return chunk
+
+
 def apply_bulk_memories(store, *, snapshot_token, action, confirm=False):
     """Preflight the whole selection; recheck each chunk under its write lock.
 
@@ -811,10 +849,14 @@ def apply_bulk_memories(store, *, snapshot_token, action, confirm=False):
     audit_id = None
     try:
         # Even an empty/no-op selection is checked and recorded exactly once.
-        chunk_size = min(BULK_BATCH_SIZE, PURGE_CHUNK_SIZE) if action == 'purge' else BULK_BATCH_SIZE
-        for start in range(0, max(1, len(ids)), chunk_size):
-            chunk = ids[start:start + chunk_size]
-            last = start + chunk_size >= len(ids)
+        start = 0
+        while True:
+            if action == 'purge':
+                with store.read() as conn:
+                    chunk = _purge_budget_chunk(conn, ids[start:start + PURGE_CHUNK_SIZE])
+            else:
+                chunk = ids[start:start + BULK_BATCH_SIZE]
+            last = start + len(chunk) >= len(ids)
             pending = deepcopy(result)
             next_expected = expected.copy()
             with store.write() as conn:
@@ -862,6 +904,9 @@ def apply_bulk_memories(store, *, snapshot_token, action, confirm=False):
             audit_id, expected, result = next_audit_id, next_expected, pending
             with _BULK_LOCK:
                 snapshot["result"] = deepcopy(result)
+            if last:
+                break
+            start += len(chunk)
         with _BULK_LOCK:
             snapshot["status"] = "completed"
             snapshot["rows"] = {}  # Completed retries only need the result.

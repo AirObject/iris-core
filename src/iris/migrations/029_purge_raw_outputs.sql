@@ -54,6 +54,8 @@ CREATE INDEX purge_run_work ON consolidation_run_work(work_id,run_id);
 CREATE INDEX purge_annotations_work ON consolidation_annotations(work_id,id);
 CREATE INDEX purge_items_work ON maintenance_items(phase,item_key,run_id);
 CREATE INDEX purge_profile_attempts_run ON entry_profile_attempts(run_id,id);
+CREATE INDEX purge_profile_attempts_running ON entry_profile_attempts(run_id,id) WHERE state='running';
+CREATE INDEX memory_revisions_by_memory ON memory_revisions(memory_id);
 CREATE INDEX memories_purged_ids ON memories(id,revision) WHERE purged_at IS NOT NULL;
 CREATE VIEW purge_stale_references AS
  SELECT r.table_name,r.row_id FROM purge_record_refs r JOIN memories m ON m.id=CAST(r.ref_id AS INTEGER)
@@ -230,7 +232,7 @@ CREATE TRIGGER purge_consolidation_calls_insert AFTER INSERT ON consolidation_ca
     DELETE FROM purge_record_refs WHERE table_name='consolidation_calls' AND row_id=CAST(new.id AS TEXT);
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'consolidation_calls',CAST(new.id AS TEXT),* FROM (SELECT 'consolidation_work',CAST(new.work_id AS TEXT),0 WHERE new.work_id IS NOT NULL AND (1)
  UNION ALL SELECT 'persona_attempts',CAST(mp.attempt_id AS TEXT),0 FROM maintenance_persona mp WHERE mp.run_id=new.run_id AND new.purpose LIKE 'persona_%' AND mp.attempt_id IS NOT NULL
- UNION ALL SELECT 'entry_profile_attempts',CAST(ep.id AS TEXT),0 FROM entry_profile_attempts ep WHERE ep.run_id=new.run_id AND new.purpose LIKE 'consolidation_entry_profile_%');
+ UNION ALL SELECT 'entry_profile_attempts',CAST(ep.id AS TEXT),0 FROM entry_profile_attempts ep WHERE ep.run_id=new.run_id AND new.purpose LIKE 'consolidation_entry_profile_%' AND ep.state='running' AND ep.id=(SELECT MAX(id) FROM entry_profile_attempts WHERE run_id=new.run_id AND state='running'));
 
     INSERT OR IGNORE INTO purge_redactions(table_name,row_id,cleared_at,metadata_json)
       SELECT 'consolidation_calls',CAST(new.id AS TEXT),strftime('%Y-%m-%dT%H:%M:%fZ','now'),'{}' WHERE EXISTS(SELECT 1 FROM purge_record_refs r WHERE r.table_name='consolidation_calls' AND r.row_id=CAST(new.id AS TEXT) AND ((r.ref_kind='memory' AND EXISTS(SELECT 1 FROM memories m WHERE m.id=CAST(r.ref_id AS INTEGER) AND m.purged_at IS NOT NULL AND r.revision<m.revision)) OR (r.ref_kind='message' AND r.revision=0 AND EXISTS(SELECT 1 FROM purge_message_tombstones t WHERE t.message_id=CAST(r.ref_id AS INTEGER))) OR (r.ref_kind='batches' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='batches' AND p.row_id=r.ref_id)) OR (r.ref_kind='consolidation_work' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='consolidation_work' AND p.row_id=r.ref_id)) OR (r.ref_kind='persona_attempts' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='persona_attempts' AND p.row_id=r.ref_id)) OR (r.ref_kind='entry_profile_attempts' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='entry_profile_attempts' AND p.row_id=r.ref_id))));
@@ -242,10 +244,11 @@ END;
 
 CREATE TRIGGER purge_consolidation_calls_update AFTER UPDATE ON consolidation_calls BEGIN
 
-    DELETE FROM purge_record_refs WHERE table_name='consolidation_calls' AND row_id=CAST(new.id AS TEXT);
+    DELETE FROM purge_record_refs WHERE table_name='consolidation_calls' AND row_id=CAST(new.id AS TEXT)
+      AND (ref_kind!='entry_profile_attempts' OR new.run_id IS NOT old.run_id OR new.purpose NOT LIKE 'consolidation_entry_profile_%');
     INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'consolidation_calls',CAST(new.id AS TEXT),* FROM (SELECT 'consolidation_work',CAST(new.work_id AS TEXT),0 WHERE new.work_id IS NOT NULL AND (1)
  UNION ALL SELECT 'persona_attempts',CAST(mp.attempt_id AS TEXT),0 FROM maintenance_persona mp WHERE mp.run_id=new.run_id AND new.purpose LIKE 'persona_%' AND mp.attempt_id IS NOT NULL
- UNION ALL SELECT 'entry_profile_attempts',CAST(ep.id AS TEXT),0 FROM entry_profile_attempts ep WHERE ep.run_id=new.run_id AND new.purpose LIKE 'consolidation_entry_profile_%');
+);
 
     INSERT OR IGNORE INTO purge_redactions(table_name,row_id,cleared_at,metadata_json)
       SELECT 'consolidation_calls',CAST(new.id AS TEXT),strftime('%Y-%m-%dT%H:%M:%fZ','now'),'{}' WHERE EXISTS(SELECT 1 FROM purge_record_refs r WHERE r.table_name='consolidation_calls' AND r.row_id=CAST(new.id AS TEXT) AND ((r.ref_kind='memory' AND EXISTS(SELECT 1 FROM memories m WHERE m.id=CAST(r.ref_id AS INTEGER) AND m.purged_at IS NOT NULL AND r.revision<m.revision)) OR (r.ref_kind='message' AND r.revision=0 AND EXISTS(SELECT 1 FROM purge_message_tombstones t WHERE t.message_id=CAST(r.ref_id AS INTEGER))) OR (r.ref_kind='batches' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='batches' AND p.row_id=r.ref_id)) OR (r.ref_kind='consolidation_work' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='consolidation_work' AND p.row_id=r.ref_id)) OR (r.ref_kind='persona_attempts' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='persona_attempts' AND p.row_id=r.ref_id)) OR (r.ref_kind='entry_profile_attempts' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='entry_profile_attempts' AND p.row_id=r.ref_id))));
@@ -427,9 +430,17 @@ CREATE TRIGGER purge_entry_profile_versions_insert AFTER INSERT ON entry_profile
     UPDATE entry_profile_versions SET content='',
       sentences_json='[]',
       material_json='{}',
-      checks_json='{"passed":false,"redacted":true,"reason":"因彻底清除而清空"}'
+      checks_json=CASE WHEN new.status='rejected' AND json_extract(new.checks_json,'$.reason')='superseded'
+        AND json_type(new.checks_json,'$.superseded_by')='integer'
+        THEN json_object('passed',json('false'),'redacted',json('true'),'reason','superseded',
+                         'superseded_by',json_extract(new.checks_json,'$.superseded_by'))
+        ELSE '{"passed":false,"redacted":true,"reason":"因彻底清除而清空"}' END
       WHERE id=new.id AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='entry_profile_versions' AND p.row_id=CAST(new.id AS TEXT))
-      AND (new.content IS NOT '' OR new.sentences_json IS NOT '[]' OR new.material_json IS NOT '{}' OR new.checks_json IS NOT '{"passed":false,"redacted":true,"reason":"因彻底清除而清空"}');
+      AND (new.content IS NOT '' OR new.sentences_json IS NOT '[]' OR new.material_json IS NOT '{}' OR new.checks_json IS NOT CASE WHEN new.status='rejected' AND json_extract(new.checks_json,'$.reason')='superseded'
+        AND json_type(new.checks_json,'$.superseded_by')='integer'
+        THEN json_object('passed',json('false'),'redacted',json('true'),'reason','superseded',
+                         'superseded_by',json_extract(new.checks_json,'$.superseded_by'))
+        ELSE '{"passed":false,"redacted":true,"reason":"因彻底清除而清空"}' END);
 END;
 
 CREATE TRIGGER purge_entry_profile_versions_update AFTER UPDATE ON entry_profile_versions BEGIN
@@ -456,9 +467,17 @@ CREATE TRIGGER purge_entry_profile_versions_update AFTER UPDATE ON entry_profile
     UPDATE entry_profile_versions SET content='',
       sentences_json='[]',
       material_json='{}',
-      checks_json='{"passed":false,"redacted":true,"reason":"因彻底清除而清空"}'
+      checks_json=CASE WHEN new.status='rejected' AND json_extract(new.checks_json,'$.reason')='superseded'
+        AND json_type(new.checks_json,'$.superseded_by')='integer'
+        THEN json_object('passed',json('false'),'redacted',json('true'),'reason','superseded',
+                         'superseded_by',json_extract(new.checks_json,'$.superseded_by'))
+        ELSE '{"passed":false,"redacted":true,"reason":"因彻底清除而清空"}' END
       WHERE id=new.id AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='entry_profile_versions' AND p.row_id=CAST(new.id AS TEXT))
-      AND (new.content IS NOT '' OR new.sentences_json IS NOT '[]' OR new.material_json IS NOT '{}' OR new.checks_json IS NOT '{"passed":false,"redacted":true,"reason":"因彻底清除而清空"}');
+      AND (new.content IS NOT '' OR new.sentences_json IS NOT '[]' OR new.material_json IS NOT '{}' OR new.checks_json IS NOT CASE WHEN new.status='rejected' AND json_extract(new.checks_json,'$.reason')='superseded'
+        AND json_type(new.checks_json,'$.superseded_by')='integer'
+        THEN json_object('passed',json('false'),'redacted',json('true'),'reason','superseded',
+                         'superseded_by',json_extract(new.checks_json,'$.superseded_by'))
+        ELSE '{"passed":false,"redacted":true,"reason":"因彻底清除而清空"}' END);
 END;
 
 CREATE TRIGGER purge_entry_profile_versions_delete AFTER DELETE ON entry_profile_versions BEGIN
@@ -570,10 +589,12 @@ CREATE TRIGGER purge_maintenance_items_insert AFTER INSERT ON maintenance_items 
  CASE WHEN EXISTS(SELECT 1 FROM messages WHERE id=json_extract(j.value,'$.message_id')) OR
  COALESCE(json_extract(j.value,'$.content'),json_extract(j.value,'$.excerpt'),json_extract(j.value,'$.sha256'),'')!='' THEN 0 ELSE 1 END
  FROM json_tree(new.details_json) j WHERE j.type='object' AND json_type(j.value,'$.message_id')='integer'
- UNION ALL SELECT 'consolidation_work',CAST(new.item_key AS TEXT),0 WHERE new.item_key IS NOT NULL AND (new.phase='consolidation'));
+ UNION ALL SELECT 'consolidation_work',CAST(new.item_key AS TEXT),0 WHERE new.item_key IS NOT NULL AND (new.phase='consolidation')
+ UNION ALL SELECT 'persona_attempts',CAST(json_extract(new.details_json,'$.attempt_id') AS TEXT),0 WHERE new.phase='persona' AND json_type(new.details_json,'$.attempt_id')='integer'
+ UNION ALL SELECT 'persona_versions',CAST(json_extract(new.details_json,'$.version_id') AS TEXT),0 WHERE new.phase='persona' AND json_type(new.details_json,'$.version_id')='integer');
 
     INSERT OR IGNORE INTO purge_redactions(table_name,row_id,cleared_at,metadata_json)
-      SELECT 'maintenance_items',json_array(new.run_id,new.phase,new.item_key),strftime('%Y-%m-%dT%H:%M:%fZ','now'),(SELECT json_object('references',json_group_array(json_object('field',field,'value',value))) FROM (SELECT j.key field,j.atom value FROM json_tree(new.details_json) j WHERE (j.type IN ('integer','real','true','false') AND j.key IN ('id','memory_id','message_id','revision','source_memory_id','source_revision','batch_id','work_id','run_id','version','importance','belief','retention')) OR (j.type='integer' AND (replace(j.path,'"','') LIKE '%memory_ids' OR replace(j.path,'"','') LIKE '%message_ids' OR j.path IN ('$.pair_ids','$.evidence','$.created','$.updated','$.confirmed'))))) WHERE EXISTS(SELECT 1 FROM purge_record_refs r WHERE r.table_name='maintenance_items' AND r.row_id=json_array(new.run_id,new.phase,new.item_key) AND ((r.ref_kind='memory' AND EXISTS(SELECT 1 FROM memories m WHERE m.id=CAST(r.ref_id AS INTEGER) AND m.purged_at IS NOT NULL AND r.revision<m.revision)) OR (r.ref_kind='message' AND r.revision=0 AND EXISTS(SELECT 1 FROM purge_message_tombstones t WHERE t.message_id=CAST(r.ref_id AS INTEGER))) OR (r.ref_kind='batches' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='batches' AND p.row_id=r.ref_id)) OR (r.ref_kind='consolidation_work' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='consolidation_work' AND p.row_id=r.ref_id)) OR (r.ref_kind='persona_attempts' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='persona_attempts' AND p.row_id=r.ref_id)) OR (r.ref_kind='entry_profile_attempts' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='entry_profile_attempts' AND p.row_id=r.ref_id))));
+      SELECT 'maintenance_items',json_array(new.run_id,new.phase,new.item_key),strftime('%Y-%m-%dT%H:%M:%fZ','now'),(SELECT json_object('references',json_group_array(json_object('field',field,'value',value))) FROM (SELECT j.key field,j.atom value FROM json_tree(new.details_json) j WHERE (j.type IN ('integer','real','true','false') AND j.key IN ('id','memory_id','message_id','revision','source_memory_id','source_revision','batch_id','work_id','run_id','version','attempt_id','version_id','base_version_id','importance','belief','retention')) OR (j.type='integer' AND (replace(j.path,'"','') LIKE '%memory_ids' OR replace(j.path,'"','') LIKE '%message_ids' OR j.path IN ('$.pair_ids','$.evidence','$.created','$.updated','$.confirmed'))))) WHERE EXISTS(SELECT 1 FROM purge_record_refs r WHERE r.table_name='maintenance_items' AND r.row_id=json_array(new.run_id,new.phase,new.item_key) AND ((r.ref_kind='memory' AND EXISTS(SELECT 1 FROM memories m WHERE m.id=CAST(r.ref_id AS INTEGER) AND m.purged_at IS NOT NULL AND r.revision<m.revision)) OR (r.ref_kind='message' AND r.revision=0 AND EXISTS(SELECT 1 FROM purge_message_tombstones t WHERE t.message_id=CAST(r.ref_id AS INTEGER))) OR (r.ref_kind='batches' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='batches' AND p.row_id=r.ref_id)) OR (r.ref_kind='consolidation_work' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='consolidation_work' AND p.row_id=r.ref_id)) OR (r.ref_kind='persona_attempts' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='persona_attempts' AND p.row_id=r.ref_id)) OR (r.ref_kind='persona_versions' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='persona_versions' AND p.row_id=r.ref_id)) OR (r.ref_kind='entry_profile_attempts' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='entry_profile_attempts' AND p.row_id=r.ref_id))));
     UPDATE maintenance_items SET details_json='{}',
       reason='因彻底清除而清空'
       WHERE run_id=new.run_id AND phase=new.phase AND item_key=new.item_key AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='maintenance_items' AND p.row_id=json_array(new.run_id,new.phase,new.item_key))
@@ -590,10 +611,12 @@ CREATE TRIGGER purge_maintenance_items_update AFTER UPDATE ON maintenance_items 
  CASE WHEN EXISTS(SELECT 1 FROM messages WHERE id=json_extract(j.value,'$.message_id')) OR
  COALESCE(json_extract(j.value,'$.content'),json_extract(j.value,'$.excerpt'),json_extract(j.value,'$.sha256'),'')!='' THEN 0 ELSE 1 END
  FROM json_tree(new.details_json) j WHERE j.type='object' AND json_type(j.value,'$.message_id')='integer'
- UNION ALL SELECT 'consolidation_work',CAST(new.item_key AS TEXT),0 WHERE new.item_key IS NOT NULL AND (new.phase='consolidation'));
+ UNION ALL SELECT 'consolidation_work',CAST(new.item_key AS TEXT),0 WHERE new.item_key IS NOT NULL AND (new.phase='consolidation')
+ UNION ALL SELECT 'persona_attempts',CAST(json_extract(new.details_json,'$.attempt_id') AS TEXT),0 WHERE new.phase='persona' AND json_type(new.details_json,'$.attempt_id')='integer'
+ UNION ALL SELECT 'persona_versions',CAST(json_extract(new.details_json,'$.version_id') AS TEXT),0 WHERE new.phase='persona' AND json_type(new.details_json,'$.version_id')='integer');
 
     INSERT OR IGNORE INTO purge_redactions(table_name,row_id,cleared_at,metadata_json)
-      SELECT 'maintenance_items',json_array(new.run_id,new.phase,new.item_key),strftime('%Y-%m-%dT%H:%M:%fZ','now'),(SELECT json_object('references',json_group_array(json_object('field',field,'value',value))) FROM (SELECT j.key field,j.atom value FROM json_tree(new.details_json) j WHERE (j.type IN ('integer','real','true','false') AND j.key IN ('id','memory_id','message_id','revision','source_memory_id','source_revision','batch_id','work_id','run_id','version','importance','belief','retention')) OR (j.type='integer' AND (replace(j.path,'"','') LIKE '%memory_ids' OR replace(j.path,'"','') LIKE '%message_ids' OR j.path IN ('$.pair_ids','$.evidence','$.created','$.updated','$.confirmed'))))) WHERE EXISTS(SELECT 1 FROM purge_record_refs r WHERE r.table_name='maintenance_items' AND r.row_id=json_array(new.run_id,new.phase,new.item_key) AND ((r.ref_kind='memory' AND EXISTS(SELECT 1 FROM memories m WHERE m.id=CAST(r.ref_id AS INTEGER) AND m.purged_at IS NOT NULL AND r.revision<m.revision)) OR (r.ref_kind='message' AND r.revision=0 AND EXISTS(SELECT 1 FROM purge_message_tombstones t WHERE t.message_id=CAST(r.ref_id AS INTEGER))) OR (r.ref_kind='batches' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='batches' AND p.row_id=r.ref_id)) OR (r.ref_kind='consolidation_work' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='consolidation_work' AND p.row_id=r.ref_id)) OR (r.ref_kind='persona_attempts' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='persona_attempts' AND p.row_id=r.ref_id)) OR (r.ref_kind='entry_profile_attempts' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='entry_profile_attempts' AND p.row_id=r.ref_id))));
+      SELECT 'maintenance_items',json_array(new.run_id,new.phase,new.item_key),strftime('%Y-%m-%dT%H:%M:%fZ','now'),(SELECT json_object('references',json_group_array(json_object('field',field,'value',value))) FROM (SELECT j.key field,j.atom value FROM json_tree(new.details_json) j WHERE (j.type IN ('integer','real','true','false') AND j.key IN ('id','memory_id','message_id','revision','source_memory_id','source_revision','batch_id','work_id','run_id','version','attempt_id','version_id','base_version_id','importance','belief','retention')) OR (j.type='integer' AND (replace(j.path,'"','') LIKE '%memory_ids' OR replace(j.path,'"','') LIKE '%message_ids' OR j.path IN ('$.pair_ids','$.evidence','$.created','$.updated','$.confirmed'))))) WHERE EXISTS(SELECT 1 FROM purge_record_refs r WHERE r.table_name='maintenance_items' AND r.row_id=json_array(new.run_id,new.phase,new.item_key) AND ((r.ref_kind='memory' AND EXISTS(SELECT 1 FROM memories m WHERE m.id=CAST(r.ref_id AS INTEGER) AND m.purged_at IS NOT NULL AND r.revision<m.revision)) OR (r.ref_kind='message' AND r.revision=0 AND EXISTS(SELECT 1 FROM purge_message_tombstones t WHERE t.message_id=CAST(r.ref_id AS INTEGER))) OR (r.ref_kind='batches' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='batches' AND p.row_id=r.ref_id)) OR (r.ref_kind='consolidation_work' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='consolidation_work' AND p.row_id=r.ref_id)) OR (r.ref_kind='persona_attempts' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='persona_attempts' AND p.row_id=r.ref_id)) OR (r.ref_kind='persona_versions' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='persona_versions' AND p.row_id=r.ref_id)) OR (r.ref_kind='entry_profile_attempts' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='entry_profile_attempts' AND p.row_id=r.ref_id))));
     UPDATE maintenance_items SET details_json='{}',
       reason='因彻底清除而清空'
       WHERE run_id=new.run_id AND phase=new.phase AND item_key=new.item_key AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='maintenance_items' AND p.row_id=json_array(new.run_id,new.phase,new.item_key))
@@ -608,10 +631,12 @@ END;
 CREATE TRIGGER purge_maintenance_persona_insert AFTER INSERT ON maintenance_persona BEGIN
 
     DELETE FROM purge_record_refs WHERE table_name='maintenance_persona' AND row_id=CAST(new.run_id AS TEXT);
-    INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'maintenance_persona',CAST(new.run_id AS TEXT),* FROM (SELECT 'persona_attempts',CAST(new.attempt_id AS TEXT),0 WHERE new.attempt_id IS NOT NULL AND (1));
+    INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'maintenance_persona',CAST(new.run_id AS TEXT),* FROM (SELECT 'persona_attempts',CAST(new.attempt_id AS TEXT),0 WHERE new.attempt_id IS NOT NULL AND (1)
+ UNION ALL SELECT 'persona_attempts',CAST(json_extract(new.details_json,'$.attempt_id') AS TEXT),0 WHERE json_type(new.details_json,'$.attempt_id')='integer'
+ UNION ALL SELECT 'persona_versions',CAST(json_extract(new.details_json,'$.version_id') AS TEXT),0 WHERE json_type(new.details_json,'$.version_id')='integer');
 
     INSERT OR IGNORE INTO purge_redactions(table_name,row_id,cleared_at,metadata_json)
-      SELECT 'maintenance_persona',CAST(new.run_id AS TEXT),strftime('%Y-%m-%dT%H:%M:%fZ','now'),(SELECT json_object('references',json_group_array(json_object('field',field,'value',value))) FROM (SELECT j.key field,j.atom value FROM json_tree(new.details_json) j WHERE (j.type IN ('integer','real','true','false') AND j.key IN ('id','memory_id','message_id','revision','source_memory_id','source_revision','batch_id','work_id','run_id','version','importance','belief','retention')) OR (j.type='integer' AND (replace(j.path,'"','') LIKE '%memory_ids' OR replace(j.path,'"','') LIKE '%message_ids' OR j.path IN ('$.pair_ids','$.evidence','$.created','$.updated','$.confirmed'))))) WHERE EXISTS(SELECT 1 FROM purge_record_refs r WHERE r.table_name='maintenance_persona' AND r.row_id=CAST(new.run_id AS TEXT) AND ((r.ref_kind='memory' AND EXISTS(SELECT 1 FROM memories m WHERE m.id=CAST(r.ref_id AS INTEGER) AND m.purged_at IS NOT NULL AND r.revision<m.revision)) OR (r.ref_kind='message' AND r.revision=0 AND EXISTS(SELECT 1 FROM purge_message_tombstones t WHERE t.message_id=CAST(r.ref_id AS INTEGER))) OR (r.ref_kind='batches' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='batches' AND p.row_id=r.ref_id)) OR (r.ref_kind='consolidation_work' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='consolidation_work' AND p.row_id=r.ref_id)) OR (r.ref_kind='persona_attempts' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='persona_attempts' AND p.row_id=r.ref_id)) OR (r.ref_kind='entry_profile_attempts' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='entry_profile_attempts' AND p.row_id=r.ref_id))));
+      SELECT 'maintenance_persona',CAST(new.run_id AS TEXT),strftime('%Y-%m-%dT%H:%M:%fZ','now'),(SELECT json_object('references',json_group_array(json_object('field',field,'value',value))) FROM (SELECT j.key field,j.atom value FROM json_tree(new.details_json) j WHERE (j.type IN ('integer','real','true','false') AND j.key IN ('id','memory_id','message_id','revision','source_memory_id','source_revision','batch_id','work_id','run_id','version','attempt_id','version_id','base_version_id','importance','belief','retention')) OR (j.type='integer' AND (replace(j.path,'"','') LIKE '%memory_ids' OR replace(j.path,'"','') LIKE '%message_ids' OR j.path IN ('$.pair_ids','$.evidence','$.created','$.updated','$.confirmed'))))) WHERE EXISTS(SELECT 1 FROM purge_record_refs r WHERE r.table_name='maintenance_persona' AND r.row_id=CAST(new.run_id AS TEXT) AND ((r.ref_kind='memory' AND EXISTS(SELECT 1 FROM memories m WHERE m.id=CAST(r.ref_id AS INTEGER) AND m.purged_at IS NOT NULL AND r.revision<m.revision)) OR (r.ref_kind='message' AND r.revision=0 AND EXISTS(SELECT 1 FROM purge_message_tombstones t WHERE t.message_id=CAST(r.ref_id AS INTEGER))) OR (r.ref_kind='batches' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='batches' AND p.row_id=r.ref_id)) OR (r.ref_kind='consolidation_work' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='consolidation_work' AND p.row_id=r.ref_id)) OR (r.ref_kind='persona_attempts' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='persona_attempts' AND p.row_id=r.ref_id)) OR (r.ref_kind='persona_versions' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='persona_versions' AND p.row_id=r.ref_id)) OR (r.ref_kind='entry_profile_attempts' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='entry_profile_attempts' AND p.row_id=r.ref_id))));
     UPDATE maintenance_persona SET details_json='{}'
       WHERE run_id=new.run_id AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='maintenance_persona' AND p.row_id=CAST(new.run_id AS TEXT))
       AND (new.details_json IS NOT '{}');
@@ -620,10 +645,12 @@ END;
 CREATE TRIGGER purge_maintenance_persona_update AFTER UPDATE ON maintenance_persona BEGIN
 
     DELETE FROM purge_record_refs WHERE table_name='maintenance_persona' AND row_id=CAST(new.run_id AS TEXT);
-    INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'maintenance_persona',CAST(new.run_id AS TEXT),* FROM (SELECT 'persona_attempts',CAST(new.attempt_id AS TEXT),0 WHERE new.attempt_id IS NOT NULL AND (1));
+    INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision) SELECT 'maintenance_persona',CAST(new.run_id AS TEXT),* FROM (SELECT 'persona_attempts',CAST(new.attempt_id AS TEXT),0 WHERE new.attempt_id IS NOT NULL AND (1)
+ UNION ALL SELECT 'persona_attempts',CAST(json_extract(new.details_json,'$.attempt_id') AS TEXT),0 WHERE json_type(new.details_json,'$.attempt_id')='integer'
+ UNION ALL SELECT 'persona_versions',CAST(json_extract(new.details_json,'$.version_id') AS TEXT),0 WHERE json_type(new.details_json,'$.version_id')='integer');
 
     INSERT OR IGNORE INTO purge_redactions(table_name,row_id,cleared_at,metadata_json)
-      SELECT 'maintenance_persona',CAST(new.run_id AS TEXT),strftime('%Y-%m-%dT%H:%M:%fZ','now'),(SELECT json_object('references',json_group_array(json_object('field',field,'value',value))) FROM (SELECT j.key field,j.atom value FROM json_tree(new.details_json) j WHERE (j.type IN ('integer','real','true','false') AND j.key IN ('id','memory_id','message_id','revision','source_memory_id','source_revision','batch_id','work_id','run_id','version','importance','belief','retention')) OR (j.type='integer' AND (replace(j.path,'"','') LIKE '%memory_ids' OR replace(j.path,'"','') LIKE '%message_ids' OR j.path IN ('$.pair_ids','$.evidence','$.created','$.updated','$.confirmed'))))) WHERE EXISTS(SELECT 1 FROM purge_record_refs r WHERE r.table_name='maintenance_persona' AND r.row_id=CAST(new.run_id AS TEXT) AND ((r.ref_kind='memory' AND EXISTS(SELECT 1 FROM memories m WHERE m.id=CAST(r.ref_id AS INTEGER) AND m.purged_at IS NOT NULL AND r.revision<m.revision)) OR (r.ref_kind='message' AND r.revision=0 AND EXISTS(SELECT 1 FROM purge_message_tombstones t WHERE t.message_id=CAST(r.ref_id AS INTEGER))) OR (r.ref_kind='batches' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='batches' AND p.row_id=r.ref_id)) OR (r.ref_kind='consolidation_work' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='consolidation_work' AND p.row_id=r.ref_id)) OR (r.ref_kind='persona_attempts' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='persona_attempts' AND p.row_id=r.ref_id)) OR (r.ref_kind='entry_profile_attempts' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='entry_profile_attempts' AND p.row_id=r.ref_id))));
+      SELECT 'maintenance_persona',CAST(new.run_id AS TEXT),strftime('%Y-%m-%dT%H:%M:%fZ','now'),(SELECT json_object('references',json_group_array(json_object('field',field,'value',value))) FROM (SELECT j.key field,j.atom value FROM json_tree(new.details_json) j WHERE (j.type IN ('integer','real','true','false') AND j.key IN ('id','memory_id','message_id','revision','source_memory_id','source_revision','batch_id','work_id','run_id','version','attempt_id','version_id','base_version_id','importance','belief','retention')) OR (j.type='integer' AND (replace(j.path,'"','') LIKE '%memory_ids' OR replace(j.path,'"','') LIKE '%message_ids' OR j.path IN ('$.pair_ids','$.evidence','$.created','$.updated','$.confirmed'))))) WHERE EXISTS(SELECT 1 FROM purge_record_refs r WHERE r.table_name='maintenance_persona' AND r.row_id=CAST(new.run_id AS TEXT) AND ((r.ref_kind='memory' AND EXISTS(SELECT 1 FROM memories m WHERE m.id=CAST(r.ref_id AS INTEGER) AND m.purged_at IS NOT NULL AND r.revision<m.revision)) OR (r.ref_kind='message' AND r.revision=0 AND EXISTS(SELECT 1 FROM purge_message_tombstones t WHERE t.message_id=CAST(r.ref_id AS INTEGER))) OR (r.ref_kind='batches' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='batches' AND p.row_id=r.ref_id)) OR (r.ref_kind='consolidation_work' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='consolidation_work' AND p.row_id=r.ref_id)) OR (r.ref_kind='persona_attempts' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='persona_attempts' AND p.row_id=r.ref_id)) OR (r.ref_kind='persona_versions' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='persona_versions' AND p.row_id=r.ref_id)) OR (r.ref_kind='entry_profile_attempts' AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='entry_profile_attempts' AND p.row_id=r.ref_id))));
     UPDATE maintenance_persona SET details_json='{}'
       WHERE run_id=new.run_id AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='maintenance_persona' AND p.row_id=CAST(new.run_id AS TEXT))
       AND (new.details_json IS NOT '{}');
@@ -767,7 +794,7 @@ SELECT 'consolidation_work',CAST(new.id AS TEXT),'memory',CAST(json_extract(m.va
 INSERT OR IGNORE INTO purge_record_refs
 SELECT 'consolidation_calls',CAST(new.id AS TEXT),'consolidation_work',CAST(new.work_id AS TEXT),0 FROM consolidation_calls new WHERE new.work_id IS NOT NULL AND (1)
  UNION ALL SELECT 'consolidation_calls',CAST(new.id AS TEXT),'persona_attempts',CAST(mp.attempt_id AS TEXT),0 FROM consolidation_calls new, maintenance_persona mp WHERE mp.run_id=new.run_id AND new.purpose LIKE 'persona_%' AND mp.attempt_id IS NOT NULL
- UNION ALL SELECT 'consolidation_calls',CAST(new.id AS TEXT),'entry_profile_attempts',CAST(ep.id AS TEXT),0 FROM consolidation_calls new, entry_profile_attempts ep WHERE ep.run_id=new.run_id AND new.purpose LIKE 'consolidation_entry_profile_%';
+ UNION ALL SELECT 'consolidation_calls',CAST(new.id AS TEXT),'entry_profile_attempts',CAST(ep.id AS TEXT),0 FROM consolidation_calls new, entry_profile_attempts ep WHERE ep.run_id=new.run_id AND new.purpose LIKE 'consolidation_entry_profile_%' AND julianday(ep.started_at)<=julianday(new.created_at) AND (ep.finished_at IS NULL OR julianday(ep.finished_at)>=julianday(new.created_at)) AND 1=(SELECT COUNT(*) FROM entry_profile_attempts other WHERE other.run_id=new.run_id AND julianday(other.started_at)<=julianday(new.created_at) AND (other.finished_at IS NULL OR julianday(other.finished_at)>=julianday(new.created_at)));
 
 INSERT OR IGNORE INTO purge_record_refs
 SELECT 'consolidation_run_work',json_array(new.run_id,new.work_id),'consolidation_work',CAST(new.work_id AS TEXT),0 FROM consolidation_run_work new WHERE new.work_id IS NOT NULL AND (1)
@@ -846,10 +873,14 @@ SELECT 'maintenance_items',json_array(new.run_id,new.phase,new.item_key),'memory
  CASE WHEN EXISTS(SELECT 1 FROM messages WHERE id=json_extract(j.value,'$.message_id')) OR
  COALESCE(json_extract(j.value,'$.content'),json_extract(j.value,'$.excerpt'),json_extract(j.value,'$.sha256'),'')!='' THEN 0 ELSE 1 END
  FROM maintenance_items new, json_tree(new.details_json) j WHERE j.type='object' AND json_type(j.value,'$.message_id')='integer'
- UNION ALL SELECT 'maintenance_items',json_array(new.run_id,new.phase,new.item_key),'consolidation_work',CAST(new.item_key AS TEXT),0 FROM maintenance_items new WHERE new.item_key IS NOT NULL AND (new.phase='consolidation');
+ UNION ALL SELECT 'maintenance_items',json_array(new.run_id,new.phase,new.item_key),'consolidation_work',CAST(new.item_key AS TEXT),0 FROM maintenance_items new WHERE new.item_key IS NOT NULL AND (new.phase='consolidation')
+ UNION ALL SELECT 'maintenance_items',json_array(new.run_id,new.phase,new.item_key),'persona_attempts',CAST(json_extract(new.details_json,'$.attempt_id') AS TEXT),0 FROM maintenance_items new WHERE new.phase='persona' AND json_type(new.details_json,'$.attempt_id')='integer'
+ UNION ALL SELECT 'maintenance_items',json_array(new.run_id,new.phase,new.item_key),'persona_versions',CAST(json_extract(new.details_json,'$.version_id') AS TEXT),0 FROM maintenance_items new WHERE new.phase='persona' AND json_type(new.details_json,'$.version_id')='integer';
 
 INSERT OR IGNORE INTO purge_record_refs
-SELECT 'maintenance_persona',CAST(new.run_id AS TEXT),'persona_attempts',CAST(new.attempt_id AS TEXT),0 FROM maintenance_persona new WHERE new.attempt_id IS NOT NULL AND (1);
+SELECT 'maintenance_persona',CAST(new.run_id AS TEXT),'persona_attempts',CAST(new.attempt_id AS TEXT),0 FROM maintenance_persona new WHERE new.attempt_id IS NOT NULL AND (1)
+ UNION ALL SELECT 'maintenance_persona',CAST(new.run_id AS TEXT),'persona_attempts',CAST(json_extract(new.details_json,'$.attempt_id') AS TEXT),0 FROM maintenance_persona new WHERE json_type(new.details_json,'$.attempt_id')='integer'
+ UNION ALL SELECT 'maintenance_persona',CAST(new.run_id AS TEXT),'persona_versions',CAST(json_extract(new.details_json,'$.version_id') AS TEXT),0 FROM maintenance_persona new WHERE json_type(new.details_json,'$.version_id')='integer';
 
 INSERT OR IGNORE INTO purge_record_refs
 SELECT 'sources',CAST(new.id AS TEXT),'memory',CAST(new.source_memory_id AS TEXT),COALESCE((SELECT revision FROM memories WHERE id=new.source_memory_id),0) FROM sources new WHERE new.note IS NOT NULL AND new.source_memory_id IS NOT NULL;
@@ -887,9 +918,10 @@ CREATE TEMP TABLE purge_upgrade_persona_versions AS
  FROM persona_versions v WHERE v.is_current=1 AND v.id IN (SELECT row_id FROM purge_upgrade_targets WHERE table_name='persona_versions');
 
 UPDATE persona_versions SET is_current=0,status='history' WHERE id IN (SELECT id FROM purge_upgrade_persona_versions);
-INSERT INTO persona_versions(content,created_at,is_current,status,source,sentences_json,checks_json,base_version_id,published_at,author)
+UPDATE persona_versions SET status='superseded' WHERE status='pending' AND EXISTS(SELECT 1 FROM purge_upgrade_persona_versions);
+INSERT INTO persona_versions(content,created_at,is_current,status,source,sentences_json,checks_json,base_version_id,published_at,author,self_snapshot_json)
  SELECT COALESCE((SELECT group_concat(json_extract(value,'$.text'),'') FROM json_each(kept)),''),strftime('%Y-%m-%dT%H:%M:%fZ','now'),1,'current','purge',kept,
- json_object('passed',json('true'),'purge',json('true'),'needs_regeneration',json(CASE WHEN json_array_length(kept)=0 THEN 'true' ELSE 'false' END)),id,strftime('%Y-%m-%dT%H:%M:%fZ','now'),'purge'
+ json_object('passed',json('true'),'purge',json('true'),'needs_regeneration',json(CASE WHEN json_array_length(kept)=0 THEN 'true' ELSE 'false' END)),id,strftime('%Y-%m-%dT%H:%M:%fZ','now'),'purge',self_snapshot_json
  FROM purge_upgrade_persona_versions;
 
 DROP TABLE purge_upgrade_persona_versions;
@@ -910,6 +942,11 @@ INSERT INTO entry_profile_versions(entry_id,version,base_version,content,sentenc
  FROM purge_upgrade_entry_profile_versions v;
 UPDATE entry_profile_settings SET current_version=(SELECT MAX(version) FROM entry_profile_versions WHERE entry_id=entry_profile_settings.entry_id)
  WHERE entry_id IN (SELECT entry_id FROM purge_upgrade_entry_profile_versions);
+
+UPDATE entry_profile_versions SET status='rejected',
+ checks_json=json_set(checks_json,'$.reason','superseded','$.superseded_by',
+   (SELECT current_version FROM entry_profile_settings s WHERE s.entry_id=entry_profile_versions.entry_id))
+ WHERE status='candidate' AND entry_id IN (SELECT entry_id FROM purge_upgrade_entry_profile_versions);
 
 DROP TABLE purge_upgrade_entry_profile_versions;
 
