@@ -206,13 +206,13 @@ def test_upgrade_discards_pending_v2_decisions_and_preserves_legacy_annotations(
         upgraded.close()
 
 
-def test_broad_uses_complete_frozen_pair_prompt_then_separate_report_prompt(store):
+def test_broad_uses_detail_pair_prompt_then_unchanged_report_prompt(store):
     from importlib.resources import files
     a,b=pair(store)
     class Capture(Model):
         def chat(self,messages,purpose,*args,**kwargs):
             if not self.requests:
-                assert messages[0]['content']==files('iris').joinpath('prompts/consolidation_pair_v1.md').read_text(encoding='utf-8')
+                assert messages[0]['content']==files('iris').joinpath('prompts/consolidation_pair_v2.md').read_text(encoding='utf-8')
                 payload=json.loads(messages[1]['content'])
                 assert 'resolution' not in payload
                 assert all('annotations' not in m for m in payload['memories'])
