@@ -1,6 +1,7 @@
 """Trial-only reply generation and publication; host prepare stays generation-free."""
 from __future__ import annotations
 
+import json
 import threading
 import uuid
 from importlib.resources import files
@@ -20,7 +21,69 @@ class TrialBusy(Exception):
 
 
 class TrialReplyFailed(Exception):
-    pass
+    def __init__(self, diagnostic):
+        self.diagnostic = diagnostic
+        super().__init__("trial reply failed")
+
+
+class _JudgmentCapture:
+    """Observe the existing judgment call; never retry it or alter its result."""
+    def __init__(self, gateway):
+        self.gateway = gateway
+        self.scores = {}
+
+    def __getattr__(self, name):
+        value = getattr(self.gateway, name)
+        if name != 'recall_judge' or not callable(value):
+            return value
+        def capture(messages, ids, **kwargs):
+            result = value(messages, ids, **kwargs)
+            self.scores = dict(zip(map(int, ids), result['scores'], strict=True))
+            return result
+        return capture
+
+
+class _TrialRetrieval(Retrieval):
+    def __init__(self, store, gateway, message_id):
+        self.capture = _JudgmentCapture(gateway) if gateway else None
+        super().__init__(store, self.capture)
+        self.message_id = message_id
+        self.candidates = []
+
+    def _select(self, *args, **kwargs):
+        selected = super()._select(*args, **kwargs)
+        self.candidates = [{key: item[key] for key in ('id', 'revision', 'reason')} for item in selected]
+        return selected
+
+    def _record(self, entry_id, request, memories, *, _conn=None):
+        # Add metadata to the same recall receipt. No new recall/use record, and no
+        # copies of memory, message, persona or model response text to purge later.
+        retained = {item['id'] for item in memories}
+        stale = set(request['judgment'].get('stale_memory_ids', []))
+        scores = self.capture.scores if self.capture else {}
+        request = {**request, 'trial': {'message_id': self.message_id, 'reply_message_id': None,
+            'candidates': [{**item, 'support': scores.get(item['id']),
+                'outcome': 'stale' if item['id'] in stale else 'retained' if item['id'] in retained else 'removed'}
+                for item in self.candidates]}}
+        return super()._record(entry_id, request, memories, _conn=_conn)
+
+
+def reply_diagnostic(conn, entry_id, *, recall_id=None, reply_message_id=None):
+    if recall_id is not None:
+        row = conn.execute('SELECT id,created_at,request_json FROM recalls WHERE id=? AND entry_id=?',
+                           (recall_id, entry_id)).fetchone()
+    else:
+        row = conn.execute("""SELECT id,created_at,request_json FROM recalls WHERE entry_id=?
+            AND json_extract(request_json,'$.trial.reply_message_id')=? ORDER BY created_at DESC LIMIT 1""",
+            (entry_id, reply_message_id)).fetchone()
+    if row is None:
+        return None  # Legacy replies / receipts removed by the existing retention policy.
+    request = json.loads(row['request_json'])
+    if 'trial' not in request:
+        return None
+    return {**request['trial'], 'recall_id': row['id'], 'prepared_at': row['created_at'],
+            'judgment': request['judgment']}
+
 
 
 def require_entry(conn, entry_id):
@@ -101,10 +164,13 @@ class TrialReplies:
                 raise KeyError(message_id)
             published = conn.execute("SELECT * FROM messages WHERE entry_id=? AND dedupe_key=? AND kind='self_output'", (entry_id, key)).fetchone()
             if published:
-                return {"message": dict(published), "prepared": None, "reused": True}
-        prepared = add_health_hints(Retrieval(self.store, self.gateway).prepare(entry_id), self.health)
+                return {"message": dict(published), "prepared": None, "reused": True,
+                        "diagnostic": reply_diagnostic(conn, entry_id, reply_message_id=published['id'])}
+        prepared = add_health_hints(_TrialRetrieval(self.store, self.gateway, message_id).prepare(entry_id), self.health)
         if message_id not in {m["id"] for m in prepared["recent_messages"]}:
             raise ValueError("这条消息已不在近期对话中，请发送新消息后再请求回复")
+        with self.store.read() as conn:
+            diagnostic = reply_diagnostic(conn, entry_id, recall_id=prepared['recall_id'])
         prompt = files("iris").joinpath("prompts/trial_reply_v1.md").read_text(encoding="utf-8")
         try:
             result = self.gateway.json_chat([
@@ -112,15 +178,18 @@ class TrialReplies:
                 {"role": "user", "content": dumps({"reply_to_message_id": message_id, "prepared": prepared})},
             ], "trial_reply", max_tokens=16000)[0]
         except ModelError as error:
-            raise TrialReplyFailed() from error
+            raise TrialReplyFailed(diagnostic) from error
         reply = result.get("reply") if isinstance(result, dict) else None
         if not isinstance(reply, str) or not reply.strip() or len(reply.encode("utf-8")) > 32768:
-            raise TrialReplyFailed()
+            raise TrialReplyFailed(diagnostic)
         # Publication is the actual output, persisted for redisplay after a lost
         # HTTP response. Only this text is new evidence, never the prepare payload.
-        mid = add_message(self.store, entry_id=entry_id, entry_name=entry["name"], entry_kind=entry["kind"],
-                          platform=PLATFORM, kind="self_output", sender="我", content=reply.strip(),
-                          occurred_at=now(), dedupe_key=key, pace="realtime")
-        with self.store.read() as conn:
+        with self.store.write() as conn:
+            mid = add_message(self.store, entry_id=entry_id, entry_name=entry["name"], entry_kind=entry["kind"],
+                              platform=PLATFORM, kind="self_output", sender="我", content=reply.strip(),
+                              occurred_at=now(), dedupe_key=key, pace="realtime", _conn=conn)
+            conn.execute("UPDATE recalls SET request_json=json_set(request_json,'$.trial.reply_message_id',?) WHERE id=?",
+                         (mid, prepared['recall_id']))
             message = dict(conn.execute("SELECT * FROM messages WHERE id=?", (mid,)).fetchone())
-        return {"message": message, "prepared": prepared, "reused": False}
+        return {"message": message, "prepared": prepared, "reused": False,
+                "diagnostic": {**diagnostic, 'reply_message_id': mid}}

@@ -9,7 +9,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, afterEach, expect, test, vi } from "vitest";
 import App from "./App";
 import { tokensFixture, backupsFixture } from "./access-fixtures";
-import type { Judgment } from "./types";
+import type { Judgment, TrialDiagnostic } from "./types";
 
 const entry = {
   id: "trial-a",
@@ -98,11 +98,13 @@ let messages: Record<string, unknown>[] = [];
 let judgment: Judgment | undefined;
 let preparedMemories: Record<string, unknown>[] = [];
 let pendingPeople: number;
+let replyDiagnostic: TrialDiagnostic | null;
 let replyMode: "failed" | "success" | "reused";
 let judgeHealth: string | null;
 let judgeEnabled: boolean;
 
 beforeEach(() => {
+  replyDiagnostic = null;
   localStorage.clear();
   trialEntries = [entry];
   duplicateSpeaker = false;
@@ -222,6 +224,7 @@ beforeEach(() => {
           data = {
             message: {},
             reused: replyMode === "reused",
+            diagnostic: replyDiagnostic,
             prepared:
               replyMode === "reused"
                 ? null
@@ -233,6 +236,7 @@ beforeEach(() => {
               code: "reply_failed",
               message: "角色回复失败，原消息已保存",
             },
+            result: { diagnostic: replyDiagnostic },
           };
           code = 502;
         }
@@ -410,7 +414,9 @@ test("复用已发布回复时说明诊断未返回，不重新 prepare", async 
   await userEvent.click(await screen.findByLabelText("角色回复"));
   await userEvent.type(screen.getByLabelText("消息内容"), "重试回复");
   await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
-  expect(await screen.findByText(/后端未返回当时的回复准备结果/)).toBeVisible();
+  expect(
+    await screen.findByText(/原诊断未记录或已按保留期限清理/),
+  ).toBeVisible();
   expect(screen.queryByText(/被判断去掉/)).not.toBeInTheDocument();
   expect(requests.some((r) => r.url.endsWith("/prepare"))).toBe(false);
 });
@@ -777,3 +783,59 @@ test("主导航进入接入与数据，说明本机令牌接入并提供备份�
   );
   expect(requests.every((r) => r.method === "GET")).toBe(true);
 });
+
+test.each(["failed", "reused"] as const)(
+  "%s 回复保留候选、判断分与诊断来源，不再次 prepare",
+  async (mode) => {
+    replyMode = mode;
+    replyDiagnostic = {
+      recall_id: "trial-recall-7",
+      message_id: 1,
+      reply_message_id: mode === "reused" ? 9 : null,
+      prepared_at: "2026-10-11T01:00:00Z",
+      judgment: {
+        status: "degraded",
+        reason: "timeout",
+        duration_ms: 10000,
+        budget_seconds: 10,
+        removed_memory_ids: [3],
+      },
+      candidates: [
+        {
+          id: 1,
+          revision: 2,
+          reason: "relevant",
+          support: 83,
+          outcome: "retained",
+        },
+        {
+          id: 3,
+          revision: 1,
+          reason: "relevant",
+          support: 24,
+          outcome: "removed",
+        },
+      ],
+    };
+    render(<App />);
+    await userEvent.click(await screen.findByLabelText("角色回复"));
+    await userEvent.type(screen.getByLabelText("消息内容"), "天文摄影");
+    await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
+    expect(await screen.findByText("判断分：83 / 100")).toBeVisible();
+    expect(screen.getByText("判断分：24 / 100")).toBeVisible();
+    expect(screen.getByText("超过判断总预算")).toBeVisible();
+    expect(screen.getByText(/召回记录 trial-recall-7/)).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "记忆 #1 · 当时修订 2" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        mode === "reused"
+          ? /已复用回复 #9/
+          : /以下为本次已经完成的回复准备诊断/,
+      ),
+    ).toBeVisible();
+    expect(requests.filter((r) => r.url.endsWith("/reply"))).toHaveLength(1);
+    expect(requests.some((r) => r.url.endsWith("/prepare"))).toBe(false);
+  },
+);

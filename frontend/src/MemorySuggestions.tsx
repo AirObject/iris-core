@@ -1,3 +1,4 @@
+import { MergeDetailReview, mergeReviewLabel } from "./MergeDetailReview";
 import { useState } from "react";
 import { api, json } from "./api";
 import { Badge, RoleTime } from "./ui";
@@ -64,13 +65,25 @@ export function MemorySuggestions({
       {detail.consolidation_annotations?.map((a) => (
         <article className="maintenance-item" key={a.id}>
           <div className="detail-badges">
-            <Badge tone="warning">{suggestionKinds[a.kind] || a.kind}</Badge>
+            <Badge tone="warning">
+              {a.report.suggestion_type === "merge_details"
+                ? mergeReviewLabel
+                : suggestionKinds[a.kind] || a.kind}
+            </Badge>
             <Badge>{suggestionStatuses[a.review_status]}</Badge>
             {a.modified_since_annotation && (
               <Badge tone="warning">标注后已修改</Badge>
             )}
             <span className="muted">建议 #{a.id}</span>
           </div>
+          {a.report.suggestion_type === "merge_details" && (
+            <MergeDetailReview
+              details={a.report.unique_details}
+              ids={a.report.detail_memory_ids || a.related_memory_ids}
+              openMemory={openMemory}
+              disabled={busy}
+            />
+          )}
           <p className="report-text">{a.text}</p>
           <p className="muted">
             标注时修订 {a.memory_revision} · <RoleTime value={a.created_at} />
@@ -150,7 +163,9 @@ export function MemorySuggestions({
             >
               <p>
                 {action.kind === "confirm"
-                  ? "采纳只记录管理员确认，不改正文和相信程度；建议仍只对管理员可见。"
+                  ? a.report.suggestion_type === "merge_details"
+                    ? "采纳只记录管理员确认，不执行合并，不改正文和相信程度；建议仍只对管理员可见。"
+                    : "采纳只记录管理员确认，不改正文和相信程度；建议仍只对管理员可见。"
                   : "清除会撤下这条整理建议并保留操作记录，不改正文和相信程度。"}
               </p>
               <div className="actions">
