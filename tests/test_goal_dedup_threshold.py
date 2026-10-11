@@ -37,9 +37,30 @@ def test_threshold_validation(bad):
 
 
 def test_default_and_legacy_rollback_are_explicit():
-    assert dedup.settings()['possible_min_similarity'] == .6
+    assert dedup.settings()['possible_min_similarity'] == 0
     assert dedup.settings()['pending_fallback_minutes'] == 30
     assert dedup.validate_similarity(0) == 0
+
+
+@pytest.mark.parametrize('saved_threshold,marked', [(None, True), (.6, False)])
+def test_calibrated_default_preserves_weak_recognition_and_saved_override(store, saved_threshold, marked):
+    options = {'enabled': True}
+    if saved_threshold is not None:
+        options['possible_min_similarity'] = saved_threshold
+    store.set_setting('goal_dedup_judge', options)
+    judge = Judge(store)
+    goals = Goals(store, gateway=judge)
+    old = goals.create(content='检查三台服务器')['goal']
+    new = goals.create(content='检查服务器并记录设备的运行状况')['goal']
+    assert .25 <= dedup.similarity(old, new) < .6
+    assert new['possible_duplicate_ids'] == ([old['id']] if marked else [])
+    assert new['merged_into'] is None and not judge.calls
+    expected = 0 if saved_threshold is None else saved_threshold
+    assert dedup.settings(store)['possible_min_similarity'] == expected
+    with store.read() as conn:
+        assert dedup.connection_settings(conn)['possible_min_similarity'] == expected
+    # A new default must not overwrite the persisted configuration.
+    assert store.setting('goal_dedup_judge', {}) == options
 
 
 def test_runtime_threshold_filters_conflicts_without_model_and_keeps_existing_marks(store):
