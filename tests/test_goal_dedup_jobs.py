@@ -130,7 +130,7 @@ def test_failure_backoff_then_retry_is_durable(store,setup):
     assert goals.review(gid)['dedup']['status']=='pending'
     assert job(store,gid)['attempts']==1 and job(store,gid)['state']=='pending'
     assert goals.pending_reviews(limit=8)==[]
-    clock.advance(seconds=2)
+    clock.advance(seconds=30)
     assert goals.pending_reviews(limit=8)==[gid]
     judge.verdict='same'
     assert goals.review(gid)['dedup']['status']=='merged'

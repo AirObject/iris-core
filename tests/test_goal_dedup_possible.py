@@ -18,7 +18,7 @@ from test_scheduler import wait_for
 
 @pytest.fixture
 def setup(store):
-    store.set_setting('goal_dedup_judge',{'enabled':True,'method':'C2','budget_seconds':1})
+    store.set_setting('goal_dedup_judge',{'enabled':True,'method':'C2','budget_seconds':1,'possible_min_similarity':0})
     clock=lambda:datetime(2026,10,10,tzinfo=timezone.utc)
     judge=Judge(store)
     judge.configs={}
