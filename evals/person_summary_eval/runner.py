@@ -1,0 +1,461 @@
+"""Isolated explicit-input execution and immutable external judging bundles.
+
+Run from a checkout with `uv run python -m evals.person_summary_eval`.
+No default corpus, corpus globbing, embedded grading model, or score-based reuse.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import time
+from collections import Counter
+from datetime import datetime, timezone
+from pathlib import Path
+from uuid import uuid4
+from zoneinfo import ZoneInfo
+
+from iris.db import Store, dumps
+from iris.person_summary import PersonSummaryEngine, VIOLATIONS, admin_edit, _instant
+from iris.evaluation import _json_sha256, _read_json, _write_json, _verified_material_file, _percentile
+from iris.models import Gateway, ModelReply, load_test_models
+
+FORMAT_VERSION=1
+SCORING_VERSION='person_summary_scoring_v1'
+HERE=Path(__file__).resolve().parent
+
+
+def _texts(value, name):
+    if not isinstance(value,list) or any(not isinstance(x,str) or not x.strip() for x in value):
+        raise ValueError(name+' must be an array of nonempty strings')
+
+
+def _restricted(case):
+    restricted_entries={e['id'] for e in case['entries'] if e.get('visibility','shared')!='shared'}
+    private={m['id'] for m in case['memories'] if restricted_entries.intersection(m.get('source_entries',[]))}
+    while True:
+        extended=private|{m['id'] for m in case['memories'] if private.intersection(m.get('derived_from',[]))}
+        if extended==private:
+            return private
+        private=extended
+
+
+def load_corpus(path):
+    """Explicit file only. Annotations/probes are never passed to either model."""
+    document=_read_json(Path(path))
+    if not isinstance(document,dict) or type(document.get('format_version')) is not int or document['format_version']!=1:
+        raise ValueError('expected format_version=1')
+    cases=document.get('cases'); ids=set()
+    if not isinstance(cases,list) or not cases:
+        raise ValueError('expected nonempty cases')
+    for case in cases:
+        if not isinstance(case,dict) or not isinstance(case.get('id'),str) or not case['id'] or case['id'] in ids:
+            raise ValueError('duplicate or invalid case id')
+        ids.add(case['id']); current=_instant(case['as_of']); ZoneInfo(case.get('timezone','Asia/Shanghai'))
+        entries=case['entries']; subjects=case['subjects']; memories=case['memories']
+        if not all(isinstance(values,list) and values for values in (entries,subjects,memories)):
+            raise ValueError('entries, subjects and memories must be nonempty arrays')
+        def identities(values):
+            result=[v['id'] for v in values]
+            if any(not isinstance(v,str) or not v for v in result) or len(set(result))!=len(result):
+                raise ValueError('duplicate or invalid identity')
+            return set(result)
+        eids=identities(entries); sids=identities(subjects); mids=identities(memories)
+        if case['subject_id'] not in sids or {'self','scene'}&sids:
+            raise ValueError('subject must be a declared person; self/scene are implicit')
+        for e in entries:
+            if e.get('kind','group') not in ('group','live','private') or e.get('visibility','shared') not in ('shared','entry_only','entries'):
+                raise ValueError('invalid entry kind or visibility')
+            _texts(e.get('visible_in',[]),'visible_in')
+            if not set(e.get('visible_in',[]))<=eids:
+                raise ValueError('unknown visible entry')
+        for subject in subjects:
+            if not isinstance(subject.get('name'),str) or not subject['name'].strip():
+                raise ValueError('invalid subject name')
+            _texts(subject.get('aliases',[]),'aliases')
+        for m in memories:
+            if (not isinstance(m.get('content'),str) or not m['content'].strip() or m.get('speaker') not in sids|{'self','scene'}
+                    or m.get('lifecycle','active') not in ('active','forgotten','deleted')):
+                raise ValueError('invalid memory content, speaker or lifecycle')
+            for key in ('about','source_entries','derived_from','tags'):
+                _texts(m.get(key,[]),key)
+            if not set(m.get('about',[]))<=sids|{'self','scene'} or not set(m.get('source_entries',[]))<=eids or not set(m.get('derived_from',[]))<=mids:
+                raise ValueError('unknown memory relationship')
+            for key,default in (('importance',50),('retention',80),('belief',90),('revision',1)):
+                if type(m.get(key,default)) is not int or not (1<=m.get(key,default) if key=='revision' else 0<=m.get(key,default)<=100):
+                    raise ValueError('invalid numeric metadata')
+            for key in ('created_at','updated_at','first_confirmed_at','last_confirmed_at'):
+                if _instant(m.get(key,m['created_at']))>current:
+                    raise ValueError('future memory metadata')
+        _texts(case.get('must_cover',[]),'must_cover'); _texts(case.get('forbidden',[]),'forbidden')
+        private=_restricted(case); by_id={m['id']:m for m in memories}
+        probes=case.get('leak_probes',[])
+        if not isinstance(probes,list):
+            raise ValueError('invalid leak probes')
+        for probe in probes:
+            if (not isinstance(probe,dict) or set(probe)!={'memory_id','text'} or probe['memory_id'] not in private
+                    or not isinstance(probe['text'],str) or not probe['text'].strip()
+                    or probe['text'] not in by_id[probe['memory_id']]['content']
+                    or any(probe['text'] in m['content'] for m in memories if m['id'] not in private)):
+                raise ValueError('leak probe must uniquely identify restricted content')
+        if 'initial_summary' in case and not isinstance(case['initial_summary'],str):
+            raise ValueError('initial_summary must be text')
+    return cases
+
+
+def _load_case(store, case):
+    stamp=case['as_of']; mids={}
+    store.set_setting('timezone',case.get('timezone','Asia/Shanghai'))
+    store.set_setting('role_name',case.get('role_name','Iris'))
+    with store.write() as conn:
+        for e in case['entries']:
+            conn.execute('INSERT INTO entries(id,name,platform,kind,visibility,visible_in_json) VALUES(?,?,?,?,?,?)',
+                         (e['id'],e.get('name',e['id']),'eval',e.get('kind','group'),e.get('visibility','shared'),dumps(e.get('visible_in',[]))))
+        for subject in case['subjects']:
+            conn.execute("INSERT INTO subjects(id,kind,name,created_at) VALUES(?,'person',?,?)",(subject['id'],subject['name'],stamp))
+            conn.executemany('INSERT INTO subject_aliases(subject_id,alias) VALUES(?,?)',((subject['id'],a) for a in subject.get('aliases',[])))
+        for m in case['memories']:
+            mids[m['id']]=conn.execute("""INSERT INTO memories(content,kind,speaker_subject_id,stance,belief,importance,
+                retention,lifecycle,revision,event_time,world,created_at,updated_at,first_confirmed_at,last_confirmed_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(m['content'],m.get('kind','事实'),m['speaker'],m.get('stance','亲历'),
+                m.get('belief',90),m.get('importance',50),m.get('retention',80),m.get('lifecycle','active'),m.get('revision',1),
+                m.get('event_time'),m.get('world','real'),m['created_at'],m.get('updated_at',m['created_at']),
+                m.get('first_confirmed_at',m['created_at']),m.get('last_confirmed_at',m['created_at']))).lastrowid
+        for m in case['memories']:
+            mid=mids[m['id']]
+            conn.executemany('INSERT INTO memory_subjects(memory_id,subject_id) VALUES(?,?)',((mid,s) for s in set(m.get('about',[]))))
+            conn.executemany('INSERT INTO memory_tags(memory_id,tag) VALUES(?,?)',((mid,t) for t in set(m.get('tags',[]))))
+            conn.executemany('INSERT INTO memory_visibility_roots(memory_id,entry_id) VALUES(?,?)',((mid,e) for e in set(m.get('source_entries',[]))))
+            conn.executemany("INSERT INTO sources(memory_id,kind,source_memory_id,created_at) VALUES(?,'memory',?,?)",
+                             ((mid,mids[parent],stamp) for parent in set(m.get('derived_from',[]))))
+    if case.get('initial_summary'):
+        admin_edit(store,case['subject_id'],case['initial_summary'],expected_version=0,clock=lambda:_instant(stamp))
+    return mids
+
+
+def _source_hash():
+    iris=Path(__import__('iris').__file__).parent
+    paths=sorted([*iris.rglob('*.py'),*iris.joinpath('migrations').glob('*.sql'),
+                  *iris.joinpath('prompts').glob('*.md'),*HERE.glob('*.py'),*HERE.glob('scoring*.md')])
+    # Deliberately excludes evals corpora, credentials and external material directories.
+    return _json_sha256([(str(p.relative_to(iris)) if p.is_relative_to(iris) else 'person_summary_eval/'+p.name,
+                          hashlib.sha256(p.read_bytes()).hexdigest()) for p in paths])
+
+
+def _model_metadata(configs):
+    return {kind:{'model':config.model,'endpoint_sha256':hashlib.sha256(config.base_url.encode()).hexdigest(),
+                  'reasoning_effort':config.reasoning_effort,'dimensions':config.dimensions} for kind,config in configs.items()}
+
+
+def _redacted(value, configs):
+    encoded=dumps(value)
+    for config in configs.values():
+        if config.api_key:
+            encoded=encoded.replace(config.api_key,'[REDACTED]')
+    return json.loads(encoded)
+
+
+def _strings(value):
+    if isinstance(value,str):
+        yield value
+    elif isinstance(value,dict):
+        for key,item in value.items():
+            yield key
+            yield from _strings(item)
+    elif isinstance(value,(list,tuple)):
+        for item in value:
+            yield from _strings(item)
+
+
+def _output_texts(outputs):
+    for raw in outputs.values():
+        yield raw
+        try:
+            # Preserve duplicate keys too: even invalid JSON schema can contain
+            # restricted text which must not vanish during the independent audit.
+            decoded=json.loads(raw,object_pairs_hook=list)
+        except (ValueError,TypeError,RecursionError):
+            continue
+        yield from _strings(decoded)
+
+
+def _leaks(row):
+    private=_restricted(row['case']); mapping=row['memory_ids']; violations=[]
+    if set(mapping)!={m['id'] for m in row['case']['memories']}:
+        return {'restricted_memories':len(private),'probe_count':len(row['case'].get('leak_probes',[])),
+                'violations':[{'kind':'incomplete_seed_mapping'}]}
+    restricted_ids={mapping[key] for key in private}
+    for attempt in row['attempts']:
+        material=json.loads(attempt['material_json'])
+        actual={m['memory_id'] for m in material.get('evidence',{}).get('memories',[])}
+        for mid in sorted(actual&restricted_ids):
+            violations.append({'kind':'restricted_material','attempt_id':attempt['id'],'memory_id':mid})
+        # All raw outputs count, including failed/rejected generations. A semantic
+        # grader cannot override this independently computed exact-substring gate.
+        for location,texts in (('material',list(_strings(material))),
+                               ('raw_outputs',list(_output_texts(json.loads(attempt['outputs_json']))))):
+            for probe in row['case'].get('leak_probes',[]):
+                if any(probe['text'] in text for text in texts):
+                    violations.append({'kind':'restricted_text','location':location,'attempt_id':attempt['id'],**probe})
+    profile=row['result'].get('version')
+    if profile:
+        for probe in row['case'].get('leak_probes',[]):
+            if probe['text'] in profile['content']:
+                violations.append({'kind':'restricted_text','location':'rendered_summary',**probe})
+        for sentence in profile['sentences']:
+            for basis in sentence['basis']:
+                if basis['memory_id'] in restricted_ids:
+                    violations.append({'kind':'restricted_reference','memory_id':basis['memory_id']})
+    return {'restricted_memories':len(private),'probe_count':len(row['case'].get('leak_probes',[])),'violations':violations}
+
+
+def _payload(row):
+    profile=row['result'].get('version')
+    return {'subject_id':row['case']['subject_id'],'as_of':row['case']['as_of'],
+            'profile':profile,'evidence':profile['material']['evidence'] if profile else None,
+            'previous':profile['material'].get('previous','') if profile else '',
+            'source_case':row['case'],'memory_ids':row['memory_ids'],'leak_check':_leaks(row),
+            'must_cover':row['case'].get('must_cover',[]),'forbidden':row['case'].get('forbidden',[]),
+            'status':row['result']['status'],'reason':row['result'].get('reason')}
+
+
+def _document(row, metadata):
+    return {'format_version':1,'evaluation':'person_summary','case_id':row['case']['id'],
+            'source_sha256':metadata['source_sha256'],'corpus_sha256':metadata['corpus_sha256'],
+            'scoring_version':metadata['scoring_version'],'input':_payload(row)}
+
+
+def run_eval(corpus, out, *, configs=None, gateway_factory=Gateway, extra_input=None):
+    cases=load_corpus(corpus); configs=configs or {}; root=Path(out)
+    corpus_file_sha256=hashlib.sha256(Path(corpus).read_bytes()).hexdigest()
+    root.mkdir(parents=True,exist_ok=True)
+    directory=root/('person-summary-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')+'-'+uuid4().hex[:8])
+    directory.mkdir()
+    scoring=(HERE/'scoring.md').read_text(encoding='utf-8')
+    metadata={'source_sha256':_source_hash(),'corpus_sha256':_json_sha256(cases),
+        'corpus_file_sha256':corpus_file_sha256,
+        'fake_only':not bool(configs),'models':_model_metadata(configs),'extra_input_sha256':_json_sha256(extra_input),
+        'prompt_versions':['person_summary_generate_v1','person_summary_check_v1'],
+        'scoring_version':SCORING_VERSION,'scoring_sha256':hashlib.sha256(scoring.encode()).hexdigest(),
+        'timeouts_seconds':{'generate':120,'check':120}}
+    metadata['input_sha256']=_json_sha256(metadata)
+    rows=[]; started=time.monotonic()
+    # Always a fresh DB/run: no completed result is selected or reused by score.
+    for index,case in enumerate(cases):
+        store=Store(directory/'databases'/f'{index:04}.db'); gateway=None; mapping={}
+        try:
+            mapping=_load_case(store,case)
+            gateway=gateway_factory(configs,store)
+            engine=PersonSummaryEngine(store,gateway,clock=lambda:_instant(case['as_of']))
+            with store.read() as conn:
+                saved=conn.execute('SELECT current_version FROM person_summary_settings WHERE subject_id=?',(case['subject_id'],)).fetchone()
+            result=engine.regenerate(case['subject_id'],expected_version=saved[0] if saved else 0)
+            with store.read() as conn:
+                attempts=[dict(r) for r in conn.execute('SELECT * FROM person_summary_attempts ORDER BY id')]
+                calls=[dict(r) for r in conn.execute('SELECT * FROM model_calls ORDER BY id')]
+            rows.append({'case':case,'memory_ids':mapping,'result':result,'attempts':attempts,'calls':calls,'complete':result['status']!='failed' and result.get('reason')!='timeout'
+                         and not any(c.get('timed_out') for c in calls)})
+        except Exception as error:
+            # Never echo exception text from providers, payloads or configuration.
+            with store.read() as conn:
+                attempts=[dict(r) for r in conn.execute('SELECT * FROM person_summary_attempts ORDER BY id')]
+                calls=[dict(r) for r in conn.execute('SELECT * FROM model_calls ORDER BY id')]
+            rows.append({'case':case,'memory_ids':mapping,'result':{'status':'failed','reason':type(error).__name__,'version':None},
+                         'attempts':attempts,'calls':calls,'complete':False})
+        finally:
+            if gateway and callable(getattr(gateway,'close',None)):
+                gateway.close()
+            store.close()
+    rows=_redacted(rows,configs)
+    materials=directory/'judging-materials'; materials.mkdir()
+    manifest={'format_version':1,'evaluation':'person_summary','run':metadata,
+              'run_sha256':_write_json(materials/'run.json',{'rows':rows}),'cases':[]}
+    (materials/'scoring.md').write_text(scoring,encoding='utf-8')
+    manifest['scoring_sha256']=hashlib.sha256((materials/'scoring.md').read_bytes()).hexdigest()
+    for index,row in enumerate(rows):
+        name=f'cases/{index:04}.json'
+        digest=_write_json(materials/name,_document(row,metadata))
+        manifest['cases'].append({'case_id':row['case']['id'],'file':name,'sha256':digest,'judgment_file':f'{index:04}.json'})
+    manifest['materials_sha256']=_json_sha256(manifest)
+    _write_json(materials/'manifest.json',manifest)
+    _write_json(materials/'round-template.json',{'materials_sha256':manifest['materials_sha256']})
+    report={**metadata,'rows':rows,'materials':str(materials.resolve()),'elapsed_seconds':time.monotonic()-started,
+            'metrics':_metrics(rows)}
+    _write_json(directory/'report.json',report)
+    return report
+
+
+def _load_materials(path):
+    path=Path(path); manifest=_read_json(path/'manifest.json')
+    try:
+        if manifest['format_version']!=1 or manifest['evaluation']!='person_summary':
+            raise ValueError('unsupported materials format')
+        if manifest['materials_sha256']!=_json_sha256({k:v for k,v in manifest.items() if k!='materials_sha256'}):
+            raise ValueError('manifest fingerprint mismatch')
+        rows=_read_json(_verified_material_file(path,'run.json',manifest['run_sha256']))['rows']
+        scoring=_verified_material_file(path,'scoring.md',manifest['scoring_sha256'])
+        meta=manifest['run']
+        if (meta['corpus_sha256']!=_json_sha256([r['case'] for r in rows]) or meta['scoring_version'] !=SCORING_VERSION
+                or meta['scoring_sha256']!=hashlib.sha256(scoring.read_bytes()).hexdigest()
+                or meta['input_sha256']!=_json_sha256({k:v for k,v in meta.items() if k!='input_sha256'})):
+            raise ValueError('run input fingerprint mismatch')
+        if len(rows)!=len(manifest['cases']):
+            raise ValueError('material case count mismatch')
+        for index,(entry,row) in enumerate(zip(manifest['cases'],rows,strict=True)):
+            if entry['file']!=f'cases/{index:04}.json' or entry['judgment_file']!=f'{index:04}.json':
+                raise ValueError('invalid material filename')
+            document=_read_json(_verified_material_file(path,entry['file'],entry['sha256']))
+            if entry['case_id']!=row['case']['id'] or document!=_document(row,meta):
+                raise ValueError('material input differs from run')
+    except (KeyError,TypeError) as error:
+        raise ValueError('invalid materials structure') from error
+    return manifest,rows
+
+
+def _validate(vote,row):
+    if not isinstance(vote,dict) or set(vote)!={'item_results','must_cover','forbidden'}:
+        raise ValueError('invalid judgment fields')
+    profile=row['result'].get('version'); sentences=profile['sentences'] if profile else []
+    if not isinstance(vote['item_results'],list) or len(vote['item_results'])!=len(sentences):
+        raise ValueError('judgment item count mismatch')
+    for index,result in enumerate(vote['item_results'],1):
+        if (not isinstance(result,dict) or set(result)!={'index','supported','violations','reason'}
+                or type(result['index']) is not int or result['index']!=index or type(result['supported']) is not bool
+                or not isinstance(result['reason'],str) or not result['reason'].strip()
+                or not isinstance(result['violations'],list)
+                or result['violations']!=[v for v in VIOLATIONS if v in result['violations']]
+                or ('无依据' in result['violations'] and result['supported'])):
+            raise ValueError('invalid item judgment')
+    for name in ('must_cover','forbidden'):
+        if not isinstance(vote[name],list) or len(vote[name])!=len(_payload(row).get(name,[])) or any(type(x) is not bool for x in vote[name]):
+            raise ValueError('invalid reference judgments')
+    if profile is None and any(vote['must_cover']):
+        raise ValueError('missing profiles cannot cover reference points')
+    return vote
+
+
+def _combine(votes):
+    if len(votes)==1:
+        return votes[0],[]
+    a,b=votes; combined={'item_results':[],'must_cover':[],'forbidden':[]}; differences=[]
+    for index,(left,right) in enumerate(zip(a['item_results'],b['item_results'],strict=True),1):
+        combined['item_results'].append({'index':index,'supported':left['supported'] and right['supported'],
+            'violations':[v for v in VIOLATIONS if v in left['violations'] or v in right['violations']],
+            'reason':'round 1: '+left['reason']+'; round 2: '+right['reason']})
+        for key in ('supported','violations'):
+            if left[key]!=right[key]:
+                differences.append({'array':'item_results','index':index,'field':key,'round_1':left[key],'round_2':right[key]})
+    for key in ('must_cover','forbidden'):
+        for index,(left,right) in enumerate(zip(a[key],b[key],strict=True),1):
+            combined[key].append(left and right if key=='must_cover' else left or right)
+            if left!=right:
+                differences.append({'array':key,'index':index,'round_1':left,'round_2':right})
+    return combined,differences
+
+
+def _metrics(rows, votes=None):
+    candidates=[r['result']['version'] for r in rows if r['result'].get('version')]
+    checks=[_leaks(r) for r in rows]; calls=[c for r in rows for a in r['attempts'] for c in json.loads(a['calls_json'])]
+    metrics={'cases':len(rows),'incomplete_cases':sum(not r['complete'] for r in rows),
+        'generated_candidates':len(candidates),'rejected_candidates':sum(v['status']=='rejected' for v in candidates),
+        'published':sum(v['status']=='published' for v in candidates),'candidate':sum(v['status']=='candidate' for v in candidates),
+        'deleted_items':sum(len(v['checks'].get('deleted_sentences',[])) for v in candidates),
+        'original_items':sum(v['checks'].get('original_item_count',0) for v in candidates),
+        'scoped_leaks':sum(len(c['violations']) for c in checks),
+        'scoped_memories_checked':sum(c['restricted_memories'] for c in checks),
+        'leak_probes_checked':sum(c['probe_count'] for c in checks),
+        'calls':{'count':len(calls),'duration_ms_p50':_percentile([c['duration_ms'] for c in calls],50),
+                 'duration_ms_p95':_percentile([c['duration_ms'] for c in calls],95),
+                 'prompt_tokens':sum(c['usage'].get('prompt_tokens') or 0 for c in calls),
+                 'completion_tokens':sum(c['usage'].get('completion_tokens') or 0 for c in calls),
+                 'timed_out':sum(c.get('reason')=='timeout' for c in calls)},
+        'grounded_item_ratio':None,'must_cover_coverage':None,'forbidden_occurrences':None,'meets_threshold':False}
+    metrics['reference_validation_total']=metrics['original_items']
+    metrics['reference_validation_passed']=metrics['original_items']-sum(
+        d.get('stage')=='references' for v in candidates for d in v['checks'].get('deleted_sentences',[]))
+    metrics['reference_validation_pass_rate']=(metrics['reference_validation_passed']/metrics['original_items'] if metrics['original_items'] else None)
+    if votes is not None:
+        total=supported=admin=covered=expected=forbidden=0; violations=Counter(); rejected=Counter()
+        for row,vote in zip(rows,votes,strict=True):
+            profile=row['result'].get('version'); expected+=len(vote['must_cover'])
+            if not profile or profile['status']=='rejected':
+                rejected.update(v for s in vote['item_results'] for v in s['violations'])
+                continue
+            covered+=sum(vote['must_cover']); forbidden+=sum(vote['forbidden'])
+            for sentence,result in zip(profile['sentences'],vote['item_results'],strict=True):
+                violations.update(result['violations'])
+                if sentence['author']=='admin': admin+=1
+                else: total+=1; supported+=result['supported']
+        ratio=supported/total if total else None
+        prohibited={key:value for key,value in violations.items() if key!='无依据'}
+        metrics.update(grounded_item_ratio=ratio,grounded_items=supported,model_items=total,admin_items=admin,
+            violations=dict(violations),prohibited_violations=prohibited,rejected_violations=dict(rejected),
+            must_cover_covered=covered,must_cover_total=expected,must_cover_coverage=covered/expected if expected else None,
+            forbidden_occurrences=forbidden,meets_threshold=ratio is not None and ratio>=.9 and not prohibited
+            and not forbidden and not metrics['scoped_leaks'] and not metrics['incomplete_cases'])
+    return metrics
+
+
+def score(materials, judgments, *, judge_model, out):
+    paths=list(map(Path,judgments))
+    if len(paths) not in (1,2) or len({p.resolve() for p in paths})!=len(paths) or not judge_model.strip():
+        raise ValueError('provide one or two independent rounds and a judge model name')
+    manifest,rows=_load_materials(materials)
+    rounds=[]
+    for path in paths:
+        expected={'manifest.json',*(e['judgment_file'] for e in manifest['cases'])}
+        if {p.name for p in path.glob('*.json')}!=expected:
+            raise ValueError('missing or unexpected judgment files')
+        if any(not (path/name).resolve().is_relative_to(path.resolve()) for name in expected):
+            raise ValueError('judgment files must stay within their directory')
+        if _read_json(path/'manifest.json').get('materials_sha256')!=manifest['materials_sha256']:
+            raise ValueError('judgment material fingerprint mismatch')
+        rounds.append([_validate(_read_json(path/e['judgment_file']),row) for e,row in zip(manifest['cases'],rows,strict=True)])
+    combined=[]; differences=[]
+    for index,row in enumerate(rows):
+        vote,items=_combine([r[index] for r in rounds]);combined.append(vote)
+        differences.extend({'case_id':row['case']['id'],**item} for item in items)
+    report={**manifest['run'],'materials_sha256':manifest['materials_sha256'],'judge_model':judge_model.strip(),
+        'judge_runs':len(rounds),'judgment_rounds':[{'round':i+1,'sha256':_json_sha256(v)} for i,v in enumerate(rounds)],
+        'original_judgments':rounds,'judgments':combined,'disagreements':differences,'rows':rows,'metrics':_metrics(rows,combined)}
+    out=Path(out)
+    if any(out.resolve().is_relative_to(p.resolve()) for p in [Path(materials),*paths]):
+        raise ValueError('score output must not overwrite materials or rounds')
+    name='person-summary-score-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')+'-'+uuid4().hex[:8]+'.json'
+    _write_json(out/name,report)
+    return report
+
+
+class _Responses:
+    def __init__(self, values):
+        self.values=iter(values)
+    def chat(self, messages, purpose, max_tokens=16000, **kwargs):
+        return ModelReply(dumps(next(self.values)),'stop',{'prompt_tokens':0,'completion_tokens':0})
+
+
+def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    commands=parser.add_subparsers(dest='command',required=True)
+    run=commands.add_parser('run');run.add_argument('--corpus',required=True);run.add_argument('--out',required=True)
+    run.add_argument('--fake-responses',help='Explicit JSON array of fake responses; never loads model configuration')
+    grade=commands.add_parser('score');grade.add_argument('--materials',required=True);grade.add_argument('--judgments',action='append',required=True)
+    grade.add_argument('--judge-model',required=True);grade.add_argument('--out',required=True)
+    args=parser.parse_args()
+    if args.command=='run':
+        if args.fake_responses:
+            values=_read_json(Path(args.fake_responses))
+            if not isinstance(values,list):
+                parser.error('fake responses must be a JSON array')
+            gateway=_Responses(values)
+            result=run_eval(args.corpus,args.out,configs={},gateway_factory=lambda configs,store:gateway,extra_input=values)
+        else:
+            result=run_eval(args.corpus,args.out,configs=load_test_models())
+        print('Materials: '+result['materials'])
+        print(dumps(result['metrics']))
+    else:
+        result=score(args.materials,args.judgments,judge_model=args.judge_model,out=args.out)
+        print(dumps(result['metrics']))
+
+
+if __name__=='__main__':
+    main()
