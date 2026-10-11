@@ -15,6 +15,7 @@ from .memory_ops import Visibility
 from .state import current_state
 from .persona import persona_context
 from .entry_profile import profile_context
+from .person_summary import people_context
 from .goals import goal_partition
 from .db import Store, dumps, now
 from .claim_sequences import normalize_claim, same_claim_sequences
@@ -550,11 +551,17 @@ class Retrieval:
 
     def prepare(self, entry_id: str, *, text: str | None = None, participants: list[str] | None = None,
                 known_memory_ids=(), recent_limit=20, memory_limit=8, token_budget=1500, goal_limit=10,
-                judge=True, judge_budget_seconds=10.0) -> dict:
+                judge=True, judge_budget_seconds=10.0, people_limit=3, participant_names=None) -> dict:
         from .recall_judge import judge as apply_judgment, validate_budget
         validate_budget(judge_budget_seconds)
         if type(judge) is not bool:
             raise ValueError('judge must be a boolean')
+        if type(people_limit) is not int or not 0 <= people_limit <= 3:
+            raise ValueError('people_limit must be an integer from 0 to 3')
+        participant_names = dict(participant_names or {})
+        if len(participant_names)>100 or any(not isinstance(k,str) or not isinstance(v,str)
+                or not k.strip() or not v.strip() or len(k)>200 or len(v)>200 for k,v in participant_names.items()):
+            raise ValueError('invalid participant_names')
         known_memory_ids = tuple(known_memory_ids)
         participants = list(participants) if participants is not None else None
         request = dict(text=text, participants=participants, known_memory_ids=list(known_memory_ids), recent_limit=recent_limit,
@@ -629,6 +636,13 @@ class Retrieval:
                             'degraded': '召回判断降级，保留仍有效的原候选。'}[diagnostic['status']]})
             request['judgment'] = diagnostic
             result['recall_id'] = self._record(entry_id, request, final, _conn=conn)
+        # The new partition has its own final snapshot and never extends the
+        # recall write lock, candidate selection, model input or memory budget.
+        result['people'] = []
+        if people_limit:
+            with self.store.read() as conn:
+                result['people'] = people_context(conn, entry_id, participants=participants,
+                    participant_names=participant_names, limit=people_limit, clock=self.clock)
         return result
 
     @staticmethod

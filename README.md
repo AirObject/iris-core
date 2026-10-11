@@ -696,12 +696,13 @@ persona 在记忆整理后调用既有到期判断：自上一版至少五条自
 
 | 接口／字段 | 含义 |
 | --- | --- |
-| `GET /admin/api/settings` 的 `consolidation` | 返回以下七个设置字段 |
+| `GET /admin/api/settings` 的 `consolidation` | 返回以下设置字段 |
 | `PATCH /admin/api/settings/consolidation` | 部分更新，未提供字段保持原值；写 `consolidation_settings_saved` 操作记录 |
 | `maintenance_time` | 默认 `03:00`，严格 `HH:MM`；与 `lifecycle.maintenance_time` 共用存储，两条设置接口保持同步 |
 | `max_calls` | 默认 50，整数 0—50；0 停止模型调用，目标复核照常 |
 | `merge_enabled / conflict_enabled / dependency_enabled` | 合并／矛盾建议／模型依赖复核开关，默认全部 true；不关闭 M2 确定性维护 |
 | `persona_enabled / goal_review_enabled` | 定期 persona／目标依据复核开关，默认全部 true |
+| `person_summary_enabled` | 人物摘要整理开关，默认 true；只影响后续整理运行，不关闭已发布摘要的宿主读取 |
 | `POST /admin/api/maintenance` | `{}`，202 返回 `run_id`；已有未完成运行时返回同一个 ID |
 | `GET /admin/api/maintenance`、`/maintenance/{run_id}` | 分页列表及完整报告 |
 
@@ -787,19 +788,61 @@ uv run python -m evals.entry_profile_eval score --materials <材料目录> --jud
 
 EP2 本回合只做假模型机制验证，未运行真实模型或质量双判；不能宣称公开 dev 或隐藏门槛通过。真实模型迭代等规划者完成服务商对照后再运行，隐藏验收由规划者另行判定。v1 三轮历史结果仍见 [评测汇总](evals/reports/entry-profile-dev-20261011.md)。
 
-## 人物摘要（后端第一阶段）
+## 人物摘要
 
 人物摘要从关于某人的全局 active 记忆生成最多 5 条、合计不超过 200 字／250 token 的中文列表：与我的关系（至多一条）、稳定事实、偏好与习惯、近期重要事项。近期事项附有依据的时间范围；每条绑定 1—3 条记忆。不读取原始消息正文。示例：`稳定事实：正在学习木工。`。关系需要多日互动支持，单条偏好只能写具体场景；不推断性别，不输出敏感／保密事项、无依据的个人评价、他人的事情或模型／宿主指令。
 
-材料按重要度、保留强度、新近程度和 ID 排序，预算 3000 token。除 `Visibility.memory(id) is None` 外，还要求全部直接来源和派生祖先的来源入口**声明为 shared**；entry_only／entries 即使恰好覆盖当前所有入口仍排除。读取宿主投影时再次检查声明及请求入口的当前可见性，受限或彻底清除后整份不返回，管理只读投影标可能过时。其他依据修订／删除／遗忘、主体变化、近期事项到期也标可能过时；到期事项所在版本不向宿主返回。
+材料按重要度、保留强度、新近程度和 ID 排序，预算 3000 token。除 `Visibility.memory(id) is None` 外，还要求全部直接来源和派生祖先的来源入口**声明为 shared**；entry_only／entries 即使恰好覆盖当前所有入口仍排除。读取宿主投影时再次检查声明及请求入口的当前可见性，受限依据或被 CF 清空的整版不返回，管理只读投影标可能过时。其他依据修订／删除／遗忘、主体变化、近期事项到期也标可能过时；不可用或到期条目先移除，剩余为空则不返回。
 
 默认开启、检查通过即发布，可按人物关闭或改全部人工确认。代码先核对引用，再由检查调用逐条判断依据、泛化、违规和时间范围，删去超过一半的模型条目即整版作废，保留上一版。模型调用均在事务外，写回核对版本、主体／设置修订、依据修订／生命周期和可见性；管理员手写内容保留，未改条目继续携带原依据。历史版本可读，编辑／回滚会新建版本；操作写入 admin_operations。
 
-整理待接入函数要求至少 8 条相关全局 active 记忆：首版，或至少 5 条相关记忆新增／变化，或满 14 天且有变化；已过时版本可提前满足重生成条件，处理顺序仍按最近活跃排序。依据已删除／遗忘／彻底清除或近期事项到期的条目在返回前移除，剩余为空不返回。近期事项未给明确截止日时，默认从依据的最新事件时间（无则创建时间）起 30 天到期。失败或被拒后，相关记忆发生新变化才会再尝试；普通确认不算变化。默认每次至多 10 人，最近活跃者优先，与整理共享 max_calls 和每日 token 上限。主体合并后，被并入方版本作废，存续方下次重生成。手动生成也受初始数量、开关和模型预算约束。
+整理接入要求至少 8 条相关全局 active 记忆：首版，或至少 5 条相关记忆新增／变化，或满 14 天且有变化；已过时版本可提前满足重生成条件，处理顺序仍按最近活跃排序。依据已删除／遗忘／彻底清除或近期事项到期的条目在返回前移除，剩余为空不返回。近期事项未给明确截止日时，默认从依据的最新事件时间（无则创建时间）起 30 天到期。失败或被拒后，相关记忆发生新变化才会再尝试；普通确认不算变化。默认每次至多 10 人，最近活跃者优先，与整理共享 max_calls 和每日 token 上限。主体合并后，被并入方版本作废，存续方下次重生成。手动生成也受初始数量、开关和模型预算约束。
 
-**本阶段只提供数据层，不接入 prepare、管理路由、整理流程或界面。** `person_summary.summary_context(conn, subject_id, entry_id)` 返回下一阶段使用的 `{subject_id,name,text,version,generated_at,possibly_stale}`；`PersonSummaryEngine.regenerate`、编辑、回滚和设置写函数均要求 expected_version。CF 合并后须在彻底清除的同一写事务调用 `purge_memory_references(conn, memory_ids)`：它整段清空关联的所有摘要版本、材料和模型输出，保留结构字段并标“因彻底清除而清空”。未接入前不应在服务中启用人物摘要生成。
+PS2 接入 prepare 的 `people` 分区、管理接口和整理流程；界面由 UX 后续实现。`people_limit` 为人数上限，默认 3、最大 3、0 关闭；按显式参与者顺序优先，否则最近发言顺序。`participant_names` 按主体 ID 提供本次显示名，仅影响 people.name。每人正文 250 token，整个数组独立限 1000 个估算 token：给 3 人的正文预留 750，剩余约 250 用于通常长度的名字、主体 ID、时间和字段；长显示名时按实际序列化结果整人跳过，不截断限定语。详情见 [宿主 v1 兼容新增说明](docs/host-api.md)。新增分区在召回写事务结束后使用独立只读快照，先筛有当前已发布版的参与者，再复核依据；已有分区、排序、学习材料和召回判断输入保持不变。
 
-新提示词为 `person_summary_generate_v1`／`person_summary_check_v1`。运行器只加载显式 dev 文件，提供隔离库、外部判分材料、双判取不利和独立可见性泄漏检查；GD 格式及命令见 [人物摘要评测说明](evals/person_summary_eval/README.md)，接口衔接和本轮验证见 [PS1 报告](evals/person_summary_eval/PS1-report.md)。本轮仅用假模型，真实质量评测待规划者通知。
+CF 在 #89 中接入 `purge_memory_references(conn, memory_ids)`，调用必须与彻底清除处于同一写事务。它整段清空关联的所有摘要版本、材料和模型输出，保留结构字段并标“因彻底清除而清空”。本 PR 不改 memory_ops.py；上线组合需包含 CF 衔接。
+
+人物摘要管理路由前缀为 `/admin/api/people/{subject_id}/summary`，沿用管理员会话、CSRF、JSON Content-Type 和 Host 校验：
+
+| 方法／相对路径 | 用途 |
+| --- | --- |
+| `GET /` | 当前版、候选、开关、编辑上限、过时原因、最新生成任务 |
+| `GET /versions?limit=30&offset=0`、`GET /versions/{version}` | 分页历史、逐条依据与检查详情；不返回完整选材或模型原始输出 |
+| `GET /diff?before_version=1&after_version=2` | 任意两版的条目对比 |
+| `PUT /` | `{expected_version,content}`；允许短正文，最多 5 条／200 字／250 token |
+| `PATCH /settings` | `{expected_version,enabled?,publish_mode?}`，发布方式 check_auto／all_manual |
+| `POST /versions/{version}/confirm`、`/reject`、`/rollback` | 都带 expected_version；拒绝可附 reason；回滚新建版本 |
+| `POST /regenerate` | `{expected_version}`，202 返回 accepted、attempt 和 Location；事务内预约，事务外生成 |
+| `GET /attempts/{id}` | 持久任务回执，含 state、stage、原因、结果版本及时间；可刷新轮询 |
+
+所有写操作核对当前已发布版本号 `expected_version`（尚无发布版为 0）并记操作记录；版本、依据或设置冲突返回 409，已有在途管理生成任务返回 409。服务关闭先等待后台任务完成，再关闭网关和数据库；重启将中断任务记为失败。手写或未改条目保留规则沿用 PS1，清空版不可回滚复活。
+
+整理在入口画像步骤后调用 `update_summaries_for_run`，保留其他步骤的相对顺序。每运行的设置快照含 `person_summary_enabled`；主体上限沿用 `runtime_settings.person_summary.max_subjects_per_run`（默认 10，范围 1—100）。生成／检查及网关内部重试计入共享 max_calls；每次生成准入预留一个检查名额，共享 chat 每日 token 上限。单个人物错误写入记录后继续其他人物；步骤异常用固定错误码写入报告，再继续其他整理步骤。维护报告 `items` 中 outcome=person_summary，details 含 subject_id、status、version、attempt_id；步骤异常不含主体，status=failed。不重复调用已完成尝试，停止信号可中断后续工作。
+
+给 UX：人物页增加当前摘要、分类／时间范围、逐条记忆依据、检查／删条记录、过时与清空原因、候选确认／拒绝、历史／对比、编辑／回滚、重生成任务轮询和每人开关／发布方式。编辑不设 150 字下限，按接口 edit_limits 提示上限；409 要刷新版本再提交，清空旧版禁用回滚。设置页增加 person_summary_enabled；整理报告按 outcome=person_summary 显示每人结果并链接到对应版本。前端本 PR 不修改。
+
+新提示词为 `person_summary_generate_v1`／`person_summary_check_v1`。运行器只加载显式 dev 文件，提供隔离库、外部判分材料、双判取不利和独立可见性泄漏检查；GD 格式及命令见 [人物摘要评测说明](evals/person_summary_eval/README.md)，第一阶段接口约定和验证见 [PS1 报告](evals/person_summary_eval/PS1-report.md)。本轮仅用假模型，真实质量评测待规划者通知。
+
+**PS2 验证（2026-10-12，基线 main 0754b16）**
+
+新增行为先补失败测试再实现。定向检查 218 项通过；Python 3.13.15 的 `uv run pytest` 全量 2727 passed（633.15 秒），随后隔离 Python 3.12.14 的 `uv run --locked --isolated --python 3.12 pytest` 全量 2727 passed（487.32 秒）；各有 4 条现有依赖警告。`uv build` 成功生成 wheel／sdist，wheel 中本次修改的模块与测试过的源码一致。
+
+全部公开学习语料 v1—v5 的 116 案例／272 批假模型请求逐字一致（请求摘要两边同为 `9988666d3634cdde81ded0d1a540cf92cbda5d30b65bf8ae5a85301274861092`）。七份公开召回语料共 228 查询，全文／混合／带判断三种模式共 684 份返回零差异，216 个判断输入一致；比较仅排除新增 people、随机 recall_id 和耗时字段。入口画像五种流程的提示词、调用参数、版本正文、依据和检查结果一致，原入口画像与宿主契约测试未修改且全部通过。新增契约测试覆盖 people、范围外入口、受限依据、关闭参数、显示名、合并主体、独立预算，以及管理会话／CSRF／版本冲突和整理预算／错误隔离。
+
+R10 用同机固定合成库按 `ABABABABAB` 交替，各 5 轮；A 为 main，B 为本分支。每组预热 5 次、采样 60 次；直接 prepare 与带令牌 ASGI HTTP 逐次串行计时，保留本地判断和鉴权成本，预计算查询向量并使用即时假判断，不含外部模型网络。两边关闭后台调度器，未提高令牌限流；请求节奏等待不计时。每库 100 个人物主体、100 入口（50 个 entry_only），全部记忆附来源 roots，向量为默认 2048 维 float32；同库有 3 份已发布摘要，每人 5 条、每条 3 个依据引用，共 45 个引用。B 的每次直接／HTTP 返回均核对确有 3 人摘要。下面是五轮 P95 的中位数，单位 ms：
+
+| 规模／查询 | 直接 main | 直接 PS2 | 增量 | HTTP main | HTTP PS2 | 增量 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 5 千／不点名 | 27.84 | 29.51 | +1.67 | 32.55 | 34.92 | +2.37 |
+| 5 千／点名 | 39.84 | 41.48 | +1.64 | 44.19 | 50.42 | +6.23 |
+| 5 万／不点名 | 126.49 | 129.50 | +3.01 | 137.82 | 137.42 | -0.39 |
+| 5 万／点名 | 149.00 | 144.89 | -4.11 | 156.42 | 157.85 | +1.43 |
+
+四组直接调用和 HTTP 均满足增量 ≤ max(10 ms, main 的 5%)；本次各组门槛均为 10 ms。HTTP 最大增量 6.23 ms，直接调用最大增量 3.01 ms；负差值只视为测量波动。首轮 B 的 5 万不点名 HTTP P95 为 205.43 ms，原样保留，没有因波动删样本或重跑挑选。
+
+设备 Apple M4（10 核／16 GiB），macOS 26.6.2，Python 3.13.15、NumPy 2.5.3、SQLite 3.53.1。测试、构建和其他对照均已结束后才启动 R10；进程／分组及每 10 次采样前检测其他 Python／构建进程的 CPU 占用，高负载时在样本外等待。本轮因同机其他任务共执行 162 次 10 秒等待（分组内 144 次、轮次间 18 次）。各分组前后系统 load average 的 1／5／15 分钟范围分别为 2.17—3.69／2.53—3.39／2.75—3.46，中位数为 2.61／2.77／2.94；分组末端进程 RSS 为 109.66—628.59 MiB，不是峰值。桌面背景负载的波动保留在墙钟结果中，未做 CPU 压测。
+
+全部输入库、原始请求／返回、计时与负载、源码指纹、测试日志及外部脚本保存在 `/Users/cassia/Local/Code/iris-eval-artifacts/PS2-20261012/`。主计时脚本为 `r10_ab.py`，结果为 `r10/summary.json` 和每轮 `result.json`；学习、召回、入口画像对照分别在 `learning-all/`、`recall-comparison/`、`entry-comparison/`。没有读取人物摘要 dev 或隐藏集，本轮不作真实模型质量结论。
 
 ## 模型故障与状态
 

@@ -1,4 +1,4 @@
-"""Exercise the future call site explicitly; consolidation.py is not changed."""
+"""Shared budgets and the PS2 automatic consolidation step."""
 import json
 
 import pytest
@@ -10,11 +10,12 @@ from iris.person_summary import current_summary, update_summaries_for_run
 from test_person_summary import Clock, Model, seed, memory
 
 
-def prepare(store, *, budget=50, limit=10):
+def prepare(store, *, budget=50, limit=10, enabled=True):
     clock=Clock(); seed(store,clock)
     for i in range(8): memory(store,clock,f'乙同学测试{i}',speaker='b',days_ago=3)
     config={'enabled':True,'max_calls':budget,'merge_enabled':False,'conflict_enabled':False,
-            'dependency_enabled':False,'persona_enabled':False,'goal_review_enabled':False,'entry_profile_enabled':False}
+            'dependency_enabled':False,'persona_enabled':False,'goal_review_enabled':False,'entry_profile_enabled':False,
+            'person_summary_enabled':enabled}
     store.set_setting('consolidation',config)
     store.set_setting('person_summary',{**store.setting('person_summary'),'max_subjects_per_run':limit})
     model=Model(store); run_id=Maintenance(store,gateway=model,clock=clock).request()
@@ -63,8 +64,8 @@ def test_daily_gate_stops_checker_and_keeps_previous(store):
     assert current_summary(store,'a') is None
 
 
-def test_phase_one_has_no_automatic_consolidation_hook(store):
-    clock,model,gateway,run,config=prepare(store)
+def test_disabled_automatic_consolidation_hook(store):
+    clock,model,gateway,run,config=prepare(store,enabled=False)
     engine=Maintenance(store,gateway=model,clock=clock); engine.run(run['id'])
     with store.read() as conn:
         assert conn.execute('SELECT COUNT(*) FROM person_summary_attempts').fetchone()[0]==0
@@ -114,3 +115,51 @@ def test_purge_during_budgeted_generation_clears_late_ledger_output(store):
         rows=list(conn.execute('SELECT * FROM consolidation_calls'))
         assert len(rows)==1 and rows[0]['raw_output'] is None
         assert conn.execute('SELECT COUNT(*) FROM person_summary_versions').fetchone()[0]==0
+
+
+@pytest.mark.parametrize('budget,limit,expected',[(50,1,1),(50,2,2),(2,2,1),(1,2,0),(0,2,0)])
+def test_automatic_step_limits_shared_ledger_and_report(store,budget,limit,expected):
+    clock,model,gateway,run,config=prepare(store,budget=budget,limit=limit)
+    engine=Maintenance(store,gateway=model,clock=clock)
+    engine.run(run['id'])
+    report=engine.report(run['id'])
+    assert report['state']=='completed'
+    assert len(model.calls)==expected*2
+    assert report['summary']['model_calls']['count']==expected*2
+    results=[item for item in report['items'] if item['outcome']=='person_summary']
+    assert sum(item['details']['status']=='published' for item in results)==expected
+    engine.run(run['id'])
+    assert len(model.calls)==expected*2
+
+
+def test_unexpected_step_failure_is_reported_without_stopping_maintenance(store,monkeypatch):
+    from iris import person_summary
+    clock,model,gateway,run,config=prepare(store)
+    def broken(*args,**kwargs): raise RuntimeError('must never appear in report')
+    monkeypatch.setattr(person_summary,'update_summaries_for_run',broken)
+    engine=Maintenance(store,gateway=model,clock=clock); engine.run(run['id'])
+    report=engine.report(run['id'])
+    assert report['state']=='completed'
+    assert 'must never appear' not in json.dumps(report)
+    assert any(i['outcome']=='person_summary' and i['reason']=='unexpected_error' for i in report['items'])
+
+
+def test_generation_reservation_keeps_one_call_for_checker(store):
+    from iris.models import ModelError
+    clock,model,gateway,run,config=prepare(store,budget=2)
+    owner=gateway.owner
+    owner.reserve({'id':None},'consolidation_person_summary_generate')
+    with pytest.raises(ModelError) as error:
+        owner.reserve({'id':None},'consolidation_person_summary_generate')
+    assert error.value.reason=='call_budget'
+    owner.reserve({'id':None},'consolidation_person_summary_check')
+
+
+def test_one_person_failure_continues_next_person(store):
+    clock,model,gateway,run,config=prepare(store,limit=2)
+    def broken(): raise RuntimeError('private exception')
+    model.hook=broken
+    engine=Maintenance(store,gateway=model,clock=clock); engine.run(run['id'])
+    report=engine.report(run['id'])
+    statuses={i['details']['subject_id']:i['details']['status'] for i in report['items'] if i['outcome']=='person_summary'}
+    assert statuses=={'a':'failed','b':'published'} and report['state']=='completed'

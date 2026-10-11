@@ -22,7 +22,7 @@ METHODS = {'balanced': 0.40, 'strict': 0.65, 'broad': 0.20}
 RESOLUTIONS = ('report_only_v1',)
 DEFAULTS = {'enabled': True, 'max_calls': 50, 'method': 'broad', 'resolution': 'report_only_v1',
             'merge_enabled': True, 'conflict_enabled': True, 'dependency_enabled': True,
-            'persona_enabled': True, 'goal_review_enabled': True, 'entry_profile_enabled': True}
+            'persona_enabled': True, 'goal_review_enabled': True, 'entry_profile_enabled': True, 'person_summary_enabled': True}
 PROMPT_VERSION = 'consolidation_report_only_v1'
 MERGE_PROMPT_VERSION = 'consolidation_pair_v2'
 MAX_ANCESTORS = 64
@@ -451,7 +451,7 @@ class Consolidation:
             settings=json.loads(conn.execute('SELECT settings_json FROM consolidation_runs WHERE run_id=?',(self.run_id,)).fetchone()[0])
             count=conn.execute('SELECT COUNT(*) FROM consolidation_calls WHERE run_id=?',(self.run_id,)).fetchone()[0]
             # A generation retry/repair must still leave one call for the checker.
-            required = 2 if purpose.startswith(('persona_generate', 'consolidation_entry_profile_generate')) else 1
+            required = 2 if purpose.startswith(('persona_generate', 'consolidation_entry_profile_generate', 'consolidation_person_summary_generate')) else 1
             if count+required>settings['max_calls']:
                 raise ModelError('budget','call budget',reason='call_budget')
             return conn.execute('INSERT INTO consolidation_calls(run_id,work_id,purpose,created_at) VALUES(?,?,?,?)',
@@ -785,6 +785,19 @@ class Consolidation:
         if not update_profiles_for_run(self.store, _PersonaGateway(self, stop=stop), run, config,
                                        clock=self.clock, stop=stop):
             return False
+        from .person_summary import update_summaries_for_run
+        try:
+            if not update_summaries_for_run(self.store, _PersonaGateway(self, stop=stop), run, config,
+                                            clock=self.clock, stop=stop):
+                return False
+        except Exception:
+            # A failed optional summary step must not abort the other phases.
+            # Store a fixed code, never provider output or exception prose.
+            with self.store.write() as conn:
+                conn.execute('''INSERT OR IGNORE INTO maintenance_items
+                    (run_id,phase,item_key,object_id,outcome,reason,details_json,created_at)
+                    VALUES(?,'consolidation','person_summary:step',?,'person_summary','unexpected_error',?,?)''',
+                    (self.run_id,self.run_id,dumps({'status':'failed'}),self.clock().isoformat()))
         if not any(config[key] for key in ('merge_enabled','conflict_enabled','dependency_enabled')):
             self.halt('model_items_disabled')
             return True
