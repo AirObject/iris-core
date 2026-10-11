@@ -5,6 +5,7 @@
 !pyproject.toml
 !uv.lock
 !README.md
+!LICENSE
 !src/
 !src/iris/
 !src/iris/**
