@@ -164,6 +164,8 @@ with httpx.Client(base_url="http://127.0.0.1:8080", timeout=30,
 
 `POST /goals` 必填 `content`，可传 `kind=normal|question`、`people`、`entry_id`、`deadline`、`reminder_minutes`、`host_key`。日期型截止按角色时区当天末尾解释；询问没有截止提醒。响应中的 `goal` 是去重后保留的对象，`submitted_id` 是提交对象，`dedup` 说明新建、合并或可能重复及后台判断情况。相同绑定宿主的 `host_key` 重试返回最初回执，不修改原内容。
 
+去重待复核目标在补判完成前不注入 `prepare.goals`／`search` 的 `goals` 分区，也不发布提醒；管理查询和 `GET /goals` 仍可见。新增只读字段 `dedup_pending` 表示仍待复核，`dedup_injectable` 表示当前可注入，`dedup_fallback_at` 为角色时区 ISO 格式的兜底时刻（不待复核时为 null）。默认首次入队满 30 分钟仍无结论时带待复核标记恢复注入，关闭判断或将兜底设为 0 则立即恢复；重试不延后该时刻。放行时已经错过临近／到期的，只生成一条即时提醒，保留原截止时间并在此时分配新的发布游标。宿主键回执保持首次结果，最新状态通过目标列表读取。
+
 `GET /goals` 可按状态、类型、到期情况和入口筛选并分页。`PATCH /goals/{id}` 可完成、放弃、修改截止时间与提醒提前量；带 `expected_revision` 防止覆盖并发修改。收到 `revision_conflict` 后重新读取并判断是否仍要执行；`goal_merged` 附 `canonical_id`，宿主应读取保留对象后明确提交，不能自动跟随修改。修改不包含编辑目标正文的能力。
 
 `GET /notifications?after=0&limit=30` 使用递增游标，最多 100 条，响应 `items`、`next_cursor`、`has_more`。权限过滤在分页和标记已取走之前完成。`items[].id` 用来去重；同一游标可重取，宿主持久处理后再保存新游标。拉取会标记 `taken`，不证明已发给用户，不完成目标；只有明确完成操作才改变目标状态。

@@ -30,6 +30,7 @@ from .state import local_time, role_zone
 
 DEFAULTS = {'default_reminder_minutes': 60, 'overdue_reminders': True}
 ALL_ENTRIES = Scope(kind='all')
+REVIEW_RETRY_DELAYS = (30, 120, 600)
 
 
 class GoalError(ValueError):
@@ -196,7 +197,7 @@ def _compatible(a, b):
             and same_claim_sequences(a['content'], b['content']))
 
 
-def decide_dedup(candidates, proposed):
+def decide_dedup(candidates, proposed, *, possible_min_similarity=0):
     """Pure replaceable step: created | merged(target) | possible_duplicate | pending.
 
     Deterministic execution never needs pending; it is reserved for unavailable
@@ -211,7 +212,7 @@ def decide_dedup(candidates, proposed):
         if _equivalent_text(candidate['content']) == _equivalent_text(proposed['content']):
             return {'status': 'merged', 'target_id': candidate['id']}
         left, right = normalize_claim(candidate['content']), normalize_claim(proposed['content'])
-        if possible is None and left and right and difflib.SequenceMatcher(None, left, right).ratio() >= .88:
+        if possible is None and left and right and difflib.SequenceMatcher(None, left, right).ratio() >= max(.88, possible_min_similarity):
             possible = candidate['id']
     return {'status': 'possible_duplicate' if possible is not None else 'created', 'target_id': possible}
 
@@ -431,6 +432,92 @@ def review_goal_basis_items(store, current, *, after_id=0, limit=100):
     return result
 
 
+def _review_parameters(conn, current):
+    options = dedup_judge.connection_settings(conn)
+    minutes = options['pending_fallback_minutes']
+    if type(minutes) is not int or not 0 <= minutes <= 1440:
+        raise GoalError('pending_fallback_minutes','兜底时长须为 0—1440 的整数分钟')
+    return {'dedup_enabled':int(bool(options['enabled'])),
+            'dedup_cutoff':(current-timedelta(minutes=minutes)).isoformat()}
+
+
+def _injectable_sql(alias='g', *, enabled=':dedup_enabled', cutoff=':dedup_cutoff'):
+    # Apply before LIMIT, so hidden pending work cannot displace visible goals.
+    return f"""({enabled}=0 OR NOT EXISTS(SELECT 1 FROM goal_dedup_jobs dj
+        WHERE dj.goal_id={alias}.id AND dj.state IN ('pending','running')
+        AND dj.created_at>{cutoff}))"""
+
+
+def _pending_hidden(conn, goal_id, current):
+    return conn.execute('SELECT 1 FROM goals g WHERE g.id=:gid AND NOT '+_injectable_sql(),
+                        {'gid':goal_id,**_review_parameters(conn,current)}).fetchone() is not None
+
+
+def _review_projection(conn, row, current, zone):
+    job = conn.execute('SELECT state,created_at FROM goal_dedup_jobs WHERE goal_id=?',(row['id'],)).fetchone()
+    pending = bool(job and job['state'] in ('pending','running'))
+    fallback = (datetime.fromisoformat(job['created_at'])+timedelta(
+        minutes=dedup_judge.connection_settings(conn)['pending_fallback_minutes'])) if pending else None
+    return {'dedup_pending':pending,
+            'dedup_injectable':row['state']=='open' and row['merged_into'] is None and not _pending_hidden(conn,row['id'],current),
+            'dedup_fallback_at':local_time(fallback.isoformat(),zone) if fallback else None}
+
+
+def _public_decision(raw):
+    return {key:value for key,value in json.loads(raw).items() if not key.startswith('_')}
+
+
+def _decision_json(conn, goal_id, decision):
+    # Deferred delivery metadata is durable but is not part of the host receipt.
+    row = conn.execute('SELECT result_json FROM goal_dedup_jobs WHERE goal_id=?',(goal_id,)).fetchone()
+    private = {key:value for key,value in json.loads(row[0]).items() if key.startswith('_')} if row else {}
+    return dumps({**private,**decision})
+
+
+def _held_goals(conn, current):
+    return [r[0] for r in conn.execute("""SELECT g.id FROM goals g JOIN goal_dedup_jobs j ON j.goal_id=g.id
+        WHERE j.state IN ('pending','running') AND NOT """+_injectable_sql()+""" AND
+        (g.schedule_initialized=1 OR EXISTS(SELECT 1 FROM notifications n WHERE n.goal_id=g.id AND n.status='pending'))""",
+        _review_parameters(conn,current))]
+
+
+def _hold_notifications(conn, current):
+    # Upgrade/reconfiguration may encounter reminders published by the old policy.
+    # Cancel untaken rows before pagination; release creates fresh cursor IDs.
+    for gid in _held_goals(conn,current):
+        extra = [r[0] for r in conn.execute("SELECT id FROM notifications WHERE goal_id=? AND kind!='goal_reminder' AND status='pending'",(gid,))]
+        if extra:
+            row = conn.execute('SELECT result_json FROM goal_dedup_jobs WHERE goal_id=?',(gid,)).fetchone()
+            data = json.loads(row[0])
+            data['_held_notifications'] = list(dict.fromkeys(data.get('_held_notifications',[])+extra))
+            conn.execute('UPDATE goal_dedup_jobs SET result_json=? WHERE goal_id=?',(dumps(data),gid))
+            conn.execute("UPDATE notifications SET status='cancelled',cancelled_at=? WHERE goal_id=? AND kind!='goal_reminder' AND status='pending'",(current.isoformat(),gid))
+        _cancel(conn,gid,current,journal_reason='goal_dedup_pending')
+        conn.execute('UPDATE goals SET schedule_initialized=0 WHERE id=?',(gid,))
+
+
+def _publish_review_results(conn, current):
+    jobs = conn.execute("""SELECT * FROM goal_dedup_jobs WHERE json_extract(result_json,'$._notify_pending')=1
+        OR json_array_length(result_json,'$._held_notifications')>0""").fetchall()
+    for job in jobs:
+        target = _canonical_id(conn,job['goal_id'])
+        if _pending_hidden(conn,target,current):
+            continue
+        data = json.loads(job['result_json'])
+        if data.pop('_notify_pending',False):
+            labels={'merged':'目标已合并','possible_duplicate':'目标可能重复，请复核','created':'目标复核完成，保留独立目标'}
+            conn.execute("""INSERT INTO notifications(kind,goal_id,scheduled_at,published_at,content)
+                VALUES('goal_dedup_result',?,?,?,?)""",(target,current.isoformat(),current.isoformat(),
+                labels[data['status']]+'：'+str(job['goal_id'])+((' → '+str(target)) if target!=job['goal_id'] else '')))
+        for nid in data.pop('_held_notifications',[]):
+            note = conn.execute('SELECT * FROM notifications WHERE id=?',(nid,)).fetchone()
+            if note:
+                conn.execute("""INSERT INTO notifications(kind,goal_id,reminder_kind,deadline_at,scheduled_at,published_at,content)
+                    VALUES(?,?,?,?,?,?,?)""",(note['kind'],target,note['reminder_kind'],note['deadline_at'],
+                    note['scheduled_at'],current.isoformat(),note['content']))
+        conn.execute('UPDATE goal_dedup_jobs SET result_json=? WHERE goal_id=?',(dumps(data),job['goal_id']))
+
+
 def _project(conn, row, *, current, zone=None, settings=None, scope=ALL_ENTRIES):
     zone, settings = zone or role_zone(conn), settings or goal_settings(conn)
     result = {k: row[k] for k in ('id','content','kind','origin','state','deadline','reminder_minutes',
@@ -447,6 +534,7 @@ def _project(conn, row, *, current, zone=None, settings=None, scope=ALL_ENTRIES)
     result['possible_duplicate'] = bool(result['possible_duplicate_ids'])
     result['basis_annotations'] = _basis_annotations(conn,row['id'],zone=zone)
     result['basis_needs_review'] = bool(result['basis_annotations'])
+    result.update(_review_projection(conn,row,current,zone))
     if deadline:
         result['deadline'] = local_time(deadline, zone)
     for key in ('created_at','updated_at','closed_at'):
@@ -503,6 +591,7 @@ def goal_partition(conn, *, entry_id=None, participants=(), limit=10, current=No
             SELECT g.*, COALESCE(deadline_at,
                 CASE WHEN deadline IS NOT NULL THEN iris_goal_deadline(deadline) END) AS sort_deadline
             FROM goals g WHERE state='open' AND merged_into IS NULL AND {visible_clause}
+                AND {_injectable_sql()}
                 AND (entry_id IS NULL OR :scope_kind='all'
                      OR (:scope_kind='entries' AND entry_id IN (SELECT value FROM json_each(:scope_entries)))
                      OR (:scope_kind='prefix' AND substr(entry_id,1,length(:scope_prefix))=:scope_prefix))
@@ -518,6 +607,7 @@ def goal_partition(conn, *, entry_id=None, participants=(), limit=10, current=No
                 AND gp.subject_id IN (SELECT id FROM participant_tree)) THEN 0 ELSE 1 END,
             COALESCE(sort_deadline,'9999'), created_at, id LIMIT :limit""", {
                 'participants':dumps(sorted(participants)), 'entry_id':entry_id, 'limit':limit,
+                **_review_parameters(conn,current),
                 'scope_kind':scope.kind, 'scope_entries':dumps(scope.entries), 'scope_prefix':scope.prefix,
                 'default_lead':settings['default_reminder_minutes'],
                 'now_seconds':since_epoch.days*86400+since_epoch.seconds,
@@ -530,7 +620,7 @@ def goal_partition(conn, *, entry_id=None, participants=(), limit=10, current=No
         row['people'] = people[row['id']]
     result = [_project(conn,row,current=current,zone=zone,settings=settings,scope=scope) for row in rows]
     for item in result:
-        item['possible_duplicate_ids'] = [gid for gid in item['possible_duplicate_ids'] if visibility.goal_visible(gid,entry_id)]
+        item['possible_duplicate_ids'] = [gid for gid in item['possible_duplicate_ids'] if visibility.goal_visible(gid,entry_id) and not _pending_hidden(conn,gid,current)]
         item['possible_duplicate'] = bool(item['possible_duplicate_ids'])
         item['basis_annotations'] = [a for a in item['basis_annotations'] if visibility.memory_visible(a['memory_id'],entry_id)
             and (a['observed_merged_into'] is None or visibility.memory_visible(a['observed_merged_into'],entry_id))]
@@ -581,7 +671,7 @@ def goal_detail(conn, goal_id, *, current=None):
     result['dedup_review'] = None
     if review:
         result['dedup_review'] = {key:review[key] for key in ('state','method','input_revision','attempts')}
-        result['dedup_review'].update(result=json.loads(review['result_json']),
+        result['dedup_review'].update(result=_public_decision(review['result_json']),
             next_attempt_at=local_time(review['available_at'],zone) if review['state']=='pending' else None,
             updated_at=local_time(review['updated_at'],zone))
     result['reminder_plans'] = [dict(r) for r in conn.execute('SELECT * FROM goal_reminder_plans WHERE goal_id=? ORDER BY id',(goal_id,))]
@@ -629,6 +719,9 @@ def _next_overdue(conn, row, current):
 
 def _schedule(conn, row, current, *, immediate=True):
     """Reset the future schedule; callers decide which published items to cancel."""
+    if _pending_hidden(conn,row['id'],current):
+        conn.execute('UPDATE goals SET schedule_initialized=0 WHERE id=?',(row['id'],))
+        return
     conn.execute('UPDATE goals SET schedule_initialized=1 WHERE id=?',(row['id'],))
     if row['kind']=='question' or row['state']!='open' or row['merged_into'] is not None or not row['deadline_at']:
         return
@@ -645,6 +738,25 @@ def _schedule(conn, row, current, *, immediate=True):
     else:
         _plan(conn,row['id'],'soon',soon,current)
         _plan(conn,row['id'],'due',deadline,current)
+
+
+def _resume_schedule(conn, row, current):
+    # A pre-upgrade pending goal may already have a host receipt for this phase. Preserve
+    # that receipt; cancelled/untaken rows must instead get a fresh cursor.
+    already_taken = False
+    if row['deadline_at']:
+        deadline = datetime.fromisoformat(row['deadline_at'])
+        zone = role_zone(conn)
+        for note in conn.execute("""SELECT published_at FROM notifications WHERE goal_id=?
+            AND deadline_at=? AND kind='goal_reminder' AND status='taken'""",(row['id'],row['deadline_at'])):
+            published = datetime.fromisoformat(note['published_at'])
+            if current < deadline:
+                already_taken = published < deadline
+            else:
+                already_taken = published >= deadline and published.astimezone(zone).date()==current.astimezone(zone).date()
+            if already_taken:
+                break
+    _schedule(conn,row,current,immediate=not already_taken)
 
 
 def _bump(conn, goal_id, current):
@@ -670,7 +782,7 @@ def _possible(conn,a,b,current,*,actor='system',record=True):
 def _cancel_review(conn, goal_id, current, decision):
     conn.execute("""UPDATE goal_dedup_jobs SET state='cancelled',lease_token=NULL,lease_until=NULL,
         result_json=?,updated_at=? WHERE goal_id=? AND state IN ('pending','running')""",
-        (dumps(decision),current.isoformat(),goal_id))
+        (_decision_json(conn,goal_id,decision),current.isoformat(),goal_id))
 
 
 def _merge(conn,a,b,current,*,actor,semantic=False,reason=None,scope=ALL_ENTRIES):
@@ -811,13 +923,15 @@ def _create(conn, *, content, kind='normal', deadline=None, reminder_minutes=Non
     options = dedup_judge.connection_settings(conn)
     conflicts = _sequence_conflicts(conn,candidates,proposed,options)
     if dedup_judge.method(options) == 'A':
-        decision = decide_dedup(candidates,proposed)
+        decision = decide_dedup(candidates,proposed,possible_min_similarity=dedup_judge.validate_similarity(options['possible_min_similarity']))
     else:
         # Even equal short bodies can refer to different events in their sources.
         # Inside learning's transaction only stage deterministic candidates.
         pending = dedup_judge.select_candidates(candidates,proposed)
         decision = ({'status':'pending','target_id':None} if pending else
-                    dedup_judge.decision_from_verdicts({},origin=origin,possible_ids=[r['id'] for r in conflicts]))
+                    dedup_judge.decision_from_verdicts({},origin=origin,possible_ids=[r['id'] for r in conflicts],
+                        scores={r['id']:dedup_judge.similarity(r,proposed) for r in conflicts},
+                        min_similarity=options['possible_min_similarity']))
     if origin=='admin' and decision['status']=='merged':
         # An administrator's new item stays separate until explicitly resolved.
         decision = {**decision, 'status':'possible_duplicate'}
@@ -834,11 +948,11 @@ def _create(conn, *, content, kind='normal', deadline=None, reminder_minutes=Non
         decision['target_id'] = target
     else:
         for row in conflicts:
-            _possible(conn,gid,row['id'],current,actor=actor)
+            if dedup_judge.similarity(row,proposed)>=dedup_judge.validate_similarity(options['possible_min_similarity']):
+                _possible(conn,gid,row['id'],current,actor=actor)
         if decision['status']=='possible_duplicate':
             for target_id in decision.get('target_ids',[decision['target_id']]):
                 _possible(conn,gid,target_id,current,actor=actor)
-        _schedule(conn,proposed,current)
     if decision['status']=='pending':
         # Give the first host/admin request its full inline budget before the
         # scheduler may claim the job. An interrupted request is still durable.
@@ -846,6 +960,8 @@ def _create(conn, *, content, kind='normal', deadline=None, reminder_minutes=Non
         conn.execute('''INSERT INTO goal_dedup_jobs(goal_id,state,method,input_revision,available_at,
             result_json,created_at,updated_at) VALUES(?,'pending',?,?,?,?,?,?)''',
             (gid,dedup_judge.candidate_method(options),_row(conn,gid)['revision'],available.isoformat(),dumps(decision),stamp,stamp))
+    if decision['status']!='merged':
+        _schedule(conn,_row(conn,gid),current)
     operation(conn,'goal_create','goal',gid,{'origin':origin,'dedup':decision},actor=actor,stamp=stamp)
     receipt = {'goal':_project(conn,_row(conn,target),current=current,scope=scope),'submitted_id':gid,'dedup':decision}
     if host_key is not None:
@@ -901,7 +1017,7 @@ class Goals:
     def _decision(conn,goal_id):
         job = conn.execute('SELECT result_json FROM goal_dedup_jobs WHERE goal_id=?',(goal_id,)).fetchone()
         if job:
-            return json.loads(job[0])
+            return _public_decision(job[0])
         row = conn.execute("""SELECT details_json FROM admin_operations WHERE object_type='goal'
             AND object_id=? AND action IN ('goal_create','goal_dedup_judged') ORDER BY id DESC LIMIT 1""",
             (str(goal_id),)).fetchone()
@@ -1001,7 +1117,9 @@ class Goals:
             verdicts = dedup_judge.judge(self.gateway,incoming,materials,method=dedup_judge.method(options),
                          budget_seconds=remaining) if selected else {}
             decision = dedup_judge.decision_from_verdicts(verdicts,origin=proposed['origin'],overflow=overflow,
-                         possible_ids=[row['id'] for row in conflicts])
+                         possible_ids=[row['id'] for row in conflicts],
+                         scores={row['id']:dedup_judge.similarity(row,proposed) for row in [*selected,*conflicts]},
+                         min_similarity=options['possible_min_similarity'])
         except ModelError as exc:
             decision = {'status':'pending','target_id':None,'reason':exc.reason or exc.category}
         with self.store.write() as conn:
@@ -1030,7 +1148,8 @@ class Goals:
                 decision = {'status':'pending','target_id':None,'reason':'stale'}
             elif datetime.fromisoformat(job['lease_until'])<=current:
                 decision = {'status':'pending','target_id':None,'reason':'lease_expired'}
-            elif not active_options['enabled'] or dedup_judge.candidate_method(active_options)!=dedup_judge.candidate_method(options):
+            elif (not active_options['enabled'] or dedup_judge.candidate_method(active_options)!=dedup_judge.candidate_method(options)
+                    or active_options['possible_min_similarity']!=options['possible_min_similarity']):
                 decision = {'status':'pending','target_id':None,'reason':'configuration_changed'}
             elif decision['status']=='merged':
                 target = next(row for row in selected if row['id']==decision['target_id'])
@@ -1041,19 +1160,20 @@ class Goals:
             pending = decision['status']=='pending'
             # Purpose health supplies the 429 Retry-After/pause/daily-limit gate;
             # this local backoff also prevents busy retries of stale/invalid data.
-            available = current+timedelta(seconds=min(300,2**min(attempt,9))) if pending else current
+            available = current+timedelta(seconds=REVIEW_RETRY_DELAYS[min(attempt-1,len(REVIEW_RETRY_DELAYS)-1)]) if pending else current
             conn.execute("""UPDATE goal_dedup_jobs SET state=?,result_json=?,available_at=?,lease_token=NULL,
                 lease_until=NULL,updated_at=? WHERE goal_id=?""",
-                ('pending' if pending else 'done',dumps(decision),available.isoformat(),current.isoformat(),goal_id))
+                ('pending' if pending else 'done',_decision_json(conn,goal_id,decision),available.isoformat(),current.isoformat(),goal_id))
             operation(conn,'goal_dedup_judged','goal',goal_id,{'dedup':decision,
                 'method':dedup_judge.candidate_method(options),'revision':proposed['revision'],
                 'candidate_revisions':revisions},actor=actor,stamp=current.isoformat())
+            if not pending:
+                target = _row(conn,_canonical_id(conn,goal_id))
+                if not target['schedule_initialized']:
+                    _resume_schedule(conn,target,current)
             if background and not pending:
-                target = _canonical_id(conn,goal_id)
-                labels={'merged':'目标已合并','possible_duplicate':'目标可能重复，请复核','created':'目标复核完成，保留独立目标'}
-                conn.execute("""INSERT INTO notifications(kind,goal_id,scheduled_at,published_at,content)
-                    VALUES('goal_dedup_result',?,?,?,?)""",(target,current.isoformat(),current.isoformat(),
-                    labels[decision['status']]+'：'+str(goal_id)+((' → '+str(target)) if target!=goal_id else '')))
+                conn.execute("UPDATE goal_dedup_jobs SET result_json=json_set(result_json,'$._notify_pending',1) WHERE goal_id=?",(goal_id,))
+            _publish_review_results(conn,current)
             return self._receipt(conn,goal_id,decision)
 
     def get_receipt(self,goal_id,decision):
@@ -1160,17 +1280,25 @@ class Goals:
         current = _current(self.clock())
         # Avoid a writer transaction on idle scheduler ticks.
         with self.store.read() as conn:
-            needed = conn.execute("SELECT 1 FROM goals WHERE schedule_initialized=0 LIMIT 1").fetchone() or conn.execute("SELECT 1 FROM goal_reminder_plans WHERE status='scheduled' AND scheduled_at<=? LIMIT 1",(current.isoformat(),)).fetchone()
+            ready = _injectable_sql()
+            parameters = _review_parameters(conn,current)
+            needed = (_held_goals(conn,current)
+                or conn.execute('SELECT 1 FROM goals g WHERE schedule_initialized=0 AND '+ready+' LIMIT 1',parameters).fetchone()
+                or conn.execute("SELECT 1 FROM goal_reminder_plans WHERE status='scheduled' AND scheduled_at<=? LIMIT 1",(current.isoformat(),)).fetchone()
+                or conn.execute("SELECT 1 FROM goal_dedup_jobs WHERE json_extract(result_json,'$._notify_pending')=1 OR json_array_length(result_json,'$._held_notifications')>0 LIMIT 1").fetchone())
         if not needed:
             self._first_generation = False
             return 0
         with self.store.write() as conn:
             current = _current(self.clock())
             before = conn.execute('SELECT COALESCE(MAX(id),0) FROM notifications').fetchone()[0]
+            _hold_notifications(conn,current)
             for row in _rows(conn,'schedule_initialized=0'):
+                if _pending_hidden(conn,row['id'],current):
+                    continue
                 row['deadline_at'] = _deadline(row['deadline'],role_zone(conn),strict=False)
                 conn.execute('UPDATE goals SET deadline_at=? WHERE id=?',(row['deadline_at'],row['id']))
-                _schedule(conn,row,current)
+                _resume_schedule(conn,row,current)
             ids = [r[0] for r in conn.execute("SELECT DISTINCT goal_id FROM goal_reminder_plans WHERE status='scheduled' AND scheduled_at<=?",(current.isoformat(),))]
             for gid in ids:
                 row = _row(conn,gid)
@@ -1195,6 +1323,7 @@ class Goals:
                                        state='skipped', reason=reason, notification_id=notification_id)
                 if row['deadline_at'] and datetime.fromisoformat(row['deadline_at'])<=current:
                     _next_overdue(conn,row,current)
+            _publish_review_results(conn,current)
             after = conn.execute('SELECT COALESCE(MAX(id),0) FROM notifications').fetchone()[0]
             self._first_generation = False
             return after-before
@@ -1204,17 +1333,41 @@ class Goals:
             raise GoalError('after','游标须为非负整数')
         if type(limit) is not int or not 1<=limit<=100:
             raise GoalError('limit','每页数量须为 1—100')
+        self.generate_notifications()
         with self.store.write() as conn:
+            _hold_notifications(conn,_current(self.clock()))
             clause, args = scope.sql('g.entry_id')
+            parameters = _review_parameters(conn,_current(self.clock()))
+            ready = _injectable_sql(enabled='?',cutoff='?')
             rows = conn.execute("SELECT n.* FROM notifications n LEFT JOIN goals g ON g.id=n.goal_id "
-                                "WHERE n.id>? AND n.status!='cancelled' AND "+clause+" ORDER BY n.id LIMIT ?",
-                                (after,*args,limit+1)).fetchall()
+                                "WHERE n.id>? AND n.status!='cancelled' AND "+clause+
+                                " AND (g.id IS NULL OR "+ready+") ORDER BY n.id LIMIT ?",
+                                (after,*args,parameters['dedup_enabled'],parameters['dedup_cutoff'],limit+1)).fetchall()
             ids=[r['id'] for r in rows[:limit]]
             stamp=_current(self.clock()).isoformat()
             conn.executemany("UPDATE notifications SET status='taken',taken_at=? WHERE id=? AND status='pending'",((stamp,n) for n in ids))
             zone=role_zone(conn)
             items=[_notification(conn.execute('SELECT * FROM notifications WHERE id=?',(n,)).fetchone(),zone) for n in ids]
             return {'items':items,'next_cursor':ids[-1] if ids else after,'has_more':len(rows)>limit}
+
+    def configure_dedup(self, *, pending_fallback_minutes=None, possible_min_similarity=None, actor='admin'):
+        """Runtime configuration for GD2; does not require a new HTTP surface."""
+        changes = {}
+        if pending_fallback_minutes is not None:
+            if type(pending_fallback_minutes) is not int or not 0 <= pending_fallback_minutes <= 1440:
+                raise GoalError('pending_fallback_minutes','兜底时长须为 0—1440 的整数分钟')
+            changes['pending_fallback_minutes'] = pending_fallback_minutes
+        if possible_min_similarity is not None:
+            changes['possible_min_similarity'] = dedup_judge.validate_similarity(possible_min_similarity)
+        with self.store.write() as conn:
+            options = dedup_judge.connection_settings(conn)
+            changed = {key:value for key,value in changes.items() if options[key]!=value}
+            if changed:
+                options.update(changed)
+                conn.execute("INSERT OR REPLACE INTO runtime_settings VALUES('goal_dedup_judge',?)",(dumps(options),))
+                operation(conn,'goal_dedup_judge_saved','setting','goal_dedup_judge',changed,
+                          actor=actor,stamp=_current(self.clock()).isoformat())
+            return options
 
     def configure(self,*,default_reminder_minutes=None,overdue_reminders=None,actor='admin'):
         if default_reminder_minutes is not None:
