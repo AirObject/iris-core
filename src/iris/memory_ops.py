@@ -256,6 +256,111 @@ def missing_batch_targets(conn, batch_id):
         LEFT JOIN messages m ON m.id=j.value WHERE b.id=? AND m.id IS NULL ORDER BY j.key""", (batch_id,))]
 
 
+
+def purge_backup_notice(conn):
+    """Describe existing copies using the same default as scheduled backup."""
+    row = conn.execute("SELECT value_json FROM runtime_settings WHERE key='scheduled_backup'").fetchone()
+    settings = json.loads(row[0]) if row else {}
+    keep = settings.get('keep', 7) if isinstance(settings, dict) else None
+    valid = type(keep) is int and keep >= 1
+    return {"scheduled_backup_keep": keep if valid else None,
+            "message": (f"定时备份和已导出的文件里仍有副本，定时备份最多保留 {keep} 份。"
+                        if valid else "定时备份和已导出的文件里仍有副本；当前定时备份保留设置无效，无法确定保留份数。")}
+
+
+def _mark_purge(conn, table, row_id):
+    conn.execute("""INSERT OR IGNORE INTO purge_redactions(table_name,row_id,cleared_at)
+        VALUES(?,?,?)""", (table, str(row_id), now()))
+
+
+def _purge_linked_outputs(conn, message_ids, deleted_message_ids):
+    """Erase whole fields, never search/replace prose. Caller owns the write lock.
+
+    Source batch association is captured before deleting source edges/messages.
+    The migration's triggers enforce the same erasure if an in-flight call later
+    writes to a marked row. IDs in typed JSON evidence also protect late inserts.
+    """
+    for bid, in conn.execute("""SELECT DISTINCT batch_id FROM batch_message_refs
+            WHERE message_id IN (SELECT value FROM json_each(?))
+        UNION SELECT batch_id FROM messages WHERE batch_id IS NOT NULL
+            AND id IN (SELECT value FROM json_each(?))""", (dumps(message_ids), dumps(message_ids))):
+        _mark_purge(conn, 'batches', bid)
+    for mid in deleted_message_ids:
+        conn.execute('INSERT OR IGNORE INTO purge_message_tombstones VALUES(?,?)', (mid, now()))
+        for media_id, in conn.execute('SELECT media_id FROM message_media WHERE message_id=?', (mid,)):
+            # A separately shared media object is protected, just like a message.
+            if not conn.execute('''SELECT 1 FROM message_media WHERE media_id=?
+                    AND message_id NOT IN (SELECT value FROM json_each(?))''', (media_id, dumps(deleted_message_ids))).fetchone():
+                _mark_purge(conn, 'media_objects', media_id)
+    # Existing descendants can carry a previous version's prose without repeating
+    # its memory IDs. Only pre-existing rows are traversed: future generations from
+    # a cleared version can produce fresh evidence-bound content normally.
+    touched = set()
+    while True:
+        candidates = conn.execute('SELECT table_name,row_id FROM purge_redaction_candidates').fetchall()
+        if not candidates:
+            break
+        for table, rid in candidates:
+            key, column = _PURGE_TOUCH[table]
+            conn.execute(f'UPDATE {table} SET {column}={column} WHERE {key}=?', (rid,))
+            touched.add((table, rid))
+        # Follow only versions affected by this purge. A later generation based
+        # on an already-empty version must not be erased by an unrelated purge.
+        for table, parent, parent_key in (
+                ('persona_versions', 'base_version_id', 'id'),
+                ('entry_profile_versions', 'base_version', 'version')):
+            seeds = [rid for name, rid in touched if name == table]
+            join = f'child.{parent}=base.{parent_key}'
+            if table == 'entry_profile_versions':
+                join += ' AND child.entry_id=base.entry_id'
+            descendants = conn.execute(f"""WITH RECURSIVE affected(id) AS (
+                SELECT id FROM {table} WHERE id IN (SELECT value FROM json_each(?))
+                UNION SELECT child.id FROM affected a JOIN {table} base ON base.id=a.id
+                    JOIN {table} child ON {join})
+                SELECT id FROM affected WHERE NOT EXISTS (SELECT 1 FROM purge_redactions p
+                    WHERE p.table_name=? AND p.row_id=CAST(affected.id AS TEXT))""", (dumps(seeds), table)).fetchall()
+            for rid, in descendants:
+                _mark_purge(conn, table, rid)
+                touched.add((table, str(rid)))
+        for table, parent_table, parent_key in (
+                ('persona_attempts', 'persona_versions', 'base_version_id'),
+                ('entry_profile_attempts', 'entry_profile_versions', 'base_version')):
+            seeds = [rid for name, rid in touched if name == parent_table]
+            join = f'a.{parent_key}=v.' + ('id' if table == 'persona_attempts' else 'version AND a.entry_id=v.entry_id')
+            attempts = conn.execute(f"""SELECT a.id FROM {table} a JOIN {parent_table} v ON {join}
+                WHERE v.id IN (SELECT value FROM json_each(?)) AND NOT EXISTS (
+                    SELECT 1 FROM purge_redactions p WHERE p.table_name=? AND p.row_id=CAST(a.id AS TEXT))""",
+                (dumps(seeds), table)).fetchall()
+            for rid, in attempts:
+                _mark_purge(conn, table, rid)
+                touched.add((table, str(rid)))
+    counts = {}
+    for table, _ in touched:
+        counts[table] = counts.get(table, 0) + 1
+    return counts
+
+
+_PURGE_TOUCH = {
+    'batches': ('id', 'result_json'),
+    'batch_attempts': ('id', 'raw_output'),
+    'model_calls': ('id', 'error_summary'),
+    'recalls': ('id', 'request_json'),
+    'consolidation_work': ('id', 'payload_json'),
+    'consolidation_calls': ('id', 'raw_output'),
+    'consolidation_run_work': ('json_array(run_id,work_id)', 'details_json'),
+    'consolidation_annotations': ('id', 'text'),
+    'persona_versions': ('id', 'content'),
+    'entry_profile_versions': ('id', 'content'),
+    'persona_attempts': ('id', 'material_json'),
+    'entry_profile_attempts': ('id', 'material_json'),
+    'maintenance_items': ('json_array(run_id,phase,item_key)', 'details_json'),
+    'maintenance_persona': ('run_id', 'details_json'),
+    'sources': ('id', 'note'),
+    'media_objects': ('id', 'understanding_text'),
+    'admin_operations': ('id', 'details_json'),
+}
+
+
 def purge_memory(store, memory_id, expected_revision, *, confirm=False, _conn=None, _record=True):
     if confirm is not True:
         raise ValueError("explicit confirmation required")
@@ -277,6 +382,8 @@ def purge_memory(store, memory_id, expected_revision, *, confirm=False, _conn=No
             stance='设定',belief=0,importance=0,retention=0,event_time=NULL,forgotten_at=NULL,pinned=0,
             revision=revision+1,entry_id=NULL,world='real',embedding=NULL,embedding_model=NULL,
             decay_visits=0,purged_at=?,updated_at=? WHERE id=?""", (now(), now(), memory_id))
+        if conn.execute("SELECT 1 FROM sources WHERE memory_id=? AND kind='initial_setting'", (memory_id,)).fetchone():
+            conn.execute("UPDATE runtime_settings SET value_json='\"\"' WHERE key='background'")
         for table in ("memory_subjects", "memory_tags", "sources", "memory_revisions"):
             conn.execute(f"DELETE FROM {table} WHERE memory_id=?", (memory_id,))
         deleted, retained = [], []
@@ -285,11 +392,15 @@ def purge_memory(store, memory_id, expected_revision, *, confirm=False, _conn=No
             if reasons:
                 retained.append({"message_id": mid, "reasons": reasons})
             else:
-                conn.execute("DELETE FROM messages WHERE id=?", (mid,))
                 deleted.append(mid)
-        result = {"memory_id": memory_id, "deleted_message_ids": deleted, "retained_messages": retained}
+        redactions = _purge_linked_outputs(conn, message_ids, deleted)
+        conn.executemany("DELETE FROM messages WHERE id=?", ((mid,) for mid in deleted))
+        result = {"memory_id": memory_id, "deleted_message_ids": deleted, "retained_messages": retained,
+                  "redaction_counts": redactions}
         if _record:
             operation(conn, "memory_purge", "memory", memory_id, result)
+        result["backup_notice"] = purge_backup_notice(conn)
+        result["redaction_reason"] = "因彻底清除而清空"
         return result
 
 
@@ -593,6 +704,9 @@ def apply_bulk_memories(store, *, snapshot_token, action, confirm=False):
                     else:
                         ok = purge_memory(store, mid, revision, confirm=True, _conn=conn, _record=False)
                         if ok:
+                            counts = pending.setdefault("redaction_counts", {})
+                            for table, count in ok["redaction_counts"].items():
+                                counts[table] = counts.get(table, 0) + count
                             pending["deleted_message_ids"] = sorted(set(pending["deleted_message_ids"] + ok["deleted_message_ids"]))
                             retained = {r["message_id"]: r for r in pending["retained_messages"] + ok["retained_messages"]}
                             pending["retained_messages"] = [retained[k] for k in sorted(retained) if k not in pending["deleted_message_ids"]]
@@ -619,6 +733,12 @@ def apply_bulk_memories(store, *, snapshot_token, action, confirm=False):
         with _BULK_LOCK:
             snapshot["status"] = "completed"
             snapshot["rows"] = {}  # Completed retries only need the result.
+        if action == "purge":
+            with store.read() as conn:
+                result["backup_notice"] = purge_backup_notice(conn)
+            result["redaction_reason"] = "因彻底清除而清空"
+            with _BULK_LOCK:
+                snapshot["result"] = deepcopy(result)
         return result
     except Exception as exc:
         result["status"] = "conflict" if isinstance(exc, BulkMemoryConflict) else "interrupted"

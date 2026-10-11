@@ -625,7 +625,7 @@ def host_tokens(store):
 
 def bulk_memory_preview(store, *, subject_id=None, entry_id=None, action, include_pinned=False):
     """An explicit privacy scope, independent of management/recall filters."""
-    from .memory_ops import bulk_memory_rows, remember_bulk_preview
+    from .memory_ops import bulk_memory_rows, remember_bulk_preview, purge_backup_notice
     if bool(subject_id) == bool(entry_id) or action not in ("forget", "delete", "purge") or type(include_pinned) is not bool:
         raise ValueError("请选择一个人物或入口及有效的操作")
     scope = {"subject_id": subject_id} if subject_id else {"entry_id": entry_id}
@@ -649,7 +649,8 @@ def bulk_memory_preview(store, *, subject_id=None, entry_id=None, action, includ
                              "truncated": len(content) > 160})
         token, expires = remember_bulk_preview(store, scope=scope, action=action, include_pinned=include_pinned,
                                                rows=rows, settings=lifecycle_settings(conn))
-    return {"scope": scope, "action": action, "include_pinned": include_pinned, "total": len(rows),
+        notice = {"backup_notice": purge_backup_notice(conn)} if action == "purge" else {}
+    return {**notice, "scope": scope, "action": action, "include_pinned": include_pinned, "total": len(rows),
             "counts": counts, "pinned_count": sum(r["pinned"] for r in rows.values()),
             "excluded_pinned_count": len(all_rows) - len(rows),
             "applicable_count": len(rows) - (counts["deleted"] if action != "purge" else 0),
