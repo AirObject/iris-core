@@ -34,7 +34,9 @@ class FakeGateway:
         FakeGateway.calls += 1
         payload=json.loads(messages[-1]['content'])
         if purpose == 'persona_generate':
-            value = {'sentences':[{'text':'在那次直播中，我耐心解释了规则。','basis':[payload['evidence']['memories'][0]['ref']]}]}
+            evidence = payload['evidence']['memories'][0]
+            scope = '游戏' if evidence['entry_kind'] == 'game' else '直播'
+            value = {'sentences':[{'text':f'在那次{scope}中，我耐心解释了规则。','basis':[evidence['ref']]}]}
         elif purpose == 'persona_check':
             value = {'sentences':[{'index':i+1,'supported':True,'fabricated':False,
                 'scene_qualified':True,'violations':[],'reason':'场景明确'} for i,_ in enumerate(payload['candidate'])], 'change_degree':'small','reason':'单场经历'}
@@ -474,7 +476,7 @@ def test_sentence_recovery_metrics_and_materials_remain_scoreable(tmp_path,again
     assert metrics['candidate_deletion_ratio']==int(again)
     assert metrics['proposed_sentences']==3
     assert metrics['deleted_sentence_ratio']==int(again)/3
-    assert report['prompt_versions']==['persona_check_v4','persona_generate_v4']
+    assert report['prompt_versions']==['persona_check_v5','persona_generate_v5']
     assert report['timeouts_seconds']['persona_check']==180
     manifest=json.loads(materials.read_text())
     document=json.loads((materials.parent/manifest['cases'][0]['file']).read_text())

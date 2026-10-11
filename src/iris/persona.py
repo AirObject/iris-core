@@ -36,8 +36,8 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v4', 'persona_check': 'persona_check_v4',
-                   'persona_sentence_repair': 'persona_generate_v4', 'persona_recheck': 'persona_check_v4'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v5', 'persona_check': 'persona_check_v5',
+                   'persona_sentence_repair': 'persona_generate_v5', 'persona_recheck': 'persona_check_v5'}
 CALL_TIMEOUTS = {'persona_generate': 120, 'persona_check': 180,
                  'persona_sentence_repair': 120, 'persona_recheck': 180}
 REFERENCE = re.compile(r'(?<![A-Za-z0-9])[MP]\s*#?\s*\d+(?![A-Za-z0-9])', re.I)
@@ -304,13 +304,13 @@ def _check_payload(material, sentences, *, full_content):
     fields = ('ref','memory_id','revision','excerpts','initial_sources','stance','speaker_subject_id',
               'about','date','event_time','entry_kind','dates','date_count','belief','content')
     rows, evidence = [], {}
-    for sentence in sentences:
+    for index, sentence in enumerate(sentences, 1):
         refs = []
         for basis in sentence['basis']:
             memory = memories[(basis['memory_id'],basis['revision'])]
             refs.append(memory['ref'])
             evidence[memory['ref']] = {k:memory[k] for k in fields}
-        row = {**sentence, 'evidence_refs':refs}
+        row = {**sentence, 'index':index, 'evidence_refs':refs}
         if sentence['origin'] == 'initial_template':
             # The whole original background must not become an extra fact source
             # attached to a name sentence or to a partially omitted template.
@@ -456,7 +456,48 @@ def _deterministic(output, material, previous):
     return content, sentences, {'passed': not errors, 'errors': errors, 'warnings': warnings}
 
 
-def _surface_issues(sentence):
+def _completion_witness(predicate, source):
+    # An explicit aspect cue for the same predicate is necessary here, not proof
+    # of attribution, negation, event date or entailment. Those remain model checks.
+    stem = re.escape(predicate)
+    for clause in re.split(r'[。！？；，.!?;,\n]', source):
+        if re.search(stem + r'.*?(?:了|过)', clause):
+            return True
+        if re.search(r'(?:已经|已然|早已|已|刚才|刚刚|刚)(?:(?:把|将).*?)?' + stem, clause):
+            return True
+    return False
+
+
+def _bound_source_issues(sentence, tokens, memories):
+    if memories is None or sentence['initial_setting']:
+        return []
+    refs = {(b['memory_id'], b['revision']) for b in sentence.get('basis', [])}
+    bound = [m for m in memories if (m['memory_id'], m['revision']) in refs]
+    issues = []
+    sources = []
+    for memory in bound:
+        originals = [e['excerpt'] for e in memory.get('excerpts', [])
+                     if isinstance(e, dict) and isinstance(e.get('excerpt'), str) and e['excerpt'].strip()]
+        # Existing self memories without message sources can use their own text;
+        # when originals exist, a completed summary cannot override an intention.
+        sources.extend(originals or [memory['content']])
+    # An entry is a context, not proof that all its events are fictional. Preserve
+    # an explicitly sourced real-world qualification instead of inventing a game.
+    real_scope = {'现实', '线下'} & set(tokens)
+    source_real_scope = {word for source in sources for word in words(source)} & real_scope
+    if (bound and all(m.get('entry_kind') == 'game' for m in bound)
+            and not {'游戏', '联机'} & set(tokens) and not source_real_scope):
+        issues.append('game-only evidence needs explicit scope: 自动句须明确游戏或联机场景；'
+                      '现实／线下限定须来自本句绑定原话，不能仅按动作名称推定现实经历')
+    predicates = {m.group()[:-1] for m in re.finditer(r'(?:[\u3400-\u9fff]完|完成)[了过]', sentence['text'])}
+    for predicate in sorted(predicates):
+        if not any(_completion_witness(predicate, source) for source in sources):
+            issues.append('completion aspect needs original source support: '
+                          f'“{predicate}了／过”须在本句绑定原话中有同一动作的明确完成表述，动作目标不能补成结果')
+    return issues
+
+
+def _surface_issues(sentence, *, memories=None):
     """Conservative wording gates; these do not establish semantic support."""
     if sentence['origin'] != 'memory':
         return []
@@ -474,6 +515,7 @@ def _surface_issues(sentence):
         # Never resolve an event date from the request date: a source may describe
         # a past event. Reject this wording for repair, preserving raw evidence.
         issues.append('relative time is not durable: 自动句须使用有据的事件日期或具体活动，不保留相对日历时间')
+    issues.extend(_bound_source_issues(sentence, tokens, memories))
     if not sentence['initial_setting'] and sentence['date_count'] < 2:
         # Narrow style restrictions, not a general Chinese entailment parser.
         # In particular, a union of multiple dates is not proof for every clause;
@@ -512,8 +554,9 @@ def _repair_options(sentence, material):
     return options
 
 
-def _check_verdicts(output, sentences):
+def _check_verdicts(output, sentences, *, material=None):
     errors, problems = [], {}
+    memories = material['evidence']['memories'] if material is not None else None
     degree = output.get('change_degree')
     degree = {'小':'small', '中':'medium', '大':'large'}.get(degree, degree) if isinstance(degree, str) else None
     if degree not in DEGREES:
@@ -532,7 +575,7 @@ def _check_verdicts(output, sentences):
                 or any(not isinstance(v, str) or not v.strip() for v in row['violations'])):
             errors.append(f'sentence {index}: invalid model verdict')
             continue
-        issues = _surface_issues(sentence)
+        issues = _surface_issues(sentence, memories=memories)
         if not row['supported'] or row['fabricated'] or row['violations']:
             issues.append(row['reason'])
         if (sentence['origin'] == 'memory' and not sentence['initial_setting']
@@ -543,8 +586,8 @@ def _check_verdicts(output, sentences):
     return degree, errors, problems
 
 
-def _model_check(output, sentences):
-    degree, errors, problems = _check_verdicts(output, sentences)
+def _model_check(output, sentences, *, material=None):
+    degree, errors, problems = _check_verdicts(output, sentences, material=material)
     return degree, errors + [f'sentence {i}: {reason}' for i, reasons in problems.items() for reason in reasons]
 
 
@@ -914,7 +957,7 @@ class PersonaEngine:
         # final draft (an empty candidate array means degree-only after deletion).
         recheck = self._call('persona_recheck',_check_payload(material,modifications,full_content=content),outputs)
         checks['recheck'] = recheck
-        degree, structural, bad = _check_verdicts(recheck,modifications)
+        degree, structural, bad = _check_verdicts(recheck,modifications,material=material)
         if structural:
             return retained, recheck, 'large', structural
         discarded = set()
@@ -992,8 +1035,8 @@ class PersonaEngine:
                 with self.store.write() as conn:
                     conn.execute('UPDATE persona_attempts SET outputs_json=? WHERE id=?', (dumps(outputs),attempt))
                 model = self._call('persona_check', _check_payload(material,sentences,full_content=content), outputs)
-                degree, structural, problems = _check_verdicts(model, sentences)
-                _, initial_errors = _model_check(model,sentences)
+                degree, structural, problems = _check_verdicts(model, sentences, material=material)
+                _, initial_errors = _model_check(model,sentences,material=material)
                 checks.update(initial_model=model, initial_model_errors=initial_errors)
                 model_errors = initial_errors
                 if not structural and problems:
