@@ -97,3 +97,21 @@ def test_recovered_operational_error_cannot_be_reused_as_valid_eval(tmp_path,sta
         assert report['rows'][0]['invalid_calls'][0]['reason'] == reason
         assert report['metrics']['calls']['rate_limited_calls'] == int(status == 429)
     assert not list((tmp_path/'out/.persona').glob('*/0000.json'))
+
+
+@pytest.mark.parametrize('text', [
+    '我的耐心体现在那次共读时的等待。',
+    '在接近日落的那次共读中，我先确认了页码。',
+])
+def test_relative_time_guard_respects_word_boundaries(text):
+    sentence = {'text':text,'origin':'memory','initial_setting':False,'date_count':3}
+    assert not _check_verdicts(approving_verdict([sentence]),[sentence])[2]
+
+
+@pytest.mark.parametrize('text', [
+    '在今早的共读中，我确认了页码。', '在这周的共读中，我确认了页码。',
+    '在本星期的共读中，我确认了页码。', '在这个月的共读中，我确认了页码。',
+])
+def test_split_relative_time_phrases_still_require_durable_wording(text):
+    sentence = {'text':text,'origin':'memory','initial_setting':False,'date_count':3}
+    assert 'relative time' in ' '.join(_check_verdicts(approving_verdict([sentence]),[sentence])[2][1])

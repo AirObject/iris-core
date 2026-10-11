@@ -474,7 +474,7 @@ def test_sentence_recovery_metrics_and_materials_remain_scoreable(tmp_path,again
     assert metrics['candidate_deletion_ratio']==int(again)
     assert metrics['proposed_sentences']==3
     assert metrics['deleted_sentence_ratio']==int(again)/3
-    assert report['prompt_versions']==['persona_check_v3','persona_generate_v3']
+    assert report['prompt_versions']==['persona_check_v4','persona_generate_v4']
     assert report['timeouts_seconds']['persona_check']==180
     manifest=json.loads(materials.read_text())
     document=json.loads((materials.parent/manifest['cases'][0]['file']).read_text())

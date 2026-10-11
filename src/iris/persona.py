@@ -33,8 +33,11 @@ PUBLISH_MODES = ('small_medium_auto', 'all_auto', 'all_manual')
 DEGREES = ('small', 'medium', 'large')
 BASIS_TOKENS = 6000
 MAX_CHARS = 800
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v3', 'persona_check': 'persona_check_v3',
-                   'persona_sentence_repair': 'persona_generate_v3', 'persona_recheck': 'persona_check_v3'}
+RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
+                           '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
+                           '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v4', 'persona_check': 'persona_check_v4',
+                   'persona_sentence_repair': 'persona_generate_v4', 'persona_recheck': 'persona_check_v4'}
 CALL_TIMEOUTS = {'persona_generate': 120, 'persona_check': 180,
                  'persona_sentence_repair': 120, 'persona_recheck': 180}
 REFERENCE = re.compile(r'(?<![A-Za-z0-9])[MP]\s*#?\s*\d+(?![A-Za-z0-9])', re.I)
@@ -297,8 +300,9 @@ def _check_payload(material, sentences, *, full_content):
     # No unbound memories, former proofs, trace graph or self snapshot in the
     # checker. Every sentence carries only its own currently frozen evidence.
     memories = {(m['memory_id'],m['revision']):m for m in material['evidence']['memories']}
-    fields = ('ref','memory_id','revision','content','stance','belief','date','event_time',
-              'entry_kind','speaker_subject_id','about','dates','date_count','excerpts','initial_sources')
+    # Read the original utterance and its attribution before the memory summary.
+    fields = ('ref','memory_id','revision','excerpts','initial_sources','stance','speaker_subject_id',
+              'about','date','event_time','entry_kind','dates','date_count','belief','content')
     rows, evidence = [], {}
     for sentence in sentences:
         refs = []
@@ -314,8 +318,8 @@ def _check_payload(material, sentences, *, full_content):
             if not sentence['basis']:
                 row['initial_settings']['role_name'] = material['role_name']
         rows.append(row)
-    return {**material['settings'], 'as_of':material['as_of'], 'candidate':rows,
-            'evidence_by_ref':evidence, 'previous':material['previous'], 'candidate_text':full_content}
+    return {**material['settings'], 'as_of':material['as_of'], 'evidence_by_ref':evidence,
+            'candidate':rows, 'previous':material['previous'], 'candidate_text':full_content}
 
 
 
@@ -457,14 +461,16 @@ def _surface_issues(sentence):
     if sentence['origin'] != 'memory':
         return []
     text, issues = sentence['text'], []
+    tokens = list(words(text))
     # Whole tokens avoid matching 其他/他人/吉他. Do not guess a pronoun's
     # referent or rewrite it into an invented name, including the reader's 你.
-    if {'他','她','他们','她们','他俩','她俩','你','您','你们','您们','妳','妳们'} & set(words(text)):
+    if {'他','她','他们','她们','他俩','她俩','你','您','你们','您们','妳','妳们'} & set(tokens):
         issues.append('neutral person reference required: 自动句使用本句依据中的姓名或“对方”，不要用他／她／你及其复数指称')
-    if not sentence['initial_setting'] and re.search(
-            r'今天|今日|昨天|昨日|明天|明日|前天|后天|昨晚|今晚|明晚|昨夜|今夜|今早|今晨|'
-            r'今年|去年|明年|上周|本周|这周|下周|上星期|本星期|这星期|下星期|'
-            r'上个月|本月|这个月|下个月|最近|近日|近来|刚才|刚刚|现在|目前', text):
+    # Match whole tokens, including split phrases such as 今/早 and 这个/月.
+    # Substrings like 体现在 or 接近日落 do not contain a relative-time phrase.
+    if not sentence['initial_setting'] and any(
+            ''.join(tokens[i:i+size]) in RELATIVE_TIMES
+            for i in range(len(tokens)) for size in (1, 2, 3)):
         # Never resolve an event date from the request date: a source may describe
         # a past event. Reject this wording for repair, preserving raw evidence.
         issues.append('relative time is not durable: 自动句须使用有据的事件日期或具体活动，不保留相对日历时间')
