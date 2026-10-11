@@ -6,7 +6,6 @@ Evidence IDs are snapshots, not foreign keys that pin cleaned source messages.
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
 import re
 import time
@@ -23,6 +22,7 @@ from .memory_ops import Visibility, operation
 from .models import Gateway, ModelError
 from .persona import split_sentences
 from .queue import estimate_tokens, truncate_material
+from .profile_common import evidence_hash, setting, whitespace, excerpt, json_object, ChatHealthGate
 
 DEFAULTS = dict(enabled=True, publish_mode='check_auto', window_days=14,
                 message_tokens=6000, memory_tokens=2000, min_messages=50,
@@ -69,12 +69,11 @@ def _instant(value):
 
 
 def _hash(value):
-    return hashlib.sha256(dumps(value).encode('utf-8')).hexdigest()
+    return evidence_hash(value)
 
 
 def _setting(conn, key, default):
-    row = conn.execute('SELECT value_json FROM runtime_settings WHERE key=?', (key,)).fetchone()
-    return json.loads(row[0]) if row else default
+    return setting(conn, key, default)
 
 
 def _runtime(conn):
@@ -157,9 +156,7 @@ def _message_hash(row):
 
 
 def _excerpt(text, limit):
-    # Do not make truncate_material's synthetic marker available as an original quote.
-    value = truncate_material(text, limit)
-    return value.removesuffix(' [已截断；原文仍完整保存]') if value != text else value
+    return excerpt(text, limit)
 
 
 def _message(row, zone, *, limit=300):
@@ -500,7 +497,7 @@ def reject_candidate(store, entry_id, version, *, expected_version, reason='admi
 
 def _whitespace(text):
     """Collapse whitespace only; do not fold punctuation, case, or missing words."""
-    return ' '.join(text.split())
+    return whitespace(text)
 
 
 def _evidence_index(evidence):
@@ -697,14 +694,8 @@ def _admin_removed(previous, sentences):
     return bool(before-after)
 
 
-class _HealthGate:
-    """Apply the shared chat daily limit on every HTTP attempt, including retries."""
-    def __init__(self, health):
-        self.real=health
-    def check(self, kind, purpose, *, probe=False):
-        return self.real.check(kind,'learning' if kind=='chat' else purpose,probe=probe)
-    def __getattr__(self, key):
-        return getattr(self.real,key)
+class _HealthGate(ChatHealthGate):
+    pass
 
 
 class EntryProfileEngine:
@@ -751,17 +742,7 @@ class EntryProfileEngine:
                       'usage':reply.usage,'finish_reason':reply.finish_reason})
         if reply.finish_reason!='stop':
             raise ValueError('incomplete_output')
-        def unique(pairs):
-            value={}
-            for key,item in pairs:
-                if key in value:
-                    raise ValueError('duplicate_key')
-                value[key]=item
-            return value
-        value=json.loads(reply.content,object_pairs_hook=unique)
-        if not isinstance(value,dict):
-            raise ValueError('invalid_output')
-        return value
+        return json_object(reply.content)
 
     def _finish(self, attempt, state, reason, outputs, calls):
         with self.store.write() as conn:
