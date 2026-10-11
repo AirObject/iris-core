@@ -11,6 +11,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 from .auth import audit, error, local
+from .configuration import CONFIG_LOCK_WAIT_SECONDS, ConfigurationBusy
 from .db import dumps
 from .memory_ops import update_role, lifecycle_settings, operation
 from .models import JUDGMENT_KINDS, MODEL_KINDS, Gateway, ModelConfig, ModelError
@@ -181,7 +182,10 @@ def install_settings(app):
     async def key_required(request, exc):
         return error('invalid_request', str(exc), fields=[{'field': 'body.api_key', 'message': str(exc)}])
 
-    def snapshot():
+    def lock_wait(deadline):
+        return max(0.0, deadline - time.monotonic()) if deadline is not None else 0.0
+
+    def snapshot(*, lock_deadline=None):
         store = app.state.store
         with store.read() as conn:
             lifecycle = lifecycle_settings(conn)
@@ -194,7 +198,7 @@ def install_settings(app):
             operations = [dict(r) for r in conn.execute('SELECT id,actor,action,created_at FROM admin_operations ORDER BY id DESC LIMIT 30')]
         return {'role': {'name': store.setting('role_name', 'Iris'), 'background': store.setting('background', ''),
                          'timezone': store.setting('timezone', None)},
-                'models': app.state.runtime_config.public(),
+                'models': app.state.runtime_config.public(timeout=lock_wait(lock_deadline)),
                 'model_source': 'external' if app.state.runtime_config.external_loader else 'local',
                 'daily_token_limit': store.setting('daily_token_limit'),
                 'learning_concurrency': store.setting('learning_concurrency', 2),
@@ -202,8 +206,8 @@ def install_settings(app):
                 'goal_dedup_judge': goal_judge_settings(store),
                 'health': model_health_snapshot(app.state.health), 'presets': PRESETS, 'operations': operations}
 
-    def sync_models():
-        configs = app.state.runtime_config.load()
+    def sync_models(*, lock_deadline=None):
+        configs = app.state.runtime_config.load(timeout=lock_wait(lock_deadline))
         for kind in MODEL_KINDS:
             app.state.gateway.replace_config(kind, configs.get(kind))
 
@@ -264,11 +268,17 @@ def install_settings(app):
         runtime = app.state.runtime_config
         if runtime.external_loader:
             return error('external_config', '模型配置来自外部文件，只读', 409)
-        saved, key_missing = runtime.editable(kind)
-        config = payload.config(saved, kind, key_missing=key_missing)
-        runtime.save({kind: config}, repair_secrets=payload.api_key is not None)
-        sync_models()
-        return snapshot()
+        # The pre-save read and both post-save reads share the writer's budget;
+        # a brief scheduler reload must not fail a valid save before it can wait.
+        deadline = time.monotonic() + CONFIG_LOCK_WAIT_SECONDS
+        try:
+            saved, key_missing = runtime.editable(kind, timeout=lock_wait(deadline))
+            config = payload.config(saved, kind, key_missing=key_missing)
+            runtime.save({kind: config}, repair_secrets=payload.api_key is not None, timeout=lock_wait(deadline))
+            sync_models(lock_deadline=deadline)
+            return snapshot(lock_deadline=deadline)
+        except ConfigurationBusy:
+            return error('invalid_request', '配置正在更新，请稍后重试')
 
     @router.patch('/settings/recall-judge')
     def recall_judge(payload: RecallJudge):

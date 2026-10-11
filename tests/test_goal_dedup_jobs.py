@@ -5,6 +5,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from datetime import timedelta
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -18,6 +19,7 @@ from iris.scheduler import Scheduler
 from test_goal_dedup_apply import Judge
 from test_goals_api import Clock
 from test_scheduler import wait_for
+from thread_helpers import THREAD_WAIT
 
 
 def staged(store, goals):
@@ -59,29 +61,29 @@ def test_learning_commit_persists_review_and_rollback_leaves_no_job(store,setup)
     assert 'lease_token' not in projection and 'candidate_revisions_json' not in projection
 
 
-def test_scheduler_and_request_cannot_judge_the_same_goal_twice(store,setup):
+def test_scheduler_and_request_cannot_judge_the_same_goal_twice(store,setup,monkeypatch):
+    monkeypatch.setattr('iris.goal_dedup_judge.time', SimpleNamespace(monotonic=lambda: 0.0))
     goals,judge,_=setup
     _,new=staged(store,goals)
     gid=new['submitted_id']
     entered,release=threading.Event(),threading.Event()
     def block():
         entered.set()
-        assert release.wait(3)
+        release.wait()
     judge.hook=block
-    try:
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            first=pool.submit(goals.review,gid)
-            assert entered.wait(2)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first=pool.submit(goals.review,gid)
+        try:
+            assert entered.wait(THREAD_WAIT)
             row=job(store,gid)
             assert row['state']=='running' and row['attempts']==1
             assert json.loads(row['candidate_revisions_json'])
             second=Goals(store,gateway=judge,clock=goals.clock).review(gid)
             assert second['dedup']['status']=='pending' and second['dedup']['reason']=='in_progress'
             assert len(judge.calls)==1
+        finally:
             release.set()
-            assert first.result()['dedup']['status']=='merged'
-    finally:
-        release.set()
+        assert first.result(timeout=THREAD_WAIT)['dedup']['status']=='merged'
     assert job(store,gid)['state']=='done'
     assert not job(store,gid)['lease_token']
     assert len(goals.pull()['items'])==1
@@ -232,7 +234,8 @@ def test_scheduler_does_not_claim_work_when_goal_purpose_is_unavailable(store,se
         scheduler.stop()
 
 
-def test_scheduler_limits_pending_reviews_to_configured_concurrency(store,setup):
+def test_scheduler_limits_pending_reviews_to_configured_concurrency(store,setup,monkeypatch):
+    monkeypatch.setattr('iris.goal_dedup_judge.time', SimpleNamespace(monotonic=lambda: 0.0))
     goals,judge,clock=setup
     _,first=staged(store,goals)
     with store.write() as conn:
@@ -242,19 +245,20 @@ def test_scheduler_limits_pending_reviews_to_configured_concurrency(store,setup)
     entered,release=threading.Event(),threading.Event()
     def block():
         entered.set()
-        assert release.wait(3)
+        release.wait()
     judge.hook=block
     scheduler=Scheduler(store,judge,clock=clock)
     try:
         scheduler.tick()
-        assert entered.wait(2)
+        assert entered.wait(THREAD_WAIT)
         scheduler.tick()
         assert len(judge.calls)==1 and job(store,second['submitted_id'])['attempts']==0
         release.set()
-        wait_for(lambda:job(store,first['submitted_id'])['state']=='done')
-        wait_for(lambda:all(f.done() for f in scheduler._goal_reviews.values()))
+        scheduler._goal_reviews[first['submitted_id']].result(timeout=THREAD_WAIT)
+        assert job(store,first['submitted_id'])['state']=='done'
         scheduler.tick()
-        wait_for(lambda:job(store,second['submitted_id'])['state']=='done')
+        scheduler._goal_reviews[second['submitted_id']].result(timeout=THREAD_WAIT)
+        assert job(store,second['submitted_id'])['state']=='done'
         assert len(judge.calls)==2
     finally:
         release.set()

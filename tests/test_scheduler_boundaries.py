@@ -21,6 +21,7 @@ from iris.service_status import service_status
 from test_batches import memory
 from test_retrieval import put
 from test_scheduler import intake, wait_for
+from thread_helpers import THREAD_WAIT
 
 
 def test_B13_real_process_exit_mid_learning_transaction_rolls_back(tmp_path):
@@ -143,9 +144,11 @@ def test_request_learning_watermark_survives_scheduler_restart(store):
     second = Scheduler(store, FakeGateway(), clock=clock)
     try:
         second.tick()
-        wait_for(lambda: get_batch(store, 1).state == "succeeded")
+        second._active["A"].result(timeout=THREAD_WAIT)
+        assert get_batch(store, 1).state == "succeeded"
         second.tick()
-        wait_for(lambda: get_batch(store, 2).state == "succeeded")
+        second._active["A"].result(timeout=THREAD_WAIT)
+        assert get_batch(store, 2).state == "succeeded"
         assert get_batch(store, 2).target_ids == [13]
     finally:
         second.stop()
