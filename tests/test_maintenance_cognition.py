@@ -524,7 +524,7 @@ def test_persona_dream_step_uses_manual_product_default(store, degree):
 def test_sentence_recovery_consumes_existing_dream_call_budget(store,budget,status):
     from test_persona_optimization import Model
     engine,_,_=persona_case(store,budget=budget)
-    model=Model(store)
+    model=Model(store,repair='我在阅读时喜欢安静。')
     engine.gateway=model
     report=complete(engine)
     assert report['persona']['status']==status

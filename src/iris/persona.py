@@ -452,6 +452,53 @@ def _deterministic(output, material, previous):
     return content, sentences, {'passed': not errors, 'errors': errors, 'warnings': warnings}
 
 
+def _surface_issues(sentence):
+    """Conservative wording gates; these do not establish semantic support."""
+    if sentence['origin'] != 'memory':
+        return []
+    text, issues = sentence['text'], []
+    # Whole tokens avoid matching 其他/他人/吉他. Do not guess a pronoun's
+    # referent or rewrite it into an invented name, including the reader's 你.
+    if {'他','她','他们','她们','他俩','她俩','你','您','你们','您们','妳','妳们'} & set(words(text)):
+        issues.append('neutral person reference required: 自动句使用本句依据中的姓名或“对方”，不要用他／她／你及其复数指称')
+    if not sentence['initial_setting'] and sentence['date_count'] < 2:
+        # Narrow style restrictions, not a general Chinese entailment parser.
+        # In particular, a union of multiple dates is not proof for every clause;
+        # the semantic checker must still verify each claim's scope independently.
+        habitual = re.search(r'一向|向来|通常|经常|惯常|总是|每次|每逢|每当|往往|习惯于', text)
+        opening = text.strip().split('，', 1)[0].split(',', 1)[0]
+        conditional = re.match(r'^(?:在)?(?:遇到|碰到)|^(?:如果|只要|一旦)', opening)
+        bounded = re.search(r'(?:这|那|本|当)(?:一)?(?:次|天|场|回)', opening)
+        if habitual or (conditional and not bounded):
+            issues.append('single-date/unknown-date evidence cannot use habitual or unbounded conditional wording')
+    return issues
+
+
+def _repair_options(sentence, material):
+    """One complete bound memory, never an arbitrary span or token deletion.
+
+    Keep context and negation intact, and bind only the selected record. Message
+    excerpts can be truncated or contain another speaker's quote, so are not
+    extraction options. The subsequent semantic check still compares sources.
+    """
+    if sentence['origin'] != 'memory':
+        return []
+    bound = {(b['memory_id'], b['revision']) for b in sentence['basis']}
+    options, seen = [], set()
+    for memory in material['evidence']['memories']:
+        if (memory['memory_id'], memory['revision']) not in bound or memory['stance'] == '设定':
+            continue
+        text = memory['content'].strip()
+        if not text or len(split_sentences(text)) != 1:
+            continue
+        if text[-1] not in '。！？!?.”’」』"':
+            text += '。'
+        if text not in seen:
+            options.append({'text': text, 'basis': [memory['ref']]})
+            seen.add(text)
+    return options
+
+
 def _check_verdicts(output, sentences):
     errors, problems = [], {}
     degree = output.get('change_degree')
@@ -472,12 +519,7 @@ def _check_verdicts(output, sentences):
                 or any(not isinstance(v, str) or not v.strip() for v in row['violations'])):
             errors.append(f'sentence {index}: invalid model verdict')
             continue
-        issues = []
-        # Enforce the generator's neutral-reference style independently of the
-        # semantic judge. Whole tokens avoid matching 其他/他人/吉他. Do not
-        # rewrite pronouns blindly: repair must resolve the referent from evidence.
-        if sentence['origin'] == 'memory' and {'他','她','他们','她们','他俩','她俩'} & set(words(sentence['text'])):
-            issues.append('neutral person reference required: 自动句使用本句依据中的姓名或“对方”，不要用他／她及其复数指称')
+        issues = _surface_issues(sentence)
         if not row['supported'] or row['fabricated'] or row['violations']:
             issues.append(row['reason'])
         if (sentence['origin'] == 'memory' and not sentence['initial_setting']
@@ -799,9 +841,16 @@ class PersonaEngine:
         payload = _check_payload(material, original, full_content=''.join(s['text'] for s in original))
         repairable = {i:original[i-1] for i in problems if original[i-1]['origin'] != 'initial_template'}
         proposed = {}
+        replacements = {i: _repair_options(sentence, material) for i, sentence in repairable.items()}
+        checks['repair_policy'] = 'bound_memory_extract_v1'
         if repairable:
             request = {**material['settings'], 'task':'repair', 'as_of':material['as_of'],
-                       'problems':[{'index':i, **payload['candidate'][i-1], 'problems':problems[i]}
+                       'repair_policy':checks['repair_policy'],
+                       'text_constraint':'text 必须逐字选择本项 allowed_replacement_refs 在 replacement_text_by_ref 中的原文，或用 null 删除；不能删字、拼接或改写。',
+                       'replacement_text_by_ref':{option['basis'][0]:option['text']
+                           for options in replacements.values() for option in options},
+                       'problems':[{'index':i, **payload['candidate'][i-1], 'problems':problems[i],
+                                    'allowed_replacement_refs':[option['basis'][0] for option in replacements[i]]}
                                    for i in repairable]}
             refs = {ref for row in request['problems'] for ref in row['evidence_refs']}
             request['evidence_by_ref'] = {ref:record for ref,record in payload['evidence_by_ref'].items() if ref in refs}
@@ -814,7 +863,6 @@ class PersonaEngine:
                     and {r['index'] for r in rows}==set(repairable)):
                 proposed = {r['index']:r for r in rows}
         retained, verdicts, modifications, positions = [], [], [], []
-        refs = {(m['memory_id'],m['revision']):m['ref'] for m in material['evidence']['memories']}
         def deleted(index, stage, reasons, replacement=None):
             item = {'index':index, 'sentence':original[index-1], 'stage':stage, 'reasons':reasons}
             if replacement is not None:
@@ -831,7 +879,13 @@ class PersonaEngine:
                     or set(row) != {'index','text'} or sentence['origin']=='initial_template'):
                 deleted(i,'repair',problems[i]+['no valid changed sentence; immutable templates are never rewritten'])
                 continue
-            raw = {'text':text, 'basis':[refs[(b['memory_id'],b['revision'])] for b in sentence['basis']]}
+            option = next((option for option in replacements[i] if option['text'] == text), None)
+            if option is None:
+                deleted(i,'repair_extract',problems[i]+['repair must match one complete bound memory text'],text)
+                continue
+            # The other original references cannot inflate this extraction's date
+            # count. No new memory or revision can enter through model output.
+            raw = {'text':text, 'basis':option['basis']}
             _, normalized, deterministic = _deterministic({'sentences':[raw]},_editable_material(material),previous)
             if not deterministic['passed']:
                 deleted(i,'repair_deterministic',problems[i]+deterministic['errors'],text)

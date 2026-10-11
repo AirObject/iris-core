@@ -457,7 +457,7 @@ def test_sentence_recovery_metrics_and_materials_remain_scoreable(tmp_path,again
     from test_persona_optimization import Model
     class RecoveryModel(Model):
         def __init__(self,configs,store,**kwargs):
-            super().__init__(store,again=again)
+            super().__init__(store,again=again,repair=TIMELINE['events'][0]['memory']['content'])
         def close(self):
             pass
     case=copy.deepcopy(TIMELINE)

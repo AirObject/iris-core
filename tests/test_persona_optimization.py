@@ -11,7 +11,7 @@ from test_persona import add_self
 
 
 class Model:
-    def __init__(self, store, *, repair='在十月一日的直播中，我选择了浅灰底。', again=False, malformed=False):
+    def __init__(self, store, *, repair='我在十月一日的直播中选择了浅灰底。', again=False, malformed=False):
         self.store, self.repair, self.again, self.malformed = store, repair, again, malformed
         self.calls = []
         self.now = 10.0
@@ -292,7 +292,9 @@ def test_json_correction_does_not_reset_check_budget(prepared):
 
 
 def test_repaired_sentence_must_still_pass_whole_persona_length_limit(prepared):
-    result,_=run(prepared,repair='在十月一日的直播中，'+('浅灰'*380)+'。')
+    replacement='在十月一日的直播中，'+('浅灰'*380)+'。'
+    edit_memory(prepared,5,1,content=replacement)
+    result,_=run(prepared,repair=replacement)
     assert result['status']=='rejected'
     assert 'persona exceeds 800 characters' in result['version']['checks']['deterministic']['errors']
     assert current_persona(prepared)['id']==1
@@ -349,7 +351,7 @@ def test_automatic_person_references_require_neutral_wording(text,blocked):
 
 
 @pytest.mark.parametrize('replacement,removed', [
-    ('在十月一日的直播中，我向对方解释了规则。',False),
+    ('我在十月一日的直播中解释了规则。',False),
     ('在十月一日的直播中，我向他解释了规则。',True),
 ])
 def test_neutral_reference_repair_and_recheck_override_model_approval(prepared,replacement,removed):
