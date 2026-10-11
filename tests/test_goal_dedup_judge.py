@@ -53,11 +53,11 @@ def test_ambiguity_and_admin_creation_never_auto_merge():
     assert decision_from_verdicts({1:'different'},origin='internal')['status']=='created'
 
 
-def gateway(store,handler,clock=None):
+def gateway(store,handler,clock=None,**kwargs):
     configs={'chat':ModelConfig('https://unit.invalid/v1','','unit-model')}
     health=ModelHealth(store,configs,**({'clock':clock} if clock else {}))
     return Gateway(configs,store,client=httpx.Client(transport=httpx.MockTransport(handler)),health=health,
-                   **({'clock':clock} if clock else {}))
+                   **({'clock':clock} if clock else {}),**kwargs)
 
 
 def test_goal_judgment_is_an_independent_inherited_purpose(store):
@@ -116,16 +116,19 @@ def test_goal_judgment_obeys_daily_limit_before_any_request(store):
         model.close()
 
 
-def test_timed_out_worker_holds_only_goal_admission_until_it_finishes(store):
+def test_timed_out_worker_holds_only_goal_admission_until_it_finishes(store,monkeypatch):
     import threading
-    import time
+    from fake_openai import Clock
+    from thread_helpers import expire_after_entry
+    clock=Clock()
     entered,release=threading.Event(),threading.Event()
     def respond(request):
         entered.set()
-        release.wait(2)
+        release.wait()
         return httpx.Response(200,json={'choices':[{'message':{'content':'{"decisions":[]}'},'finish_reason':'stop'}]})
     store.set_setting('goal_dedup_judge',{'concurrency':1,'queue_limit':0})
-    model=gateway(store,respond)
+    model=gateway(store,respond,clock=clock,monotonic=clock.monotonic)
+    expire_after_entry(monkeypatch,model._goal_judge_pool,entered,clock)
     try:
         with pytest.raises(ModelError) as exc:
             model.goal_dedup_judge([],[],budget_seconds=.02)
@@ -135,14 +138,11 @@ def test_timed_out_worker_holds_only_goal_admission_until_it_finishes(store):
         with pytest.raises(ModelError) as exc:
             model.goal_dedup_judge([],[],budget_seconds=.02)
         assert (exc.value.reason or exc.value.category)=='queue_full'
-        release.set()
-        deadline=time.monotonic()+1
-        while model._goal_judge_admission.active and time.monotonic()<deadline:
-            time.sleep(.001)
-        assert model._goal_judge_admission.active==0
     finally:
         release.set()
+        model._goal_judge_pool.shutdown(wait=True)
         model.close()
+    assert model._goal_judge_admission.active==0
 
 
 def test_b_and_c_use_same_material_and_only_differ_in_grouping():

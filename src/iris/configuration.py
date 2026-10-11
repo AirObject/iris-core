@@ -29,14 +29,18 @@ class SecretsUnavailable(ValueError):
     """Fixed diagnostic only: never retain file contents or OS exception text."""
 
 
+class ConfigurationBusy(ValueError):
+    """A configuration lock could not be acquired within its wait budget."""
+
+
 def _lock_busy(timeout):
     if timeout > 0:
         message = f'配置锁等待超时（{timeout:g} 秒），请稍后重试'
         # The import CLI intentionally suppresses exception details. Emit only
         # this fixed diagnostic so its timeout remains visible without secrets.
         log.warning(message)
-        return ValueError(message)
-    return ValueError('配置正在更新，请稍后重试')
+        return ConfigurationBusy(message)
+    return ConfigurationBusy('配置正在更新，请稍后重试')
 
 
 def container_mode():
@@ -98,8 +102,8 @@ class RuntimeConfig:
 
     @contextmanager
     def locked(self, *, timeout=0.0):
-        # Readers (including scheduler reloads) never wait. Writers share one
-        # deadline across the in-process lock and the inter-process file lease.
+        # Background readers never wait; reads on the save path may opt in.
+        # Both locks share the caller's remaining wait budget.
         deadline = monotonic() + timeout
         if not self._lock.acquire(timeout=timeout):
             raise _lock_busy(timeout)
@@ -173,34 +177,34 @@ class RuntimeConfig:
         return {kind: replace(config, base_url='', api_key='') if kind in unavailable else config
                 for kind, config in configs.items()}
 
-    def _editable_configs(self):
+    def _editable_configs(self, *, timeout=0.0):
         if self.external_loader:
             raw, unavailable = self.load(), set()
         else:
-            with self.locked():
+            with self.locked(timeout=timeout):
                 raw, unavailable = self._local_values()
         if 'chat' in unavailable:
             unavailable.update(kind for kind in JUDGMENT_KINDS if not raw.get(kind))
         return raw, effective_configs(raw), unavailable
 
-    def editable(self, kind):
+    def editable(self, kind, *, timeout=0.0):
         """Fresh saved endpoint and credential availability, including inheritance."""
-        _, configs, unavailable = self._editable_configs()
+        _, configs, unavailable = self._editable_configs(timeout=timeout)
         return configs.get(kind), kind in unavailable
 
-    def load(self):
+    def load(self, *, timeout=0.0):
         if self.external_loader:
             try:
                 return self.external_loader()
             except (OSError, ValueError):
                 raise ValueError('外部模型配置暂不可用，请检查原文件') from None
-        with self.locked():
+        with self.locked(timeout=timeout):
             return self._load_local()
 
-    def save(self, updates, *, actor='admin', repair_secrets=False):
+    def save(self, updates, *, actor='admin', repair_secrets=False, timeout=CONFIG_LOCK_WAIT_SECONDS):
         if self.external_loader:
             raise ValueError('模型配置来自外部文件，只读')
-        with self.locked(timeout=CONFIG_LOCK_WAIT_SECONDS):
+        with self.locked(timeout=timeout):
             old = self.store.setting('models', {})
             try:
                 keys = self._secrets()
@@ -233,8 +237,8 @@ class RuntimeConfig:
                 conn.execute('INSERT OR REPLACE INTO runtime_settings VALUES(?,?)', ('models', dumps(rows)))
                 audit(conn, 'models_saved', {'purposes': sorted(updates)}, actor=actor)
 
-    def public(self):
-        raw, configs, unavailable = self._editable_configs()
+    def public(self, *, timeout=0.0):
+        raw, configs, unavailable = self._editable_configs(timeout=timeout)
         return {kind: {'inherited': kind in JUDGMENT_KINDS and not raw.get(kind),
                        'enabled': bool(configs.get(kind) and configs[kind].base_url and configs[kind].model),
                        'base_url': configs[kind].base_url if configs.get(kind) else '',
