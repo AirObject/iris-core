@@ -170,6 +170,74 @@ with httpx.Client(base_url="http://127.0.0.1:8080", timeout=30,
 
 `GET /notifications?after=0&limit=30` 使用递增游标，最多 100 条，响应 `items`、`next_cursor`、`has_more`。权限过滤在分页和标记已取走之前完成。`items[].id` 用来去重；同一游标可重取，宿主持久处理后再保存新游标。拉取会标记 `taken`，不证明已发给用户，不完成目标；只有明确完成操作才改变目标状态。
 
+## 宿主事件流：主动提醒（v1 兼容新增）
+
+2026-10-11 新增 `GET /api/v1/events` 与 `GET /api/v1/events/status`；既有拉取及其他 v1 请求、返回和确认行为保持不变。两条路由都要求 `Authorization: Bearer <宿主令牌>`，Host、就绪、令牌和速率检查在建立流之前完成。入口范围取自令牌：只发送该范围内目标的提醒；无入口的全局目标仍按既有读取规则可见。查询参数不接受另行指定入口或范围。令牌撤销后，活跃流在下一次轮询结束，续订返回 401。
+
+### 请求与事件格式
+
+```http
+GET /api/v1/events HTTP/1.1
+Host: 127.0.0.1:8080
+Authorization: Bearer <宿主令牌>
+Accept: text/event-stream
+Last-Event-ID: 0123456789abcdef0123456789abcdef:42
+```
+
+首次订阅省略 `Last-Event-ID`。也可用 `?last_event_id=0123456789abcdef0123456789abcdef:42`；两处都提供时必须相同，重复请求头或冲突值返回 400。**令牌只能放在 Authorization 头，不能放到 URL。** 成功返回 200、`Content-Type: text/event-stream; charset=utf-8`、`Cache-Control: no-store`、`X-Accel-Buffering: no`。OpenAPI 列出此流式响应。
+
+每帧为 UTF-8，空行分隔，`data` 是单行 JSON。三种事件都带 `id`：同一服务实例内的序号严格递增（多个连接共享序号，所以可以不连续），实例标识用于区分重启；客户端须把完整 ID 当作不透明字符串保存，不比较不同实例的序号。
+
+```text
+id: 0123456789abcdef0123456789abcdef:43
+event: reminder
+data: {"id":81,"kind":"goal_reminder","goal_id":12,"reminder_kind":"due","deadline_at":"2026-10-11T18:00:00+08:00","scheduled_at":"2026-10-11T18:00:00+08:00","published_at":"2026-10-11T18:00:01+08:00","content":"整理出行清单","status":"pending","taken_at":null,"cancelled_at":null}
+
+id: 0123456789abcdef0123456789abcdef:44
+event: heartbeat
+data: {"time":"2026-10-11T10:00:15+00:00"}
+
+id: 0123456789abcdef0123456789abcdef:45
+event: resync
+data: {"reason":"cursor_unavailable","pull_url":"/api/v1/notifications"}
+
+```
+
+- `reminder`：`data` 与 `/notifications` 的提醒项使用相同字段与角色时区投影。只推送 `kind=goal_reminder`，不推送去重结果通知。读取当前发布记录，排除已取消项；已取走项仍可能重放。**事件流只读，不把 pending 改成 taken**，因此刚收到的项通常为 pending；拉取的同一项则为 taken。内容中的换行按 JSON 转义，不会变成新的 SSE 字段。
+- `heartbeat`：建立后立即发送一次，此后约每 15 秒发送 UTC 时间，无正文或入口信息。心跳也可作为续订断点，不表示提醒送达。
+- `resync`：断点不可用（`cursor_unavailable`：过期、被容量淘汰、服务重启或不属于当前令牌），或超过通知窗口（`window_exceeded`）。客户端必须从**自己已持久保存的拉取游标**调用 `/notifications`，直到 `has_more=false`；没有游标时用 `after=0`。继续消费后续 SSE 帧，按通知 ID 与补拉结果去重。
+
+### 断点、窗口与取走
+
+SSE 采用至少一次语义，连接重试可能再次推送同一通知。续订保存的是帧的 `id`；业务去重使用 `data.id`（通知 ID），拉取使用自己的整数 `after` / `next_cursor`。**三者不可互换，不能根据 SSE 提醒 ID 跳过尚未拉取的中间通知。** 宿主持久化通知后再推进相应游标；不调用任何新确认接口，仍用既有 `/notifications` 取走。拉取同一项多次不会重写首次 `taken_at`，也不会完成目标。
+
+服务只在内存保留断点的令牌 ID、通知水位和时间，不缓存提醒正文。每个断点最多保留 15 分钟，全服务最多 10000 个断点（含心跳），且只补发最近 1000 个通知 ID 范围内的提醒。首次订阅读取此窗口；若更早有历史，先发 `resync`。未知断点或落后于窗口时同样先发 `resync`，再发送当前窗口中的提醒。重启不保留断点，通知数据与既有拉取游标保持持久化。范围与取消状态按每次只读快照重新检查，重放使用当前提醒投影，而非旧正文副本。
+
+### 上限、关闭与错误
+
+| 项目 | 固定默认值 |
+| --- | --- |
+| 同时连接 | 每个令牌 2 条，全服务 32 条 |
+| 数据查询 | 每条活跃连接约 1 秒一次，只读快照；通知主键范围查询，每批最多 100 项；无连接时不轮询 |
+| 心跳 | 15 秒，首次立即发送 |
+| 空闲结束 | 5 分钟未推送提醒；心跳不重置空闲计时 |
+| 最长连接 | 1 小时，结束后带最后断点续订 |
+| 慢客户端 | 单次 ASGI 发送最多等待 5 秒；结束帧再最多等待 1 秒 |
+| 补发窗口 | 15 分钟 / 全局 10000 个帧断点 / 最近 1000 个通知 ID，任一边界先到即要求补拉 |
+
+建流前使用既有统一 JSON 错误体：400 为非法、未知参数或冲突断点；401 为无有效令牌；429 的 `event_token_limit` / `event_global_limit` 表示连接上限，`Retry-After: 5`。既有 `rate_limited` 仍表示令牌请求速率超限，按实际 Retry-After 处理。503 为尚未就绪或正在关闭。Host 拒绝仍为 400。响应已经开始后不会混入 JSON 错误体：存储故障、撤销、超时和正常停止均结束流，宿主按断线处理。
+
+服务收到 SIGINT / SIGTERM 时先终止所有 SSE 等待，再进入既有关闭流程；慢读取连接也在最外层发送处取消，流不会阻止正常关闭。嵌入式 ASGI 使用者如果自行控制服务退出，须在等待 HTTP 连接结束前于应用事件循环调用 `app.state.events.shutdown()`；应用生命周期结束时另有兜底清理。
+
+### 连接器与 AstrBot 插件的推荐流程
+
+1. 每个宿主进程使用一个后台订阅任务，带 Bearer 头；Python 使用流式 HTTP 客户端即可。浏览器原生 `EventSource` 无法设置 Bearer 头，不应为此把令牌放 URL 或增加 CORS。
+2. 建立订阅后先补拉一次，后续处理 `reminder` 时唤醒同一个串行拉取/持久化队列。SSE 项与拉取项共用通知 ID 去重；单独保存拉取游标和 SSE 断点，业务平台发送记录也需持久去重。只在明确完成任务时修改目标。
+3. `resync`、订阅失败、空闲/最长时长结束或意外断线时继续原有拉取，订阅按带抖动退避恢复。429 / 503 优先遵守 Retry-After；401 停止续订并提示重新配置令牌。不要并行启动无限重连任务。
+4. 保留低频补拉用于其他通知种类与断点修复。按 SSE 规范处理分块、多行/空行，不假定一个 TCP 数据块就是一个事件；约 45 秒收不到任何帧可主动重连。平台调用失败沿用宿主自己的有限重试，推送或取走不证明已送达用户。
+
+`GET /api/v1/events/status` 返回 `instance_id`、当前 `connections`、累计 `reminders_pushed` 和上表的限额/时长字段（`per_token_limit`、`global_limit`、`poll_seconds`、`heartbeat_seconds`、`idle_seconds`、`max_seconds`、`replay_seconds`、`cursor_limit`、`notification_window`）。计数为进程级，重启归零；`reminders_pushed` 只统计已交给 ASGI 响应链的 reminder 帧，含重放，不证明网络接收或平台送达。没有提醒正文、宿主名或令牌值。
+
 ## 错误与重试
 
 所有 `/api/v1` 错误使用同一外层对象：

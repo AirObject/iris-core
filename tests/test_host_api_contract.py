@@ -482,7 +482,8 @@ def test_v1_openapi_over_http_after_admin_login(client):
     schema = response.json()
     actual = {(method, path) for path, methods in schema['paths'].items() if path.startswith('/api/v1/')
               for method in methods if method in ('get', 'post', 'put', 'patch', 'delete')}
-    assert actual == set(OPERATIONS)
+    # The original operations remain frozen; SSE adds two separately tested routes.
+    assert actual == set(OPERATIONS) | {('get', '/api/v1/events'), ('get', '/api/v1/events/status')}
     assert schema['info']['version'] == '1.0.0'
     assert 'entry_id' in schema['components']['schemas']['Search']['properties']
     assert 'media_ids' in schema['components']['schemas']['Message']['properties']

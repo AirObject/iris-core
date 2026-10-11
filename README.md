@@ -520,6 +520,14 @@ prepare 与 `search(include_goals=true)` 返回最多 10 个未结束目标／�
 
 完整材料、脚本、日志及逐案例差异保存在仓库外 `iris-eval-artifacts/m3-goals-20261009/` 和 `iris-eval-artifacts/m3-goals-review-20261009/`；模型去重与方法选择留待下一步。
 
+### 宿主提醒事件流（SSE）
+
+宿主可新增 `GET /api/v1/events` 订阅已发布提醒，带原宿主 Bearer 令牌；Host 和入口范围沿用现有检查。这是 v1 兼容新增，原 `/api/v1/notifications` 拉取与取走行为保留。`reminder` 载荷与拉取提醒项同形，事件流自身不标记取走；`heartbeat` 约每 15 秒一次。宿主按通知 ID 持久去重，断线用 `Last-Event-ID` 或 `last_event_id` 续订，收到 `resync` 时用自己保存的拉取游标补齐。全局目标仍按原读取规则可见，已取消提醒不再推送。
+
+每令牌最多 2 条连接，全局 32 条；无提醒空闲 5 分钟或连接满 1 小时结束，宿主可续订。每条活跃流约 1 秒查询一次 SQLite 只读快照，每批最多 100 项，不持业务写锁；无连接时不轮询。断点窗口为 15 分钟、全服务 10000 个帧断点及最近 1000 个通知 ID，任一超出或重启后以 `resync` 补拉。只缓存 ID、水位与时间，不缓存提醒正文。正常关闭主动结束流，慢客户端发送也有时限。
+
+连接器和 AstrBot 插件建议共用一个后台订阅任务与原拉取队列，订阅失败/断线时继续拉取并退避续订；SSE 帧 ID、通知 ID 和拉取游标各自保存。推送数或 taken 均不代表平台送达，不自动完成目标。请求、帧格式、错误码、补拉和接入步骤见 [宿主接口文档](docs/host-api.md#宿主事件流主动提醒v1-兼容新增)。`GET /api/v1/events/status` 只返回当前连接数、累计 reminder 帧数和限额，计数在重启时归零。
+
 ### 来源前后文、修订快照与依据复核（GO 第五步）
 
 管理详情的每个 `sources` 项保留原来的消息字段，增加 `message`、`context`、`missing`、`notice`。前后文沿用记忆详情：同一入口按消息入库 ID 取前两条、来源本条、后两条，不跨入口拼接；包含发言人名和原始消息类型，不回灌为新经历、不增加召回或使用次数。来源消息不可用时保留 `message_id`，返回 `message=null`、`context=[]`、`missing=true` 和“来源消息已清理或不可用”；当前清理逻辑仍保护被目标引用的消息。
@@ -857,6 +865,8 @@ embedding 暂停时网关直接返回可降级错误，回复准备和查询使�
 积压在一个只读快照中按索引汇总，采样时间写入心跳 `occurred_at`；随后单独提交事件与快照，不持有业务写锁扫描消息，不读取正文。记录使用现有单写连接，锁等待和 SQLite busy 等待各最多 50 ms；记录失败只写固定日志 `runtime journal write failed`，清理失败为 `runtime journal cleanup failed`，继续业务。新记录保留 **30 天**，每日维护完成时每批最多删除 1000 条过期事件及其积压快照；停服、维护中断或清理失败会延迟清理。既有业务表的保留策略不变。
 
 提醒已有证据不重复记：`goal_reminder_plans.created_at/scheduled_at` 是计划建立／预定时间；已发布计划的通知可按 `goal_id + scheduled_at` 与 `notifications` 对应，目标合并另按现有目标合并关系追溯。`notifications.published_at/taken_at/cancelled_at` 是发布、首次取走及取消时间；取走不代表平台送达。新表只补过去无法确定时间的计划取消／跳过，早期没有记录的终态仍是未知。判断降级的独立明细继续读取 `recalls.request_json.judgment`，不以其判断耗时冒充 prepare 总耗时。
+
+事件流另在 `logs/iris.log` 记录固定格式 `host_events instance=<实例 ID> reason=<分类> connections=<当前连接数> reminders_pushed=<累计帧数>`：连接建立/结束及活跃时每 60 秒一次。分类为 `connected`、`disconnected`、`periodic`、`shutdown`、`revoked`、`idle_timeout`、`max_duration`、`storage_unavailable`。只含随机实例 ID、固定分类和计数，不记录提醒正文、宿主名称或令牌，也不增加数据库迁移。日志沿用既有轮转保留策略；当前值由 `/api/v1/events/status` 提供。累计数含重放且只表示已交给 ASGI 响应链，不能替代 `notifications.taken_at` 或连接器的平台发送记录。
 
 连接器 `tools/live_review/` 可据此补充判定（需连接器线适配本 schema）：
 
