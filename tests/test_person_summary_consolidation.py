@@ -163,3 +163,93 @@ def test_one_person_failure_continues_next_person(store):
     report=engine.report(run['id'])
     statuses={i['details']['subject_id']:i['details']['status'] for i in report['items'] if i['outcome']=='person_summary'}
     assert statuses=={'a':'failed','b':'published'} and report['state']=='completed'
+
+
+@pytest.mark.parametrize('limit,other_published', [(1, False), (2, True)])
+def test_admin_job_busy_does_not_block_maintenance_or_repeat_events(store, limit, other_published):
+    from threading import Event
+    from iris.person_summary import PersonSummaryJobs
+    clock, model, gateway, run, config = prepare(store, limit=limit)
+    entered, release = Event(), Event()
+    def block():
+        entered.set()
+        assert release.wait(20), 'test did not release admin generation'
+    jobs = PersonSummaryJobs(store, Model(store, hook=block), clock=clock)
+    try:
+        attempt = jobs.submit('a', expected_version=0)
+        assert entered.wait(5)
+        maintenance = Maintenance(store, gateway=model, clock=clock)
+        maintenance.run(run['id'])
+        report = maintenance.report(run['id'])
+        assert report['state'] == 'completed'
+        results = {i['details']['subject_id']:i for i in report['items'] if i['outcome']=='person_summary'}
+        assert results['a']['details']['status'] == 'skipped'
+        assert results['a']['reason'] == 'generation_in_progress'
+        assert (current_summary(store, 'b') is not None) == other_published
+        with store.read() as conn:
+            events = conn.execute('SELECT COUNT(*) FROM runtime_events').fetchone()[0]
+            assert conn.execute('SELECT state FROM person_summary_attempts WHERE id=?', (attempt,)).fetchone()[0] == 'running'
+            assert conn.execute('SELECT COUNT(*) FROM person_summary_attempts WHERE run_id=?', (run['id'],)).fetchone()[0] == limit
+        for _ in range(3): maintenance.run(run['id'])
+        with store.read() as conn:
+            assert conn.execute('SELECT COUNT(*) FROM runtime_events').fetchone()[0] == events
+    finally:
+        release.set()
+        jobs.close()
+    assert current_summary(store, 'a')['version'] == 1
+
+
+def test_discovery_builds_names_once_and_uses_precomputed_unique_labels(store, monkeypatch):
+    from iris import person_summary as ps
+    clock, model, gateway, run, config = prepare(store)
+    with store.write() as conn:
+        conn.execute("UPDATE memories SET lifecycle='forgotten'")
+        conn.execute("INSERT INTO subjects(id,kind,name,created_at) VALUES('c','person','甲同学',?)", (clock().isoformat(),))
+    original = ps._SummaryNames
+    built = []
+    def names(conn):
+        result = original(conn); built.append(result)
+        return result
+    monkeypatch.setattr(ps, '_SummaryNames', names)
+    assert ps.update_summaries_for_run(store, gateway, run, config, clock=clock)
+    assert len(built) == 1
+    assert '甲同学' not in built[0].unique_labels.get('a', ())
+    assert built[0].unique_labels['b'] == ['乙同学']
+
+
+def test_memory_consolidation_uses_budget_before_person_summaries(store, monkeypatch):
+    clock, model, gateway, run, config = prepare(store, budget=3, limit=2)
+    config['merge_enabled'] = True
+    store.set_setting('consolidation', config)
+    with store.write() as conn:
+        conn.execute('UPDATE consolidation_runs SET settings_json=? WHERE run_id=?', (dumps(config),run['id']))
+    order = []
+    def plan(owner, run, config):
+        with store.write() as conn:
+            wid = conn.execute("""INSERT INTO consolidation_work(fingerprint,kind,payload_json,importance,changed_at,created_at)
+                VALUES('review-order','dependency','{}',100,?,?)""", (clock().isoformat(),clock().isoformat())).lastrowid
+            conn.execute('INSERT INTO consolidation_run_work(run_id,work_id) VALUES(?,?)', (run['id'],wid))
+            conn.execute('UPDATE consolidation_runs SET planned=1 WHERE run_id=?', (run['id'],))
+    def decide(owner, work, config, stop):
+        order.append('memory')
+        owner.reserve(work, 'consolidation_dependency')
+        with store.write() as conn:
+            conn.execute("UPDATE consolidation_work SET state='decided',result_json='{}' WHERE id=?", (work['id'],))
+        return True
+    def apply(owner, work, payload, result, config, blocked):
+        order.append('applied')
+        with store.write() as conn: owner.record(conn, work, 'skipped', 'no_changes')
+    monkeypatch.setattr(Consolidation, 'plan', plan)
+    monkeypatch.setattr(Consolidation, '_decide', decide)
+    monkeypatch.setattr(Consolidation, '_apply_work', apply)
+    model.hook = lambda: order.append('summary')
+    maintenance = Maintenance(store, gateway=model, clock=clock)
+    maintenance.run(run['id'])
+    assert order == ['memory', 'applied', 'summary']
+    assert len(model.calls) == 2
+    report = maintenance.report(run['id'])
+    assert report['state'] == 'completed'
+    assert any(i['outcome']=='person_summary' and i['reason']=='call_budget' for i in report['items'])
+    with store.read() as conn:
+        purposes = [r[0] for r in conn.execute('SELECT purpose FROM consolidation_calls ORDER BY id')]
+    assert purposes == ['consolidation_dependency','consolidation_person_summary_generate','consolidation_person_summary_check']

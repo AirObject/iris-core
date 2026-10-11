@@ -37,12 +37,14 @@ MEMORY_COLUMNS = """m.id,m.content,m.kind,m.speaker_subject_id,m.stance,m.belief
     m.event_time,m.lifecycle,m.revision,m.entry_id,m.world,m.created_at,m.updated_at,s.name AS speaker_name"""
 
 
-def _people(conn, values: list[str]) -> list[str]:
+def _people(conn, values: list[str], *, resolved=None) -> list[str]:
     result = []
     for value in values:
         exact_id = conn.execute("SELECT id FROM subjects WHERE id=?", (value,)).fetchone()
         if exact_id:
             result.append(canonical_subject(conn, value))
+            if resolved is not None:
+                resolved[value] = (result[-1], True)
             continue
         rows = conn.execute("""SELECT DISTINCT s.id FROM subjects s LEFT JOIN subject_aliases a ON a.subject_id=s.id
             AND a.folded_into IS NULL WHERE s.merged_into IS NULL AND (s.id=? OR s.name=? OR a.alias=?)""", (value, value, value)).fetchall()
@@ -52,6 +54,8 @@ def _people(conn, values: list[str]) -> list[str]:
             result.append(rows[0][0])
         else:
             result.append("missing:" + value)
+        if resolved is not None:
+            resolved[value] = (rows[0][0] if rows else None, False)
     return list(dict.fromkeys(result))
 
 
@@ -575,7 +579,8 @@ class Retrieval:
             if not conn.execute("SELECT 1 FROM entries WHERE id=?", (entry_id,)).fetchone():
                 raise KeyError(entry_id)
             recent = self._recent(conn, entry_id, recent_limit)
-            participant_ids = _people(conn, participants) if participants is not None else list(dict.fromkeys(
+            people_resolutions = {}
+            participant_ids = _people(conn, participants, resolved=people_resolutions if people_limit else None) if participants is not None else list(dict.fromkeys(
                 canonical_subject(conn, r[0]) for r in conn.execute('SELECT sender_subject_id FROM messages WHERE entry_id=? ORDER BY id DESC LIMIT 20', (entry_id,))
                 if r[0] not in ('self', 'scene')))
             candidates = self._rank(conn, text, vector, participants=participant_ids, highlights=True,
@@ -640,9 +645,16 @@ class Retrieval:
         # recall write lock, candidate selection, model input or memory budget.
         result['people'] = []
         if people_limit:
-            with self.store.read() as conn:
-                result['people'] = people_context(conn, entry_id, participants=participants,
-                    participant_names=participant_names, limit=people_limit, clock=self.clock)
+            try:
+                with self.store.read() as conn:
+                    result['people'] = people_context(conn, entry_id, participants=participants,
+                        participant_names=participant_names, limit=people_limit, clock=self.clock,
+                        resolved_participants=people_resolutions)
+            except Exception:
+                # Optional context must not invalidate the completed recall.
+                # The HTTP boundary classifies its existing single journal event.
+                result['people'] = []
+                result['hints'].append({'code':'people_unavailable','message':'人物摘要暂不可用。'})
         return result
 
     @staticmethod

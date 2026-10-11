@@ -61,11 +61,15 @@ def test_people_order_display_names_budget_and_old_partitions(store):
 def test_disabled_and_no_published_summary_do_not_load_evidence(store,monkeypatch):
     from iris import person_summary as summaries
     setup_people(store,Clock())
-    def forbidden(*args,**kwargs): raise AssertionError('unnecessary evidence check')
+    calls=[]
+    def forbidden(*args,**kwargs):
+        calls.append(True)
+        raise AssertionError('unnecessary evidence check')
     monkeypatch.setattr(summaries,'summary_context',forbidden)
     r=Retrieval(store)
     assert r.prepare('shared',participants=['a'],judge=False)['people']==[]
     assert r.prepare('shared',participants=['a'],judge=False,people_limit=0)['people']==[]
+    assert not calls
 
 
 def test_host_contract_scope_limits_names_and_search(client,store):
@@ -148,3 +152,112 @@ def test_limit_one_missing_summaries_and_merged_subject(store):
     with store.write() as conn:
         conn.execute("UPDATE subjects SET merged_into='b',revision=revision+1 WHERE id='a'")
     assert [p['subject_id'] for p in r.prepare('shared',participants=['a','b'],judge=False)['people']]==['b']
+
+
+def test_people_failure_isolated_with_fixed_hint_and_runtime_record(client, store, monkeypatch):
+    from iris import retrieval
+    participants(store, Clock())
+    baseline = client.post('/api/v1/entries/shared/prepare', json={'participants':['a'],'people_limit':0,'judge':False}).json()
+    def broken(*args, **kwargs): raise RuntimeError('private implementation detail')
+    monkeypatch.setattr(retrieval, 'people_context', broken)
+    response = client.post('/api/v1/entries/shared/prepare', json={'participants':['a'],'judge':False})
+    assert response.status_code == 200
+    value = response.json()
+    assert value['people'] == []
+    assert {'code':'people_unavailable','message':'人物摘要暂不可用。'} in value['hints']
+    assert value['memories'] == baseline['memories'] and value['entry_profile'] == baseline['entry_profile']
+    with store.read() as conn:
+        events = [dict(r) for r in conn.execute("SELECT event,entry_id,reason,result FROM runtime_events WHERE event='prepare' ORDER BY id")]
+    assert len(events) == 2  # One baseline request and one degraded request; no duplicate diagnostics.
+    assert events[-1] == {'event':'prepare','entry_id':'shared','reason':None,'result':'error'}
+    assert 'private implementation detail' not in json.dumps([value,events])
+
+
+def test_name_keyed_display_map_reuses_participant_resolution(store, monkeypatch):
+    from contextlib import contextmanager
+    clock = Clock(); participants(store, clock)
+    statements = []; read = store.read
+    @contextmanager
+    def traced():
+        with read() as conn:
+            conn.set_trace_callback(statements.append)
+            yield conn
+    monkeypatch.setattr(store, 'read', traced)
+    value = Retrieval(store, clock=clock).prepare('shared', participants=['甲同学','乙同学'],
+        participant_names={'甲同学':'本次甲','乙同学':'本次乙'}, judge=False)
+    assert [(p['subject_id'],p['name']) for p in value['people']] == [('a','本次甲'),('b','本次乙')]
+    scans = [s for s in statements if 'SELECT DISTINCT s.id FROM subjects s' in s]
+    assert len(scans) == 2
+
+
+def test_reused_name_resolution_still_rechecks_alias_scope_after_judgment(store, monkeypatch):
+    from iris import recall_judge
+    clock=Clock(); participants(store,clock)
+    source=said(store,'a',9)
+    with store.write() as conn:
+        conn.execute("INSERT INTO subject_aliases(subject_id,alias,source_message_id) VALUES('a','临时别称',?)",(source,))
+    original=recall_judge.judge
+    def restrict(*args,**kwargs):
+        result=original(*args,**kwargs)
+        with store.write() as conn: conn.execute("UPDATE entries SET visibility='entry_only' WHERE id='shared'")
+        return result
+    monkeypatch.setattr(recall_judge,'judge',restrict)
+    assert Retrieval(store,clock=clock).prepare('shared',participants=['临时别称'],judge=False)['people']==[]
+
+
+def test_name_only_evidence_shares_names_across_summaries(store, monkeypatch):
+    from iris import person_summary as ps
+    from test_person_summary import memory
+    clock=Clock(); setup_people(store,clock)
+    for sid,name in [('a','甲同学'),('b','乙同学')]:
+        for i in range(8): memory(store,clock,f'{name}的具体记载{i}。',speaker='self')
+        assert PersonSummaryEngine(store,Model(store),clock=clock).regenerate(sid,expected_version=0)['status']=='published'
+    original=ps._SummaryNames; built=[]
+    def names(conn):
+        result=original(conn); built.append(result); return result
+    monkeypatch.setattr(ps,'_SummaryNames',names)
+    value=Retrieval(store,clock=clock).prepare('shared',participants=['a','b'],judge=False)
+    assert len(value['people'])==2 and len(built)==1
+
+
+@pytest.mark.parametrize('change',['forgotten','deleted','recent_expired'])
+def test_prepare_keeps_other_items_and_people_when_one_item_unavailable(store,change):
+    clock=Clock(); seed(store,clock)
+    admin_edit(store,'b','乙仍有效。',expected_version=0,clock=clock)
+    items=[{'kind':'recent' if change=='recent_expired' else 'fact','text':'甲会被移除的事项。','memory_refs':['M1'],
+            **({'time_range':'近期'} if change=='recent_expired' else {})},
+           {'kind':'fact','text':'甲仍有效的事项。','memory_refs':['M2']}]
+    value=PersonSummaryEngine(store,Model(store,items=items),clock=clock).regenerate('a',expected_version=0)
+    assert value['status']=='published'
+    if change=='recent_expired': clock.advance(days=30)
+    else:
+        mid=value['version']['sentences'][0]['basis'][0]['memory_id']
+        with store.write() as conn: conn.execute('UPDATE memories SET lifecycle=? WHERE id=?',(change,mid))
+    result=Retrieval(store,clock=clock).prepare('shared',participants=['a','b'],judge=False)['people']
+    assert [p['subject_id'] for p in result]==['a','b']
+    assert '被移除' not in result[0]['text'] and '仍有效' in result[0]['text']
+    assert result[0]['possibly_stale'] and not result[1]['possibly_stale']
+
+
+def test_summary_name_matching_keeps_longest_label_and_word_boundaries(store):
+    import re
+    from iris import person_summary as ps
+    clock=Clock(); setup_people(store,clock)
+    with store.write() as conn:
+        for sid,name in [('parent','甲同学妈妈'),('suffix','同学'),('ann','Ann'),('anna','Anna'),
+                         ('prefixed','A甲'),('quoted','甲(同学)'),('single','甲'),('sharp','Straße')]:
+            conn.execute("INSERT INTO subjects(id,kind,name,created_at) VALUES(?,'person',?,?)",(sid,name,clock().isoformat()))
+        conn.execute("INSERT INTO subject_aliases(subject_id,alias) VALUES('a','小甲')")
+        conn.execute("INSERT INTO subject_aliases(subject_id,alias) VALUES('b','小甲')")
+    with store.read() as conn:
+        names=ps._SummaryNames(conn)
+        labels=sorted(names.labels,key=lambda value:(-len(value),value))
+        reference=re.compile('|'.join(re.escape(label) if re.search('[\u4e00-\u9fff]',label)
+            else r'(?<!\w)'+re.escape(label)+r'(?!\w)' for label in labels),re.I)
+        for text in ['甲同学妈妈与甲同学、小甲见面。','A甲、甲(同学)；同学与甲。',
+                     'annual Joanne Ann ANNA Anna strasse Straße Iris', '未提及任何姓名。']:
+            actual=[(m.group(),m.span()) for m in names.pattern.finditer(text)]
+            assert actual==[(m.group(),m.span()) for m in reference.finditer(text)]
+        assert [m.group() for m in names.pattern.finditer('甲同学妈妈')] == ['甲同学妈妈']
+        assert not list(names.pattern.finditer('annual Joanne'))
+        assert '小甲' not in names.unique_labels['a']

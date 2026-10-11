@@ -105,7 +105,7 @@ class Prepare(Input):
     participants: list[str] | None = Field(default=None, max_length=100, description="主体 ID 或无歧义的名字；空数组不取人物要点")
     people_limit: int = Field(default=3, ge=0, le=3, strict=True, description="人物摘要人数上限；0 关闭，独立于记忆预算")
     participant_names: dict[Annotated[str, Field(min_length=1, max_length=200)], Annotated[str, Field(min_length=1, max_length=200)]] = Field(
-        default_factory=dict, max_length=100, description="主体 ID 到本次显示名的映射；仅影响 people 的 name，不改主体或召回")
+        default_factory=dict, max_length=100, description="主体 ID 或显式参与者名字／别名到本次显示名的映射；仅影响 people 的 name，不改主体或召回")
 
     @field_validator('participant_names')
     @classmethod
@@ -502,7 +502,10 @@ def create_app(db_path: str | Path = "data/iris.db", *, store: Store | None = No
                 "message": f"另有 {pending['entry_count']} 个入口有尚未学习的新消息（{pending['time_from']}—{pending['time_to']}）"})
         result["memories"] = project_host_sources(result["memories"], request.state.principal.scope)
         app.state.tokens.bind_recall(result["recall_id"], request.state.principal)
-        request.state.prepare_result = prepare_result(result)
+        # A people failure is a fixed journal category on this same request;
+        # do not create a second prepare event for an optional partition.
+        request.state.prepare_result = ('error' if any(h.get('code')=='people_unavailable' for h in result['hints'])
+                                        else prepare_result(result))
         return result
 
     @host_router.post("/api/v1/memories/search", summary="筛选并查询记忆；深度读取不恢复遗忘记忆",
@@ -706,7 +709,7 @@ def _install_host_openapi(app):
          prepare, {"persona": {"version": None, "content": "", "generated_at": None, "needs_update": False, "stale_basis_count": 0},
                    "memories": [], "recent_messages": [], "state": {}, "goals": [], "entry_profile": None, "people": [],
                    "hints": [], "judgment": {"status": "disabled"}, "recall_id": "recall-id"},
-         "返回 persona、memories、recent_messages、state、goals、hints、entry_profile、people 八个分区，以及 judgment 和 recall_id，不生成回复。people 是 v1 兼容新增：最多 3 人、合计 1000 个估算 token，people_limit=0 关闭；participant_names 可按主体 ID 提供本次显示名，仅影响 people.name。显式 participants 顺序优先，否则按本入口最近发言排序；仅返回已发布且当前依据仍可见的摘要，不触发生成。entry_profile 仅返回本入口已发布且启用的画像，否则为 null；生成时间与 possibly_stale 供宿主判断时效，不触发生成。仅本入口近期消息；sources 的范围外 entry_id、entry_name、occurred_at 为 null；其他授权入口的待学习情况仅以数量和接收时间范围加入 hints。text 省略时自适应近期消息，空字符串表示显式空查询。known_memory_ids 排除已在宿主上下文中的记忆。subject_annotations 标注可能同一人与虚构扮演，不附联系证据原文。模型故障时正常返回并提示降级。"),
+         "返回 persona、memories、recent_messages、state、goals、hints、entry_profile、people 八个分区，以及 judgment 和 recall_id，不生成回复。people 是 v1 兼容新增：最多 3 人、合计 1000 个估算 token，people_limit=0 关闭；participant_names 可按主体 ID 或显式参与者名字／别名提供本次显示名，仅影响 people.name。显式 participants 顺序优先，否则按本入口最近发言排序；仅返回已发布且当前依据仍可见的摘要，不触发生成。entry_profile 仅返回本入口已发布且启用的画像，否则为 null；生成时间与 possibly_stale 供宿主判断时效，不触发生成。仅本入口近期消息；sources 的范围外 entry_id、entry_name、occurred_at 为 null；其他授权入口的待学习情况仅以数量和接收时间范围加入 hints。text 省略时自适应近期消息，空字符串表示显式空查询。known_memory_ids 排除已在宿主上下文中的记忆。subject_annotations 标注可能同一人与虚构扮演，不附联系证据原文。模型故障时正常返回并提示降级。"),
         ("post", base + "/memories/search", {"text": "观星", "entry_id": "group-a", "include_forgotten": False,
                                             "include_state": False, "include_goals": False},
          search, {"memories": [], "hints": [], "recall_id": "recall-id"},

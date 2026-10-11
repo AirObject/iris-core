@@ -785,20 +785,9 @@ class Consolidation:
         if not update_profiles_for_run(self.store, _PersonaGateway(self, stop=stop), run, config,
                                        clock=self.clock, stop=stop):
             return False
-        from .person_summary import update_summaries_for_run
-        try:
-            if not update_summaries_for_run(self.store, _PersonaGateway(self, stop=stop), run, config,
-                                            clock=self.clock, stop=stop):
-                return False
-        except Exception:
-            # A failed optional summary step must not abort the other phases.
-            # Store a fixed code, never provider output or exception prose.
-            with self.store.write() as conn:
-                conn.execute('''INSERT OR IGNORE INTO maintenance_items
-                    (run_id,phase,item_key,object_id,outcome,reason,details_json,created_at)
-                    VALUES(?,'consolidation','person_summary:step',?,'person_summary','unexpected_error',?,?)''',
-                    (self.run_id,self.run_id,dumps({'status':'failed'}),self.clock().isoformat()))
         if not any(config[key] for key in ('merge_enabled','conflict_enabled','dependency_enabled')):
+            if not self._person_summaries(run,config,stop):
+                return False
             self.halt('model_items_disabled')
             return True
         if not state['planned']:
@@ -871,7 +860,26 @@ class Consolidation:
                 # The failure receipt is a new short transaction.
                 self.fail_work(work,exc,'invalid_action')
                 blocked.add(frozenset(payload.get('pair_ids',[payload.get('target_id')])))
+        # Memory merge/conflict/dependency work has first use of the budget.
+        if not self._person_summaries(run,config,stop):
+            return False
         self.halt(budget_reason)
+        return True
+
+    def _person_summaries(self,run,config,stop):
+        from .person_summary import update_summaries_for_run
+        try:
+            if not update_summaries_for_run(self.store, _PersonaGateway(self, stop=stop), run, config,
+                                            clock=self.clock, stop=stop):
+                return False
+        except Exception:
+            # A failed optional summary step must not abort maintenance.
+            # Store a fixed code, never provider output or exception prose.
+            with self.store.write() as conn:
+                conn.execute('''INSERT OR IGNORE INTO maintenance_items
+                    (run_id,phase,item_key,object_id,outcome,reason,details_json,created_at)
+                    VALUES(?,'consolidation','person_summary:step',?,'person_summary','unexpected_error',?,?)''',
+                    (self.run_id,self.run_id,dumps({'status':'failed'}),self.clock().isoformat()))
         return True
 
     def fail_work(self,work,error,reason,*,retry=False):

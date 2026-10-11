@@ -10,6 +10,7 @@ import json
 import re
 import time
 from collections import defaultdict
+from functools import cache, cached_property
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from difflib import SequenceMatcher
@@ -166,9 +167,30 @@ class _SummaryNames(SubjectNames):
             self.add(row['alias'], row['subject_id'])
             self.aliases[row['subject_id']].append(row['alias'])
         labels = sorted(self.labels, key=lambda value:(-len(value), value))
-        pattern = '|'.join(re.escape(label) if re.search('[\u4e00-\u9fff]', label)
-            else r'(?<!\w)' + re.escape(label) + r'(?!\w)' for label in labels)
+        # Distinct Han initials cannot compete at the same match position. Group
+        # them so regex prefix factoring avoids thousands of unrelated branches
+        # on every cited body. Within a group the original longest-first order
+        # remains; non-Han initials keep their original order and word boundaries.
+        initials = defaultdict(list); other = []
+        for label in labels:
+            if '\u4e00' <= label[0] <= '\u9fff':
+                initials[label[0]].append(re.escape(label[1:]))
+            else:
+                other.append(re.escape(label) if re.search('[\u4e00-\u9fff]', label)
+                    else r'(?<!\w)' + re.escape(label) + r'(?!\w)')
+        pattern = '|'.join([*(re.escape(first)+'(?:'+'|'.join(suffixes)+')'
+                             for first,suffixes in initials.items()), *other])
         self.pattern = re.compile(pattern or r'(?!x)x', re.I)
+
+    @cached_property
+    def unique_labels(self):
+        # Discovery computes each subject's labels once. Host reads only need
+        # matching, so avoid allocating an unused list for every other subject.
+        result = defaultdict(list)
+        for label, ids in self.labels.items():
+            if len(ids) == 1:
+                result[next(iter(ids))].append(label)
+        return result
 
 
 def _related(row, about, subject_id, names):
@@ -236,9 +258,7 @@ def _direct_ids(conn, subject_id, current, *, limit=None):
 
 def _named_ids(conn, subject_id, names):
     found=set()
-    for label,sids in names.labels.items():
-        if sids!={subject_id}:
-            continue
+    for label in names.unique_labels.get(subject_id, ()):
         tokenizer='trigram' if len(label)>=3 else 'jieba'
         tokens=[label] if tokenizer=='trigram' else query_terms(label,'jieba')
         if not tokens:
@@ -355,8 +375,11 @@ def _stale(conn, subject_id, sentences, *, current=None, names=None):
             else:
                 row['tags']=[r[0] for r in conn.execute('SELECT tag FROM memory_tags WHERE memory_id=? ORDER BY tag',(row['id'],))]
                 about=_about(conn,row['id'])
-                if names is None and row['speaker_subject_id']!=subject_id and not any(s['id']==subject_id for s in about):
-                    names=_SummaryNames(conn)
+                if row['speaker_subject_id']!=subject_id and not any(s['id']==subject_id for s in about):
+                    if names is None:
+                        names=_SummaryNames(conn)
+                    elif callable(names):
+                        names=names()  # One lazy, shared names snapshot for people_context.
                 if not _related(row,about,subject_id,names):
                     reason='no_longer_related'
                 elif row['revision']!=basis['revision'] or _memory_hash(row,about)!=basis.get('sha256'):
@@ -366,10 +389,10 @@ def _stale(conn, subject_id, sentences, *, current=None, names=None):
     return result
 
 
-def _view(conn, value, *, current=None):
+def _view(conn, value, *, current=None, names=None):
     if value is None:
         return None
-    value={**value,'stale_basis':_stale(conn,value['subject_id'],value['sentences'],current=current)}
+    value={**value,'stale_basis':_stale(conn,value['subject_id'],value['sentences'],current=current,names=names)}
     subject=_subject(conn,value['subject_id']); settings=_settings(conn,value['subject_id'])
     if value['invalidated_reason'] or value['cleared_at']:
         value['stale_basis'].append({'reason':value['invalidated_reason'] or 'memory_purged'})
@@ -389,14 +412,14 @@ def current_summary(store, subject_id, *, entry_id=None, clock=utc_now):
         return _view(conn,_current(conn,subject_id),current=_instant(clock()))
 
 
-def summary_context(conn, subject_id, entry_id, *, clock=utc_now):
+def summary_context(conn, subject_id, entry_id, *, clock=utc_now, names=None):
     """Host item, with only cited ancestors checked on this snapshot."""
     if entry_id is not None and not conn.execute('SELECT 1 FROM entries WHERE id=?',(entry_id,)).fetchone():
         raise KeyError(entry_id)
     subject=_subject(conn,subject_id); settings=_settings(conn,subject_id)
     if (subject['kind']!='person' or subject_id in ('self','scene') or subject['merged_into'] is not None or not settings['enabled'] or not _runtime(conn)['enabled']):
         return None
-    value=_view(conn,_current(conn,subject_id),current=_instant(clock()))
+    value=_view(conn,_current(conn,subject_id),current=_instant(clock()),names=names)
     if (value is None or not value['content'] or value['status']!='published' or value['invalidated_reason']
             or value['cleared_at'] or any(s['reason'] in ('visibility_changed','no_longer_related') for s in value['stale_basis'])):
         return None
@@ -435,13 +458,20 @@ def _due(conn, subject_id, current, *, rows=None, names=None):
     state={str(row['id']):_memory_hash(row,about) for row,about in rows}
     old=previous['memory_state'] if previous else {}
     changed=sum(state.get(mid)!=old.get(mid) for mid in state.keys()|old.keys())
-    stale=bool(previous and _view(conn,previous,current=current)['possibly_stale'])
+    stale=bool(previous and _view(conn,previous,current=current,names=names)['possibly_stale'])
     reason=('subject_kind' if subject['kind']!='person' or subject_id in ('self','scene') else 'subject_merged' if subject['merged_into'] else
             'disabled' if not config['enabled'] or not settings['enabled'] else
             'insufficient_memories' if len(rows)<config['min_memories'] else None)
-    last=conn.execute("""SELECT state,memory_state_json FROM person_summary_attempts
-        WHERE subject_id=? AND state!='skipped' ORDER BY id DESC LIMIT 1""",(subject_id,)).fetchone()
-    if reason is None and last and last['state'] in ('failed','rejected') and json.loads(last['memory_state_json'])==state:
+    last=conn.execute("""SELECT a.state,a.reason,a.memory_state_json,json_extract(v.checks_json,'$.model_error') AS model_error
+        FROM person_summary_attempts a LEFT JOIN person_summary_versions v
+        ON v.subject_id=a.subject_id AND v.version=a.version
+        WHERE a.subject_id=? AND a.state!='skipped' ORDER BY a.id DESC LIMIT 1""",(subject_id,)).fetchone()
+    # A provider/health failure is not a judgment of unchanged evidence. A check
+    # failure may have saved a rejected version, so state alone is insufficient.
+    deterministic = last and (last['reason'] in ('invalid_output','too_many_deleted','empty',
+        'too_many_items','too_long','token_budget') or last['state']=='rejected' and
+        not last['model_error'])
+    if reason is None and deterministic and json.loads(last['memory_state_json'])==state:
         reason='no_changes_since_attempt'
     if reason is None and previous and not (stale or settings['needs_regeneration'] or changed>=config['min_changed'] or
             changed and current-_instant(previous['generated_at'])>=timedelta(days=config['update_days'])):
@@ -781,6 +811,10 @@ class PersonSummaryEngine:
 
     def _skip(self, subject_id, expected, source, due, reason, run_id, stamp):
         with self.store.write() as conn:
+            # A Busy receipt changes no summary. Its version is the current one
+            # even if the admin worker finished between observation and this lock.
+            if expected is None:
+                expected=_settings(conn,subject_id)['current_version']
             _expect(conn,subject_id,expected)
             _check_run_admission(conn,subject_id,run_id)
             _audit(conn,'generation_skipped',subject_id,stamp,base_version=expected,reason=reason,source=source)
@@ -825,7 +859,7 @@ class PersonSummaryEngine:
                 raise PersonSummaryBusy('generation_in_progress')
             previous=_expect(conn,subject_id,expected); due=_due(conn,subject_id,current)
             config=_runtime(conn); settings=_settings(conn,subject_id)
-        reason=None if source=='regenerate' and due['reason']=='not_due' else due['reason']
+        reason=None if source=='regenerate' and due['reason'] in ('not_due','no_changes_since_attempt') else due['reason']
         if reason:
             return self._skip(subject_id,expected,source,due,reason,run_id,stamp)
         try:
@@ -1016,6 +1050,9 @@ def update_summaries_for_run(store, gateway, run, config, *, clock=utc_now, stop
     if admitted>=runtime['max_subjects_per_run']:
         return True
     with store.read() as conn:
+        # Discovery shares one names snapshot. Each admitted generation still
+        # independently revalidates identity/evidence at reservation and writeback.
+        names=_SummaryNames(conn)
         # Aggregate metadata once rather than scanning all messages per subject.
         subjects=[r[0] for r in conn.execute("""WITH activity AS (
             SELECT sender_subject_id AS subject_id,MAX(julianday(occurred_at)) AS recent FROM messages GROUP BY sender_subject_id
@@ -1035,7 +1072,6 @@ def update_summaries_for_run(store, gateway, run, config, *, clock=utc_now, stop
         if stop and stop():
             return False
         with store.read() as conn:
-            names=_SummaryNames(conn)
             if not _enough_candidates(conn,subject_id,current,runtime['min_memories'],names):
                 continue
             due=_due(conn,subject_id,current,names=names)
@@ -1050,7 +1086,9 @@ def update_summaries_for_run(store, gateway, run, config, *, clock=utc_now, stop
             else:
                 result=engine.update(subject_id,expected_version=expected,run_id=run_id)
         except PersonSummaryBusy:
-            return False
+            # Do not hold the entire maintenance run open for an unrelated admin
+            # job. A durable per-run receipt also prevents retry/event churn.
+            result=engine._skip(subject_id,None,'periodic',due,'generation_in_progress',run_id,stamp)
         except PersonSummaryConflict as error:
             result={'status':'conflict','reason':str(error)}
         except Exception:
@@ -1073,7 +1111,8 @@ def update_summaries_for_run(store, gateway, run, config, *, clock=utc_now, stop
 PEOPLE_TOKENS = 1000
 
 
-def people_context(conn, entry_id, *, participants=None, participant_names=None, limit=3, clock=utc_now):
+def people_context(conn, entry_id, *, participants=None, participant_names=None, limit=3,
+                   clock=utc_now, resolved_participants=None):
     """Independent, bounded prepare partition; never load evidence for absent versions."""
     from .people import canonical_subject
     if not limit or not _runtime(conn)['enabled']:
@@ -1083,20 +1122,33 @@ def people_context(conn, entry_id, *, participants=None, participant_names=None,
         'SELECT sender_subject_id FROM messages WHERE entry_id=? ORDER BY id DESC LIMIT 20',(entry_id,))]
     ordered=[]; display={}
     for ref in references:
-        exact=conn.execute('SELECT id FROM subjects WHERE id=?',(ref,)).fetchone()
-        if exact:
-            sid=canonical_subject(conn,ref)
-        else:
-            # Existing recall resolves all aliases. This new identity-bearing
-            # partition independently forbids links learned only in private entries.
-            matches=conn.execute('''SELECT DISTINCT s.id FROM subjects s
-                LEFT JOIN subject_aliases a ON a.subject_id=s.id AND a.folded_into IS NULL
-                LEFT JOIN messages m ON m.id=a.source_message_id LEFT JOIN entries e ON e.id=m.entry_id
-                WHERE s.merged_into IS NULL AND (s.name=? OR (a.alias=? AND
-                    (a.source_message_id IS NULL OR e.visibility='shared')))''',(ref,ref)).fetchall()
-            if len(matches)!=1:
+        resolved=(resolved_participants or {}).get(ref)
+        if resolved is not None and not resolved[1]:
+            sid,exact=resolved
+            # Reuse recall's unambiguous ID, not its unfiltered alias provenance.
+            # This final snapshot checks only that subject's name/public aliases.
+            if sid is None or not conn.execute("""SELECT 1 FROM subjects s
+                WHERE s.id=? AND s.merged_into IS NULL AND (s.name=? OR EXISTS (
+                    SELECT 1 FROM subject_aliases a LEFT JOIN messages m ON m.id=a.source_message_id
+                    LEFT JOIN entries e ON e.id=m.entry_id WHERE a.subject_id=s.id AND a.alias=?
+                    AND a.folded_into IS NULL AND (a.source_message_id IS NULL OR e.visibility='shared')))""",
+                    (sid,ref,ref)).fetchone():
                 continue
-            sid=matches[0][0]
+        else:
+            exact=conn.execute('SELECT id FROM subjects WHERE id=?',(ref,)).fetchone()
+            if exact:
+                sid=canonical_subject(conn,ref)
+            else:
+                # Existing recall resolves all aliases. This new identity-bearing
+                # partition independently forbids links learned only in private entries.
+                matches=conn.execute('''SELECT DISTINCT s.id FROM subjects s
+                    LEFT JOIN subject_aliases a ON a.subject_id=s.id AND a.folded_into IS NULL
+                    LEFT JOIN messages m ON m.id=a.source_message_id LEFT JOIN entries e ON e.id=m.entry_id
+                    WHERE s.merged_into IS NULL AND (s.name=? OR (a.alias=? AND
+                        (a.source_message_id IS NULL OR e.visibility='shared')))''',(ref,ref)).fetchall()
+                if len(matches)!=1:
+                    continue
+                sid=matches[0][0]
         if sid in ('self','scene') or sid in display:
             continue
         ordered.append(sid)
@@ -1109,11 +1161,14 @@ def people_context(conn, entry_id, *, participants=None, participant_names=None,
         WHERE p.subject_id IN (SELECT value FROM json_each(?)) AND p.enabled=1 AND s.kind='person'
         AND s.merged_into IS NULL AND v.status='published' AND v.cleared_at IS NULL
         AND v.invalidated_reason IS NULL AND v.content!='' ''',(dumps(ordered),))}
+    @cache
+    def names():
+        return _SummaryNames(conn)
     result=[]
     for sid in ordered:
         if sid not in published:
             continue
-        item=summary_context(conn,sid,entry_id,clock=clock)
+        item=summary_context(conn,sid,entry_id,clock=clock,names=names)
         if item is None:
             continue
         if display[sid] is not None:
