@@ -22,7 +22,7 @@ PROMPT=files('iris').joinpath('prompts/goal_dedup_judge_v1.md').read_text(encodi
 # Explicit method overrides are internal to the probe, never an admin option.
 DEFAULT_METHOD='C2'
 DEFAULTS={'enabled':True,'budget_seconds':5.0,'concurrency':1,'queue_limit':8,
-          'pending_fallback_minutes':30,'possible_min_similarity':.6}
+          'pending_fallback_minutes':30,'possible_min_similarity':0}
 MAX_SECONDS=60.0  # Measurement override; the administrator API is capped at 10 s.
 MAX_CANDIDATES=8
 
