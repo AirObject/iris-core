@@ -14,7 +14,7 @@ from test_goal_dedup_judge import gateway
 @pytest.mark.parametrize('origin', ['host', 'internal', 'admin'])
 @pytest.mark.parametrize('verdict,marked', [('different', False), ('uncertain', True), ('same', True)])
 def test_sequence_conflict_requires_model_and_never_merges(store, origin, verdict, marked):
-    store.set_setting('goal_dedup_judge', {'enabled': True, 'method': 'D5'})
+    store.set_setting('goal_dedup_judge', {'enabled': True, 'method': 'D6'})
     judge = Judge(store, verdict=verdict)
     goals = Goals(store, gateway=judge, clock=lambda: datetime(2026, 10, 12, tzinfo=timezone.utc))
     old = goals.create(content='周五20点检查服务器')['goal']
@@ -43,7 +43,7 @@ def test_suppressed_sequence_hint_remains_merge_blocker():
 
 
 def test_failure_does_not_manufacture_hint_and_existing_pending_policy_survives(store):
-    store.set_setting('goal_dedup_judge', {'enabled': True, 'method': 'D5'})
+    store.set_setting('goal_dedup_judge', {'enabled': True, 'method': 'D6'})
     judge = Judge(store, verdict=ModelError('retryable', 'unit timeout', reason='timeout'))
     goals = Goals(store, gateway=judge)
     goals.create(content='检查三台服务器')
@@ -57,7 +57,7 @@ def test_failure_does_not_manufacture_hint_and_existing_pending_policy_survives(
 
 
 def test_conflict_revision_change_during_call_requires_review_again(store):
-    store.set_setting('goal_dedup_judge', {'enabled': True, 'method': 'D5'})
+    store.set_setting('goal_dedup_judge', {'enabled': True, 'method': 'D6'})
     judge = Judge(store, verdict='uncertain')
     goals = Goals(store, gateway=judge)
     old = goals.create(content='检查三台服务器')['goal']
@@ -76,7 +76,7 @@ def test_conflict_revision_change_during_call_requires_review_again(store):
     '{"decisions":[{"id":true,"verdict":"uncertain"}]}',
     '{"decisions":[]}', '{"answer":"可能是同一件事"}',
 ])
-@pytest.mark.parametrize('method', ['D2', 'D3', 'D4', 'D5'])
+@pytest.mark.parametrize('method', ['D2', 'D3', 'D4', 'D5', 'D6'])
 def test_new_judgment_invalid_schema_uses_existing_failure_policy(store, bad, method):
     model = gateway(store, lambda _: httpx.Response(200, json={
         'choices': [{'message': {'content': bad}, 'finish_reason': 'stop'}]}))
