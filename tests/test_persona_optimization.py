@@ -295,7 +295,9 @@ def test_json_correction_does_not_reset_check_budget(prepared):
         finally:
             gateway.close()
     assert limits==[180,80]
-    assert set(outputs)=={'persona_check','persona_check_repair'}
+    assert set(outputs)=={'persona_check','persona_check_repair',
+        'persona_check_finish_reason','persona_check_repair_finish_reason'}
+    assert outputs['persona_check_finish_reason']==outputs['persona_check_repair_finish_reason']=='stop'
 
 
 def test_repaired_sentence_must_still_pass_whole_persona_length_limit(prepared):

@@ -40,6 +40,8 @@ PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v9', 'persona_check': '
                    'persona_sentence_repair': 'persona_repair_v8', 'persona_recheck': 'persona_check_v12'}
 CALL_TIMEOUTS = {'persona_generate': 180, 'persona_check': 180,
                  'persona_sentence_repair': 120, 'persona_recheck': 180}
+CALL_MAX_TOKENS = {'persona_generate':4096, 'persona_check':4096,
+                   'persona_sentence_repair':2048, 'persona_recheck':4096}
 CHECK_BATCH_SIZE = 4
 CHECK_BATCH_CLAUSES = 2
 MAX_CHECK_STAGE_SECONDS = 900
@@ -262,7 +264,7 @@ def _generation_material(conn, settings, previous, stamp):
         else:
             omitted.append({'sentence':sentence, 'reason':'template_evidence_over_budget'})
     return {'evidence':evidence, 'settings':settings, 'as_of':stamp,
-        'prompt_versions':PROMPT_VERSIONS, 'timeouts_seconds':CALL_TIMEOUTS, 'check_batch_size':CHECK_BATCH_SIZE,
+        'prompt_versions':PROMPT_VERSIONS, 'timeouts_seconds':CALL_TIMEOUTS, 'output_token_limits':CALL_MAX_TOKENS, 'check_batch_size':CHECK_BATCH_SIZE,
         'max_check_stage_seconds':MAX_CHECK_STAGE_SECONDS, 'check_batch_clauses':CHECK_BATCH_CLAUSES,
         'repair_batch_size':REPAIR_BATCH_SIZE, 'max_repair_stage_seconds':MAX_REPAIR_STAGE_SECONDS,
         'role_name':_setting(conn, 'role_name', 'Iris'), 'locked_sentences':retained,
@@ -997,13 +999,16 @@ class PersonaEngine:
                     # budget. Gateway still records the actual persona purpose.
                     health.check('chat', 'learning')
                 label = purpose + ('_repair' if repair else '')
-                reply = gateway.chat(messages, label, max_tokens=16000, _deadline=deadline)
+                reply = gateway.chat(messages, label, max_tokens=CALL_MAX_TOKENS[purpose], _deadline=deadline)
                 outputs[label] = reply.content
+                outputs[label + '_finish_reason'] = reply.finish_reason
                 if monotonic() >= deadline:
                     raise ModelError('timeout', 'total timeout', reason='timeout')
+                if reply.finish_reason == 'length':
+                    # Exhausted reasoning/output is not malformed JSON to retry.
+                    # Keep the raw result; no partial or parseable fragment passes.
+                    raise ModelError('invalid_output', 'output budget exhausted', reason='output_limit')
                 try:
-                    if reply.finish_reason == 'length':
-                        raise ValueError('finish_reason=length')
                     result, _ = parse_json_object_with_status(reply.content)
                     return result
                 except ValueError:
@@ -1042,7 +1047,17 @@ class PersonaEngine:
                 payload.pop('candidate_text')
             raw = {}
             raw_batches.append(raw)
-            batch = self._call(purpose, payload, raw, deadline=deadline)
+            try:
+                batch = self._call(purpose, payload, raw, deadline=deadline)
+            except ModelError as error:
+                if error.reason != 'output_limit':
+                    raise
+                if batch_index == 0:
+                    outputs.update(raw)
+                return {'sentences':[], 'change_degree':'large',
+                        'reason':'incomplete check: output_limit',
+                        'validation_errors':[f'batch {batch_index+1}: output_limit; no complete judgment'],
+                        'batches':batches, 'window_map':window_map}
             if batch_index == 0:
                 outputs.update(raw)
             checked_batch = {**batch, 'validation_errors': []}
@@ -1142,7 +1157,14 @@ class PersonaEngine:
                 request['evidence_by_ref'] = {ref:record for ref,record in payload['evidence_by_ref'].items() if ref in refs}
                 raw = {}
                 raw_batches.append(raw)
-                repaired = self._call('persona_sentence_repair',request,raw,deadline=deadline)
+                try:
+                    repaired = self._call('persona_sentence_repair',request,raw,deadline=deadline)
+                except ModelError as error:
+                    if error.reason != 'output_limit':
+                        raise
+                    # This was the sentence's one permitted repair. No valid repair
+                    # means deletion below, never use even parseable partial output.
+                    repaired = {'repairs':[], 'error':'output_limit'}
                 if start == 0:
                     outputs.update(raw)
                     checks['repair_output'] = repaired
