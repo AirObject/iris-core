@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { api, ApiError, errorText, json } from "./api";
 import { Dialog, Notice, lifecycleLabel } from "./ui";
+import type { BackupNotice } from "./types";
+import { PurgeBackupNotice } from "./PurgeBackupNotice";
 
 type Scope = { subject_id: string } | { entry_id: string };
 type Action = "forget" | "delete" | "purge";
 type Preview = {
+  backup_notice?: BackupNotice;
   snapshot_token: string;
   counts: Record<string, number>;
   total: number;
@@ -19,6 +22,7 @@ type Preview = {
   }[];
 };
 type Result = {
+  backup_notice?: BackupNotice;
   status: string;
   count: number;
   memory_ids: number[];
@@ -149,6 +153,7 @@ export function BulkMemoryDialog({
                 ? `已批量${labels[action]} ${result.count} 条记忆。`
                 : `操作未全部完成，已处理 ${result.count} 条记忆。`}
             </Notice>
+            <PurgeBackupNotice notice={result.backup_notice} />
             {result.skipped_count > 0 && (
               <p>跳过已删除的 {result.skipped_count} 条记忆。</p>
             )}
@@ -256,11 +261,14 @@ export function BulkMemoryDialog({
                     </li>
                   ))}
                 </ul>
+                {action === "purge" && (
+                  <PurgeBackupNotice notice={preview.backup_notice} />
+                )}
                 {purgeStep ? (
                   <>
                     <Notice error>
                       即将彻底清除 {preview.applicable_count}{" "}
-                      条记忆，此操作不可撤销。不清除批次尝试中的模型原始输出及调用记录里已有的内容。
+                      条记忆，此操作不可撤销。同时清空可关联的模型原始输出等正文副本。
                     </Notice>
                     <label className="check-label">
                       <input
