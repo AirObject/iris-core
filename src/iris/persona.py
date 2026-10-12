@@ -37,8 +37,8 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v14', 'persona_check': 'persona_check_v20',
-                   'persona_sentence_repair': 'persona_repair_v12', 'persona_recheck': 'persona_check_v20'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v15', 'persona_check': 'persona_check_v21',
+                   'persona_sentence_repair': 'persona_repair_v13', 'persona_recheck': 'persona_check_v21'}
 CALL_TIMEOUTS = {'persona_generate': 360, 'persona_check': 360,
                  'persona_sentence_repair': 120, 'persona_recheck': 360}
 CALL_MAX_TOKENS = {'persona_generate':16000, 'persona_check':16000,
@@ -345,11 +345,11 @@ def _check_batches(sentences):
 
 
 def _model_memory(memory, *, proof_choices=False):
-    """Project a single authoritative prose source; keep the full audit elsewhere.
+    """Separate factual utterances from restrictive memory context.
 
-    A summary and its source are not independent witnesses. Showing both invites
-    a model to rationalize the stronger summary (e.g. a request made into an
-    accomplished act). Without excerpts, existing memory text remains available.
+    A summary and its source are not independent witnesses. Current text can
+    narrow the scope or correct a claim, but not prove an act absent from the
+    original utterance. Without excerpts, memory text is the factual fallback.
     """
     fields = ('ref', 'memory_id', 'revision', 'initial_sources', 'stance',
               'speaker_subject_id', 'about', 'date', 'event_time', 'entry_kind',
@@ -358,9 +358,10 @@ def _model_memory(memory, *, proof_choices=False):
     result['excerpts'] = [dict(source, source_index=index,
         **({'quote_spans': _clause_parts(source['excerpt'])} if proof_choices else {}))
         for index, source in enumerate(memory['excerpts'], 1)]
-    if memory['excerpts'] and memory['revision'] > 1:
-        # A correction constrains what remains true even when original utterances
-        # are unchanged. It is never another quote choice or independent date.
+    if memory['excerpts']:
+        # Even revision 1 can retain a domain omitted by elliptical utterances.
+        # Current text only narrows scope/corrections; it never proves extra acts
+        # or becomes another factual quote choice or independent event date.
         result['current_revision_text'] = memory['content']
     if not memory['excerpts']:
         result['content'] = memory['content']
@@ -381,6 +382,8 @@ def _check_payload(material, sentences, *, full_content, proof_choices=True):
             refs.append(memory['ref'])
             evidence[memory['ref']] = _model_memory(memory, proof_choices=proof_choices)
         row = {k:v for k,v in sentence.items() if k not in ('_check_sentence','_check_focus')}
+        row['scope_check_required'] = (sentence['origin'] == 'memory'
+            and not sentence.get('initial_setting') and not BOUNDED_SCENE.search(sentence['text']))
         row.update(index=index, evidence_refs=refs,
                    clauses=sentence.get('_check_focus',_clause_parts(sentence['text'])),
                    full_clause_count=len(_clause_parts(sentence['text'])))
@@ -660,6 +663,46 @@ def _repair_options(sentence, material):
     return options
 
 
+def _validate_activity_scope(row, sentence, evidence):
+    """Verify a retained scope anchor, leaving its semantic choice to the model.
+
+    A scope quote can constrain a claim but never supplies an act or a date.
+    Bounded episodes use the existing event/clause checks instead of this
+    additional contract for general claims.
+    """
+    if not sentence.get('scope_check_required'):
+        return [], []
+    scope = row.get('scope_check') if isinstance(row, dict) else None
+    if (not isinstance(scope, dict)
+            or set(scope) != {'candidate_scope', 'source_scopes', 'preserved'}
+            or type(scope['preserved']) is not bool
+            or not isinstance(scope['candidate_scope'], str)
+            or not isinstance(scope['source_scopes'], list)
+            or any(not isinstance(proof, dict) or set(proof) != {'ref', 'quote'}
+                   or not isinstance(proof['ref'], str) or not isinstance(proof['quote'], str)
+                   for proof in scope['source_scopes'])):
+        return ['invalid activity scope verdict'], []
+    issues = []
+    if not scope['preserved']:
+        issues.append('activity scope not preserved by candidate')
+    candidate_scope = scope['candidate_scope']
+    if scope['preserved'] and (not candidate_scope.strip() or candidate_scope not in sentence['text']):
+        issues.append('activity scope needs an exact candidate qualifier')
+    if scope['preserved'] and not scope['source_scopes']:
+        issues.append('activity scope needs its own source qualifier')
+    for proof in scope['source_scopes']:
+        memory = evidence.get(proof['ref'])
+        source_texts = [] if memory is None else [memory.get('current_revision_text', ''),
+            memory.get('content', ''), *(source['excerpt'] for source in memory.get('excerpts', []))]
+        quote = proof['quote']
+        if (proof['ref'] not in sentence['evidence_refs'] or not re.search(r'\w', quote)
+                or not any(quote in text for text in source_texts)):
+            issues.append('activity scope must quote an exact own bound source qualifier')
+        elif scope['preserved'] and quote not in candidate_scope:
+            issues.append('activity scope qualifier was omitted or broadened in candidate')
+    return [], issues
+
+
 def _validate_clause_checks(output, payload):
     """Check quote identity and per-focus dates; never assert semantic entailment."""
     errors, problems = [], {}
@@ -691,7 +734,9 @@ def _validate_clause_checks(output, payload):
         if not isinstance(parts, list) or (not complete and not stopped):
             errors.append(f'sentence {index}: clause checks must cover every focus span, in order')
             continue
-        issues, errors_before = [], len(errors)
+        scope_errors, issues = _validate_activity_scope(row, sentence, payload['evidence_by_ref'])
+        errors.extend(f'sentence {index}: {error}' for error in scope_errors)
+        errors_before = len(errors)
         for expected, part in zip(focus, parts):
             label = f"clause {expected['index']}"
             if (not isinstance(part, dict) or type(part.get('index')) is not int

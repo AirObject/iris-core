@@ -74,3 +74,18 @@ def test_memory_without_utterances_retains_its_own_text_as_fallback(store):
     assert generated['content'] == checked['content'] == SUMMARY
     assert not generated['excerpts'] and not checked['excerpts']
     assert checked['content_spans']
+
+
+def test_first_revision_also_exposes_current_scope_constraint(store):
+    mid = add_self(store, ORIGINAL)
+    previous = current_persona(store)
+    with store.read() as conn:
+        material = _generation_material(conn, _settings(conn), previous, '2026-10-13T12:00:00+00:00')
+    memory = next(m for m in material['evidence']['memories'] if m['memory_id'] == mid)
+    assert memory['revision'] == 1
+    sentence = {'text': ORIGINAL, 'origin': 'memory', 'initial_setting': False,
+        'basis': [{'memory_id': mid, 'revision': 1}], 'dates': memory['dates'], 'date_count': 1}
+    payload = _check_payload(material, [sentence], full_content=ORIGINAL)
+    visible = payload['evidence_by_ref'][memory['ref']]
+    assert visible['current_revision_text'] == memory['content']
+    assert 'content' not in visible and 'content_spans' not in visible
