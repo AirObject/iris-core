@@ -113,18 +113,19 @@ def test_default_recent_expiry_falls_back_to_creation_and_rejects_already_expire
     assert result['status'] == 'rejected'
 
 
-@pytest.mark.parametrize('failure', ['server', 'rejected'])
+@pytest.mark.parametrize('failure', ['invalid_output', 'rejected'])
 def test_failed_or_rejected_attempt_waits_for_related_changes(store, clock, failure):
     mids = seed(store, clock)
     class Broken(Model):
         def chat(self, *args, **kwargs):
-            raise ModelError('server_error', 'fake service failure', reason='temporary_unavailable')
-    broken = Broken(store) if failure == 'server' else Model(store, bad=[0])
+            from iris.models import ModelReply
+            return ModelReply('invalid JSON', 'stop', {})
+    broken = Broken(store) if failure == 'invalid_output' else Model(store, bad=[0])
     engine = ps.PersonSummaryEngine(store, broken, clock=clock)
     assert engine.regenerate('a', expected_version=0)['status'] in ('failed', 'rejected')
     assert ps.summary_due(store, 'a', clock=clock)['reason'] == 'no_changes_since_attempt'
     model = Model(store); engine = ps.PersonSummaryEngine(store, model, clock=clock)
-    assert engine.regenerate('a', expected_version=0)['status'] == 'skipped'
+    assert engine.update('a', expected_version=0)['status'] == 'skipped'
     assert not model.calls
     with store.write() as conn:
         conn.execute('UPDATE memories SET revision=revision+1 WHERE id=?', (mids[0],))
@@ -237,3 +238,35 @@ def test_edit_cannot_restore_evidence_cleared_after_read_snapshot(store, clock, 
         ps.admin_edit(store, 'a', old['content'], expected_version=1, clock=clock)
     assert len(ps.list_versions(store, 'a', clock=clock)) == 1
     assert ps.current_summary(store, 'a', clock=clock)['content'] == ''
+
+
+@pytest.mark.parametrize('during', ['generate', 'check'])
+@pytest.mark.parametrize('reason', ['timeout', 'rate_limit', 'temporary_unavailable', 'usage_limit', 'paused'])
+def test_transient_model_failure_can_retry_unchanged_evidence(store, clock, during, reason):
+    seed(store, clock)
+    class Temporary(Model):
+        def chat(self, messages, purpose, **kwargs):
+            if purpose.endswith(during):
+                raise ModelError('server_error', 'fake transient failure', reason=reason)
+            return super().chat(messages, purpose, **kwargs)
+    result = ps.PersonSummaryEngine(store, Temporary(store), clock=clock).regenerate('a', expected_version=0)
+    assert result['status'] in ('failed', 'rejected')
+    assert ps.summary_due(store, 'a', clock=clock)['due']
+    assert ps.PersonSummaryEngine(store, Model(store), clock=clock).update('a', expected_version=0)['status'] == 'published'
+
+
+def test_admin_regenerate_overrides_unchanged_rejection(store, clock):
+    seed(store, clock)
+    ps.PersonSummaryEngine(store, Model(store, bad=[0]), clock=clock).regenerate('a', expected_version=0)
+    assert ps.summary_due(store, 'a', clock=clock)['reason'] == 'no_changes_since_attempt'
+    result = ps.PersonSummaryEngine(store, Model(store), clock=clock).regenerate('a', expected_version=0)
+    assert result['status'] == 'published'
+
+
+def test_interrupted_generation_can_retry_unchanged_evidence(store, clock):
+    seed(store, clock)
+    class Interrupted(Model):
+        def chat(self, *args, **kwargs): raise KeyboardInterrupt()
+    engine = ps.PersonSummaryEngine(store, Interrupted(store), clock=clock)
+    with pytest.raises(KeyboardInterrupt): engine.update('a', expected_version=0)
+    assert ps.PersonSummaryEngine(store, Model(store), clock=clock).update('a', expected_version=0)['status'] == 'published'

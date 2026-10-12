@@ -1,6 +1,6 @@
 """Versioned summaries of people, derived exclusively from globally visible memories.
 
-This module has no HTTP or scheduler call site. Host projections are read-only and
+Host projections are read-only and
 recheck current visibility; model calls run outside all database transactions.
 """
 from __future__ import annotations
@@ -10,6 +10,8 @@ import json
 import re
 import time
 from collections import defaultdict
+from functools import cache, cached_property
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from difflib import SequenceMatcher
 from importlib.resources import files
@@ -165,9 +167,30 @@ class _SummaryNames(SubjectNames):
             self.add(row['alias'], row['subject_id'])
             self.aliases[row['subject_id']].append(row['alias'])
         labels = sorted(self.labels, key=lambda value:(-len(value), value))
-        pattern = '|'.join(re.escape(label) if re.search('[\u4e00-\u9fff]', label)
-            else r'(?<!\w)' + re.escape(label) + r'(?!\w)' for label in labels)
+        # Distinct Han initials cannot compete at the same match position. Group
+        # them so regex prefix factoring avoids thousands of unrelated branches
+        # on every cited body. Within a group the original longest-first order
+        # remains; non-Han initials keep their original order and word boundaries.
+        initials = defaultdict(list); other = []
+        for label in labels:
+            if '\u4e00' <= label[0] <= '\u9fff':
+                initials[label[0]].append(re.escape(label[1:]))
+            else:
+                other.append(re.escape(label) if re.search('[\u4e00-\u9fff]', label)
+                    else r'(?<!\w)' + re.escape(label) + r'(?!\w)')
+        pattern = '|'.join([*(re.escape(first)+'(?:'+'|'.join(suffixes)+')'
+                             for first,suffixes in initials.items()), *other])
         self.pattern = re.compile(pattern or r'(?!x)x', re.I)
+
+    @cached_property
+    def unique_labels(self):
+        # Discovery computes each subject's labels once. Host reads only need
+        # matching, so avoid allocating an unused list for every other subject.
+        result = defaultdict(list)
+        for label, ids in self.labels.items():
+            if len(ids) == 1:
+                result[next(iter(ids))].append(label)
+        return result
 
 
 def _related(row, about, subject_id, names):
@@ -235,9 +258,7 @@ def _direct_ids(conn, subject_id, current, *, limit=None):
 
 def _named_ids(conn, subject_id, names):
     found=set()
-    for label,sids in names.labels.items():
-        if sids!={subject_id}:
-            continue
+    for label in names.unique_labels.get(subject_id, ()):
         tokenizer='trigram' if len(label)>=3 else 'jieba'
         tokens=[label] if tokenizer=='trigram' else query_terms(label,'jieba')
         if not tokens:
@@ -324,7 +345,7 @@ def _recent_deadline(memories):
 
 
 def _stale(conn, subject_id, sentences, *, current=None, names=None):
-    result=[]; seen=set(); names=names or _SummaryNames(conn)
+    result=[]; seen=set()
     ids={b['memory_id'] for s in sentences for b in s['basis']}
     restricted,scopes=_scopes(conn,ids)
     rows={r['id']:dict(r) for r in conn.execute(
@@ -354,6 +375,11 @@ def _stale(conn, subject_id, sentences, *, current=None, names=None):
             else:
                 row['tags']=[r[0] for r in conn.execute('SELECT tag FROM memory_tags WHERE memory_id=? ORDER BY tag',(row['id'],))]
                 about=_about(conn,row['id'])
+                if row['speaker_subject_id']!=subject_id and not any(s['id']==subject_id for s in about):
+                    if names is None:
+                        names=_SummaryNames(conn)
+                    elif callable(names):
+                        names=names()  # One lazy, shared names snapshot for people_context.
                 if not _related(row,about,subject_id,names):
                     reason='no_longer_related'
                 elif row['revision']!=basis['revision'] or _memory_hash(row,about)!=basis.get('sha256'):
@@ -363,10 +389,10 @@ def _stale(conn, subject_id, sentences, *, current=None, names=None):
     return result
 
 
-def _view(conn, value, *, current=None):
+def _view(conn, value, *, current=None, names=None):
     if value is None:
         return None
-    value={**value,'stale_basis':_stale(conn,value['subject_id'],value['sentences'],current=current)}
+    value={**value,'stale_basis':_stale(conn,value['subject_id'],value['sentences'],current=current,names=names)}
     subject=_subject(conn,value['subject_id']); settings=_settings(conn,value['subject_id'])
     if value['invalidated_reason'] or value['cleared_at']:
         value['stale_basis'].append({'reason':value['invalidated_reason'] or 'memory_purged'})
@@ -386,14 +412,14 @@ def current_summary(store, subject_id, *, entry_id=None, clock=utc_now):
         return _view(conn,_current(conn,subject_id),current=_instant(clock()))
 
 
-def summary_context(conn, subject_id, entry_id, *, clock=utc_now):
-    """Future prepare item, with only cited ancestors checked on this snapshot."""
+def summary_context(conn, subject_id, entry_id, *, clock=utc_now, names=None):
+    """Host item, with only cited ancestors checked on this snapshot."""
     if entry_id is not None and not conn.execute('SELECT 1 FROM entries WHERE id=?',(entry_id,)).fetchone():
         raise KeyError(entry_id)
     subject=_subject(conn,subject_id); settings=_settings(conn,subject_id)
     if (subject['kind']!='person' or subject_id in ('self','scene') or subject['merged_into'] is not None or not settings['enabled'] or not _runtime(conn)['enabled']):
         return None
-    value=_view(conn,_current(conn,subject_id),current=_instant(clock()))
+    value=_view(conn,_current(conn,subject_id),current=_instant(clock()),names=names)
     if (value is None or not value['content'] or value['status']!='published' or value['invalidated_reason']
             or value['cleared_at'] or any(s['reason'] in ('visibility_changed','no_longer_related') for s in value['stale_basis'])):
         return None
@@ -432,13 +458,20 @@ def _due(conn, subject_id, current, *, rows=None, names=None):
     state={str(row['id']):_memory_hash(row,about) for row,about in rows}
     old=previous['memory_state'] if previous else {}
     changed=sum(state.get(mid)!=old.get(mid) for mid in state.keys()|old.keys())
-    stale=bool(previous and _view(conn,previous,current=current)['possibly_stale'])
+    stale=bool(previous and _view(conn,previous,current=current,names=names)['possibly_stale'])
     reason=('subject_kind' if subject['kind']!='person' or subject_id in ('self','scene') else 'subject_merged' if subject['merged_into'] else
             'disabled' if not config['enabled'] or not settings['enabled'] else
             'insufficient_memories' if len(rows)<config['min_memories'] else None)
-    last=conn.execute("""SELECT state,memory_state_json FROM person_summary_attempts
-        WHERE subject_id=? AND state!='skipped' ORDER BY id DESC LIMIT 1""",(subject_id,)).fetchone()
-    if reason is None and last and last['state'] in ('failed','rejected') and json.loads(last['memory_state_json'])==state:
+    last=conn.execute("""SELECT a.state,a.reason,a.memory_state_json,json_extract(v.checks_json,'$.model_error') AS model_error
+        FROM person_summary_attempts a LEFT JOIN person_summary_versions v
+        ON v.subject_id=a.subject_id AND v.version=a.version
+        WHERE a.subject_id=? AND a.state!='skipped' ORDER BY a.id DESC LIMIT 1""",(subject_id,)).fetchone()
+    # A provider/health failure is not a judgment of unchanged evidence. A check
+    # failure may have saved a rejected version, so state alone is insufficient.
+    deterministic = last and (last['reason'] in ('invalid_output','too_many_deleted','empty',
+        'too_many_items','too_long','token_budget') or last['state']=='rejected' and
+        not last['model_error'])
+    if reason is None and deterministic and json.loads(last['memory_state_json'])==state:
         reason='no_changes_since_attempt'
     if reason is None and previous and not (stale or settings['needs_regeneration'] or changed>=config['min_changed'] or
             changed and current-_instant(previous['generated_at'])>=timedelta(days=config['update_days'])):
@@ -778,6 +811,10 @@ class PersonSummaryEngine:
 
     def _skip(self, subject_id, expected, source, due, reason, run_id, stamp):
         with self.store.write() as conn:
+            # A Busy receipt changes no summary. Its version is the current one
+            # even if the admin worker finished between observation and this lock.
+            if expected is None:
+                expected=_settings(conn,subject_id)['current_version']
             _expect(conn,subject_id,expected)
             _check_run_admission(conn,subject_id,run_id)
             _audit(conn,'generation_skipped',subject_id,stamp,base_version=expected,reason=reason,source=source)
@@ -805,6 +842,10 @@ class PersonSummaryEngine:
                 raise PersonSummaryConflict('evidence_purged')
 
     def _run(self, subject_id, expected, source, *, run_id=None):
+        reserved=self._reserve(subject_id,expected,source,run_id=run_id)
+        return self._execute(*reserved['context']) if 'context' in reserved else reserved
+
+    def _reserve(self, subject_id, expected, source, *, run_id=None):
         current=_instant(self.clock()); stamp=current.isoformat()
         with self.store.write() as conn:
             _recover_interrupted(conn,self.store,subject_id,stamp)
@@ -818,7 +859,7 @@ class PersonSummaryEngine:
                 raise PersonSummaryBusy('generation_in_progress')
             previous=_expect(conn,subject_id,expected); due=_due(conn,subject_id,current)
             config=_runtime(conn); settings=_settings(conn,subject_id)
-        reason=None if source=='regenerate' and due['reason']=='not_due' else due['reason']
+        reason=None if source=='regenerate' and due['reason'] in ('not_due','no_changes_since_attempt') else due['reason']
         if reason:
             return self._skip(subject_id,expected,source,due,reason,run_id,stamp)
         try:
@@ -851,7 +892,7 @@ class PersonSummaryEngine:
                    attempt_id=attempt,base_version=expected,source=source)
             with _ACTIVE_LOCK:
                 _ACTIVE_ATTEMPTS.add((self.store.path,attempt))
-        return self._execute(subject_id,expected,source,stamp,previous,due,config,settings,gateway,evidence,material,state,attempt)
+        return {'attempt_id':attempt,'context':(subject_id,expected,source,stamp,previous,due,config,settings,gateway,evidence,material,state,attempt)}
 
     def _execute(self, subject_id, expected, source, stamp, previous, due, config, settings,
                  gateway, evidence, material, state, attempt):
@@ -967,7 +1008,7 @@ def purge_memory_references(conn, memory_ids, *, clock=utc_now):
 
 
 def regenerate_summary(store, gateway, subject_id, *, expected_version, clock=utc_now):
-    """Future admin regenerate endpoint; synchronous, CAS protected and audited."""
+    """Synchronous regeneration for data callers; CAS protected and audited."""
     return PersonSummaryEngine(store,gateway,clock=clock).regenerate(subject_id,expected_version=expected_version)
 
 
@@ -1009,6 +1050,9 @@ def update_summaries_for_run(store, gateway, run, config, *, clock=utc_now, stop
     if admitted>=runtime['max_subjects_per_run']:
         return True
     with store.read() as conn:
+        # Discovery shares one names snapshot. Each admitted generation still
+        # independently revalidates identity/evidence at reservation and writeback.
+        names=_SummaryNames(conn)
         # Aggregate metadata once rather than scanning all messages per subject.
         subjects=[r[0] for r in conn.execute("""WITH activity AS (
             SELECT sender_subject_id AS subject_id,MAX(julianday(occurred_at)) AS recent FROM messages GROUP BY sender_subject_id
@@ -1028,7 +1072,6 @@ def update_summaries_for_run(store, gateway, run, config, *, clock=utc_now, stop
         if stop and stop():
             return False
         with store.read() as conn:
-            names=_SummaryNames(conn)
             if not _enough_candidates(conn,subject_id,current,runtime['min_memories'],names):
                 continue
             due=_due(conn,subject_id,current,names=names)
@@ -1043,9 +1086,15 @@ def update_summaries_for_run(store, gateway, run, config, *, clock=utc_now, stop
             else:
                 result=engine.update(subject_id,expected_version=expected,run_id=run_id)
         except PersonSummaryBusy:
-            return False
+            # Do not hold the entire maintenance run open for an unrelated admin
+            # job. A durable per-run receipt also prevents retry/event churn.
+            result=engine._skip(subject_id,None,'periodic',due,'generation_in_progress',run_id,stamp)
         except PersonSummaryConflict as error:
             result={'status':'conflict','reason':str(error)}
+        except Exception:
+            # _execute durably records unexpected failures; continue with other
+            # people and let consolidation run its remaining independent steps.
+            result={'status':'failed','reason':'unexpected_error'}
         with store.write() as conn:
             attempt=conn.execute("""SELECT id,subject_id,run_id,state,reason,version FROM person_summary_attempts
                 WHERE subject_id=? AND run_id=?""",(subject_id,run_id)).fetchone()
@@ -1057,3 +1106,173 @@ def update_summaries_for_run(store, gateway, run, config, *, clock=utc_now, stop
         if result.get('reason') in ('call_budget','usage_limit','paused','temporary_unavailable','unconfigured'):
             break
     return True
+
+
+PEOPLE_TOKENS = 1000
+
+
+def people_context(conn, entry_id, *, participants=None, participant_names=None, limit=3,
+                   clock=utc_now, resolved_participants=None):
+    """Independent, bounded prepare partition; never load evidence for absent versions."""
+    from .people import canonical_subject
+    if not limit or not _runtime(conn)['enabled']:
+        return []
+    labels=participant_names or {}; inferred=participants is None
+    references=participants if not inferred else [r[0] for r in conn.execute(
+        'SELECT sender_subject_id FROM messages WHERE entry_id=? ORDER BY id DESC LIMIT 20',(entry_id,))]
+    ordered=[]; display={}
+    for ref in references:
+        resolved=(resolved_participants or {}).get(ref)
+        if resolved is not None and not resolved[1]:
+            sid,exact=resolved
+            # Reuse recall's unambiguous ID, not its unfiltered alias provenance.
+            # This final snapshot checks only that subject's name/public aliases.
+            if sid is None or not conn.execute("""SELECT 1 FROM subjects s
+                WHERE s.id=? AND s.merged_into IS NULL AND (s.name=? OR EXISTS (
+                    SELECT 1 FROM subject_aliases a LEFT JOIN messages m ON m.id=a.source_message_id
+                    LEFT JOIN entries e ON e.id=m.entry_id WHERE a.subject_id=s.id AND a.alias=?
+                    AND a.folded_into IS NULL AND (a.source_message_id IS NULL OR e.visibility='shared')))""",
+                    (sid,ref,ref)).fetchone():
+                continue
+        else:
+            exact=conn.execute('SELECT id FROM subjects WHERE id=?',(ref,)).fetchone()
+            if exact:
+                sid=canonical_subject(conn,ref)
+            else:
+                # Existing recall resolves all aliases. This new identity-bearing
+                # partition independently forbids links learned only in private entries.
+                matches=conn.execute('''SELECT DISTINCT s.id FROM subjects s
+                    LEFT JOIN subject_aliases a ON a.subject_id=s.id AND a.folded_into IS NULL
+                    LEFT JOIN messages m ON m.id=a.source_message_id LEFT JOIN entries e ON e.id=m.entry_id
+                    WHERE s.merged_into IS NULL AND (s.name=? OR (a.alias=? AND
+                        (a.source_message_id IS NULL OR e.visibility='shared')))''',(ref,ref)).fetchall()
+                if len(matches)!=1:
+                    continue
+                sid=matches[0][0]
+        if sid in ('self','scene') or sid in display:
+            continue
+        ordered.append(sid)
+        display[sid]=labels.get(sid,labels.get(ref,ref if not exact else None))
+    if not ordered:
+        return []
+    published={r[0] for r in conn.execute('''SELECT p.subject_id FROM person_summary_settings p
+        JOIN subjects s ON s.id=p.subject_id JOIN person_summary_versions v
+        ON v.subject_id=p.subject_id AND v.version=p.current_version
+        WHERE p.subject_id IN (SELECT value FROM json_each(?)) AND p.enabled=1 AND s.kind='person'
+        AND s.merged_into IS NULL AND v.status='published' AND v.cleared_at IS NULL
+        AND v.invalidated_reason IS NULL AND v.content!='' ''',(dumps(ordered),))}
+    @cache
+    def names():
+        return _SummaryNames(conn)
+    result=[]
+    for sid in ordered:
+        if sid not in published:
+            continue
+        item=summary_context(conn,sid,entry_id,clock=clock,names=names)
+        if item is None:
+            continue
+        if display[sid] is not None:
+            item['name']=display[sid]
+        if estimate_tokens(dumps([*result,item]))>PEOPLE_TOKENS:
+            continue  # Keep complete items; never cut away a qualification.
+        result.append(item)
+        if len(result)>=limit:
+            break
+    return result
+
+
+_ADMIN_COLUMNS = ('id,subject_id,version,base_version,content,status,source,author,change_degree,'
+                  'generated_at,published_at,invalidated_reason,cleared_at')
+_ATTEMPT_COLUMNS = '''id,subject_id,base_version,state,reason,version,started_at,finished_at,cleared_at,
+    (SELECT status FROM person_summary_versions v WHERE v.subject_id=person_summary_attempts.subject_id
+        AND v.version=person_summary_attempts.version) AS version_status,
+    CASE WHEN state!='running' THEN 'finished'
+         WHEN json_type(outputs_json,'$.consolidation_person_summary_generate') IS NOT NULL THEN 'checking'
+         ELSE 'generating' END AS stage'''
+
+
+def _admin_brief(row, current):
+    return {**dict(row),'is_current':row['version']==current} if row else None
+
+
+def admin_snapshot(store, subject_id, *, clock=utc_now):
+    with store.read() as conn:
+        subject=_subject(conn,subject_id); settings=_settings(conn,subject_id); config=_runtime(conn)
+        current=conn.execute(f'SELECT {_ADMIN_COLUMNS} FROM person_summary_versions WHERE subject_id=? AND version=?',
+                             (subject_id,settings['current_version'])).fetchone()
+        pending=conn.execute(f"SELECT {_ADMIN_COLUMNS} FROM person_summary_versions WHERE subject_id=? AND status='candidate' ORDER BY version DESC LIMIT 1",(subject_id,)).fetchone()
+        count=conn.execute("SELECT COUNT(*) FROM person_summary_versions WHERE subject_id=? AND status='candidate'",(subject_id,)).fetchone()[0]
+        latest=conn.execute(f'SELECT {_ATTEMPT_COLUMNS} FROM person_summary_attempts WHERE subject_id=? ORDER BY id DESC LIMIT 1',(subject_id,)).fetchone()
+        value=_view(conn,_current(conn,subject_id),current=_instant(clock()))
+        return {'subject':subject,'supported':subject['kind']=='person' and subject_id not in ('self','scene') and not subject['merged_into'],
+                'global_enabled':config['enabled'],'settings':settings,
+                'edit_limits':{k:config[k] for k in ('max_items','max_chars','max_tokens')},
+                'current':_admin_brief(current,settings['current_version']),
+                'pending':_admin_brief(pending,settings['current_version']),'pending_count':count,
+                'possibly_stale':bool(value and value['possibly_stale']),'stale_basis':value['stale_basis'] if value else [],
+                'latest_attempt':dict(latest) if latest else None}
+
+
+def admin_versions(store, subject_id, *, limit=30, offset=0):
+    with store.read() as conn:
+        current=_settings(conn,subject_id)['current_version']
+        count=conn.execute('SELECT COUNT(*) FROM person_summary_versions WHERE subject_id=?',(subject_id,)).fetchone()[0]
+        items=[_admin_brief(r,current) for r in conn.execute(f'SELECT {_ADMIN_COLUMNS} FROM person_summary_versions WHERE subject_id=? ORDER BY version DESC LIMIT ? OFFSET ?',
+                                                           (subject_id,limit,offset))]
+        return {'items':items,'total':count,'limit':limit,'offset':offset}
+
+
+def admin_version(store, subject_id, version, *, clock=utc_now):
+    with store.read() as conn:
+        value=_view(conn,_version(conn,subject_id,version),current=_instant(clock()))
+        material=value.pop('material'); value.pop('memory_state')
+        indexed={m['memory_id']:m for m in material.get('evidence',{}).get('memories',[])}
+        for sentence in value['sentences']:
+            sentence['admin_written']=sentence['author']=='admin'
+            for basis in sentence['basis']:
+                cited=indexed.get(basis['memory_id'])
+                basis['evidence']=({k:v for k,v in cited.items() if k not in ('sha256','ref')} if cited and not value['cleared_at'] else None)
+                row=conn.execute('SELECT id,revision,content,lifecycle,purged_at FROM memories WHERE id=?',(basis['memory_id'],)).fetchone()
+                basis['memory']=dict(row) if row and not row['purged_at'] and not value['cleared_at'] else None
+        value['checks'].pop('model_input',None)
+        return value
+
+
+def admin_attempt(store, subject_id, attempt_id):
+    with store.read() as conn:
+        row=conn.execute(f'SELECT {_ATTEMPT_COLUMNS} FROM person_summary_attempts WHERE subject_id=? AND id=?',(subject_id,attempt_id)).fetchone()
+        if row is None:
+            raise KeyError(attempt_id)
+        return dict(row)
+
+
+class PersonSummaryJobs:
+    """One admin worker, persistent CAS reservation before 202, drain before close."""
+    def __init__(self, store, gateway, *, clock=utc_now):
+        self.engine=PersonSummaryEngine(store,gateway,clock=clock)
+        self._lock=Lock(); self._closed=False; self._future=None
+        self._pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='person-summary')
+        with store.write() as conn:
+            subjects=[r[0] for r in conn.execute("SELECT subject_id FROM person_summary_attempts WHERE state='running'")]
+            for sid in subjects:
+                _recover_interrupted(conn,store,sid,_instant(clock()).isoformat())
+
+    def submit(self, subject_id, *, expected_version):
+        with self._lock:
+            if self._closed or self._future is not None and not self._future.done():
+                raise PersonSummaryBusy('generation_in_progress')
+            reserved=self.engine._reserve(subject_id,expected_version,'regenerate')
+            if 'context' in reserved:
+                self._future=self._pool.submit(self._work,reserved['context'])
+            return reserved['attempt_id']
+
+    def _work(self, context):
+        try:
+            self.engine._execute(*context)
+        except Exception:
+            pass  # Engine persists fixed safe codes; raw exceptions never reach HTTP.
+
+    def close(self):
+        with self._lock:
+            self._closed=True
+        self._pool.shutdown(wait=True)
