@@ -20,7 +20,8 @@ from .claim_sequences import normalize_claim as _normalize, same_claim_sequences
 from .people import canonical_subject
 from .memory_ops import Visibility, confirm_retention
 from .models import Gateway, ModelError, parse_json_object_with_status
-from .media import material_content, message_media, prepare_media
+from .media import (material_content, message_media, native_learning_enabled,
+                    plan_learning_images, prepare_media)
 from .queue import Batch, estimate_tokens, get_batch, truncate_material
 from .retrieval import Retrieval
 from .persona import persona_context
@@ -188,7 +189,7 @@ class LearningEngine:
         participants = list(dict.fromkeys(m["sender_subject_id"] for m in target))
         return self.retrieval.learning_context("\n".join(m["content"] for m in target), participants, entry_id=batch.entry_id)
 
-    def _material(self, batch: Batch, snapshot: dict[str, Any], related: list[dict[str, Any]]) -> tuple[str, dict[int, int], dict[str, dict[str, Any]]]:
+    def _material(self, batch: Batch, snapshot: dict[str, Any], related: list[dict[str, Any]]) -> tuple[str | list[dict[str, Any]], dict[int, int], dict[str, dict[str, Any]]]:
         messages = snapshot["messages"]
         # Ended batches can outlive their optional context messages. Targets must
         # still exist; never turn a cleared target into a partial learning batch.
@@ -236,6 +237,7 @@ class LearningEngine:
         sequence = [("历史段（仅供理解）", history), ("目标段（只从这里学习）", batch.target_ids),
                     ("后续段（仅供理解）", future)]
         number = 0
+        image_lines = {}
         for label, ids in sequence:
             lines.append("—— " + label + " ——")
             for message_id in ids:
@@ -252,18 +254,52 @@ class LearningEngine:
                              f"；正文作者 {subject_label(m['sender_subject_id'], m['sender_name'])}")
                 scene = f"（{m['scene_identity']}）" if m["scene_identity"] else ""
                 prefix = f"#{number} [{dt.strftime('%Y-%m-%d 周')}{'一二三四五六日'[dt.weekday()]} {dt.strftime('%H:%M')}] "
-                body = truncate_material(material_content(m["content"], m.get("media", [])))
+                native = snapshot.get('native_images', {}).get(message_id, {})
+                if native:
+                    parts = [{'type': 'text', 'text': truncate_material(m['content'])}]
+                    text_budget = max(0, 1500 - estimate_tokens(parts[0]['text']))
+                    for position, item in enumerate(m.get('media', []), 1):
+                        if image := native.get(item['id']):
+                            parts.append({'type': 'text', 'text': f"\n[图片 {image['number']}]"
+                                          f"（消息 #{number} 的原始附件数据；图片内署名不代表发图人）"})
+                            parts.append(image['part'])
+                        else:
+                            fallback = material_content('', [item], start=position)
+                            audit = snapshot.setdefault('media_budget_paths', {}).setdefault((message_id, item['id']), {})
+                            if text_budget:
+                                if estimate_tokens(fallback) > text_budget:
+                                    audit['description_truncated'] = True
+                                fallback = truncate_material(fallback, limit=text_budget)
+                                text_budget = max(0, text_budget - estimate_tokens(fallback))
+                            else:
+                                fallback = f'\n[附件 {position}，描述因消息预算省略]'
+                                audit.update(path='placeholder', description_omitted='message_budget')
+                            parts.append({'type': 'text', 'text': fallback})
+                    body = ''.join(part['text'] for part in parts if part['type'] == 'text')
+                else:
+                    body = truncate_material(material_content(m["content"], m.get("media", [])))
                 if m["kind"] == "event":
                     lines.append(f"{prefix}[场景事件] {body}")
                 else:
                     lines.append(f"{prefix}[{label_type}] {subject_label(m['sender_subject_id'], m['sender_name'])}{scene}{quote}：数据：{body}")
+                if native:
+                    parts[0]['text'] = lines[-1][:-len(body)] + parts[0]['text']
+                    image_lines[len(lines) - 1] = parts
         material = "\n".join(lines)
+        kept_indices = list(range(len(lines)))
         # Drop context from the beginning/end if the material exceeds its budget; target IDs stay fixed.
         if estimate_tokens(material) > 10000:
-            kept = [line for line in lines if not line.startswith("#") or any(
+            kept_indices = [i for i, line in enumerate(lines) if not line.startswith("#") or any(
                 line.startswith(f"#{n} ") for n, mid in number_to_id.items() if mid in batch.target_ids)]
-            material = "\n".join(kept)
+            material = "\n".join(lines[i] for i in kept_indices)
             number_to_id = {n: mid for n, mid in number_to_id.items() if mid in batch.target_ids}
+        if image_lines:
+            material = []
+            for index, i in enumerate(kept_indices):
+                parts = [dict(part) for part in image_lines.get(i, [{'type': 'text', 'text': lines[i]}])]
+                if index:
+                    parts[0]['text'] = '\n' + parts[0]['text']
+                material.extend(parts)
         return material, number_to_id, refs
 
     @staticmethod
@@ -325,7 +361,7 @@ class LearningEngine:
             raise ValueError("subject is ambiguous; use participant number")
         return next(iter(matches)) if matches else None
 
-    def _learning_output(self, messages: list[dict[str, str]], batch_id: int):
+    def _learning_output(self, messages: list[dict[str, Any]], batch_id: int):
         # json_chat already repairs syntax once. Shape errors may use that same
         # allowance only if no model repair has happened, and share its budget.
         monotonic = getattr(self.gateway, "monotonic", time.monotonic)
@@ -820,6 +856,9 @@ class LearningEngine:
             conn.executemany("UPDATE messages SET learning_state='learned' WHERE id=?", ((i,) for i in batch.target_ids))
             result = {"created": created, "updated": updated, "confirmed": confirmed, "dropped": dropped,
                       "parse_status": attempt["parse_status"], "normalizations": snapshot["normalizations"]}
+            prior = json.loads(conn.execute('SELECT result_json FROM batches WHERE id=?', (batch.id,)).fetchone()[0] or '{}')
+            if 'media_attempts' in prior:
+                result['media_attempts'] = prior['media_attempts']
             conn.execute("UPDATE batches SET state='succeeded',attempt_count=attempt_count+1,finished_at=?,result_json=?,last_error=NULL WHERE id=?",
                          (now(), dumps(result), batch.id))
             conn.execute("DELETE FROM memory_gaps WHERE batch_id=?", (batch.id,))
@@ -900,11 +939,25 @@ class LearningEngine:
         attempt = {"number": attempt_number, "started_at": now(), "raw_output": None,
                    "repair_output": None, "parse_status": "failed", "duration_ms": 0}
         try:
-            prepare_media(self.store, self.gateway, batch.target_ids + batch.history_ids + batch.future_ids,
-                          batch_id=batch.id, clock=self.clock)
+            use_originals = native_learning_enabled(self.store, self.gateway)
+            if not use_originals:
+                prepare_media(self.store, self.gateway, batch.target_ids + batch.history_ids + batch.future_ids,
+                              batch_id=batch.id, clock=self.clock)
             snapshot = self._snapshot(batch)
+            snapshot['native_images'], media_paths = plan_learning_images(self.store, batch, snapshot, enabled=use_originals)
             related = self._related(batch, snapshot)
             material, numbers, refs = self._material(batch, snapshot, related)
+            if media_paths:
+                for path in media_paths:
+                    path.update(snapshot.get('media_budget_paths', {}).get((path['message_id'], path['media_id']), {}))
+                    if path['message_id'] not in numbers.values():
+                        path.update(path='omitted', reason='context_budget')
+                # Retain metadata even when the subsequent request fails or the
+                # process stops. Original bytes and content parts stay in memory.
+                with self.store.write() as conn:
+                    record = json.loads(conn.execute('SELECT result_json FROM batches WHERE id=?', (batch.id,)).fetchone()[0] or '{}')
+                    record.setdefault('media_attempts', []).append({'attempt': attempt_number, 'images': media_paths})
+                    conn.execute('UPDATE batches SET result_json=? WHERE id=?', (dumps(record), batch.id))
             output, raw, repair, parse_status, *details = self._learning_output(
                 [{"role": "system", "content": self.prompt}, {"role": "user", "content": material}], batch.id)
             attempt.update(raw_output=raw, repair_output=repair, parse_status=parse_status,

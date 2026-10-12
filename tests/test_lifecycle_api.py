@@ -120,6 +120,66 @@ def test_manual_maintenance_returns_report_and_operations(client, store):
     assert {i["action"] for i in ops} >= {"maintenance_completed","maintenance_requested"}
 
 
+
+def test_maintenance_http_report_exposes_purge_markers_and_preserves_call_metadata(client, store):
+    from iris.db import dumps, now
+    from iris.memory_ops import PURGE_REASON
+    from test_purge_raw_outputs import insert, PROSE
+
+    mid = put(store, PROSE)
+    stamp = now()
+    with store.write() as conn:
+        rid = insert(conn, 'maintenance_runs', trigger='manual', state='completed',
+                     settings_json='{}', timezone='UTC', memory_through=mid,
+                     message_through=0, batch_through=0, created_at=stamp, finished_at=stamp)
+        work = insert(conn, 'consolidation_work', fingerprint='http-purge-projection', kind='dependency',
+                      payload_json=dumps({'memories': [{'id': mid, 'revision': 1, 'content': PROSE}]}),
+                      importance=50, state='done', changed_at=stamp, created_at=stamp)
+        affected = insert(conn, 'consolidation_calls', run_id=rid, work_id=work,
+                          purpose='consolidation_dependency', raw_output=PROSE, result='success',
+                          duration_ms=12, prompt_tokens=40, completion_tokens=20,
+                          finish_reason='stop', created_at=stamp)
+        untouched = insert(conn, 'consolidation_calls', run_id=rid, purpose='consolidation_pair',
+                           raw_output='独立的整理输出', result='success', created_at=stamp)
+        insert(conn, 'maintenance_items', run_id=rid, phase='consolidation', item_key=str(work),
+               memory_id=mid, object_id=mid, outcome='dependencies_reviewed',
+               details_json=dumps({'report': PROSE}), created_at=stamp)
+        insert(conn, 'maintenance_items', run_id=rid, phase='consolidation', item_key='untouched',
+               object_id=0, outcome='skipped', reason='no_candidate', created_at=stamp)
+
+    url = f'/admin/api/maintenance/{rid}'
+    before = client.get(url)
+    assert before.status_code == 200
+    assert len(before.json()['consolidation_calls']) == 2
+    assert all(not item['redacted'] and item['redaction_reason'] is None
+               for item in before.json()['consolidation_calls'] + before.json()['items'])
+    assert PROSE in before.text
+    response = client.post(f'/admin/api/memories/{mid}/purge',
+                           json={'expected_revision': 1, 'confirm': True})
+    assert response.status_code == 200
+    with store.read() as conn:
+        saved = [tuple(row) for row in conn.execute('SELECT * FROM consolidation_calls WHERE run_id=? ORDER BY id', (rid,))]
+
+    response = client.get(url)
+    assert response.status_code == 200
+    report = response.json()
+    calls = {call['id']: call for call in report['consolidation_calls']}
+    items = {item['item_key']: item for item in report['items']}
+    assert calls[affected]['redacted'] and calls[affected]['redaction_reason'] == PURGE_REASON
+    assert items[str(work)]['redacted'] and items[str(work)]['redaction_reason'] == PURGE_REASON
+    assert not calls[untouched]['redacted'] and calls[untouched]['redaction_reason'] is None
+    assert not items['untouched']['redacted'] and items['untouched']['redaction_reason'] is None
+    assert {key: calls[affected][key] for key in ('work_id', 'purpose', 'duration_ms', 'prompt_tokens',
+                                                'completion_tokens', 'finish_reason', 'created_at')} == {
+        'work_id': work, 'purpose': 'consolidation_dependency', 'duration_ms': 12,
+        'prompt_tokens': 40, 'completion_tokens': 20, 'finish_reason': 'stop', 'created_at': stamp}
+    assert PROSE not in response.text
+    assert all('raw_output' not in call and 'error' not in call for call in calls.values())
+    assert client.get(url).json() == report
+    with store.read() as conn:
+        assert [tuple(row) for row in conn.execute('SELECT * FROM consolidation_calls WHERE run_id=? ORDER BY id', (rid,))] == saved
+
+
 def test_admin_csrf_host_and_confirmation_remain_required(client, store):
     mid=put(store,"保护对象")
     csrf = client.headers.pop("X-Iris-CSRF")
@@ -152,3 +212,33 @@ def test_trial_writes_have_operations_without_body(client,store):
     ops=client.get("/admin/api/operations").json()
     assert {i["action"] for i in ops["items"]} >= {"trial_entry_created","trial_speaker_created","trial_message_received","learn_requested"}
     assert "不要写到操作记录" not in json.dumps(ops,ensure_ascii=False)
+
+
+@pytest.mark.parametrize('link', ['attempt_id', 'version_id'])
+def test_persona_maintenance_http_hides_purged_version_body(client, store, link):
+    from datetime import datetime, timezone
+    from iris.consolidation import _persona_result
+    from iris.db import dumps, now
+    from iris.memory_ops import PURGE_REASON
+    from iris import persona
+    from test_purge_raw_outputs import PROSE, insert
+    mid = put(store, PROSE)
+    with store.write() as conn:
+        version = persona._insert(conn, content=PROSE, sentences=[{'text': PROSE, 'basis': [{'memory_id': mid, 'revision': 1}]}],
+            checks={'passed': True}, degree='small', status='current', source='regenerate', stamp=now())['id']
+        run = insert(conn, 'maintenance_runs', trigger='manual', state='completed', settings_json='{}', timezone='UTC',
+                     memory_through=1, message_through=0, batch_through=0, created_at=now(), finished_at=now())
+        attempt = insert(conn, 'persona_attempts', source='periodic', base_version_id=version, state='current',
+                         created_at=now(), material_json=dumps({'memory_id': mid, 'revision': 1}))
+        conn.execute("INSERT INTO maintenance_persona(run_id,status) VALUES(?,'running')", (run,))
+    _persona_result(store, run, 'published', None,
+                    {link: attempt if link == 'attempt_id' else version, 'content': PROSE, 'checks': {'reason': PROSE}},
+                    lambda: datetime.now(timezone.utc))
+    url = f'/admin/api/maintenance/{run}'
+    assert PROSE in client.get(url).text
+    assert client.post(f'/admin/api/memories/{mid}/purge', json={'expected_revision': 1, 'confirm': True}).status_code == 200
+    report = client.get(url)
+    assert report.status_code == 200 and PROSE not in report.text
+    item = next(item for item in report.json()['items'] if item['phase'] == 'persona')
+    assert item['redacted'] and item['redaction_reason'] == PURGE_REASON
+    assert item['outcome'] == 'persona_published'

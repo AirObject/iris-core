@@ -54,7 +54,7 @@ def test_calibrated_default_preserves_weak_recognition_and_saved_override(store,
     new = goals.create(content='检查服务器并记录设备的运行状况')['goal']
     assert .25 <= dedup.similarity(old, new) < .6
     assert new['possible_duplicate_ids'] == ([old['id']] if marked else [])
-    assert new['merged_into'] is None and not judge.calls
+    assert new['merged_into'] is None and len(judge.calls) == 1
     expected = 0 if saved_threshold is None else saved_threshold
     assert dedup.settings(store)['possible_min_similarity'] == expected
     with store.read() as conn:
@@ -63,9 +63,9 @@ def test_calibrated_default_preserves_weak_recognition_and_saved_override(store,
     assert store.setting('goal_dedup_judge', {}) == options
 
 
-def test_runtime_threshold_filters_conflicts_without_model_and_keeps_existing_marks(store):
+def test_runtime_threshold_filters_model_hints_and_keeps_existing_marks(store):
     store.set_setting('goal_dedup_judge', {'enabled': True, 'possible_min_similarity': .99})
-    goals = Goals(store)
+    goals = Goals(store, gateway=Judge(store, verdict='uncertain'))
     a = goals.create(content='检查三台服务器')['goal']
     b = goals.create(content='检查服务器')['goal']
     assert b['possible_duplicate_ids'] == []

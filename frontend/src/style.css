@@ -3287,3 +3287,12 @@ tr:last-child td {
 .entry-profile fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
 .trial-diagnostic, .merge-detail-review { min-width: 0; overflow-wrap: anywhere; }
 .trial-diagnostic .text-button, .merge-detail-review .text-button { text-align: left; white-space: normal; }
+
+.person-summary { margin-block: 20px; min-width: 0; overflow-wrap: anywhere; }
+.person-summary label { display: grid; gap: 6px; margin-block: 12px; }
+.person-summary .check-label { display: flex; }
+.person-summary textarea { width: 100%; min-width: 0; }
+.summary-item { padding-block: 12px; border-bottom: 1px solid var(--line); }
+.person-summary .button-row { flex-wrap: wrap; }
+.person-summary .button-row label { min-width: 0; flex: 1 1 120px; }
+.person-summary .button-row input { width: 100%; }
