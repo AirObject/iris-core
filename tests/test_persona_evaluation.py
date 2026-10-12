@@ -1,3 +1,4 @@
+from persona_fakes import add_clause_proofs
 import copy
 import json
 import tempfile
@@ -42,6 +43,8 @@ class FakeGateway:
                 'scene_qualified':True,'violations':[],'reason':'场景明确'} for i,_ in enumerate(payload['candidate'])], 'change_degree':'small','reason':'单场经历'}
         else:
             raise AssertionError('external mode must not call a model judge')
+        if purpose == 'persona_check':
+            value = add_clause_proofs(value, payload)
         return ModelReply(dumps(value),'stop',{})
 
     def close(self):
@@ -457,13 +460,16 @@ def test_frozen_public_persona_contract_keeps_small_medium_auto():
 @pytest.mark.parametrize('again',[False,True])
 def test_sentence_recovery_metrics_and_materials_remain_scoreable(tmp_path,again):
     from test_persona_optimization import Model
+    bounded = "我在那次直播中耐心解释规则。"
     class RecoveryModel(Model):
         def __init__(self,configs,store,**kwargs):
-            super().__init__(store,again=again,repair=TIMELINE['events'][0]['memory']['content'])
+            super().__init__(store,again=again,repair=bounded)
         def close(self):
             pass
     case=copy.deepcopy(TIMELINE)
     case['events']=case['events'][:2]
+    case['events'][0]['memory']['content'] = bounded
+    case['events'][0]['memory']['sources'][0]['content'] = bounded
     corpus=tmp_path/'recovery.jsonl'
     corpus.write_text(dumps(case),encoding='utf-8')
     materials,report=run_persona_eval({},tmp_path,corpus=corpus,out=tmp_path/'out',judge_mode='external',
@@ -476,7 +482,7 @@ def test_sentence_recovery_metrics_and_materials_remain_scoreable(tmp_path,again
     assert metrics['candidate_deletion_ratio']==int(again)
     assert metrics['proposed_sentences']==3
     assert metrics['deleted_sentence_ratio']==int(again)/3
-    assert report['prompt_versions']==['persona_check_v5','persona_generate_v5']
+    assert report['prompt_versions']==['persona_check_v6','persona_generate_v6']
     assert report['timeouts_seconds']['persona_check']==180
     manifest=json.loads(materials.read_text())
     document=json.loads((materials.parent/manifest['cases'][0]['file']).read_text())

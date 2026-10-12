@@ -36,10 +36,11 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v5', 'persona_check': 'persona_check_v5',
-                   'persona_sentence_repair': 'persona_generate_v5', 'persona_recheck': 'persona_check_v5'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v6', 'persona_check': 'persona_check_v6',
+                   'persona_sentence_repair': 'persona_generate_v6', 'persona_recheck': 'persona_check_v6'}
 CALL_TIMEOUTS = {'persona_generate': 120, 'persona_check': 180,
                  'persona_sentence_repair': 120, 'persona_recheck': 180}
+CHECK_BATCH_SIZE = 4
 REFERENCE = re.compile(r'(?<![A-Za-z0-9])[MP]\s*#?\s*\d+(?![A-Za-z0-9])', re.I)
 
 
@@ -256,7 +257,7 @@ def _generation_material(conn, settings, previous, stamp):
         else:
             omitted.append({'sentence':sentence, 'reason':'template_evidence_over_budget'})
     return {'evidence':evidence, 'settings':settings, 'as_of':stamp,
-        'prompt_versions':PROMPT_VERSIONS, 'timeouts_seconds':CALL_TIMEOUTS,
+        'prompt_versions':PROMPT_VERSIONS, 'timeouts_seconds':CALL_TIMEOUTS, 'check_batch_size':CHECK_BATCH_SIZE,
         'role_name':_setting(conn, 'role_name', 'Iris'), 'locked_sentences':retained,
         'omitted_template_sentences':omitted, 'previous':previous['content'],
         'previous_sentences':previous['sentences'],
@@ -296,6 +297,13 @@ def _final_deterministic(sentences, material, previous):
         'warnings':['under 300 characters: concise evidence-bound text is allowed'] if 0<len(content)<300 else []}
 
 
+def _clause_parts(text):
+    # Focus spans, not a claim to parse Chinese syntax. The complete sentence is
+    # always supplied so scope/negation/subjects still need semantic checking.
+    return [{'index': i, 'text': part.strip()} for i, part in enumerate(
+        (part for part in re.split(r'[，,；;]', text) if part.strip()), 1)]
+
+
 def _check_payload(material, sentences, *, full_content):
     # No unbound memories, former proofs, trace graph or self snapshot in the
     # checker. Every sentence carries only its own currently frozen evidence.
@@ -310,7 +318,9 @@ def _check_payload(material, sentences, *, full_content):
             memory = memories[(basis['memory_id'],basis['revision'])]
             refs.append(memory['ref'])
             evidence[memory['ref']] = {k:memory[k] for k in fields}
-        row = {**sentence, 'index':index, 'evidence_refs':refs}
+            evidence[memory['ref']]['excerpts'] = [dict(e, source_index=i)
+                for i, e in enumerate(memory['excerpts'], 1)]
+        row = {**sentence, 'index':index, 'evidence_refs':refs, 'clauses':_clause_parts(sentence['text'])}
         if sentence['origin'] == 'initial_template':
             # The whole original background must not become an extra fact source
             # attached to a name sentence or to a partially omitted template.
@@ -318,7 +328,7 @@ def _check_payload(material, sentences, *, full_content):
             if not sentence['basis']:
                 row['initial_settings']['role_name'] = material['role_name']
         rows.append(row)
-    return {**material['settings'], 'as_of':material['as_of'], 'evidence_by_ref':evidence,
+    return {**material['settings'], 'role_name':material['role_name'], 'as_of':material['as_of'], 'evidence_by_ref':evidence,
             'candidate':rows, 'previous':material['previous'], 'candidate_text':full_content}
 
 
@@ -489,11 +499,21 @@ def _bound_source_issues(sentence, tokens, memories):
             and not {'游戏', '联机'} & set(tokens) and not source_real_scope):
         issues.append('game-only evidence needs explicit scope: 自动句须明确游戏或联机场景；'
                       '现实／线下限定须来自本句绑定原话，不能仅按动作名称推定现实经历')
-    predicates = {m.group()[:-1] for m in re.finditer(r'(?:[\u3400-\u9fff]完|完成)[了过]', sentence['text'])}
+    predicates = set()
+    for clause in re.split(r'[。！？；，.!?;,\n]', sentence['text']):
+        for match in re.finditer(r'(?:[\u3400-\u9fff]完|完成)(?:[了过])?', clause):
+            prefix = clause[:match.start()]
+            explicit_aspect = match.group().endswith(('了', '过'))
+            # A bare result in an affirmative assertion also needs a result
+            # witness. Negation/intention/preference in a different clause cannot
+            # license it. This gate is deliberately only a necessary boundary.
+            non_result = re.search(r'没有|没能|未能|尚未|未曾|不曾|未|不|打算|计划|想要|希望|准备|喜欢|偏好|倾向|愿意', prefix)
+            if explicit_aspect or not non_result:
+                predicates.add(match.group().rstrip('了过'))
     for predicate in sorted(predicates):
         if not any(_completion_witness(predicate, source) for source in sources):
             issues.append('completion aspect needs original source support: '
-                          f'“{predicate}了／过”须在本句绑定原话中有同一动作的明确完成表述，动作目标不能补成结果')
+                          f'“{predicate}”的结果断言须在本句绑定原话中有同一动作的明确完成表述，动作目标不能补成结果')
     return issues
 
 
@@ -554,8 +574,68 @@ def _repair_options(sentence, material):
     return options
 
 
-def _check_verdicts(output, sentences, *, material=None):
+def _validate_clause_checks(output, payload):
+    """Check quote identity and per-focus dates; never assert semantic entailment."""
     errors, problems = [], {}
+    rows = output.get('sentences')
+    candidates = payload['candidate']
+    if not isinstance(rows, list) or len(rows) != len(candidates):
+        return ['clause checks must cover every sentence'], {}
+    for sentence, row in zip(candidates, rows):
+        index = sentence['index']
+        if sentence['origin'] != 'memory' or sentence.get('initial_setting'):
+            continue
+        parts = row.get('clauses') if isinstance(row, dict) else None
+        focus = sentence['clauses']
+        if not isinstance(parts, list) or len(parts) != len(focus):
+            errors.append(f'sentence {index}: clause checks must cover every focus span, in order')
+            continue
+        issues = []
+        for expected, part in zip(focus, parts):
+            label = f"clause {expected['index']}"
+            if (not isinstance(part, dict) or type(part.get('index')) is not int
+                    or part['index'] != expected['index']
+                    or any(type(part.get(k)) is not bool for k in ('supported', 'scene_qualified'))
+                    or not isinstance(part.get('reason'), str) or not part['reason'].strip()
+                    or not isinstance(part.get('evidence'), list)):
+                errors.append(f'sentence {index}: {label}: invalid clause verdict')
+                continue
+            dates, valid = set(), 0
+            for proof in part['evidence']:
+                ref = proof.get('ref') if isinstance(proof, dict) else None
+                n = proof.get('source_index') if isinstance(proof, dict) else None
+                quote = proof.get('quote') if isinstance(proof, dict) else None
+                memory = payload['evidence_by_ref'].get(ref) if isinstance(ref, str) else None
+                source = None
+                if memory is not None and ref in sentence['evidence_refs'] and type(n) is int:
+                    excerpts = memory.get('excerpts', [])
+                    if 1 <= n <= len(excerpts):
+                        source = excerpts[n-1]
+                    elif n == 0 and not excerpts:
+                        source = {'excerpt': memory['content'], 'date': memory.get('date')}
+                if (source is None or not isinstance(quote, str) or not quote.strip()
+                        or quote not in source['excerpt']):
+                    issues.append(f'{label}: proof must quote an exact own bound original source')
+                    continue
+                valid += 1
+                if source.get('date'):
+                    dates.add(source['date'])
+            if not part['supported']:
+                issues.append(f"{label}: {part['reason']}")
+            elif not valid:
+                issues.append(f'{label}: no valid original proof')
+            if part['supported'] and len(dates) < 2:
+                if not part['scene_qualified']:
+                    issues.append(f'{label}: general claim needs at least two distinct dates of its own proof')
+                elif not re.search(r'(?:这|那|当|某|本)(?:一)?(?:次|场|回|天)|\d{4}-\d{2}-\d{2}|[0-9零〇一二三四五六七八九十廿三]+(?:年|月|日|号)', sentence['text']):
+                    issues.append(f'{label}: single-date claim needs an explicit bounded scene in this sentence')
+        if issues:
+            problems[index] = issues
+    return errors, problems
+
+
+def _check_verdicts(output, sentences, *, material=None):
+    errors, problems = list(output.get('validation_errors', [])), {}
     memories = material['evidence']['memories'] if material is not None else None
     degree = output.get('change_degree')
     degree = {'小':'small', '中':'medium', '大':'large'}.get(degree, degree) if isinstance(degree, str) else None
@@ -564,7 +644,7 @@ def _check_verdicts(output, sentences, *, material=None):
         degree = 'large'
     rows = output.get('sentences')
     if not isinstance(rows, list) or len(rows) != len(sentences):
-        return degree, ['model check must cover every sentence, in order'], {}
+        return degree, errors + ['model check must cover every sentence, in order'], {}
     if not isinstance(output.get('reason'), str) or not output['reason'].strip():
         errors.append('model check reason required')
     for index, (row, sentence) in enumerate(zip(rows, sentences), 1):
@@ -575,7 +655,7 @@ def _check_verdicts(output, sentences, *, material=None):
                 or any(not isinstance(v, str) or not v.strip() for v in row['violations'])):
             errors.append(f'sentence {index}: invalid model verdict')
             continue
-        issues = _surface_issues(sentence, memories=memories)
+        issues = _surface_issues(sentence, memories=memories) + row.get('clause_errors', [])
         if not row['supported'] or row['fabricated'] or row['violations']:
             issues.append(row['reason'])
         if (sentence['origin'] == 'memory' and not sentence['initial_setting']
@@ -847,7 +927,7 @@ class PersonaEngine:
     def regenerate(self, *, expected_version):
         return self._run(expected_version, 'regenerate', only_if_due=False)
 
-    def _call(self, purpose, payload, outputs):
+    def _call(self, purpose, payload, outputs, *, deadline=None):
         """Per-purpose total budget includes HTTP retries and at most one JSON repair."""
         gateway, owned = self.gateway, False
         if gateway is None:
@@ -860,11 +940,13 @@ class PersonaEngine:
             owned = True
         import time
         monotonic = getattr(gateway, 'monotonic', time.monotonic)
-        deadline = monotonic() + CALL_TIMEOUTS[purpose]
+        deadline = min(deadline, monotonic() + CALL_TIMEOUTS[purpose]) if deadline is not None else monotonic() + CALL_TIMEOUTS[purpose]
         prompt = files('iris').joinpath(f'prompts/{PROMPT_VERSIONS[purpose]}.md').read_text(encoding='utf-8')
         messages = [{'role':'system','content':prompt}, {'role':'user','content':dumps(payload)}]
         try:
             for repair in (False, True):
+                if monotonic() >= deadline:
+                    raise ModelError('timeout', 'total timeout', reason='timeout')
                 health = getattr(gateway, 'health', None)
                 if health is not None:
                     # ModelHealth's existing learning gate includes the shared daily
@@ -873,6 +955,8 @@ class PersonaEngine:
                 label = purpose + ('_repair' if repair else '')
                 reply = gateway.chat(messages, label, max_tokens=16000, _deadline=deadline)
                 outputs[label] = reply.content
+                if monotonic() >= deadline:
+                    raise ModelError('timeout', 'total timeout', reason='timeout')
                 try:
                     if reply.finish_reason == 'length':
                         raise ValueError('finish_reason=length')
@@ -892,6 +976,41 @@ class PersonaEngine:
         finally:
             if owned:
                 gateway.close()
+
+    def _check_all(self, purpose, material, sentences, *, full_content, outputs):
+        """Small independent fact batches, one total 180-second stage budget."""
+        import time
+        deadline = getattr(self.gateway, 'monotonic', time.monotonic)() + CALL_TIMEOUTS[purpose]
+        raw_batches = outputs.setdefault(purpose + '_batches', [])
+        rows, batches, degrees, reasons = [], [], [], []
+        for start in range(0, max(1, len(sentences)), CHECK_BATCH_SIZE):
+            subset = sentences[start:start + CHECK_BATCH_SIZE]
+            payload = _check_payload(material, subset, full_content=full_content)
+            raw = {}
+            raw_batches.append(raw)  # Retain even a partial/failed later batch.
+            batch = self._call(purpose, payload, raw, deadline=deadline)
+            # Preserve the old single-batch raw key for readers; all batches have
+            # their own immutable entry, so later calls never overwrite an audit.
+            if start == 0:
+                outputs.update(raw)
+            # Diagnostic keys belong to code, never to the untrusted model.
+            checked_batch = {**batch, 'validation_errors': []}
+            if isinstance(batch.get('sentences'), list):
+                checked_batch['sentences'] = [{**row, 'clause_errors': []} if isinstance(row, dict) else row
+                    for row in batch['sentences']]
+            degree, structural, _ = _check_verdicts(checked_batch, subset, material=material)
+            proof_errors, problems = _validate_clause_checks(batch, payload)
+            batches.append(batch)
+            if structural or proof_errors:
+                return {'sentences': [], 'change_degree': 'large', 'reason': 'invalid check batch',
+                        'validation_errors': [f'batch {len(batches)}: {e}' for e in structural + proof_errors],
+                        'batches': batches}
+            for local, row in enumerate(batch['sentences'], 1):
+                rows.append({**row, 'index': start + local, 'clause_errors': problems.get(local, [])})
+            degrees.append(degree)
+            reasons.append(batch['reason'])
+        return {'sentences': rows, 'change_degree': max(degrees, key=DEGREES.index),
+                'reason': ' / '.join(reasons), 'batches': batches}
 
     def _recover_sentences(self, original, initial_model, problems, material, previous, checks, outputs):
         payload = _check_payload(material, original, full_content=''.join(s['text'] for s in original))
@@ -955,7 +1074,7 @@ class PersonaEngine:
             return retained, None, 'large', ['all sentences removed']
         # Recheck only modified facts. Also reassess change degree for the assembled
         # final draft (an empty candidate array means degree-only after deletion).
-        recheck = self._call('persona_recheck',_check_payload(material,modifications,full_content=content),outputs)
+        recheck = self._check_all('persona_recheck', material, modifications, full_content=content, outputs=outputs)
         checks['recheck'] = recheck
         degree, structural, bad = _check_verdicts(recheck,modifications,material=material)
         if structural:
@@ -1034,7 +1153,7 @@ class PersonaEngine:
             if deterministic['passed']:
                 with self.store.write() as conn:
                     conn.execute('UPDATE persona_attempts SET outputs_json=? WHERE id=?', (dumps(outputs),attempt))
-                model = self._call('persona_check', _check_payload(material,sentences,full_content=content), outputs)
+                model = self._check_all('persona_check', material, sentences, full_content=content, outputs=outputs)
                 degree, structural, problems = _check_verdicts(model, sentences, material=material)
                 _, initial_errors = _model_check(model,sentences,material=material)
                 checks.update(initial_model=model, initial_model_errors=initial_errors)

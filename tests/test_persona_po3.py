@@ -52,7 +52,7 @@ def test_relative_time_override_survives_an_approving_model(prepared):
                 reply.content = dumps({'sentences':[{'text':'我今天在直播中解释了规则。',
                     'basis':[payload['evidence']['memories'][0]['ref']]}]})
             elif purpose in ('persona_check','persona_recheck'):
-                reply.content = dumps(approving_verdict(payload['candidate']))
+                reply.content = dumps(approving_verdict(payload['candidate'], payload))
             return reply
     result = PersonaEngine(prepared, Permissive(prepared,repair=None)).regenerate(expected_version=1)
     version = result['version']

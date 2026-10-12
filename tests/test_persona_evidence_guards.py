@@ -107,7 +107,7 @@ class Permissive(Model):
                 {'text': good['content'], 'basis': [good['ref']]},
                 {'text': self.text, 'basis': [chosen['ref']]}]})
         elif purpose in ('persona_check', 'persona_recheck'):
-            reply.content = dumps(approving_verdict(payload['candidate']))
+            reply.content = dumps(approving_verdict(payload['candidate'], payload))
         return reply
 
 

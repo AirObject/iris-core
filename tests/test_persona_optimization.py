@@ -1,4 +1,5 @@
 """V2 sentence recovery and immutable initial settings, without real models."""
+from persona_fakes import add_clause_proofs
 import json
 
 import pytest
@@ -43,6 +44,8 @@ class Model:
                     'scene_qualified':not bad, 'violations':['单一日期泛化'] if bad else [],
                     'reason':'只支持当次直播。' if bad else '本句来源支持范围。'})
             result = {'sentences':rows, 'change_degree':'small', 'reason':'有界经历。'}
+        if purpose in ('persona_check', 'persona_recheck'):
+            result = add_clause_proofs(result, payload)
         return ModelReply(dumps(result), 'stop', {})
 
 
@@ -316,7 +319,7 @@ def test_long_check_material_deduplicates_shared_sources(prepared):
     assert all(s['evidence_refs']==[ref] for s in request['candidate'])
     assert 'trace_refs' not in dumps(request) and 'trace_sha256' not in dumps(request)
     assert estimate_tokens(dumps(request))<6000
-    assert material['prompt_versions']['persona_generate']=='persona_generate_v5'
+    assert material['prompt_versions']['persona_generate']=='persona_generate_v6'
 
 
 def test_model_cannot_rewrite_locked_template_or_invent_its_attribution(prepared):

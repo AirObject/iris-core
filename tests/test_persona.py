@@ -1,4 +1,5 @@
 """Persona publication boundaries, tested without a network model."""
+from persona_fakes import add_clause_proofs
 import json
 from datetime import datetime, timedelta, timezone
 
@@ -76,6 +77,8 @@ class FakeGateway:
                        'violations': [], 'reason': '依据支持，保留场景。'}
                        for i, _ in enumerate(self.calls[-1][1]['candidate'])],
                      'change_degree': self.degree, 'reason': '措辞调整'}
+        if purpose in ('persona_check', 'persona_recheck'):
+            value = add_clause_proofs(value, self.calls[-1][1])
         return ModelReply(dumps(value), 'stop', {})
 
 

@@ -1,4 +1,5 @@
 """PO2: conservative mechanical boundaries, including an overly permissive judge."""
+from persona_fakes import add_clause_proofs
 import json
 
 import pytest
@@ -11,10 +12,11 @@ from test_persona import add_self
 from test_persona_optimization import Model, prepared
 
 
-def approving_verdict(sentences):
-    return {'sentences': [{'index': i, 'supported': True, 'fabricated': False,
+def approving_verdict(sentences, payload=None):
+    result = {'sentences': [{'index': i, 'supported': True, 'fabricated': False,
         'scene_qualified': True, 'violations': [], 'reason': '假检查器全部放行。'}
         for i, _ in enumerate(sentences, 1)], 'change_degree': 'small', 'reason': '假检查器低估变化。'}
+    return add_clause_proofs(result, payload) if payload is not None else result
 
 
 @pytest.mark.parametrize('text', [
@@ -143,7 +145,7 @@ def test_single_date_condition_is_removed_even_when_model_approves_everything(pr
                 value['sentences'][-1]['text'] = '遇到画面太亮时，我选择浅灰底。'
                 reply.content = dumps(value)
             elif purpose in ('persona_check', 'persona_recheck'):
-                reply.content = dumps(approving_verdict(json.loads(messages[-1]['content'])['candidate']))
+                reply.content = dumps(approving_verdict(json.loads(messages[-1]['content'])['candidate'], json.loads(messages[-1]['content'])))
             return reply
     model = Permissive(prepared, repair=None)
     result = PersonaEngine(prepared, model).regenerate(expected_version=1)
@@ -167,7 +169,7 @@ def test_admin_text_and_setup_remain_exact_under_new_style_guards(store):
                 result = {'sentences': [{'text': text, 'basis': [], 'admin_sentence': aid}
                     for aid, text in payload['admin_sentences'].items()]}
             else:
-                result = approving_verdict(payload['candidate'])
+                result = approving_verdict(payload['candidate'], payload)
             return ModelReply(dumps(result), 'stop', {})
     result = PersonaEngine(store, Preserve()).regenerate(expected_version=edited['id'])
     assert result['status'] == 'pending'  # Product default remains all_manual.
