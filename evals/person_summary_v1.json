@@ -461,6 +461,7 @@
     },
     {
       "id": "PS009",
+      "expect_none": true,
       "subject_id": "pangzhen",
       "as_of": "2027-02-12T22:00:00+08:00",
       "timezone": "Asia/Shanghai",
