@@ -37,4 +37,4 @@
 
 ## 验证
 
-两个 Python 版本全量测试依次通过（3.13／3.12 各 2809 项），`uv build` 成功；272 批学习请求逐字一致，684 份召回返回零差异。两次全量测试均在结束后清理本 worktree 的 `.pytest-tmp`。完整结果和磁盘写满中断后的重跑记录见 [入口画像 EPQ 报告](../entry_profile_eval/EPQ-report.md)。
+两个 Python 版本全量测试依次通过（3.13／3.12 各 2809 项），`uv build` 成功；272 批学习请求逐字一致，684 份召回返回零差异。两次全量测试均在结束后清理本 worktree 的 `.pytest-tmp`。完整结果和磁盘写满中断后的重跑记录见 [入口画像 EPQ 报告](https://github.com/AirObject/iris-core/blob/79b2887f4499856a05642f8608bf5d7b3ed81426/evals/entry_profile_eval/EPQ-report.md)。

@@ -39,29 +39,18 @@ def named_topic(first, second, quotes, *, label='《湖岸画册》的配色'):
     return _resolve({'items': [{'kind': 'topic', 'label': label, 'quotes': quotes}]}, evidence, None)
 
 
-def test_named_topic_needs_the_title_in_two_bound_original_observations():
+def test_entry_v2_restores_main_without_the_withdrawn_named_topic_gate():
     kept, deleted, errors, count, stats = named_topic(
         '《湖岸画册》的这一页用了绿色。', '这本下一页的蓝色也不错。',
         [{'message_id': 1, 'text': '《湖岸画册》的这一页用了绿色。'},
          {'message_id': 2, 'text': '这本下一页的蓝色也不错。'}])
-    assert kept == [] and errors == [] and count == 1
-    assert deleted[0]['reason'] == 'insufficient_named_topic_recurrence'
-    assert stats == {'total': 2, 'passed': 2}
-
-
-def test_named_topic_may_bind_the_title_in_the_full_original_message():
-    kept, deleted, errors, count, stats = named_topic(
-        '《湖岸画册》的这一页用了绿色。', '我翻到《湖岸画册》的下一页，蓝色很明显。',
-        [{'message_id': 1, 'text': '这一页用了绿色'},
-         {'message_id': 2, 'text': '蓝色很明显'}])
-    assert len(kept) == 1 and deleted == [] and errors == []
+    assert len(kept) == 1 and not deleted and not errors
     assert count == 1 and stats == {'total': 2, 'passed': 2}
 
 
-def test_each_named_work_needs_two_bound_observations():
-    kept, deleted, *_ = named_topic(
-        '《湖岸画册》与《山路画册》的两种配色。', '又看《湖岸画册》，这一页改成了红色。',
-        [{'message_id': 1, 'text': '《湖岸画册》与《山路画册》的两种配色。'},
-         {'message_id': 2, 'text': '又看《湖岸画册》，这一页改成了红色。'}],
-        label='《湖岸画册》与《山路画册》的配色')
-    assert kept == [] and deleted[0]['reason'] == 'insufficient_named_topic_recurrence'
+def test_entry_document_candidates_are_not_selectable(store):
+    import pytest
+    assert EntryProfileEngine(store, None).prompt_version == 'v2'
+    for version in ('v3', 'v4', 'v5', 'v6', 'v7'):
+        with pytest.raises(ValueError):
+            EntryProfileEngine(store, None, prompt_version=version)

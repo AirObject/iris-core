@@ -446,7 +446,7 @@ def main():
     commands=parser.add_subparsers(dest='command',required=True)
     run=commands.add_parser('run');run.add_argument('--corpus',required=True);run.add_argument('--out',required=True)
     run.add_argument('--coverage-policy',help='Explicit fingerprint-bound applicability review JSON')
-    run.add_argument('--prompt-version', choices=['v2', 'v3', 'v4', 'v5', 'v6', 'v7'], help='Explicit candidate; omission uses the product default')
+    run.add_argument('--prompt-version', choices=['v2'], help='Explicit candidate; omission uses the product default')
     run.add_argument('--fake-responses',help='Explicit JSON array of fake responses; never loads model configuration')
     grade=commands.add_parser('score');grade.add_argument('--materials',required=True);grade.add_argument('--judgments',action='append',required=True)
     grade.add_argument('--judge-model',required=True);grade.add_argument('--out',required=True)
