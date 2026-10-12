@@ -70,9 +70,10 @@ def test_negative_windows_retain_unchecked_indices_and_raw_output(store):
     material, sentence = material_and_sentence(4); model = NegativeFocus(); outputs = {}
     result = run(store, model, material, [sentence], outputs)
     assert not result['incomplete_checks']
-    assert result['sentences'][0]['unchecked_clause_indices'] == [2, 4]
+    assert result['sentences'][0]['unchecked_clause_indices'] == [2, 3, 4]
     assert not result['sentences'][0]['supported']
-    assert len(result['short_circuits']) == 2
+    assert result['short_circuits'] == [{'batch': 1, 'sentence_index': 1, 'unchecked_clause_indices': [2]}]
+    assert len(result['skipped_windows']) == 1 and len(model.calls) == 1
     assert _check_verdicts(result, [sentence], material=material)[2]
     assert all('unchecked_clause_indices' not in batch['sentences'][0] for batch in result['batches'])
     assert len(json.loads(outputs['persona_check'])['sentences'][0]['clauses']) == 1
@@ -96,3 +97,25 @@ def test_negative_with_unchecked_focus_is_deleted_never_retained(prepared):
     assert version['checks']['initial_model']['short_circuits']
     assert all(s['origin'] == 'initial_template' for s in version['sentences'])
     assert any('人物归属无据' in ' '.join(d['reasons']) for d in version['checks']['deleted_sentences'])
+
+
+def test_rejected_sentence_skips_later_windows_but_other_sentence_is_fully_checked(store):
+    class FirstBad(FocusModel):
+        def chat(self, *args, **kwargs):
+            reply = super().chat(*args, **kwargs)
+            value = json.loads(reply.content)
+            if len(self.calls) == 1:
+                value['sentences'][0]['supported'] = False
+                value['sentences'][0]['reason'] = '完整本窗口已确认无据。'
+            reply.content = dumps(value)
+            return reply
+    material, sentence = material_and_sentence(4)
+    model = FirstBad()
+    result = run(store, model, material, [sentence, sentence])
+    assert len(model.calls) == 3
+    assert [s['supported'] for s in result['sentences']] == [False, True]
+    assert result['sentences'][0]['unchecked_clause_indices'] == [3, 4]
+    assert [c['index'] for c in result['sentences'][1]['clauses']] == [1, 2, 3, 4]
+    assert not result['incomplete_checks']
+    assert result['skipped_windows'] == [{'planned_batch': 2, 'sentence_index': 1,
+        'clause_indices': [3, 4], 'reason': 'sentence_already_rejected'}]

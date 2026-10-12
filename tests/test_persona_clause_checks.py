@@ -274,11 +274,12 @@ def test_long_compound_sentences_are_batched_by_focus_work_as_well_as_sentence_c
     gateway, outputs = FocusGateway(), {}
     result = PersonaEngine(store, gateway)._check_all('persona_check', batch_material(), sentences,
         full_content=''.join(s['text'] for s in sentences), outputs=outputs)
-    assert [len(c[1]['candidate']) for c in gateway.calls] == [1]*10
+    assert [len(c[1]['candidate']) for c in gateway.calls] == [1]*5
     assert [r['index'] for r in result['sentences']] == list(range(1, 6))
-    assert all(len(r['clauses'])==3 for r in result['sentences'])
-    assert [c[2] for c in gateway.calls] == [180+20*i for i in range(10)]
-    assert len(outputs['persona_check_batches']) == 10
+    assert all(len(r['clauses'])==2 and r['unchecked_clause_indices']==[3] for r in result['sentences'])
+    assert len(result['skipped_windows']) == 5
+    assert [c[2] for c in gateway.calls] == [180+20*i for i in range(5)]
+    assert len(outputs['persona_check_batches']) == 5
 
 
 def test_degree_only_request_explicitly_has_no_fact_check_work(store):

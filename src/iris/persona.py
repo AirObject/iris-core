@@ -37,8 +37,8 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v11', 'persona_check': 'persona_check_v15',
-                   'persona_sentence_repair': 'persona_repair_v10', 'persona_recheck': 'persona_check_v15'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v12', 'persona_check': 'persona_check_v16',
+                   'persona_sentence_repair': 'persona_repair_v10', 'persona_recheck': 'persona_check_v16'}
 CALL_TIMEOUTS = {'persona_generate': 180, 'persona_check': 180,
                  'persona_sentence_repair': 120, 'persona_recheck': 180}
 CALL_MAX_TOKENS = {'persona_generate':6144, 'persona_check':6144,
@@ -1103,8 +1103,24 @@ class PersonaEngine:
         deadline = getattr(self.gateway, 'monotonic', time.monotonic)() + stage_seconds
         raw_batches = outputs.setdefault(purpose + '_batches', [])
         rows, batches, degrees, reasons, incomplete, short_circuits = {}, [], [], [], [], []
+        rejected, skipped, normalizations = set(), [], []
+        outputs[purpose + '_skipped_windows'] = skipped
         window_map = outputs.setdefault(purpose + '_windows', [])
-        for batch_index,subset in enumerate(subsets):
+        for planned_index,planned in enumerate(subsets):
+            subset = []
+            for sentence in planned:
+                original = sentence['_check_sentence']
+                if original in rejected:
+                    indices = [p['index'] for p in sentence.get('_check_focus',[])]
+                    rows[original]['supported'] = False
+                    rows[original].setdefault('unchecked_clause_indices',[]).extend(indices)
+                    skipped.append({'planned_batch':planned_index+1, 'sentence_index':original,
+                                    'clause_indices':indices, 'reason':'sentence_already_rejected'})
+                else:
+                    subset.append(sentence)
+            if planned and not subset:
+                continue  # A failed sentence can never become retained in a later window.
+            batch_index = len(batches)
             window_map.append([{'sentence_index':s['_check_sentence'],
                                 'clause_indices':[p['index'] for p in s.get('_check_focus',[])]}
                                for s in subset])
@@ -1126,6 +1142,14 @@ class PersonaEngine:
                         'reason':'incomplete check: output_limit',
                         'validation_errors':[f'batch {batch_index+1}: output_limit; no complete judgment'],
                         'batches':batches, 'window_map':window_map}
+            original_batch = batch
+            if not subset and set(batch) == {'change_degree','reason'}:
+                # No factual rows were requested. The dedicated degree-only
+                # contract need not ask the model to echo an empty list.
+                batch = {**batch, 'sentences':[]}
+                operation = 'degree_only_empty_sentences'
+                raw.setdefault(purpose + '_normalizations',[]).append(operation)
+                normalizations.append({'batch':batch_index+1, 'operation':operation})
             if batch_index == 0:
                 outputs.update(raw)
             checked_batch = {**batch, 'validation_errors': []}
@@ -1150,7 +1174,7 @@ class PersonaEngine:
                     elif row.get('unchecked_clause_indices'):
                         short_circuits.append({'batch':batch_index+1,
                             'sentence_index':sentence['_check_sentence'],
-                            'unchecked_clause_indices':row['unchecked_clause_indices']})
+                            'unchecked_clause_indices':list(row['unchecked_clause_indices'])})
                     if isinstance(row.get('persona_kind'), str) and row['persona_kind'] in EXCLUDED_KINDS:
                         issues.setdefault(local, []).append(EXCLUDED_KINDS[row['persona_kind']])
                     if malformed and sentence['origin'] == 'memory' and not sentence.get('initial_setting'):
@@ -1168,14 +1192,16 @@ class PersonaEngine:
                         row['supported'] = False
                     normalized.append(row)
                 checked_batch['sentences'] = normalized
-            degree, structural, _ = _check_verdicts(checked_batch, subset, material=material)
-            batches.append(batch)  # Keep raw malformed verdicts, never silently correct them.
+            degree, structural, window_problems = _check_verdicts(checked_batch, subset, material=material)
+            batches.append(original_batch)  # Preserve even an omitted empty degree-only list.
             if structural or proof_errors:
                 return {'sentences': [], 'change_degree': 'large', 'reason': 'invalid check batch',
                         'validation_errors': [f'batch {len(batches)}: {e}' for e in structural + proof_errors],
                         'batches': batches, 'window_map':window_map}
             for local,(sentence,row) in enumerate(zip(subset,checked_batch['sentences']),1):
                 original = sentence['_check_sentence']
+                if window_problems.get(local):
+                    rejected.add(original)
                 part = {**row, 'index':original, 'clause_errors':problems.get(local,[]),
                         'clauses':row.get('clauses') if isinstance(row.get('clauses'),list) else []}
                 if original not in rows:
@@ -1196,7 +1222,8 @@ class PersonaEngine:
             reasons.append(batch['reason'])
         return {'sentences':[rows[i] for i in sorted(rows)], 'change_degree':degrees[0],
                 'reason':reasons[0], 'batches':batches, 'window_map':window_map,
-                'incomplete_checks':incomplete, 'short_circuits':short_circuits}
+                'incomplete_checks':incomplete, 'short_circuits':short_circuits,
+                'skipped_windows':skipped, 'normalizations':normalizations}
 
     def _recover_sentences(self, original, initial_model, problems, material, previous, checks, outputs):
         payload = _check_payload(material, original, full_content=''.join(s['text'] for s in original), proof_choices=False)
@@ -1423,4 +1450,9 @@ class PersonaEngine:
             return {'status':state,'reason':reason,'attempt_id':attempt,'version':None,'due':due}
         except Exception:
             self._finish_attempt(attempt, 'failed', 'unexpected_error', outputs)
+            raise
+        except BaseException:
+            # In particular, an evaluator's Ctrl-C must retain completed replies
+            # from the active check stage before its temporary database closes.
+            self._finish_attempt(attempt, 'failed', 'interrupted', outputs)
             raise
