@@ -1,3 +1,4 @@
+import PersonSummaryPanel from "./PersonSummary";
 import { BulkMemoryDialog } from "./BulkMemory";
 import { useState, type FormEvent } from "react";
 import { api, ApiError, errorText, json, useData } from "./api";
@@ -22,8 +23,10 @@ import type {
 export default function People({
   initialQuery = "",
   onChange,
+  openMemory = () => {},
 }: {
   initialQuery?: string;
+  openMemory?: (id: number) => void;
   onChange: () => void;
 }) {
   const initial = new URLSearchParams(initialQuery);
@@ -68,6 +71,12 @@ export default function People({
         <PersonDetail
           key={selected}
           id={selected}
+          summaryVersion={
+            selected === initial.get("id")
+              ? Number(initial.get("summary_version")) || undefined
+              : undefined
+          }
+          openMemory={openMemory}
           openPerson={setSelected}
           onBack={() => setSelected(null)}
           onChange={changed}
@@ -209,12 +218,16 @@ type Action =
   | { kind: "alias"; alias: Alias };
 function PersonDetail({
   id,
+  summaryVersion,
+  openMemory,
   openPerson,
   onBack,
   onChange,
   onMerged,
 }: {
   id: string;
+  summaryVersion?: number;
+  openMemory: (id: number) => void;
   openPerson: (id: string) => void;
   onBack: () => void;
   onChange: () => void;
@@ -356,6 +369,11 @@ function PersonDetail({
                 </button>
               </Notice>
             )}
+            <PersonSummaryPanel
+              subjectId={id}
+              initialVersion={summaryVersion}
+              openMemory={openMemory}
+            />
             <h3>平台身份</h3>
             {!person.platform_identities.length && (
               <p className="muted">暂无平台身份。</p>

@@ -4,6 +4,18 @@ import { Empty, Notice, Pagination, fullTime } from "./ui";
 import type { Operation, Page } from "./types";
 
 export const operationNames: Record<string, string> = {
+  person_summary_settings: "更新人物摘要设置",
+  person_summary_edit: "编辑发布人物摘要",
+  person_summary_confirm: "确认人物摘要候选",
+  person_summary_reject: "拒绝人物摘要候选",
+  person_summary_rollback: "回滚人物摘要",
+  person_summary_regenerate_requested: "请求重新生成人物摘要",
+  person_summary_generation_requested: "请求生成人物摘要",
+  person_summary_generation_published: "人物摘要生成并发布",
+  person_summary_generation_candidate: "人物摘要待确认",
+  person_summary_generation_rejected: "人物摘要检查未通过",
+  person_summary_generation_skipped: "跳过人物摘要生成",
+  person_summary_generation_interrupted: "人物摘要生成中断",
   token_create: "创建宿主令牌",
   token_revoke: "撤销宿主令牌",
   token_limits_saved: "更新宿主令牌限流",
@@ -85,6 +97,7 @@ export const operationNames: Record<string, string> = {
   logout: "退出登录",
 };
 export const actorNames: Record<string, string> = {
+  person_summary: "人物摘要",
   local_cli: "本机命令行",
   persona: "persona 更新",
   consolidation: "梦境整理",
@@ -98,6 +111,7 @@ export const actorNames: Record<string, string> = {
   local_import: "本机导入",
 };
 const objectNames: Record<string, string> = {
+  person_summary: "人物摘要",
   host_token: "宿主令牌",
   backup: "备份",
   persona: "persona 版本",

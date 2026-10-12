@@ -19,6 +19,7 @@ export function ConsolidationSettings({
 }) {
   const [draft, setDraft] = useState(() => ({
     ...value,
+    person_summary_enabled: value.person_summary_enabled ?? true,
     max_calls: String(value.max_calls),
   }));
   const dirty = useRef(false);
@@ -26,7 +27,11 @@ export function ConsolidationSettings({
     [saved, setSaved] = useState(false);
   useEffect(() => {
     if (!dirty.current)
-      setDraft({ ...value, max_calls: String(value.max_calls) });
+      setDraft({
+        ...value,
+        person_summary_enabled: value.person_summary_enabled ?? true,
+        max_calls: String(value.max_calls),
+      });
   }, [value]);
   function change<K extends keyof typeof draft>(
     key: K,
@@ -58,7 +63,11 @@ export function ConsolidationSettings({
     const result = await save({ ...draft, max_calls: calls });
     if (result) {
       dirty.current = false;
-      setDraft({ ...result, max_calls: String(result.max_calls) });
+      setDraft({
+        ...result,
+        person_summary_enabled: result.person_summary_enabled ?? true,
+        max_calls: String(result.max_calls),
+      });
       setSaved(true);
     }
   }
@@ -103,7 +112,9 @@ export function ConsolidationSettings({
                 value={draft.max_calls}
                 onChange={(e) => change("max_calls", e.target.value)}
               />
-              <small>0—50，包含重试、修正与 persona 生成及检查。</small>
+              <small>
+                0—50，包含重试、修正、persona 与人物摘要生成及检查。
+              </small>
             </label>
           </div>
           {consolidationSwitches.map(([key, label]) => (
@@ -119,7 +130,8 @@ export function ConsolidationSettings({
           <p className="lifecycle-help">
             预算为 0
             时不调用模型，记忆生命周期维护与开启的目标依据复核仍会执行。persona
-            需满足更新条件且至少剩余 2 次调用名额。
+            与人物摘要需满足各自更新条件且至少剩余 2
+            次调用名额。人物摘要开关只影响之后的整理，不关闭已发布摘要的宿主读取。
           </p>
           <p className="lifecycle-help">
             矛盾和依赖复核只产生管理员可见的模型建议；目标依据复核不自动完成或放弃目标。
@@ -132,7 +144,11 @@ export function ConsolidationSettings({
               type="button"
               onClick={() => {
                 dirty.current = false;
-                setDraft({ ...value, max_calls: String(value.max_calls) });
+                setDraft({
+                  ...value,
+                  person_summary_enabled: value.person_summary_enabled ?? true,
+                  max_calls: String(value.max_calls),
+                });
                 setError("");
                 setSaved(false);
               }}
