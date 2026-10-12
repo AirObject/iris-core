@@ -131,7 +131,7 @@ def test_exact_repair_cannot_bypass_single_date_guard(prepared):
     checks = result['version']['checks']
     # Exact extraction is not proof; the known scope failure is removed before recheck.
     assert checks['recheck']['sentences'] == []
-    assert checks['deleted_sentences'][0]['stage'] == 'repair_deterministic'
+    assert checks['deleted_sentences'][0]['stage'] == 'repair_options'
     assert not checks['repaired_sentences'] and '通常' not in result['version']['content']
     assert result['version']['change_degree'] == 'small'
 

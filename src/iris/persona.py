@@ -36,13 +36,15 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v7', 'persona_check': 'persona_check_v7',
-                   'persona_sentence_repair': 'persona_generate_v7', 'persona_recheck': 'persona_check_v7'}
-CALL_TIMEOUTS = {'persona_generate': 120, 'persona_check': 180,
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v7', 'persona_check': 'persona_check_v8',
+                   'persona_sentence_repair': 'persona_repair_v8', 'persona_recheck': 'persona_check_v8'}
+CALL_TIMEOUTS = {'persona_generate': 180, 'persona_check': 180,
                  'persona_sentence_repair': 120, 'persona_recheck': 180}
 CHECK_BATCH_SIZE = 4
 CHECK_BATCH_CLAUSES = 6
 MAX_CHECK_STAGE_SECONDS = 360
+REPAIR_BATCH_SIZE = 2
+MAX_REPAIR_STAGE_SECONDS = 180
 REFERENCE = re.compile(r'(?<![A-Za-z0-9])[MP]\s*#?\s*\d+(?![A-Za-z0-9])', re.I)
 
 
@@ -261,6 +263,7 @@ def _generation_material(conn, settings, previous, stamp):
     return {'evidence':evidence, 'settings':settings, 'as_of':stamp,
         'prompt_versions':PROMPT_VERSIONS, 'timeouts_seconds':CALL_TIMEOUTS, 'check_batch_size':CHECK_BATCH_SIZE,
         'max_check_stage_seconds':MAX_CHECK_STAGE_SECONDS, 'check_batch_clauses':CHECK_BATCH_CLAUSES,
+        'repair_batch_size':REPAIR_BATCH_SIZE, 'max_repair_stage_seconds':MAX_REPAIR_STAGE_SECONDS,
         'role_name':_setting(conn, 'role_name', 'Iris'), 'locked_sentences':retained,
         'omitted_template_sentences':omitted, 'previous':previous['content'],
         'previous_sentences':previous['sentences'],
@@ -656,6 +659,14 @@ def _validate_clause_checks(output, payload):
     return errors, problems
 
 
+def _valid_sentence_verdict(row, index):
+    return (isinstance(row, dict) and type(row.get('index')) is int and row['index'] == index
+            and all(type(row.get(k)) is bool for k in ('supported','fabricated','scene_qualified'))
+            and isinstance(row.get('reason'), str) and bool(row['reason'].strip())
+            and isinstance(row.get('violations'), list)
+            and all(isinstance(v, str) and bool(v.strip()) for v in row['violations']))
+
+
 def _check_verdicts(output, sentences, *, material=None):
     errors, problems = list(output.get('validation_errors', [])), {}
     memories = material['evidence']['memories'] if material is not None else None
@@ -670,11 +681,7 @@ def _check_verdicts(output, sentences, *, material=None):
     if not isinstance(output.get('reason'), str) or not output['reason'].strip():
         errors.append('model check reason required')
     for index, (row, sentence) in enumerate(zip(rows, sentences), 1):
-        if (not isinstance(row, dict) or type(row.get('index')) is not int or row['index'] != index
-                or any(type(row.get(k)) is not bool for k in ('supported','fabricated','scene_qualified'))
-                or not isinstance(row.get('reason'), str) or not row['reason'].strip()
-                or not isinstance(row.get('violations'), list)
-                or any(not isinstance(v, str) or not v.strip() for v in row['violations'])):
+        if not _valid_sentence_verdict(row, index):
             errors.append(f'sentence {index}: invalid model verdict')
             continue
         issues = _surface_issues(sentence, memories=memories) + row.get('clause_errors', [])
@@ -1001,7 +1008,7 @@ class PersonaEngine:
                 gateway.close()
 
     def _check_all(self, purpose, material, sentences, *, full_content, outputs):
-        """Bound each request and the complete serial batch stage, including retries."""
+        """Bound serial checks; only the first batch assesses the complete diff."""
         import time
         subsets = _check_batches(sentences)
         stage_seconds = min(MAX_CHECK_STAGE_SECONDS, CALL_TIMEOUTS[purpose] * len(subsets))
@@ -1011,57 +1018,105 @@ class PersonaEngine:
         for subset in subsets:
             start = len(rows)
             payload = _check_payload(material, subset, full_content=full_content)
+            if start:
+                payload['task'] = 'check_facts'
+                payload.pop('previous')
+                payload.pop('candidate_text')
             raw = {}
-            raw_batches.append(raw)  # Retain even a partial/failed later batch.
+            raw_batches.append(raw)
             batch = self._call(purpose, payload, raw, deadline=deadline)
-            # Preserve the old single-batch raw key for readers; all batches have
-            # their own immutable entry, so later calls never overwrite an audit.
             if start == 0:
                 outputs.update(raw)
-            # Diagnostic keys belong to code, never to the untrusted model.
             checked_batch = {**batch, 'validation_errors': []}
-            if isinstance(batch.get('sentences'), list):
-                checked_batch['sentences'] = [{**row, 'clause_errors': []} if isinstance(row, dict) else row
-                    for row in batch['sentences']]
+            returned = batch.get('sentences')
+            if isinstance(returned,list):
+                checked_batch['sentences'] = [{**row,'clause_errors':[]} if isinstance(row,dict) else row
+                                              for row in returned]
+            mapped = (isinstance(returned, list) and len(returned) == len(subset)
+                and all(isinstance(row, dict) and type(row.get('index')) is int and row['index'] == i
+                        for i,row in enumerate(returned,1)))
+            proof_errors, problems = [], {}
+            if mapped:
+                normalized = []
+                for local,(sentence,row) in enumerate(zip(subset,returned),1):
+                    row = {**row, 'clause_errors': []}  # Ignore model-forged diagnostics.
+                    errors, issues = _validate_clause_checks({'sentences':[row]},
+                        {**payload, 'candidate':[payload['candidate'][local-1]]})
+                    malformed = ([] if _valid_sentence_verdict(row,local)
+                                 else [f'sentence {local}: invalid model verdict']) + errors
+                    if malformed and sentence['origin'] == 'memory' and not sentence.get('initial_setting'):
+                        # Exact sentence mapping is known, but this fact has no valid
+                        # verdict. Never accept it: send only this sentence to recovery.
+                        row = {**row, 'supported':False, 'fabricated':False,
+                               'scene_qualified':False, 'violations':[],
+                               'reason':'invalid sentence check: ' + '; '.join(malformed)}
+                        problems[local] = malformed + issues.get(local,[])
+                    else:
+                        proof_errors.extend(errors)
+                        problems.update(issues)
+                    normalized.append(row)
+                checked_batch['sentences'] = normalized
             degree, structural, _ = _check_verdicts(checked_batch, subset, material=material)
-            proof_errors, problems = _validate_clause_checks(batch, payload)
-            batches.append(batch)
+            batches.append(batch)  # Keep raw malformed verdicts, never silently correct them.
             if structural or proof_errors:
                 return {'sentences': [], 'change_degree': 'large', 'reason': 'invalid check batch',
                         'validation_errors': [f'batch {len(batches)}: {e}' for e in structural + proof_errors],
                         'batches': batches}
-            for local, row in enumerate(batch['sentences'], 1):
-                rows.append({**row, 'index': start + local, 'clause_errors': problems.get(local, [])})
+            for local,row in enumerate(checked_batch['sentences'],1):
+                rows.append({**row, 'index':start+local, 'clause_errors':problems.get(local,[])})
             degrees.append(degree)
             reasons.append(batch['reason'])
-        return {'sentences': rows, 'change_degree': max(degrees, key=DEGREES.index),
-                'reason': ' / '.join(reasons), 'batches': batches}
+        return {'sentences':rows, 'change_degree':degrees[0],
+                'reason':reasons[0], 'batches':batches}
 
     def _recover_sentences(self, original, initial_model, problems, material, previous, checks, outputs):
         payload = _check_payload(material, original, full_content=''.join(s['text'] for s in original))
         repairable = {i:original[i-1] for i in problems if original[i-1]['origin'] != 'initial_template'}
-        proposed = {}
-        replacements = {i: _repair_options(sentence, material) for i, sentence in repairable.items()}
+        proposed, replacements = {}, {}
         checks['repair_policy'] = 'bound_memory_extract_v1'
-        if repairable:
-            request = {**material['settings'], 'task':'repair', 'as_of':material['as_of'],
-                       'repair_policy':checks['repair_policy'],
-                       'text_constraint':'text 必须逐字选择本项 allowed_replacement_refs 在 replacement_text_by_ref 中的原文，或用 null 删除；不能删字、拼接或改写。',
-                       'replacement_text_by_ref':{option['basis'][0]:option['text']
-                           for options in replacements.values() for option in options},
-                       'problems':[{'index':i, **payload['candidate'][i-1], 'problems':problems[i],
-                                    'allowed_replacement_refs':[option['basis'][0] for option in replacements[i]]}
-                                   for i in repairable]}
-            refs = {ref for row in request['problems'] for ref in row['evidence_refs']}
-            request['evidence_by_ref'] = {ref:record for ref,record in payload['evidence_by_ref'].items() if ref in refs}
-            repaired = self._call('persona_sentence_repair', request, outputs)
-            checks['repair_output'] = repaired
-            rows = repaired.get('repairs')
-            # Invalid batch shape cannot sneak new sentences or evidence into a repair.
-            if (isinstance(rows,list) and len(rows)==len(repairable)
-                    and all(isinstance(r,dict) and type(r.get('index')) is int for r in rows)
-                    and {r['index'] for r in rows}==set(repairable)):
-                proposed = {r['index']:r for r in rows}
+        checks['repair_options_rejected'] = []
+        for i,sentence in repairable.items():
+            replacements[i] = []
+            for option in _repair_options(sentence,material):
+                _,normalized,deterministic = _deterministic({'sentences':[option]},_editable_material(material),previous)
+                issues = (_surface_issues(normalized[0],memories=material['evidence']['memories'])
+                          if normalized else [])
+                if not deterministic['passed'] or issues:
+                    checks['repair_options_rejected'].append({'index':i,'option':option,
+                        'reasons':deterministic['errors']+issues})
+                else:
+                    replacements[i].append(option)
+        eligible = [i for i in repairable if replacements[i]]
+        checks['repair_outputs'] = []
+        if eligible:
+            import time
+            monotonic = getattr(self.gateway,'monotonic',time.monotonic)
+            deadline = monotonic() + MAX_REPAIR_STAGE_SECONDS
+            raw_batches = outputs.setdefault('persona_sentence_repair_batches',[])
+            for start in range(0,len(eligible),REPAIR_BATCH_SIZE):
+                indices = eligible[start:start+REPAIR_BATCH_SIZE]
+                request = {**material['settings'], 'task':'repair', 'as_of':material['as_of'],
+                    'repair_policy':checks['repair_policy'],
+                    'replacement_text_by_ref':{option['basis'][0]:option['text']
+                        for i in indices for option in replacements[i]},
+                    'problems':[{'index':i,'text':original[i-1]['text'],'problems':problems[i],
+                        'evidence_refs':[option['basis'][0] for option in replacements[i]],
+                        'allowed_replacement_refs':[option['basis'][0] for option in replacements[i]]}
+                        for i in indices]}
+                refs = set(request['replacement_text_by_ref'])
+                request['evidence_by_ref'] = {ref:record for ref,record in payload['evidence_by_ref'].items() if ref in refs}
+                raw = {}
+                raw_batches.append(raw)
+                repaired = self._call('persona_sentence_repair',request,raw,deadline=deadline)
+                if start == 0:
+                    outputs.update(raw)
+                    checks['repair_output'] = repaired
+                checks['repair_outputs'].append(repaired)
+                rows = repaired.get('repairs')
+                if (isinstance(rows,list) and len(rows)==len(indices)
+                        and all(isinstance(r,dict) and type(r.get('index')) is int for r in rows)
+                        and {r['index'] for r in rows}==set(indices)):
+                    proposed.update({r['index']:r for r in rows})
         retained, verdicts, modifications, positions = [], [], [], []
         def deleted(index, stage, reasons, replacement=None):
             item = {'index':index, 'sentence':original[index-1], 'stage':stage, 'reasons':reasons}
@@ -1072,6 +1127,11 @@ class PersonaEngine:
             if i not in problems:
                 retained.append(sentence)
                 verdicts.append(initial_model['sentences'][i-1])
+                continue
+            if i in repairable and not replacements[i]:
+                rejected = [reason for item in checks['repair_options_rejected'] if item['index']==i
+                            for reason in item['reasons']]
+                deleted(i,'repair_options',problems[i]+['no deterministically eligible bound replacement']+rejected)
                 continue
             row = proposed.get(i,{})
             text = row.get('text')

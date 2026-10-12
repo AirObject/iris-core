@@ -120,7 +120,7 @@ def test_bound_source_guard_runs_again_on_exact_repair(prepared):
     checks = result['version']['checks']
     assert checks['initial_model']['sentences'][-1]['supported']
     assert checks['recheck']['sentences'] == []
-    assert checks['deleted_sentences'][0]['stage'] == 'repair_deterministic'
+    assert checks['deleted_sentences'][0]['stage'] == 'repair_options'
     assert 'completion aspect' in ' '.join(checks['deleted_sentences'][0]['reasons'])
     assert not checks['repaired_sentences'] and completed not in result['version']['content']
     assert model.text not in result['version']['content']
@@ -185,6 +185,6 @@ def test_still_invalid_extracted_repair_is_removed_before_model_recheck(prepared
     assert rechecks[0]['task'] == 'degree_only'
     assert completed not in rechecks[0]['candidate_text']
     deleted = result['version']['checks']['deleted_sentences']
-    assert deleted[0]['stage'] == 'repair_deterministic'
-    assert deleted[0]['replacement'] == completed
+    assert deleted[0]['stage'] == 'repair_options'
+    assert result['version']['checks']['repair_options_rejected'][0]['option']['text'] == completed
     assert 'completion aspect' in ' '.join(deleted[0]['reasons'])

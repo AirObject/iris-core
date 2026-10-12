@@ -98,7 +98,7 @@ def test_problem_repaired_once_with_only_its_own_evidence_and_rechecked(prepared
     assert len(checks['repaired_sentences']) == 1 and not checks['deleted_sentences']
     assert checks['initial_model_errors'] and not checks['model_errors']
     assert len(checks['model']['sentences']) == len(result['version']['sentences'])
-    assert [c[2] for c in model.calls] == [120,180,120,180]
+    assert [c[2] for c in model.calls] == [180,180,120,180]
 
 
 @pytest.mark.parametrize('options', [{'again':True}, {'repair':None}, {'repair':'第一句。第二句。'}, {'repair':'我照着M1做。'}, {'malformed':True}])
