@@ -124,16 +124,16 @@ def test_repair_preserves_negation_whole_context_and_only_allows_terminal_period
     assert bool(checks['deleted_sentences']) is (not retained)
 
 
-def test_exact_repair_is_not_entailment_proof_and_single_date_is_rechecked(prepared):
+def test_exact_repair_cannot_bypass_single_date_guard(prepared):
     edit_memory(prepared, 5, 1, content='我通常喜欢浅灰底。')
     model = Model(prepared, repair='我通常喜欢浅灰底。')
     result = PersonaEngine(prepared, model).regenerate(expected_version=1)
     checks = result['version']['checks']
-    # Model approves the exact extraction; deterministic scope guard still rejects it.
-    assert checks['recheck']['sentences'][0]['supported']
-    assert checks['deleted_sentences'][0]['stage'] == 'recheck'
+    # Exact extraction is not proof; the known scope failure is removed before recheck.
+    assert checks['recheck']['sentences'] == []
+    assert checks['deleted_sentences'][0]['stage'] == 'repair_deterministic'
     assert not checks['repaired_sentences'] and '通常' not in result['version']['content']
-    assert result['version']['change_degree'] == 'large'
+    assert result['version']['change_degree'] == 'small'
 
 
 def test_single_date_condition_is_removed_even_when_model_approves_everything(prepared):

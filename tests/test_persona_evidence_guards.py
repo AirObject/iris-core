@@ -119,12 +119,13 @@ def test_bound_source_guard_runs_again_on_exact_repair(prepared):
     result = PersonaEngine(prepared, model).regenerate(expected_version=1)
     checks = result['version']['checks']
     assert checks['initial_model']['sentences'][-1]['supported']
-    assert checks['recheck']['sentences'][0]['supported']
-    assert checks['deleted_sentences'][0]['stage'] == 'recheck'
+    assert checks['recheck']['sentences'] == []
+    assert checks['deleted_sentences'][0]['stage'] == 'repair_deterministic'
     assert 'completion aspect' in ' '.join(checks['deleted_sentences'][0]['reasons'])
     assert not checks['repaired_sentences'] and completed not in result['version']['content']
     assert model.text not in result['version']['content']
-    assert result['status'] == 'pending' and result['version']['change_degree'] == 'large'
+    # The degree-only check now sees the final text after early deletion.
+    assert result['status'] == 'current' and result['version']['change_degree'] == 'small'
 
 
 def test_game_scope_guard_overrides_permissive_initial_check(prepared):
@@ -170,3 +171,20 @@ def test_duplicate_output_indices_are_not_silently_renumbered(prepared):
 def test_game_entry_does_not_override_an_explicit_real_world_source(original, allowed):
     row = sentence('在现实里整理书房时，我核对了目录。')
     assert bool(problems(row, memory(kind='game', original=original))) is not allowed
+
+
+def test_still_invalid_extracted_repair_is_removed_before_model_recheck(prepared):
+    original = '在那次共读里，我也把这一页读完。'
+    completed = '在那次共读里，我读完了这一页。'
+    mid = add_self(prepared, original)
+    edit_memory(prepared, mid, 1, content=completed)
+    model = Permissive(prepared, mid, '我在那次共读时读完了这一页。', completed)
+    result = PersonaEngine(prepared, model).regenerate(expected_version=1)
+    rechecks = [request for purpose, request, _ in model.calls if purpose == 'persona_recheck']
+    assert len(rechecks) == 1 and rechecks[0]['candidate'] == []
+    assert rechecks[0]['task'] == 'degree_only'
+    assert completed not in rechecks[0]['candidate_text']
+    deleted = result['version']['checks']['deleted_sentences']
+    assert deleted[0]['stage'] == 'repair_deterministic'
+    assert deleted[0]['replacement'] == completed
+    assert 'completion aspect' in ' '.join(deleted[0]['reasons'])

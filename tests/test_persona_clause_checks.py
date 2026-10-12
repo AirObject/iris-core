@@ -256,3 +256,41 @@ def test_known_gateway_timeout_summary_keeps_timeout_attempt_reason(store, summa
             raise ModelError('retryable', summary)
     result = PersonaEngine(store, TimedOut()).regenerate(expected_version=1)
     assert result['status'] == 'failed' and result['reason'] == 'timeout'
+
+
+def test_long_compound_sentences_are_batched_by_focus_work_as_well_as_sentence_count(store):
+    class FocusGateway(BatchGateway):
+        def chat(self, messages, purpose, **kwargs):
+            reply = super().chat(messages, purpose, **kwargs)
+            request = json.loads(messages[-1]['content'])
+            result = json.loads(reply.content)
+            for row, candidate in zip(result['sentences'], request['candidate'], strict=True):
+                row['clauses'] = [{'index': p['index'], 'evidence': [], 'supported': False,
+                    'scene_qualified': True, 'reason': '格式测试中没有来源。'} for p in candidate['clauses']]
+            reply.content = dumps(result)
+            return reply
+    sentences = [{'text': f'在那次共读中，我标记了第{i}段，也核对了目录。',
+        'origin': 'memory', 'basis': [], 'initial_setting': False, 'date_count': 1} for i in range(5)]
+    gateway, outputs = FocusGateway(), {}
+    result = PersonaEngine(store, gateway)._check_all('persona_check', batch_material(), sentences,
+        full_content=''.join(s['text'] for s in sentences), outputs=outputs)
+    assert [len(c[1]['candidate']) for c in gateway.calls] == [2, 2, 1]
+    assert [r['index'] for r in result['sentences']] == list(range(1, 6))
+    assert [c[2] for c in gateway.calls] == [180, 200, 220]
+    assert len(outputs['persona_check_batches']) == 3
+
+
+def test_degree_only_request_explicitly_has_no_fact_check_work(store):
+    gateway = BatchGateway()
+    PersonaEngine(store, gateway)._check_all('persona_recheck', batch_material(), [], full_content='整稿', outputs={})
+    assert gateway.calls[0][1]['task'] == 'degree_only'
+    assert gateway.calls[0][1]['candidate'] == []
+    assert gateway.calls[0][2] == 180
+
+
+def test_one_oversized_sentence_is_never_split_or_truncated_for_batching():
+    from iris.persona import _check_batches
+    text = '，'.join(f'分句{i}' for i in range(9)) + '。'
+    sentence = {'text':text, 'origin':'memory', 'initial_setting':False}
+    following = {'text':'管理员原文。', 'origin':'admin'}
+    assert _check_batches([sentence, following]) == [[sentence], [following]]

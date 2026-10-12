@@ -36,11 +36,12 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v6', 'persona_check': 'persona_check_v6',
-                   'persona_sentence_repair': 'persona_generate_v6', 'persona_recheck': 'persona_check_v6'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v7', 'persona_check': 'persona_check_v7',
+                   'persona_sentence_repair': 'persona_generate_v7', 'persona_recheck': 'persona_check_v7'}
 CALL_TIMEOUTS = {'persona_generate': 120, 'persona_check': 180,
                  'persona_sentence_repair': 120, 'persona_recheck': 180}
 CHECK_BATCH_SIZE = 4
+CHECK_BATCH_CLAUSES = 6
 MAX_CHECK_STAGE_SECONDS = 360
 REFERENCE = re.compile(r'(?<![A-Za-z0-9])[MP]\s*#?\s*\d+(?![A-Za-z0-9])', re.I)
 
@@ -259,7 +260,7 @@ def _generation_material(conn, settings, previous, stamp):
             omitted.append({'sentence':sentence, 'reason':'template_evidence_over_budget'})
     return {'evidence':evidence, 'settings':settings, 'as_of':stamp,
         'prompt_versions':PROMPT_VERSIONS, 'timeouts_seconds':CALL_TIMEOUTS, 'check_batch_size':CHECK_BATCH_SIZE,
-        'max_check_stage_seconds':MAX_CHECK_STAGE_SECONDS,
+        'max_check_stage_seconds':MAX_CHECK_STAGE_SECONDS, 'check_batch_clauses':CHECK_BATCH_CLAUSES,
         'role_name':_setting(conn, 'role_name', 'Iris'), 'locked_sentences':retained,
         'omitted_template_sentences':omitted, 'previous':previous['content'],
         'previous_sentences':previous['sentences'],
@@ -306,6 +307,24 @@ def _clause_parts(text):
         (part for part in re.split(r'[，,；;]', text) if part.strip()), 1)]
 
 
+
+def _check_batches(sentences):
+    """Keep sentences intact, bound both row count and automatic proof work."""
+    batches, batch, work = [], [], 0
+    for sentence in sentences:
+        cost = (len(_clause_parts(sentence['text']))
+                if sentence['origin'] == 'memory' and not sentence.get('initial_setting') else 1)
+        cost = max(1, cost)
+        if batch and (len(batch) >= CHECK_BATCH_SIZE or work + cost > CHECK_BATCH_CLAUSES):
+            batches.append(batch)
+            batch, work = [], 0
+        batch.append(sentence)
+        work += cost
+    if batch or not batches:
+        batches.append(batch)  # Empty facts still have one change-degree check.
+    return batches
+
+
 def _check_payload(material, sentences, *, full_content):
     # No unbound memories, former proofs, trace graph or self snapshot in the
     # checker. Every sentence carries only its own currently frozen evidence.
@@ -330,7 +349,8 @@ def _check_payload(material, sentences, *, full_content):
             if not sentence['basis']:
                 row['initial_settings']['role_name'] = material['role_name']
         rows.append(row)
-    return {**material['settings'], 'role_name':material['role_name'], 'as_of':material['as_of'], 'evidence_by_ref':evidence,
+    return {**material['settings'], 'task':'check' if sentences else 'degree_only',
+            'role_name':material['role_name'], 'as_of':material['as_of'], 'evidence_by_ref':evidence,
             'candidate':rows, 'previous':material['previous'], 'candidate_text':full_content}
 
 
@@ -983,13 +1003,13 @@ class PersonaEngine:
     def _check_all(self, purpose, material, sentences, *, full_content, outputs):
         """Bound each request and the complete serial batch stage, including retries."""
         import time
-        batch_count = max(1, (len(sentences) + CHECK_BATCH_SIZE - 1) // CHECK_BATCH_SIZE)
-        stage_seconds = min(MAX_CHECK_STAGE_SECONDS, CALL_TIMEOUTS[purpose] * batch_count)
+        subsets = _check_batches(sentences)
+        stage_seconds = min(MAX_CHECK_STAGE_SECONDS, CALL_TIMEOUTS[purpose] * len(subsets))
         deadline = getattr(self.gateway, 'monotonic', time.monotonic)() + stage_seconds
         raw_batches = outputs.setdefault(purpose + '_batches', [])
         rows, batches, degrees, reasons = [], [], [], []
-        for start in range(0, max(1, len(sentences)), CHECK_BATCH_SIZE):
-            subset = sentences[start:start + CHECK_BATCH_SIZE]
+        for subset in subsets:
+            start = len(rows)
             payload = _check_payload(material, subset, full_content=full_content)
             raw = {}
             raw_batches.append(raw)  # Retain even a partial/failed later batch.
@@ -1067,8 +1087,11 @@ class PersonaEngine:
             # count. No new memory or revision can enter through model output.
             raw = {'text':text, 'basis':option['basis']}
             _, normalized, deterministic = _deterministic({'sentences':[raw]},_editable_material(material),previous)
-            if not deterministic['passed']:
-                deleted(i,'repair_deterministic',problems[i]+deterministic['errors'],text)
+            surface = _surface_issues(normalized[0], memories=material['evidence']['memories']) if normalized else []
+            if not deterministic['passed'] or surface:
+                # Known failures cannot become valid through another model pass.
+                # Keep them out of semantic recheck; its degree sees the final text.
+                deleted(i,'repair_deterministic',problems[i]+deterministic['errors']+surface,text)
                 continue
             positions.append((len(retained),i))
             modifications.append(normalized[0])
