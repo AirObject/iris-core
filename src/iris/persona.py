@@ -36,8 +36,8 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v9', 'persona_check': 'persona_check_v10',
-                   'persona_sentence_repair': 'persona_repair_v8', 'persona_recheck': 'persona_check_v10'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v9', 'persona_check': 'persona_check_v11',
+                   'persona_sentence_repair': 'persona_repair_v8', 'persona_recheck': 'persona_check_v11'}
 CALL_TIMEOUTS = {'persona_generate': 180, 'persona_check': 180,
                  'persona_sentence_repair': 120, 'persona_recheck': 180}
 CHECK_BATCH_SIZE = 4

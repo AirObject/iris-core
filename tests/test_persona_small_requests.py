@@ -146,3 +146,22 @@ def test_three_valid_check_batches_keep_their_request_budget(store):
         batch_sentences(),full_content='完整稿',outputs={})
     assert len(result['sentences'])==9
     assert [c[2] for c in gateway.calls]==[180,310,440]
+
+
+def test_empty_fact_check_cannot_be_treated_as_degree_only(prepared):
+    class EmptyFactCheck(Model):
+        def chat(self,messages,purpose,**kwargs):
+            reply=super().chat(messages,purpose,**kwargs)
+            if purpose=='persona_check':
+                request=json.loads(messages[-1]['content'])
+                assert request['task']=='check' and request['candidate']
+                reply.content=dumps({'sentences':[], 'change_degree':'small',
+                                     'reason':'只比较了程度，漏掉事实检查'})
+            return reply
+    model=EmptyFactCheck(prepared)
+    result=PersonaEngine(prepared,model).regenerate(expected_version=1)
+    assert result['status']=='rejected'
+    assert current_persona(prepared)['id']==1
+    assert 'cover every sentence' in ' '.join(result['version']['checks']['model_errors'])
+    assert not any(p in ('persona_sentence_repair','persona_recheck') for p,*_ in model.calls)
+    assert result['version']['checks']['initial_model']['batches'][0]['sentences']==[]
