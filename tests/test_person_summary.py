@@ -295,9 +295,9 @@ def test_purge_clears_all_version_states_and_attempt_copies_atomically(store,clo
             raise RuntimeError('rollback transaction')
     assert current_summary(store,'a')['content']
     with store.write() as conn:
-        purge_memory(store,mids[0],1,confirm=True,_conn=conn)
-        cleared=purge_memory_references(conn,[mids[0]])
-    assert cleared['versions']==3 and cleared['attempts']==3
+        result=purge_memory(store,mids[0],1,confirm=True,_conn=conn)
+    assert result['redaction_counts']['person_summary_versions']==3
+    assert result['redaction_counts']['person_summary_attempts']==3
     for value in list_versions(store,'a'):
         assert value['content']=='' and value['possibly_stale']
         assert value['checks']['cleared_reason']=='因彻底清除而清空'
@@ -317,14 +317,12 @@ def test_purge_clears_all_version_states_and_attempt_copies_atomically(store,clo
 
 @pytest.mark.parametrize('during',['generate','check'])
 def test_purge_inflight_never_restores_prose(store,clock,during):
-    from iris.person_summary import purge_memory_references
     mids=seed(store,clock)
     class Purging(Model):
         def chat(self,messages,purpose,**kwargs):
             if purpose.endswith(during):
                 with store.write() as conn:
                     purge_memory(store,mids[0],1,confirm=True,_conn=conn)
-                    purge_memory_references(conn,[mids[0]])
             return super().chat(messages,purpose,**kwargs)
     with pytest.raises(PersonSummaryConflict):
         PersonSummaryEngine(store,Purging(store),clock=clock).regenerate('a',expected_version=0)
@@ -334,7 +332,7 @@ def test_purge_inflight_never_restores_prose(store,clock,during):
         assert row['state']=='conflict' and row['outputs_json']==row['material_json']=='{}'
 
 
-def test_purge_detected_on_failed_generation_even_before_cf_hook_is_wired(store,clock):
+def test_purge_detected_on_failed_generation(store,clock):
     mids=seed(store,clock)
     class Broken(Model):
         def chat(self,*args,**kwargs):
@@ -493,3 +491,36 @@ def test_entry_read_never_exposes_admin_material_snapshots(store,clock):
     assert set(value)=={'subject_id','name','text','version','generated_at','possibly_stale'}
     assert value['text']=='稳定事实：正在学习木工。\n'
     assert current_summary(store,'a')['material']  # admin-only evidence remains inspectable
+
+
+@pytest.mark.parametrize('bulk', [False, True])
+def test_memory_purge_integrates_person_summary_cleanup(store, clock, bulk):
+    from iris import admin_data, memory_ops
+    mids=seed(store,clock); generate(store,clock)
+    if bulk:
+        preview=admin_data.bulk_memory_preview(store,subject_id='a',action='purge')
+        result=memory_ops.apply_bulk_memories(store,snapshot_token=preview['snapshot_token'],action='purge',confirm=True)
+    else:
+        result=purge_memory(store,mids[0],1,confirm=True)
+    assert result['redaction_counts']['person_summary_versions']==1
+    assert result['redaction_counts']['person_summary_attempts']==1
+    assert current_summary(store,'a')['content']==''
+    with store.read() as conn:
+        assert summary_context(conn,'a','shared',clock=clock) is None
+        row=conn.execute('SELECT * FROM person_summary_attempts').fetchone()
+        assert row['material_json']==row['outputs_json']=='{}' and row['cleared_at']
+        assert conn.execute("SELECT needs_regeneration FROM person_summary_settings WHERE subject_id='a'").fetchone()[0]==1
+
+
+def test_memory_and_person_summary_purge_roll_back_together(store, clock):
+    mids=seed(store,clock); generate(store,clock)
+    with pytest.raises(RuntimeError,match='rollback purge'):
+        with store.write() as conn:
+            purge_memory(store,mids[0],1,confirm=True,_conn=conn)
+            assert conn.execute('SELECT content FROM person_summary_versions').fetchone()[0]==''
+            assert conn.execute('SELECT cleared_at FROM person_summary_attempts').fetchone()[0]
+            raise RuntimeError('rollback purge')
+    with store.read() as conn:
+        assert conn.execute('SELECT purged_at FROM memories WHERE id=?',(mids[0],)).fetchone()[0] is None
+        assert conn.execute('SELECT content FROM person_summary_versions').fetchone()[0]
+        assert conn.execute('SELECT cleared_at FROM person_summary_attempts').fetchone()[0] is None

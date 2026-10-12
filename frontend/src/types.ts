@@ -483,6 +483,7 @@ export type Batch = {
   result: { created?: number[]; updated?: number[]; dropped?: unknown[] };
 };
 export type Health = {
+  inherited?: boolean;
   state: string;
   last_error?: string;
   next_probe_at?: string;

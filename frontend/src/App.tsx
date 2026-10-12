@@ -198,6 +198,7 @@ function Workspace({ refreshSession }: { refreshSession: () => void }) {
             />
           ) : routePath === "people" ? (
             <People
+              openMemory={openMemory}
               key={route}
               initialQuery={route.split("?")[1]}
               onChange={() => {

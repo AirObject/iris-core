@@ -1,3 +1,4 @@
+import { emptySummary } from "./person-summary-fixtures";
 import { render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, afterEach, expect, test, vi } from "vitest";
@@ -87,6 +88,12 @@ beforeEach(() => {
           }),
           { status: 409 },
         );
+      if (url.includes("/summary/versions?"))
+        return new Response(
+          JSON.stringify({ items: [], total: 0, limit: 10, offset: 0 }),
+        );
+      if (url.endsWith("/summary"))
+        return new Response(JSON.stringify(emptySummary));
       let result: unknown;
       if (url.includes("/people?"))
         result = {

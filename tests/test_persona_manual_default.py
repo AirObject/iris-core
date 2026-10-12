@@ -140,12 +140,16 @@ def test_upgrade_changes_only_untouched_old_default(tmp_path, mode, actor, actio
         conn.commit()
         before = {table: conn.execute('SELECT * FROM '+table).fetchall()
                   for table in ('persona_versions','persona_attempts','admin_operations')}
+        before_columns = {table: [row[1] for row in conn.execute('PRAGMA table_info('+table+')')]
+                          for table in before}
     with closing(Store(path)) as upgraded:
         assert upgraded.setting('persona_publish_mode') == expected
         assert upgraded.setting('persona_rules') == '保留已保存的监管要求。'
         with upgraded.read() as conn:
             for table, rows in before.items():
-                assert [tuple(r) for r in conn.execute('SELECT * FROM '+table)] == rows
+                columns = ','.join(before_columns[table])
+                assert [tuple(r) for r in conn.execute('SELECT '+columns+' FROM '+table)] == rows
+            assert [tuple(r) for r in conn.execute('SELECT id,author FROM persona_versions ORDER BY id')] == [(1,'admin'),(2,'model')]
     assert len(list(tmp_path.glob('old.db.*.bak'))) == 1
     with closing(Store(path)) as reopened:
         assert reopened.setting('persona_publish_mode') == expected

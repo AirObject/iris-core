@@ -50,6 +50,7 @@ const countNames: Record<string, string> = {
   dependencies_reviewed: "依赖复核建议",
   persona_published: "persona 已发布",
   persona_pending: "persona 待确认",
+  person_summary: "人物摘要处理",
   goals_reviewed: "目标依据标注变化",
   model_calls: "模型调用",
 };
@@ -181,7 +182,8 @@ export function MaintenancePanel({
         <div className="delete-confirm">
           <p>
             手动维护也计一次衰减，并执行遗忘、到期删除、消息清理和批次重试。还会按本次设置调用模型进行整理与
-            persona 更新，并复核目标依据。已有未完成的维护时继续该次运行。
+            persona
+            与人物摘要更新，并复核目标依据。已有未完成的维护时继续该次运行。
           </p>
           <div className="actions">
             <button

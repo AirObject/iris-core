@@ -83,7 +83,7 @@ def test_automatic_retry_skips_batch_whose_targets_were_cleared(store):
     assert gap(store)
 
 
-def test_purge_uses_finished_batch_rule_and_preserves_attempt_and_call_records(store):
+def test_purge_uses_finished_batch_rule_and_scrubs_linked_attempt_records(store):
     source = msg(store, 1, "原始来源")
     batch = form_batch(store, "A", "v6")
     memory = put(store, "待清除", evidence=[source])
@@ -98,7 +98,8 @@ def test_purge_uses_finished_batch_rule_and_preserves_attempt_and_call_records(s
     assert result["deleted_message_ids"] == [source]
     assert result["retained_messages"] == []
     with store.read() as conn:
-        assert conn.execute("SELECT raw_output FROM batch_attempts").fetchone()[0] == "模型原始正文"
+        assert tuple(conn.execute("SELECT raw_output,parse_status,duration_ms FROM batch_attempts").fetchone()) == (None, "direct", 1)
+        # Historical calls without batch IDs cannot be linked by guessing prose.
         assert conn.execute("SELECT error_summary FROM model_calls").fetchone()[0] == "已有调用内容"
     assert msg(store, 2, "新来源") > source
 

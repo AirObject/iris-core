@@ -809,8 +809,9 @@ def _due(conn, version, current):
                   if stale_ids & (traced.get(ref['memory_id'], set()) | {ref['memory_id']})}
     changed = sorted(set(changed) | stale_self)
     elapsed = current.astimezone(timezone.utc) - datetime.fromisoformat(version['created_at']).astimezone(timezone.utc)
-    due = len(changed) >= 5 or (bool(changed) and elapsed >= timedelta(days=7))
-    return {'due': due, 'reason': 'five_changes' if len(changed) >= 5 else 'seven_days' if due else 'not_due',
+    regenerate = bool(version['checks'].get('needs_regeneration'))
+    due = regenerate or len(changed) >= 5 or (bool(changed) and elapsed >= timedelta(days=7))
+    return {'due': due, 'reason': 'needs_regeneration' if regenerate else 'five_changes' if len(changed) >= 5 else 'seven_days' if due else 'not_due',
             'changed_memory_ids': changed, 'changed_count': len(changed), 'elapsed_days': elapsed.total_seconds()/86400}
 
 
@@ -860,8 +861,8 @@ def rollback(store, version_id, *, expected_version, clock=utc_now):
     with store.write() as conn:
         _expect(conn, expected_version)
         old = _get(conn, version_id)
-        if old['status'] not in ('current','history'):
-            raise ValueError('rollback requires a previously published version')
+        if old['status'] not in ('current','history') or old['checks'].get('redacted') or not old['content'].strip():
+            raise ValueError('rollback requires a previously published non-redacted, non-empty version')
         # Explicit administrator rollback may restore stale support; pending_update
         # exposes it. Preserve the old sentence provenance, never invent new proof.
         return _insert(conn, content=old['content'], sentences=old['sentences'], checks=old['checks'],
