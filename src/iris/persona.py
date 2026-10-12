@@ -37,8 +37,8 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v10', 'persona_check': 'persona_check_v14',
-                   'persona_sentence_repair': 'persona_repair_v9', 'persona_recheck': 'persona_check_v14'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v11', 'persona_check': 'persona_check_v15',
+                   'persona_sentence_repair': 'persona_repair_v10', 'persona_recheck': 'persona_check_v15'}
 CALL_TIMEOUTS = {'persona_generate': 180, 'persona_check': 180,
                  'persona_sentence_repair': 120, 'persona_recheck': 180}
 CALL_MAX_TOKENS = {'persona_generate':6144, 'persona_check':6144,
@@ -342,25 +342,38 @@ def _check_batches(sentences):
     return batches
 
 
+def _model_memory(memory, *, proof_choices=False):
+    """Project a single authoritative prose source; keep the full audit elsewhere.
+
+    A summary and its source are not independent witnesses. Showing both invites
+    a model to rationalize the stronger summary (e.g. a request made into an
+    accomplished act). Without excerpts, existing memory text remains available.
+    """
+    fields = ('ref', 'memory_id', 'revision', 'initial_sources', 'stance',
+              'speaker_subject_id', 'about', 'date', 'event_time', 'entry_kind',
+              'dates', 'date_count', 'belief')
+    result = {key: memory[key] for key in fields}
+    result['excerpts'] = [dict(source, source_index=index,
+        **({'quote_spans': _clause_parts(source['excerpt'])} if proof_choices else {}))
+        for index, source in enumerate(memory['excerpts'], 1)]
+    if not memory['excerpts']:
+        result['content'] = memory['content']
+        if proof_choices:
+            result['content_spans'] = _clause_parts(memory['content'])
+    return result
+
+
 def _check_payload(material, sentences, *, full_content, proof_choices=True):
     # No unbound memories, former proofs, trace graph or self snapshot in the
     # checker. Every sentence carries only its own currently frozen evidence.
     memories = {(m['memory_id'],m['revision']):m for m in material['evidence']['memories']}
-    # Read the original utterance and its attribution before the memory summary.
-    fields = ('ref','memory_id','revision','excerpts','initial_sources','stance','speaker_subject_id',
-              'about','date','event_time','entry_kind','dates','date_count','belief','content')
     rows, evidence = [], {}
     for index, sentence in enumerate(sentences, 1):
         refs = []
         for basis in sentence['basis']:
             memory = memories[(basis['memory_id'],basis['revision'])]
             refs.append(memory['ref'])
-            evidence[memory['ref']] = {k:memory[k] for k in fields}
-            evidence[memory['ref']]['excerpts'] = [dict(e, source_index=i,
-                **({'quote_spans':_clause_parts(e['excerpt'])} if proof_choices else {}))
-                for i, e in enumerate(memory['excerpts'], 1)]
-            if proof_choices and not memory['excerpts']:
-                evidence[memory['ref']]['content_spans'] = _clause_parts(memory['content'])
+            evidence[memory['ref']] = _model_memory(memory, proof_choices=proof_choices)
         row = {k:v for k,v in sentence.items() if k not in ('_check_sentence','_check_focus')}
         row.update(index=index, evidence_refs=refs,
                    clauses=sentence.get('_check_focus',_clause_parts(sentence['text'])),
@@ -1344,7 +1357,10 @@ class PersonaEngine:
                 self._finish_attempt(attempt, 'skipped', reason, outputs)
                 return {'status':'skipped','reason':reason,'attempt_id':attempt,'version':None,'due':due}
             editable = _editable_material(material)
-            payload = {**settings, 'task':'generate', 'evidence':editable['evidence'],
+            visible_memories = [_model_memory(m) for m in editable['evidence']['memories']]
+            visible_evidence = {**editable['evidence'], 'memories':visible_memories,
+                                'estimated_tokens':estimate_tokens(dumps(visible_memories))}
+            payload = {**settings, 'task':'generate', 'evidence':visible_evidence,
                        'locked_sentences':[{'text':s['text'],'origin':s['origin']} for s in material['locked_sentences']],
                        'role_name':material['role_name'],
                        'as_of':material['as_of'], 'previous':material['previous'],

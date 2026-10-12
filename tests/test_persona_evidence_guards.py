@@ -102,9 +102,9 @@ class Permissive(Model):
         if purpose == 'persona_generate':
             memories = payload['evidence']['memories']
             chosen = next(m for m in memories if m['memory_id'] == self.mid)
-            good = next(m for m in memories if '解释了规则' in m['content'])
+            good = next(m for m in memories if any('解释了规则' in e['excerpt'] for e in m['excerpts']))
             reply.content = dumps({'sentences': [
-                {'text': good['content'], 'basis': [good['ref']]},
+                {'text': good['excerpts'][0]['excerpt'], 'basis': [good['ref']]},
                 {'text': self.text, 'basis': [chosen['ref']]}]})
         elif purpose in ('persona_check', 'persona_recheck'):
             reply.content = dumps(approving_verdict(payload['candidate'], payload))

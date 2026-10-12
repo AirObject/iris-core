@@ -91,7 +91,7 @@ def test_problem_repaired_once_with_only_its_own_evidence_and_rechecked(prepared
     assert 'previous' not in request and 'candidate' not in request and 'locked_sentences' not in request
     problem = request['problems'][0]
     assert len(problem['evidence_refs']) == 1
-    assert '浅灰底' in request['evidence_by_ref'][problem['evidence_refs'][0]]['content']
+    assert '浅灰底' in request['evidence_by_ref'][problem['evidence_refs'][0]]['excerpts'][0]['excerpt']
     assert '解释' not in dumps(request)
     assert len(next(r for purpose,r,*_ in model.calls if purpose=='persona_recheck')['candidate']) == 1
     checks = result['version']['checks']
@@ -325,7 +325,7 @@ def test_long_check_material_deduplicates_shared_sources(prepared):
     assert all(s['evidence_refs']==[ref] for s in request['candidate'])
     assert 'trace_refs' not in dumps(request) and 'trace_sha256' not in dumps(request)
     assert estimate_tokens(dumps(request))<6000
-    assert material['prompt_versions']['persona_generate']=='persona_generate_v10'
+    assert material['prompt_versions']['persona_generate']=='persona_generate_v11'
 
 
 def test_model_cannot_rewrite_locked_template_or_invent_its_attribution(prepared):
