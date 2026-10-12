@@ -39,10 +39,10 @@ RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 �
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
 PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v13', 'persona_check': 'persona_check_v19',
                    'persona_sentence_repair': 'persona_repair_v11', 'persona_recheck': 'persona_check_v19'}
-CALL_TIMEOUTS = {'persona_generate': 180, 'persona_check': 180,
-                 'persona_sentence_repair': 120, 'persona_recheck': 180}
-CALL_MAX_TOKENS = {'persona_generate':6144, 'persona_check':6144,
-                   'persona_sentence_repair':2048, 'persona_recheck':6144}
+CALL_TIMEOUTS = {'persona_generate': 360, 'persona_check': 360,
+                 'persona_sentence_repair': 120, 'persona_recheck': 360}
+CALL_MAX_TOKENS = {'persona_generate':16000, 'persona_check':16000,
+                   'persona_sentence_repair':2048, 'persona_recheck':16000}
 PERSONA_KINDS = ('knowledge', 'episode', 'setting', 'admin', 'state', 'task', 'instruction')
 EXCLUDED_KINDS = {'state': 'current state is not persona', 'task': 'pending action is not persona',
                   'instruction': 'host/model instruction is not persona'}

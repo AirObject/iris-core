@@ -158,7 +158,7 @@ def test_batches_keep_local_indices_deadlines_first_degree_and_all_raw_outputs(s
     gateway, outputs = BatchGateway(), {}
     result = PersonaEngine(store, gateway)._check_all('persona_check', batch_material(), batch_sentences(), full_content='整稿', outputs=outputs)
     assert [len(c[1]['candidate']) for c in gateway.calls] == [4, 4, 1]
-    assert [c[2] for c in gateway.calls] == [180, 200, 220]
+    assert [c[2] for c in gateway.calls] == [360, 380, 400]
     assert all([s['index'] for s in c[1]['candidate']] == list(range(1, len(c[1]['candidate']) + 1)) for c in gateway.calls)
     assert [s['index'] for s in result['sentences']] == list(range(1, 10))
     assert result['change_degree'] == 'small'
@@ -178,7 +178,7 @@ def test_whole_stage_timeout_preserves_partial_outputs_without_resetting_budget(
     with pytest.raises(ModelError) as error:
         PersonaEngine(store, gateway)._check_all('persona_check', batch_material(), batch_sentences()*3, full_content='整稿', outputs=outputs)
     assert error.value.reason == 'timeout'
-    assert len(gateway.calls) == 7 and [c[2] for c in gateway.calls] == [180,310,440,570,700,830,900]
+    assert len(gateway.calls) == 7 and [c[2] for c in gateway.calls] == [360,490,620,750,880,900,900]
     assert len(outputs['persona_check_batches']) == 7
     assert current_persona(store)['id'] == 1
 
@@ -206,7 +206,7 @@ def test_timeout_in_later_batch_records_attempt_and_keeps_current_version(store)
         def chat(self, messages, purpose, **kwargs):
             reply = super().chat(messages, purpose, **kwargs)
             if purpose == 'persona_check':
-                self.now += 181 if sum(p == 'persona_check' for p,_ in self.calls) == 3 else 130
+                self.now += 361 if sum(p == 'persona_check' for p,_ in self.calls) == 3 else 130
             return reply
     model = SlowCheck(store, {'sentences': [{'text': f'在那次直播中，我解释了第{i}条规则。',
         'basis': [ref]} for i in range(9)]})
@@ -233,19 +233,19 @@ def test_model_cannot_inject_computed_diagnostics_or_crash_batch_validation(stor
     assert all(row['clause_errors'] == [] for row in result['sentences'])
 
 
-def test_one_batch_still_has_only_180_seconds(store):
-    gateway = BatchGateway(duration=181)
+def test_one_batch_still_has_only_360_seconds(store):
+    gateway = BatchGateway(duration=361)
     with pytest.raises(ModelError) as error:
         PersonaEngine(store, gateway)._check_all('persona_check', batch_material(), batch_sentences()[:4], full_content='整稿', outputs={})
     assert error.value.reason == 'timeout'
-    assert len(gateway.calls) == 1 and gateway.calls[0][2] == 180
+    assert len(gateway.calls) == 1 and gateway.calls[0][2] == 360
 
 
 def test_multiple_batches_use_full_request_budget_within_fixed_stage(store):
     gateway = BatchGateway(duration=100)
     result = PersonaEngine(store, gateway)._check_all('persona_check', batch_material(), batch_sentences(), full_content='整稿', outputs={})
     assert len(result['sentences']) == 9
-    assert [c[2] for c in gateway.calls] == [180, 280, 380]
+    assert [c[2] for c in gateway.calls] == [360, 460, 560]
     assert gateway.now == 300
 
 
@@ -278,7 +278,7 @@ def test_long_compound_sentences_are_batched_by_focus_work_as_well_as_sentence_c
     assert [r['index'] for r in result['sentences']] == list(range(1, 6))
     assert all(len(r['clauses'])==2 and r['unchecked_clause_indices']==[3] for r in result['sentences'])
     assert len(result['skipped_windows']) == 5
-    assert [c[2] for c in gateway.calls] == [180+20*i for i in range(5)]
+    assert [c[2] for c in gateway.calls] == [360+20*i for i in range(5)]
     assert len(outputs['persona_check_batches']) == 5
 
 
@@ -287,7 +287,7 @@ def test_degree_only_request_explicitly_has_no_fact_check_work(store):
     PersonaEngine(store, gateway)._check_all('persona_recheck', batch_material(), [], full_content='整稿', outputs={})
     assert gateway.calls[0][1]['task'] == 'degree_only'
     assert gateway.calls[0][1]['candidate'] == []
-    assert gateway.calls[0][2] == 180
+    assert gateway.calls[0][2] == 360
 
 
 def test_oversized_sentence_keeps_full_text_while_proof_windows_are_split():

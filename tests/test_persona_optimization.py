@@ -98,7 +98,7 @@ def test_problem_repaired_once_with_only_its_own_evidence_and_rechecked(prepared
     assert len(checks['repaired_sentences']) == 1 and not checks['deleted_sentences']
     assert checks['initial_model_errors'] and not checks['model_errors']
     assert len(checks['model']['sentences']) == len(result['version']['sentences'])
-    assert [c[2] for c in model.calls] == [180,180,180,120,180]
+    assert [c[2] for c in model.calls] == [360,360,360,120,360]
 
 
 @pytest.mark.parametrize('options', [{'again':True}, {'repair':None}, {'repair':'第一句。第二句。'}, {'repair':'我照着M1做。'}, {'malformed':True}])
@@ -246,8 +246,8 @@ def test_shared_pause_and_dream_budget_gate_also_apply_to_repair(prepared,reason
     assert not [p for p,_,_ in model.calls if p=='persona_recheck']
 
 
-@pytest.mark.parametrize('duration,success',[(121,True),(181,False)])
-def test_actual_gateway_check_budget_is_180_seconds_and_records_timeout(prepared,duration,success):
+@pytest.mark.parametrize('duration,success',[(181,True),(361,False)])
+def test_actual_gateway_check_budget_is_360_seconds_and_records_timeout(prepared,duration,success):
     import httpx
     from iris.models import Gateway, ModelConfig
     now=[0.0]
@@ -270,7 +270,7 @@ def test_actual_gateway_check_budget_is_180_seconds_and_records_timeout(prepared
                 assert error.value.reason=='timeout'
         finally:
             gateway.close()
-    assert limits==[180]
+    assert limits==[360]
     with prepared.read() as conn:
         call=dict(conn.execute('SELECT * FROM model_calls').fetchone())
     assert bool(call['timed_out']) is (not success)
@@ -283,7 +283,7 @@ def test_json_correction_does_not_reset_check_budget(prepared):
     now=[0.0];limits=[]
     def respond(request):
         limits.append(request.extensions['timeout']['read'])
-        now[0]+=100 if len(limits)==1 else 60
+        now[0]+=250 if len(limits)==1 else 60
         content='broken' if len(limits)==1 else dumps({'sentences':[],'change_degree':'small','reason':'完整 JSON'})
         return httpx.Response(200,json={'choices':[{'message':{'content':content},'finish_reason':'stop'}]})
     with httpx.Client(transport=httpx.MockTransport(respond)) as client:
@@ -294,7 +294,7 @@ def test_json_correction_does_not_reset_check_budget(prepared):
             PersonaEngine(prepared,gateway)._call('persona_check',{'candidate':[]},outputs)
         finally:
             gateway.close()
-    assert limits==[180,80]
+    assert limits==[360,110]
     assert set(outputs)=={'persona_check','persona_check_repair',
         'persona_check_finish_reason','persona_check_repair_finish_reason'}
     assert outputs['persona_check_finish_reason']==outputs['persona_check_repair_finish_reason']=='stop'

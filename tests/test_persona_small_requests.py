@@ -148,7 +148,7 @@ def test_three_valid_check_batches_keep_their_request_budget(store):
     result=PersonaEngine(store,gateway)._check_all('persona_check',batch_material(),
         batch_sentences(),full_content='完整稿',outputs={})
     assert len(result['sentences'])==9
-    assert [c[2] for c in gateway.calls]==[180,310,440]
+    assert [c[2] for c in gateway.calls]==[360,490,620]
 
 
 def test_empty_fact_check_cannot_be_treated_as_degree_only(prepared):

@@ -94,5 +94,5 @@ def test_late_focus_timeout_keeps_one_stage_deadline_and_partial_raw_outputs(sto
     with pytest.raises(ModelError) as error:run(store,model,material,[sentence],outputs)
     assert error.value.reason=='timeout'
     assert len(model.calls)==7
-    assert [d for _,d in model.calls]==[180,310,440,570,700,830,900]
+    assert [d for _,d in model.calls]==[360,490,620,750,880,900,900]
     assert len(outputs['persona_check_batches'])==7
