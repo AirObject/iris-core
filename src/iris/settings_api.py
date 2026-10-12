@@ -176,6 +176,7 @@ class ConsolidationSettings(Input):
     dependency_enabled: bool = Field(default=True, strict=True)
     persona_enabled: bool = Field(default=True, strict=True)
     goal_review_enabled: bool = Field(default=True, strict=True)
+    person_summary_enabled: bool = Field(default=True, strict=True)
     maintenance_time: str = Field(default='03:00', strict=True, pattern=r'^(?:[01][0-9]|2[0-3]):[0-5][0-9]$')
 
 
