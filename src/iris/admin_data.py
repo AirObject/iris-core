@@ -13,7 +13,7 @@ from .people import list_people, person_detail, canonical_subject
 from .memory_ops import lifecycle_settings, missing_batch_targets
 from .model_health import utc_now, usage_window
 from .media import message_media, SOURCES
-from .service_status import percentile
+from .service_status import percentile, project_root_batch
 from .queue import entry_settings, batch_rate_status
 from .search_text import segmented
 
@@ -238,13 +238,14 @@ def trial_snapshot(store, entry_id, *, before=None):
 
 BATCH_COLUMNS = """b.id,b.entry_id,b.state,b.attempt_count,b.next_retry_at,b.last_error,
     b.prompt_version,b.created_at,b.finished_at,b.result_json,
+    b.parent_batch_id,b.root_batch_id,b.split_slot,b.split_path,b.context_mode,
     EXISTS(SELECT 1 FROM json_each(b.target_ids) j LEFT JOIN messages m ON m.id=j.value
         WHERE m.id IS NULL) AS targets_missing"""
 CALL_COLUMNS = """id,purpose,model,duration_ms,result_category,error_summary,status_code,
     created_at,finish_reason,reasoning_effort,timed_out"""
 
 
-def batch_summary(row):
+def batch_summary(row, *, conn=None):
     item = dict(row)
     result = json.loads(item.pop("result_json"))
     item["result"] = {key: result.get(key, []) for key in ("created", "updated", "confirmed")}
@@ -254,7 +255,11 @@ def batch_summary(row):
         item["finished_at"] = None
     cleared = bool(item.pop("targets_missing", False))
     item["can_relearn"] = item["state"] in ("abandoned", "refused") and not cleared
-    item["relearn_blocked_reason"] = "目标段消息已清理，无法重新学习" if cleared else None
+    item["relearn_blocked_reason"] = ("拆分父批次不能重学，请选择失败叶子" if item["state"] == "split"
+                                      else "目标段消息已清理，无法重新学习" if cleared else None)
+    if conn is not None and item["state"] == "split":
+        item["execution_state"] = "split"
+        item.update(project_root_batch(conn, row))
     return item
 
 
@@ -312,11 +317,12 @@ def learning_entries(store):
             from .memory_ops import entry_visibility
             entry.update(entry_visibility(entry))
             entry.pop("visible_in_json")
-            latest = conn.execute(f"SELECT {BATCH_COLUMNS} FROM batches b WHERE b.entry_id=? ORDER BY b.id DESC LIMIT 1", (entry["id"],)).fetchone()
+            latest = conn.execute(f"SELECT {BATCH_COLUMNS} FROM batches b WHERE b.entry_id=? ORDER BY COALESCE(b.root_batch_id,b.id) DESC,b.split_path DESC,b.id DESC LIMIT 1", (entry["id"],)).fetchone()
             current = conn.execute(f"""SELECT {BATCH_COLUMNS} FROM batches b WHERE b.entry_id=?
-                AND b.state IN ('waiting','running') ORDER BY b.id LIMIT 1""", (entry["id"],)).fetchone()
-            entry["latest_batch"] = batch_summary(latest) if latest else None
-            entry["current_batch"] = batch_summary(current) if current else None
+                AND b.state IN ('waiting','running')
+                ORDER BY (b.state='running') DESC,COALESCE(b.root_batch_id,b.id),b.split_path,b.id LIMIT 1""", (entry["id"],)).fetchone()
+            entry["latest_batch"] = batch_summary(latest, conn=conn) if latest else None
+            entry["current_batch"] = batch_summary(current, conn=conn) if current else None
         return {"items": items}
 
 
@@ -352,7 +358,7 @@ def learning_batches(store, *, entry_id=None, time_from=None, time_to=None, limi
                                   entry_column="b.entry_id", start_column="b.created_at", end_column="b.created_at")
     with store.read() as conn:
         total = conn.execute(f"SELECT COUNT(*) FROM batches b WHERE {where}", args).fetchone()[0]
-        items = [batch_summary(r) for r in conn.execute(f"""SELECT {BATCH_COLUMNS},e.name AS entry_name,
+        items = [batch_summary(r, conn=conn) for r in conn.execute(f"""SELECT {BATCH_COLUMNS},e.name AS entry_name,
             EXISTS(SELECT 1 FROM memory_gaps g WHERE g.batch_id=b.id) AS has_gap
             FROM batches b JOIN entries e ON e.id=b.entry_id WHERE {where}
             ORDER BY b.id DESC LIMIT ? OFFSET ?""", [*args, limit, offset])]
@@ -370,9 +376,10 @@ def batch_detail(store, batch_id):
         row = conn.execute("SELECT * FROM batches WHERE id=?", (batch_id,)).fetchone()
         if row is None:
             raise KeyError(batch_id)
-        detail = batch_summary(dict(row) | {"targets_missing": bool(missing_batch_targets(conn, batch_id))})
+        detail = batch_summary(dict(row) | {"targets_missing": bool(missing_batch_targets(conn, batch_id))}, conn=conn)
         detail = _redaction(conn, "batches", detail)
-        detail["result"] = json.loads(row["result_json"])
+        if row["state"] != "split":
+            detail["result"] = json.loads(row["result_json"])
         snapshot = detail.pop("entry_settings_json")
         detail["entry_settings"] = json.loads(snapshot) if snapshot else None
         detail["entry"] = dict(conn.execute("SELECT id,name,platform,kind,pace FROM entries WHERE id=?", (row["entry_id"],)).fetchone())
@@ -411,6 +418,36 @@ def batch_detail(store, batch_id):
         detail["gap"] = dict(gap) if gap else None
         detail["relearning"] = bool(gap and row["state"] in ("waiting", "running"))
     return detail
+
+
+def batch_tree(store, batch_id, *, limit=100, offset=0):
+    """Read-only paginated subtree; ranges refer to the frozen root target order."""
+    with store.read() as conn:
+        node = conn.execute("SELECT * FROM batches WHERE id=?", (batch_id,)).fetchone()
+        if node is None:
+            raise KeyError(batch_id)
+        root_id = node["root_batch_id"] or node["id"]
+        root = conn.execute("SELECT * FROM batches WHERE id=?", (root_id,)).fetchone()
+        positions = {mid: i for i, mid in enumerate(json.loads(root["target_ids"]))}
+        where = "(b.id=? OR b.root_batch_id=?) AND substr(b.split_path,1,length(?))=?"
+        args = (root_id, root_id, node["split_path"], node["split_path"])
+        total = conn.execute("SELECT COUNT(*) FROM batches b WHERE " + where, args).fetchone()[0]
+        items = []
+        for row in conn.execute(f"""SELECT {BATCH_COLUMNS},b.target_ids FROM batches b
+                WHERE {where} ORDER BY b.split_path,b.id LIMIT ? OFFSET ?""", (*args, limit, offset)):
+            item = batch_summary(row)
+            targets = json.loads(item.pop("target_ids"))
+            item["target_ids"] = targets
+            item["target_range"] = {"start": positions[targets[0]], "end": positions[targets[-1]] + 1,
+                                    "count": len(targets)} if targets else {"start": 0, "end": 0, "count": 0}
+            item["attempts_remaining"] = max(0, 4 - item["attempt_count"]) if item["state"] != "split" else 0
+            gap = conn.execute("""SELECT batch_id,entry_id,started_at,ended_at,reason,created_at
+                FROM memory_gaps WHERE batch_id=?""", (item["id"],)).fetchone()
+            item["gap"] = dict(gap) if gap else None
+            items.append(item)
+        projection = project_root_batch(conn, root)
+        return {"root_batch_id": root_id, "subtree_batch_id": batch_id, "root_state": projection["state"],
+                "items": items, "total": total, "limit": limit, "offset": offset}
 
 
 def memory_gaps(store, *, entry_id=None, time_from=None, time_to=None, limit=30, offset=0):
