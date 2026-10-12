@@ -41,7 +41,7 @@ PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v10', 'persona_check': 
                    'persona_sentence_repair': 'persona_repair_v9', 'persona_recheck': 'persona_check_v13'}
 CALL_TIMEOUTS = {'persona_generate': 180, 'persona_check': 180,
                  'persona_sentence_repair': 120, 'persona_recheck': 180}
-CALL_MAX_TOKENS = {'persona_generate':4096, 'persona_check':6144,
+CALL_MAX_TOKENS = {'persona_generate':6144, 'persona_check':6144,
                    'persona_sentence_repair':2048, 'persona_recheck':6144}
 PERSONA_KINDS = ('knowledge', 'episode', 'setting', 'admin', 'state', 'task', 'instruction')
 EXCLUDED_KINDS = {'state': 'current state is not persona', 'task': 'pending action is not persona',
