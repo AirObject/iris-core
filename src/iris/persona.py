@@ -37,8 +37,8 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v12', 'persona_check': 'persona_check_v16',
-                   'persona_sentence_repair': 'persona_repair_v10', 'persona_recheck': 'persona_check_v16'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v12', 'persona_check': 'persona_check_v17',
+                   'persona_sentence_repair': 'persona_repair_v10', 'persona_recheck': 'persona_check_v17'}
 CALL_TIMEOUTS = {'persona_generate': 180, 'persona_check': 180,
                  'persona_sentence_repair': 120, 'persona_recheck': 180}
 CALL_MAX_TOKENS = {'persona_generate':6144, 'persona_check':6144,
@@ -667,16 +667,17 @@ def _validate_clause_checks(output, payload):
         # One explicit negative proves the whole conjunction false. This is a
         # rejection-only protocol: a retained sentence still needs every focus.
         # Preserve what was not checked rather than inventing verdicts for it.
-        stopped = (isinstance(row, dict) and row.get('stop_after_failure') is True
+        complete = isinstance(parts, list) and len(parts) == len(focus)
+        stopped = (not complete and isinstance(row, dict) and row.get('stop_after_failure') is True
             and row.get('supported') is False and isinstance(parts, list)
-            and 0 < len(parts) <= len(focus) and isinstance(parts[-1], dict)
+            and 0 < len(parts) < len(focus) and isinstance(parts[-1], dict)
             and parts[-1].get('supported') is False)
         if (isinstance(row, dict) and 'stop_after_failure' in row
                 and (type(row['stop_after_failure']) is not bool
-                     or (row['stop_after_failure'] and not stopped))):
+                     or (row['stop_after_failure'] and not complete and not stopped))):
             errors.append(f'sentence {index}: invalid rejection short circuit')
             continue
-        if not isinstance(parts, list) or (len(parts) != len(focus) and not stopped):
+        if not isinstance(parts, list) or (not complete and not stopped):
             errors.append(f'sentence {index}: clause checks must cover every focus span, in order')
             continue
         issues, errors_before = [], len(errors)

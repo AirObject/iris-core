@@ -119,3 +119,36 @@ def test_rejected_sentence_skips_later_windows_but_other_sentence_is_fully_check
     assert not result['incomplete_checks']
     assert result['skipped_windows'] == [{'planned_batch': 2, 'sentence_index': 1,
         'clause_indices': [3, 4], 'reason': 'sentence_already_rejected'}]
+
+
+@pytest.mark.parametrize('negative', [False, True])
+def test_full_focus_results_do_not_need_a_rejection_prefix_even_with_stop_marker(negative):
+    request, output = proof_request()
+    row = output['sentences'][0]
+    row['stop_after_failure'] = True
+    if negative:
+        row['supported'] = False
+        row['clauses'][0].update(supported=False, evidence=[], reason='第一个焦点无据。')
+        # A later, independently checked positive is not a missing judgment.
+        assert row['clauses'][-1]['supported'] is True
+    errors, problems = _validate_clause_checks(output, request)
+    assert not errors
+    assert bool(problems) is negative
+    assert not row.get('unchecked_clause_indices')
+
+
+def test_positive_full_window_stop_marker_cannot_skip_any_following_focus(store):
+    class Marker(FocusModel):
+        def chat(self, *args, **kwargs):
+            reply = super().chat(*args, **kwargs)
+            value = json.loads(reply.content)
+            for row in value['sentences']:
+                row['stop_after_failure'] = True
+            reply.content = dumps(value)
+            return reply
+    material, sentence = material_and_sentence(4)
+    model = Marker()
+    result = run(store, model, material, [sentence])
+    assert len(model.calls) == 2 and not result['skipped_windows']
+    assert len(result['sentences'][0]['clauses']) == 4
+    assert result['sentences'][0]['supported'] and not result['incomplete_checks']
