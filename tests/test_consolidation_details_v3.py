@@ -1,9 +1,9 @@
-"""CO-03: detail containment and grounded report writes, with local models only."""
+"""CO-03/CO-05: detail containment and structured report references, local models only."""
 import json
 
 import pytest
 
-from iris.consolidation import snapshot
+from iris.consolidation import Consolidation, UnsafeWrite, snapshot
 from iris.maintenance import Maintenance
 from iris.models import ModelReply
 from test_consolidation import pair, run, merge_answer
@@ -125,8 +125,8 @@ class Reports:
 
 
 @pytest.mark.parametrize('bad', [
-    'yinqiao看到的通知与另一来源不同',
-    '尹乔看到的通知与另一来源不同',
+    '主体[yinqiao]看到的通知与另一来源不同',
+    '主体[Yinqing|尹晴]看到的通知与另一来源不同',
     '主体[yinqiao|尹乔]看到的通知不同',
     '主体[yinqing|尹乔]看到的通知不同',
     '主体[yinqing|陌生名]看到的通知不同',
@@ -135,7 +135,7 @@ class Reports:
     '依据记忆99999的内容',
 ])
 @pytest.mark.parametrize('field', ['reason', 'annotation'])
-def test_unknown_subject_name_or_number_is_invalid_output_without_any_write(store, bad, field):
+def test_unknown_structured_subject_or_number_is_invalid_output_without_any_write(store, bad, field):
     a, b = named_pair(store)
     kwargs = {'reason': '来源尚待核对', 'annotation': '来源尚待核对', field: bad}
     model = Reports(store, **kwargs)
@@ -194,7 +194,7 @@ def test_resumed_report_is_revalidated_before_writing(store):
     with store.write() as conn:
         row = conn.execute('SELECT id,result_json FROM consolidation_work').fetchone()
         result = json.loads(row['result_json'])
-        result['reason'] = 'yinqiao看到的通知不同'
+        result['reason'] = '主体[yinqiao|尹乔]看到的通知不同'
         conn.execute('UPDATE consolidation_work SET result_json=? WHERE id=?',
                      (json.dumps(result), row['id']))
     engine.run(rid)
@@ -202,3 +202,92 @@ def test_resumed_report_is_revalidated_before_writing(store):
         assert not snapshot(conn, a)['annotations']
     assert [i['reason'] for i in engine.report(rid)['items'] if i['outcome'] == 'failed'] == ['invalid_output']
     assert len(model.requests) == 2
+
+
+# Handwritten regressions from CO-03 rejection-diagnostics.json: these are
+# protocol/prose words, not structured subject references. Do not add them to
+# a vocabulary allowlist: arbitrary ordinary prose must have the same boundary.
+@pytest.mark.parametrize('text', [
+    'preferred_keep_id只是候选排序，不证明细节等价',
+    'speaker用于标明原陈述的归属',
+    'event_time不明，等价检查为false',
+    'attribution检查为false，暂待复核',
+    'negation检查为false，不能略去否定',
+    'numbers检查为false，暂待复核',
+    'content为null，无法检查已删除正文',
+    'lifecycle为forgotten，stance仍须按原陈述核对',
+    'losses与revision不能证明来源仍然成立',
+    'Iris的复述不能改变原说话人的陈述',
+    '陈述的范围仍待核对',
+    '向青芽转述时不能改变原陈述',
+    'ordinary prose and routine_review are not subject IDs',
+])
+@pytest.mark.parametrize('field', ['reason', 'annotation'])
+def test_protocol_and_ordinary_prose_are_not_subject_identifiers(store, text, field):
+    a, b = named_pair(store)
+    kwargs = {'reason': '来源尚待核对', 'annotation': '来源尚待核对', field: text}
+    model = Reports(store, **kwargs)
+    _, _, report = run(store, model)
+    assert report['summary'].get('conflicts', {}).get('count', 0) == 1
+    assert not [i for i in report['items'] if i['outcome'] == 'failed']
+    assert len(model.requests) == 2  # No JSON repair or model-based name correction.
+    with store.read() as conn:
+        assert snapshot(conn, a)['annotations'][0]['text'] == kwargs['annotation']
+
+
+@pytest.mark.parametrize('reference,accepted', [
+    ('主体[yingo|映罗]', False),  # Actual CS032 mistake: ID is yingluo.
+    ('主体[yingo]', False),
+    ('主体[yingluo|映罗]', True),
+    ('主体[yingluo]', True),
+])
+@pytest.mark.parametrize('field', ['reason', 'annotation'])
+def test_cs032_structured_subject_id_is_exact_and_never_corrected(store, reference, accepted, field):
+    a, b = pair(store)
+    bodies(store, a, b, '映罗说展览在10点开始', '映罗说展览在十点开始')
+    with store.write() as conn:
+        conn.execute("INSERT INTO subjects(id,kind,name,created_at) VALUES('yingluo','person','映罗',?)",
+                     (Clock()().isoformat(),))
+        conn.execute("UPDATE memories SET speaker_subject_id='yingluo'")
+        conn.execute("UPDATE memory_subjects SET subject_id='yingluo'")
+        conn.execute("UPDATE messages SET sender_subject_id='yingluo'")
+    kwargs = {'reason': '来源尚待核对', 'annotation': '来源尚待核对', field: reference + '的来源尚待核对'}
+    model = Reports(store, **kwargs)
+    _, _, report = run(store, model)
+    failures = [i['reason'] for i in report['items'] if i['outcome'] == 'failed']
+    assert failures == ([] if accepted else ['invalid_output'])
+    assert len(model.requests) == 2
+    with store.read() as conn:
+        annotations = snapshot(conn, a)['annotations']
+        assert bool(annotations) is accepted
+        if accepted:
+            assert annotations[0]['text'] == kwargs['annotation']
+        else:
+            assert not snapshot(conn, b)['annotations']
+            assert not conn.execute("SELECT 1 FROM memory_revisions WHERE actor='consolidation'").fetchone()
+
+
+@pytest.mark.parametrize('subject_ids,accepted', [
+    (['yinqing'], True),
+    (['yinqiao'], False),  # Exists in the database, absent from this material.
+    (['yinqig'], False),
+    (['Yinqing'], False),
+])
+def test_explicit_json_subject_ids_keep_exact_material_membership_check(store, subject_ids, accepted):
+    a, b = named_pair(store)
+    with store.read() as conn:
+        memories = [snapshot(conn, mid) for mid in (a, b)]
+    payload = {'pair_ids': [a, b], 'memories': memories}
+    value = {'decision': 'conflict', 'reason': '来源尚待核对',
+             'evidence': sorted({s['id'] for m in memories for s in m['sources']}),
+             'unique_details': {'a': [], 'b': []},
+             'updates': [{'id': a, 'subject_ids': subject_ids, 'annotation': '来源尚待核对'}]}
+    if accepted:
+        Consolidation.validate(value, {'kind': 'pair'}, payload)
+    else:
+        with pytest.raises(UnsafeWrite, match='^unknown_subject$'):
+            Consolidation.validate(value, {'kind': 'pair'}, payload)
+    # The current report-only schema still prohibits subject_ids writes.
+    del value['unique_details']
+    with pytest.raises(UnsafeWrite, match='^report_only_fields$'):
+        Consolidation.validate(value, {'kind': 'pair'}, payload, report_only=True)

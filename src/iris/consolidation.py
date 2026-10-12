@@ -8,7 +8,6 @@ import time
 from datetime import datetime
 from decimal import Decimal
 from difflib import SequenceMatcher
-from functools import lru_cache
 from importlib.resources import files
 
 from .db import dumps
@@ -81,10 +80,6 @@ def visible_sources(payload, evidence):
 DETAIL_QUALIFIERS = ('一直', '总是', '经常', '偶尔', '每次', '多年', '从小', '只', '都', '非常', '稍微')
 SUBJECT_MENTION = re.compile(r'主体\[([^\[\]|]+)(?:\|([^\[\]|]+))?\]')
 REPORT_REFERENCE = re.compile(r'(记忆|来源消息|来源|消息|证据|(?<![A-Za-z_])id)\s*(?:id\s*)?[:：=#]?\s*(\d+)', re.I)
-REPORT_PROTOCOL = frozenset(('id keep_id entry_id derived_from target_id pair_ids merge_allowed '
-    'decision reason evidence updates unique_details assessment annotation superseded_by '
-    'merge conflict separate uncertain keep weaken review superseded disputed unsupported '
-    'active forgotten deleted self message self_output source_error A B').split())
 
 
 def qualifier_details(text):
@@ -147,23 +142,15 @@ def report_numbers(text):
     return {normalize(m[0]) for m in re.finditer(pattern, text)}
 
 
-@lru_cache(maxsize=1)
-def report_protocol_text():
-    # Fixed prompt vocabulary contains ordinary terms (e.g. 修正) which a
-    # Chinese name tagger can also label as names. Never learn exemptions from
-    # the generated output itself. Explicit subject references remain exact.
-    return "\n".join(files("iris").joinpath(f"prompts/consolidation_{name}.md").read_text(encoding="utf-8")
-                     for name in ("pair_v3", "conflict_report_only_v2", "dependency_report_only_v2"))
-
-
 def validate_report_text(value, payload):
-    """Reject ungrounded identifiers/names, numbers and purported direct quotes.
+    """Check structured subjects, source references, numbers and direct quotes.
 
-    Explicit 主体[id|name] references are checked exactly against the local
-    roster. Bare Latin tokens must occur in material/protocol vocabulary. For
-    unmarked Chinese names, jieba's fixed name tagger is a conservative backstop,
-    not an exhaustive recognizer; new prompts require the explicit syntax.
-    Presence checks cannot establish correct attribution, units or entailment.
+    Only explicit 主体[id|name] / 主体[id] prose references use the local subject
+    roster; validate() separately checks JSON subject_ids fields. Neither Latin
+    tokens nor Chinese parts of speech identify a subject reference. IDs, names
+    and aliases match exactly, with no spelling correction. Unmarked prose is
+    not a subject authorization boundary; presence checks cannot establish
+    correct attribution, units or entailment.
     """
     if value['decision'] in ('keep', 'separate', 'uncertain') and value.get('merge_detail_check', {}).get('outcome') != 'mutual_details':
         return
@@ -172,22 +159,12 @@ def validate_report_text(value, payload):
     subjects = {s['id']: s for m in memories for s in m.get('subjects', [])}
     texts = [m['content'] or '' for m in memories]
     texts += [s.get(key) or '' for s in sources for key in ('text', 'quote_content')]
-    names = {s[key] for s in subjects.values() for key in ('id', 'name')}
-    names.update(alias for s in subjects.values() for alias in s['aliases'])
-    # Metadata IDs are also legitimate prose references, but do not license
-    # arbitrary similarly spelled IDs. Case and spelling are never corrected.
-    names.update(m['speaker'] for m in memories)
-    names.update(s for m in memories for s in m['about'])
-    names.update(str(s[key]) for s in sources for key in ('sender', 'quote_author', 'entry_id', 'key') if s.get(key))
-    grounding = '\n'.join([*texts, *sorted(names)])
-    identifiers = set(IDENTIFIER.findall(grounding)) | REPORT_PROTOCOL
     timestamps = [m.get(key) or '' for m in memories for key in ('event_time', 'created_at')]
     timestamps += [s.get('at') or '' for s in sources]
     numbers = set().union(*(report_numbers(t) for t in [*texts, *timestamps]))
     # Prose can enumerate visible memories/sources; protocol IDs are checked
     # separately below and cannot license unrelated factual numeric literals.
     numbers |= {str(Decimal(n).normalize()) for n in (1, len(memories), len(sources))}
-    from jieba.posseg import cut as tagged_words
     for text in [value['reason'], *(u['annotation'] for u in value['updates'] if 'annotation' in u)]:
         def mention(match):
             sid, name = match[1], match[2]
@@ -204,11 +181,6 @@ def validate_report_text(value, payload):
                 raise InvalidOutput('unknown_report_reference')
             return ' '
         rest = REPORT_REFERENCE.sub(reference, rest)
-        if any(token not in identifiers for token in IDENTIFIER.findall(rest)):
-            raise InvalidOutput('unknown_report_identifier')
-        for token, tag in tagged_words(rest):
-            if tag.startswith('nr') and token not in grounding and token not in report_protocol_text():
-                raise InvalidOutput('unknown_report_name')
         if not report_numbers(rest) <= numbers:
             raise InvalidOutput('unknown_report_number')
         for match in re.finditer(r'“([^”]+)”|「([^」]+)」|‘([^’]+)’', text):
