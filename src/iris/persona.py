@@ -37,8 +37,8 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v15', 'persona_check': 'persona_check_v21',
-                   'persona_sentence_repair': 'persona_repair_v13', 'persona_recheck': 'persona_check_v21'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v15', 'persona_check': 'persona_check_v22',
+                   'persona_sentence_repair': 'persona_repair_v13', 'persona_recheck': 'persona_check_v22'}
 CALL_TIMEOUTS = {'persona_generate': 360, 'persona_check': 360,
                  'persona_sentence_repair': 120, 'persona_recheck': 360}
 CALL_MAX_TOKENS = {'persona_generate':16000, 'persona_check':16000,
@@ -692,8 +692,10 @@ def _validate_activity_scope(row, sentence, evidence):
         issues.append('activity scope needs its own source qualifier')
     for proof in scope['source_scopes']:
         memory = evidence.get(proof['ref'])
-        source_texts = [] if memory is None else [memory.get('current_revision_text', ''),
-            memory.get('content', ''), *(source['excerpt'] for source in memory.get('excerpts', []))]
+        # Elliptical utterances cannot replace the explicit scope in current text.
+        constraint = None if memory is None else (memory.get('current_revision_text') or memory.get('content'))
+        source_texts = ([constraint] if constraint else [] if memory is None else
+                        [source['excerpt'] for source in memory.get('excerpts', [])])
         quote = proof['quote']
         if (proof['ref'] not in sentence['evidence_refs'] or not re.search(r'\w', quote)
                 or not any(quote in text for text in source_texts)):

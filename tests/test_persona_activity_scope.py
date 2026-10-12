@@ -127,3 +127,22 @@ def test_scope_omission_reaches_sentence_deletion_even_with_positive_fact_model(
     assert result['version'] and broad not in result['version']['content']
     deleted = result['version']['checks']['deleted_sentences']
     assert any('activity scope' in reason for item in deleted for reason in item['reasons'])
+
+
+def test_elliptical_utterance_cannot_replace_current_memory_scope_constraint():
+    payload, output = fixture()
+    memory = payload['evidence_by_ref']['M1']
+    memory['current_revision_text'] = memory.pop('content')
+    payload['candidate'][0]['text'] = '我倾向先听对方的节拍。'
+    output['sentences'][0]['scope_check'].update(candidate_scope='对方的节拍',
+        source_scopes=[{'ref': 'M1', 'quote': '对方的节拍'}])
+    errors, problems = _validate_clause_checks(output, payload)
+    assert not errors and 'activity scope' in ' '.join(problems[1])
+
+
+def test_scope_can_use_original_when_no_current_text_is_present():
+    payload, output = fixture()
+    payload['evidence_by_ref']['M1'].pop('content')
+    output['sentences'][0]['scope_check'].update(candidate_scope='合奏排练',
+        source_scopes=[{'ref': 'M1', 'quote': '排练'}])
+    assert _validate_clause_checks(output, payload) == ([], {})

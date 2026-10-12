@@ -31,8 +31,8 @@ def add_scope_proof(row, sentence, payload):
     matches = []
     for ref in sentence['evidence_refs']:
         memory = payload['evidence_by_ref'][ref]
-        texts = [memory.get('current_revision_text', ''), memory.get('content', ''),
-                 *(source['excerpt'] for source in memory['excerpts'])]
+        constraint = memory.get('current_revision_text') or memory.get('content')
+        texts = [constraint] if constraint else [source['excerpt'] for source in memory['excerpts']]
         for text in texts:
             for match in SequenceMatcher(None, sentence['text'], text, autojunk=False).get_matching_blocks():
                 quote = text[match.b:match.b + match.size]
