@@ -638,11 +638,13 @@ def _image_assets(cases, root):
 
 
 def _run_case(configs: dict[str, ModelConfig], case: dict[str, Any], judge_runs: int = 2,
-              judge_mode: str = "model", *, media_root: Path | None = None) -> dict[str, Any]:
+              judge_mode: str = "model", *, media_root: Path | None = None,
+              native_image_learning: bool = False) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="iris-eval-") as temporary:
         store = Store(Path(temporary) / "iris.db")
         store.recover_inflight()
         setup_role(store, "Iris")
+        store.set_setting('native_image_learning', native_image_learning)
         gateway = Gateway(configs, store)
         engine = LearningEngine(store, gateway)
         try:
@@ -670,7 +672,7 @@ def _run_case(configs: dict[str, ModelConfig], case: dict[str, Any], judge_runs:
                     break
                 while get_batch(store, batch.id).state == "waiting":
                     engine.run_batch(batch.id, force=True)
-            if media_messages and native_learning_enabled(gateway):
+            if media_messages and native_learning_enabled(store, gateway):
                 # Offline evaluation drains the same description operation only
                 # after learning, keeping it outside learning's measured latency.
                 prepare_media(store, gateway, media_messages)
@@ -694,7 +696,8 @@ def _run_case(configs: dict[str, ModelConfig], case: dict[str, Any], judge_runs:
 
 def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = "all", *,
                       corpus: Path | None = None, out: Path | None = None, judge_runs: int = 2,
-                      judge_mode: str = "model", concurrency: int = 4) -> tuple[Path, dict[str, Any]]:
+                      judge_mode: str = "model", concurrency: int = 4,
+                      native_image_learning: bool = False) -> tuple[Path, dict[str, Any]]:
     root = root.resolve()
     if judge_mode not in ("model", "external"):
         raise ValueError("judge_mode must be model or external")
@@ -704,6 +707,8 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
         raise ValueError("invalid split")
     if type(concurrency) is not int or not 1 <= concurrency <= 4:
         raise ValueError('evaluation concurrency must be 1..4')
+    if type(native_image_learning) is not bool:
+        raise ValueError('native_image_learning must be a boolean')
     paths = [corpus.resolve()] if corpus is not None else [root / "evals" / (name + ".jsonl")
                                                          for name in PUBLIC_LEARNING_CORPORA]
     inputs = [(json.loads(line), path.stem) for path in paths
@@ -725,7 +730,7 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
     sources = sorted(p for p in Path(__file__).parent.rglob("*") if p.suffix in (".py", ".md", ".sql", ".json"))
     source_hash = hashlib.sha256(b"".join(p.name.encode() + p.read_bytes() for p in sources)).hexdigest()
     signature = hashlib.sha256(json.dumps({"sources": source_hash, "cases": cases, "judge_runs": judge_runs if judge_mode == "model" else 0,
-        "media_assets": media_assets,
+        "media_assets": media_assets, "native_image_learning": native_image_learning,
         "models": {k: (v.base_url, v.model, v.dimensions, v.reasoning_effort if k == "chat" else None, v.vision) for k, v in configs.items()}}, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
     checkpoints = (reports / ".lc" if not reports.is_relative_to(root) else root / "data/lc") / signature[:16]
     checkpoints.mkdir(parents=True, exist_ok=True)
@@ -754,7 +759,9 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
                 ordered[index]["corpus_group"] = groups[case["id"]]
                 resumed += 1
             else:
-                kwargs = {'media_root': media_root} if any(m.get('media') for m in case['messages']) else {}
+                kwargs = {'native_image_learning': True} if native_image_learning else {}
+                if any(m.get('media') for m in case['messages']):
+                    kwargs['media_root'] = media_root
                 pending[pool.submit(_run_case, configs, case, judge_runs, judge_mode, **kwargs)] = index
         for completed, future in enumerate(as_completed(pending), 1):
             index = pending[future]
@@ -781,6 +788,7 @@ def run_learning_eval(configs: dict[str, ModelConfig], root: Path, split: str = 
                 "timeouts_seconds": {"learning": LEARNING_TOTAL_TIMEOUT, "judge": JUDGE_TOTAL_TIMEOUT},
                 "chat_model": configs["chat"].model, "chat_reasoning_effort": configs["chat"].reasoning_effort,
                 "chat_vision": configs['chat'].vision, "evaluation_concurrency": concurrency,
+                "native_image_learning": native_image_learning,
                 **({'media_assets': media_assets, 'media_root': str(media_root)} if media_assets else {}),
                 "embedding_model": configs["embedding"].model or "unconfigured",
                 "corpus": _corpus_info(cases), "cases": [{"id": case["id"]} for case in cases]}
@@ -879,7 +887,7 @@ def _write_learning_report(rows: list[dict[str, Any]], root: Path, reports: Path
 MATERIAL_FORMAT_VERSION = 1
 _RUN_FIELDS = ("split", "checkpoint_signature", "source_sha256", "resumed_cases", "elapsed_seconds",
                "prompt_version", "scoring_version", "timeouts_seconds", "chat_model", "embedding_model", "corpus")
-_OPTIONAL_RUN_FIELDS = ("chat_reasoning_effort", "chat_vision", "media_assets", "evaluation_concurrency")
+_OPTIONAL_RUN_FIELDS = ("chat_reasoning_effort", "chat_vision", "native_image_learning", "media_assets", "evaluation_concurrency")
 _ACTUAL_FIELDS = ("memories", "links", "goals", "attempts", "calls", "batches", "identities", "aliases")
 _MEMORY_VERDICTS = ("correct_worth", "forbidden", "evidence_correct", "attribution_correct")
 

@@ -15,7 +15,7 @@ def test_description_does_not_block_learning_and_stop_drains_accepted_work(store
     item = saved(store)
     send(store, [item['id']], content='')
     entered, release = Event(), Event()
-    gateway = native_gateway()
+    gateway = native_gateway(store)
     def blocked_description():
         assert not store._writer.in_transaction
         entered.set()
@@ -49,7 +49,7 @@ def test_restart_resumes_expired_lease_and_health_pause_does_not_claim(store):
     with store.write() as conn:
         conn.execute('UPDATE media_objects SET attempt_token=?,lease_until=?',
                      ('previous-process', (STAMP + timedelta(seconds=60)).isoformat()))
-    gateway = native_gateway()
+    gateway = native_gateway(store)
     paused = Scheduler(store, gateway, clock=lambda: STAMP + timedelta(seconds=61))
     paused.health = SimpleNamespace(allowed=lambda kind: False)
     try:
@@ -73,7 +73,7 @@ def test_restart_resumes_expired_lease_and_health_pause_does_not_claim(store):
 def test_background_batch_is_bounded_and_disabled_for_legacy_chat(store):
     items = [saved(store) for _ in range(10)]
     send(store, [item['id'] for item in items])
-    gateway = native_gateway()
+    gateway = native_gateway(store)
     scheduler = Scheduler(store, gateway, clock=lambda: STAMP)
     try:
         scheduler._schedule_media()
@@ -98,11 +98,35 @@ def test_background_batch_is_bounded_and_disabled_for_legacy_chat(store):
 
 
 def test_tick_schedules_description_work(store, monkeypatch):
-    scheduler = Scheduler(store, native_gateway(), clock=lambda: STAMP)
+    scheduler = Scheduler(store, native_gateway(store), clock=lambda: STAMP)
     calls = []
     monkeypatch.setattr(scheduler, '_schedule_media', lambda: calls.append(True))
     try:
         scheduler.tick()
         assert calls == [True]
+    finally:
+        scheduler.stop()
+
+
+def test_background_follows_runtime_opt_in_without_restart(store):
+    gateway = native_gateway(store)
+    store.set_setting('native_image_learning', False)
+    item = saved(store)
+    send(store, [item['id']])
+    scheduler = Scheduler(store, gateway, clock=lambda: STAMP)
+    try:
+        scheduler._schedule_media()
+        assert scheduler._media_job is None
+        assert not gateway.images
+        store.set_setting('native_image_learning', True)
+        scheduler._schedule_media()
+        scheduler._media_job.result(timeout=THREAD_WAIT)
+        assert len(gateway.images) == 1
+        other = saved(store)
+        send(store, [other['id']], key='after-disable')
+        store.set_setting('native_image_learning', False)
+        scheduler._schedule_media()
+        assert len(gateway.images) == 1
+        assert get_media(store, other['id'])['understanding_source'] == 'unprocessed'
     finally:
         scheduler.stop()

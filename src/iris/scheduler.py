@@ -183,7 +183,7 @@ class Scheduler:
             except Exception as error:
                 log.error("image description interrupted category=%s", type(error).__name__)
             self._media_job = None
-        if (self._stop.is_set() or not native_learning_enabled(self.gateway)
+        if (self._stop.is_set() or not native_learning_enabled(self.store, self.gateway)
                 or not callable(getattr(self.gateway, 'image_understanding', None))):
             return
         config = self.gateway.configs.get('image_understanding')

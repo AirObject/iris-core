@@ -49,17 +49,20 @@ def configs(vision):
 
 
 @pytest.mark.parametrize('vision', [False, True])
-def test_image_corpus_reaches_learning_and_exported_originals(image_eval, tmp_path, vision):
+@pytest.mark.parametrize('opt_in', [False, True])
+def test_image_corpus_reaches_learning_and_exported_originals(image_eval, tmp_path, vision, opt_in):
     root, corpus, instances = image_eval
     manifest, run = evaluation.run_learning_eval(configs(vision), root, corpus=corpus,
-        out=tmp_path / 'out', judge_mode='external')
+        out=tmp_path / 'out', judge_mode='external', native_image_learning=opt_in)
     assert len(instances) == 1
     gateway = instances[0]
-    assert gateway.events == (['learning', 'description'] if vision else ['description', 'learning'])
+    enabled = vision and opt_in
+    assert gateway.events == (['learning', 'description'] if enabled else ['description', 'learning'])
     assert gateway.images[0][0] == PNG
-    assert isinstance(gateway.materials[0], list if vision else str)
+    assert isinstance(gateway.materials[0], list if enabled else str)
     assert (manifest.parent / 'media/unit/one.png').read_bytes() == PNG
     assert run['run']['chat_vision'] is vision
+    assert run['run']['native_image_learning'] is opt_in
     assert run['run']['media_assets'][0]['sha256']
     evaluation._load_learning_materials(manifest.parent)
     (manifest.parent / 'media/unit/one.png').write_bytes(PNG + b'changed')
@@ -70,12 +73,14 @@ def test_image_corpus_reaches_learning_and_exported_originals(image_eval, tmp_pa
 def test_vision_and_original_bytes_change_checkpoint_fingerprint(image_eval, tmp_path):
     root, corpus, instances = image_eval
     out = tmp_path / 'out'
-    _, first = evaluation.run_learning_eval(configs(True), root, corpus=corpus, out=out, judge_mode='external')
+    _, first = evaluation.run_learning_eval(configs(True), root, corpus=corpus, out=out, judge_mode='external', native_image_learning=True)
     _, legacy = evaluation.run_learning_eval(configs(False), root, corpus=corpus, out=out, judge_mode='external')
+    _, disabled = evaluation.run_learning_eval(configs(True), root, corpus=corpus, out=out, judge_mode='external')
+    assert disabled['run']['native_image_learning'] is False
     (root / 'evals/media/unit/one.png').write_bytes(PNG + b'different-original')
     _, changed = evaluation.run_learning_eval(configs(True), root, corpus=corpus, out=out, judge_mode='external')
-    assert len({r['run']['checkpoint_signature'] for r in (first, legacy, changed)}) == 3
-    assert len(instances) == 3
+    assert len({r['run']['checkpoint_signature'] for r in (first, legacy, disabled, changed)}) == 4
+    assert len(instances) == 4
 
 
 @pytest.mark.parametrize('file', ['../private.png', '/tmp/private.png', 'unit/link.png'])

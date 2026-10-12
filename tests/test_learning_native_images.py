@@ -16,7 +16,8 @@ from test_media import PNG, Vision, file_path, saved, send
 from test_models import response
 
 
-def native_gateway():
+def native_gateway(store):
+    store.set_setting('native_image_learning', True)
     gateway = Vision()
     gateway.configs['chat'] = replace(gateway.configs['chat'], vision=True)
     return gateway
@@ -38,7 +39,7 @@ def test_native_images_follow_message_order_without_descriptions_or_sync_calls(s
     second = saved(store, understanding_text='不得放入学习的描述二')
     send(store, [first['id'], second['id']], content='看这两张，顺序如图')
     send(store, key='after', content='后一句')
-    gateway = native_gateway()
+    gateway = native_gateway(store)
     _, result = run(store, gateway)
     material = gateway.materials[0]
     assert isinstance(material, list)
@@ -58,7 +59,7 @@ def test_native_images_follow_message_order_without_descriptions_or_sync_calls(s
 def test_only_targets_use_originals_and_limit_falls_back(store):
     history = saved(store, understanding_text='历史描述')
     send(store, [history['id']])
-    run(store, native_gateway(), target_count=1)
+    run(store, native_gateway(store), target_count=1)
     selected = saved(store, understanding_text='原图的描述不得附加')
     limited = saved(store, understanding_text='超限描述')
     placeholder = saved(store)
@@ -66,7 +67,7 @@ def test_only_targets_use_originals_and_limit_falls_back(store):
     future = saved(store, understanding_text='后续描述')
     send(store, [future['id']], key='future', content='后续')
     store.set_setting('learning_image_limit', 1)
-    gateway = native_gateway()
+    gateway = native_gateway(store)
     _, result = run(store, gateway, target_count=1, history_count=1, future_count=1)
     material = gateway.materials[0]
     assert len([p for p in material if p['type'] == 'image_url']) == 1
@@ -99,7 +100,7 @@ def test_unavailable_or_refused_original_is_never_sent(store, failure):
                 conn.execute('UPDATE media_files SET size_bytes=?', (DEFAULT_MAX_BYTES + 1,))
             else:
                 conn.execute("UPDATE media_files SET refused_at='2026-10-11T00:00:00Z'")
-    gateway = native_gateway()
+    gateway = native_gateway(store)
     _, result = run(store, gateway)
     assert isinstance(gateway.materials[0], str)
     assert not gateway.images
@@ -111,7 +112,7 @@ def test_unavailable_or_refused_original_is_never_sent(store, failure):
 def test_image_only_evidence_preserves_existing_speaker_boundary(store):
     item = saved(store)
     send(store, [item['id']], content='')
-    gateway = native_gateway()
+    gateway = native_gateway(store)
     gateway.response = {'memories': [memory('据小林展示的截图，第三人通过考试。', stance='转述'),
                                      memory('第三人通过考试。', speaker='截图署名者')]}
     _, result = run(store, gateway)
@@ -148,6 +149,7 @@ def test_repair_retains_images_but_attempts_and_calls_do_not_store_base64(store,
                       else json.dumps({'memories': echo}))
             return httpx.Response(200, json=response(output))
         return httpx.Response(200, json=response(json.dumps(learning_output({}))))
+    store.set_setting('native_image_learning', True)
     configs = {'chat': ModelConfig('https://example.invalid/v1', '', 'fake', vision=True)}
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
         gateway = Gateway(configs, store, client=client)
@@ -171,7 +173,7 @@ def test_default_image_limit_and_zero_fallback(store, limit, expected):
     send(store, [item['id'] for item in items], content='按附件顺序查看')
     if limit is not None:
         store.set_setting('learning_image_limit', limit)
-    gateway = native_gateway()
+    gateway = native_gateway(store)
     _, result = run(store, gateway)
     paths = result['media_attempts'][0]['images']
     assert [path['path'] for path in paths] == ['native'] * expected + ['placeholder'] * (9 - expected)
@@ -204,7 +206,7 @@ def test_text_request_is_identical_with_or_without_vision(store):
     send(store, content='周四去宁波出差')
     batch = form_batch(store, 'A', PROMPT_VERSION)
     legacy = LearningEngine(store, Vision())
-    native = LearningEngine(store, native_gateway())
+    native = LearningEngine(store, native_gateway(store))
     assert legacy._material(batch, legacy._snapshot(batch), []) == native._material(batch, native._snapshot(batch), [])
 
 
@@ -214,7 +216,7 @@ def test_mixed_native_and_fallback_descriptions_share_message_text_budget(store)
     third = saved(store, understanding_text='丙' * 1400)
     send(store, [original['id'], second['id'], third['id']], content='甲' * 1300)
     store.set_setting('learning_image_limit', 1)
-    gateway = native_gateway()
+    gateway = native_gateway(store)
     _, result = run(store, gateway)
     material = gateway.materials[0]
     text = text_parts(material)
@@ -225,3 +227,36 @@ def test_mixed_native_and_fallback_descriptions_share_message_text_budget(store)
     assert paths[1]['description_truncated'] is True
     assert paths[2]['path'] == 'placeholder'
     assert paths[2]['description_omitted'] == 'message_budget'
+
+
+@pytest.mark.parametrize('vision', [False, True])
+@pytest.mark.parametrize('opt_in', [False, True])
+def test_native_learning_requires_both_vision_and_explicit_opt_in(store, vision, opt_in):
+    item = saved(store)
+    send(store, [item['id']], content='只看附图')
+    store.set_setting('native_image_learning', opt_in)
+    gateway = Vision()
+    gateway.configs['chat'] = replace(gateway.configs['chat'], vision=vision)
+    _, result = run(store, gateway)
+    enabled = vision and opt_in
+    assert isinstance(gateway.materials[0], list if enabled else str)
+    assert len(gateway.images) == (0 if enabled else 1)
+    assert result['media_attempts'][0]['images'][0]['path'] == ('native' if enabled else 'description')
+    if not enabled:
+        assert gateway.result in gateway.materials[0]
+        assert result['media_attempts'][0]['images'][0]['reason'] == 'native_learning_disabled'
+
+
+def test_native_learning_defaults_off_and_does_not_disable_inherited_description(store):
+    from iris.models import effective_configs
+    item = saved(store)
+    send(store, [item['id']], content='')
+    gateway = Vision()
+    gateway.configs = effective_configs({'chat': ModelConfig('https://example.invalid/v1', '', 'fake', vision=True)})
+    assert store.setting('native_image_learning') is None
+    _, result = run(store, gateway)
+    assert gateway.configs['image_understanding'].model == gateway.configs['chat'].model
+    assert isinstance(gateway.materials[0], str)
+    assert gateway.result in gateway.materials[0]
+    assert len(gateway.images) == 1
+    assert result['media_attempts'][0]['images'][0]['path'] == 'description'

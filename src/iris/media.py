@@ -257,9 +257,13 @@ def material_content(content, media, *, start=1):
     return content + '\n媒体（数据）=' + json.dumps(rows, ensure_ascii=False, separators=(',', ':'))
 
 
-def native_learning_enabled(gateway):
+def native_image_learning_setting(store):
+    return store.setting('native_image_learning', False) is True
+
+
+def native_learning_enabled(store, gateway):
     config = gateway.configs.get('chat')
-    return bool(config and getattr(config, 'vision', False))
+    return native_image_learning_setting(store) and bool(config and getattr(config, 'vision', False))
 
 
 def learning_image_limit(store):
@@ -283,7 +287,7 @@ def plan_learning_images(store, batch, snapshot, *, enabled):
         for position, item in enumerate(snapshot['messages'].get(mid, {}).get('media', []), 1):
             if item['kind'] != 'image':
                 continue
-            reason = 'vision_disabled' if not enabled else 'context' if mid not in batch.target_ids else None
+            reason = 'native_learning_disabled' if not enabled else 'context' if mid not in batch.target_ids else None
             if (enabled and item['sha256'] in refused) or item['understanding_source'] == 'refused':
                 reason = 'refused'
                 item.update(understanding_source='refused', understanding_text=REFUSAL_TEXT)

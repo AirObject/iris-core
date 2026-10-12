@@ -933,12 +933,12 @@ class LearningEngine:
         attempt = {"number": attempt_number, "started_at": now(), "raw_output": None,
                    "repair_output": None, "parse_status": "failed", "duration_ms": 0}
         try:
-            vision = native_learning_enabled(self.gateway)
-            if not vision:
+            use_originals = native_learning_enabled(self.store, self.gateway)
+            if not use_originals:
                 prepare_media(self.store, self.gateway, batch.target_ids + batch.history_ids + batch.future_ids,
                               batch_id=batch.id, clock=self.clock)
             snapshot = self._snapshot(batch)
-            snapshot['native_images'], media_paths = plan_learning_images(self.store, batch, snapshot, enabled=vision)
+            snapshot['native_images'], media_paths = plan_learning_images(self.store, batch, snapshot, enabled=use_originals)
             related = self._related(batch, snapshot)
             material, numbers, refs = self._material(batch, snapshot, related)
             if media_paths:
