@@ -205,7 +205,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--corpus',type=Path,default=ROOT/'evals/goal_dedup_v1.json')
     parser.add_argument('--out',type=Path,required=True)
-    parser.add_argument('--method',choices=('A','B','C','C2'),required=True)
+    parser.add_argument('--method',choices=('A','B','C','C2',*goal_dedup_judge.MODEL_POSSIBLE_PROMPTS),required=True)
     parser.add_argument('--budget-seconds',type=float,default=60)
     parser.add_argument('--possible-min-similarity',type=float,default=goal_dedup_judge.DEFAULTS['possible_min_similarity'],
                         help='weak possible-duplicate hint threshold, 0 reproduces the old policy; does not relax merge guards')
@@ -233,7 +233,7 @@ def main():
     if configs:
         configs['goal_dedup_judge']=replace(configs['chat'],dimensions=None,reasoning_effort='high')
     metadata={'possible_min_similarity':args.possible_min_similarity,'method':args.method,'simulation':bool(args.fake),'fake_verdict':args.fake,'budget_seconds':args.budget_seconds,'corpus_sha256':hashlib.sha256(corpus_bytes).hexdigest(),
-              'prompt_sha256':hashlib.sha256((ROOT/'src/iris/prompts/goal_dedup_judge_v1.md').read_bytes()).hexdigest(),
+              'prompt_sha256':hashlib.sha256((ROOT/'src/iris/prompts'/goal_dedup_judge.prompt_name(args.method)).read_bytes()).hexdigest(),
               'runner_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
               'scoring_sha256':hashlib.sha256(Path(__file__).with_name('scoring.py').read_bytes()).hexdigest(),
               'source_sha256':hashlib.sha256(b''.join(path.relative_to(ROOT).as_posix().encode()+path.read_bytes()

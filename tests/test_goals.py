@@ -24,7 +24,8 @@ def clock():
 
 @pytest.fixture
 def goals(store, clock):
-    store.set_setting('goal_dedup_judge', {'enabled': False})
+    # Core operations retain the explicit historical deterministic probe path.
+    store.set_setting('goal_dedup_judge', {'enabled': False, 'method': 'A'})
     return Goals(store, clock=clock)
 
 

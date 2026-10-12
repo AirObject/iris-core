@@ -18,9 +18,10 @@ from .people import canonical_subject
 from .state import local_time, role_zone
 
 PROMPT=files('iris').joinpath('prompts/goal_dedup_judge_v1.md').read_text(encoding='utf-8')
-# Selected by GO-04: C batch judgment plus deterministic possible hints (C2).
+# GD4: model evidence for possible hints; legacy methods remain probeable.
 # Explicit method overrides are internal to the probe, never an admin option.
-DEFAULT_METHOD='C2'
+MODEL_POSSIBLE_PROMPTS={'D2':'goal_dedup_judge_v2.md'}
+DEFAULT_METHOD='D2'
 DEFAULTS={'enabled':True,'budget_seconds':5.0,'concurrency':1,'queue_limit':8,
           'pending_fallback_minutes':30,'possible_min_similarity':0}
 MAX_SECONDS=60.0  # Measurement override; the administrator API is capped at 10 s.
@@ -44,7 +45,19 @@ def candidate_method(options):
 def method(options):
     # The scheduler and gateway need only the underlying model calling method.
     candidate=candidate_method(options)
-    return 'C' if candidate=='C2' else candidate
+    return 'C' if candidate=='C2' or candidate in MODEL_POSSIBLE_PROMPTS else candidate
+
+
+def model_possible(options):
+    return candidate_method(options) in MODEL_POSSIBLE_PROMPTS
+
+
+def prompt_name(method):
+    return MODEL_POSSIBLE_PROMPTS.get(method, 'goal_dedup_judge_v1.md')
+
+
+def judgment_prompt(method):
+    return files('iris').joinpath('prompts/'+prompt_name(method)).read_text(encoding='utf-8')
 
 
 def validate_budget(value):
@@ -148,15 +161,15 @@ def validate_decisions(raw,ids):
     return {row['id']:row['verdict'] for row in rows}
 
 
-def decision_from_verdicts(verdicts,*,origin,overflow=False,possible_ids=(),scores=None,min_similarity=0):
+def decision_from_verdicts(verdicts,*,origin,overflow=False,possible_ids=(),guard_ids=(),scores=None,min_similarity=0):
     minimum=validate_similarity(min_similarity)
     same=[gid for gid,verdict in verdicts.items() if verdict=='same']
     possible=list(dict.fromkeys([gid for gid,verdict in verdicts.items() if verdict in ('same','uncertain')]+list(possible_ids)))
     # Keep every original ambiguity as a merge blocker, even when its weak hint
     # is hidden by the display threshold. Raising the threshold cannot add merges.
-    if len(same)==1 and len(possible)==1 and origin!='admin' and not overflow and not possible_ids:
+    if len(same)==1 and len(possible)==1 and origin!='admin' and not overflow and not possible_ids and not guard_ids:
         return {'status':'merged','target_id':same[0]}
-    possible=[gid for gid in possible if gid in same or (scores or {}).get(gid,0)>=minimum]
+    possible=[gid for gid in possible if (gid in same and gid not in guard_ids) or (scores or {}).get(gid,0)>=minimum]
     if possible:
         return {'status':'possible_duplicate','target_id':possible[0],'target_ids':possible}
     return {'status':'created','target_id':None}
@@ -193,7 +206,7 @@ def material(conn,row):
 def judge(gateway,incoming,candidates,*,method,budget_seconds):
     started=time.monotonic()
     budget=validate_budget(budget_seconds)
-    if method not in ('B','C'):
+    if method not in ('B','C') and method not in MODEL_POSSIBLE_PROMPTS:
         raise ValueError('unknown model goal deduplication method')
     if not gateway or not hasattr(gateway,'goal_dedup_judge'):
         raise ModelError('configuration','goal judgment unavailable',reason='unconfigured')
@@ -204,7 +217,7 @@ def judge(gateway,incoming,candidates,*,method,budget_seconds):
         if remaining<=0:
             raise ModelError('retryable','goal judgment total timeout',reason='timeout')
         payload={'incoming':incoming,'candidates':group}
-        messages=[{'role':'system','content':PROMPT},{'role':'user','content':json.dumps(payload,ensure_ascii=False)}]
+        messages=[{'role':'system','content':judgment_prompt(method)},{'role':'user','content':json.dumps(payload,ensure_ascii=False)}]
         response=gateway.goal_dedup_judge(messages,[row['id'] for row in group],budget_seconds=remaining)
         verdicts.update(response['decisions'])
     if time.monotonic()-started>budget:
