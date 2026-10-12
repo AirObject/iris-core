@@ -14,7 +14,6 @@ from functools import cache, cached_property
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from difflib import SequenceMatcher
-from importlib.resources import files
 from threading import Lock
 from zoneinfo import ZoneInfo
 
@@ -22,7 +21,7 @@ from .db import dumps
 from .memory_ops import Visibility, operation
 from .models import Gateway, ModelError
 from .persona import split_sentences
-from .profile_common import ChatHealthGate, evidence_hash, excerpt, json_object, setting, whitespace
+from .profile_common import ChatHealthGate, evidence_hash, excerpt, json_object, setting, whitespace, load_profile_prompts, profile_prompt_metadata
 from .query_analysis import SubjectNames
 from .queue import estimate_tokens
 from .search_text import match_query, query_terms
@@ -31,6 +30,8 @@ DEFAULTS = dict(enabled=True, publish_mode='check_auto', memory_tokens=3000,
                 min_memories=8, min_changed=5, update_days=14, max_subjects_per_run=10,
                 max_items=5, max_chars=200, max_tokens=250,
                 generate_timeout_seconds=120, check_timeout_seconds=120)
+DEFAULT_PROMPT_VERSION = 'v2'  # EF-02 public external double-judge gate passed.
+PROMPT_VERSIONS = ('v1', 'v2')
 KINDS = {'relationship':'与我的关系', 'fact':'稳定事实', 'preference':'偏好与习惯', 'recent':'近期重要事项'}
 PUBLISH_MODES = ('check_auto','all_manual')
 DEGREES = ('small','medium','large')
@@ -642,7 +643,48 @@ def _render(item):
     return KINDS[item['kind']]+'：'+item['body'].rstrip('。')+scope+'。\n'
 
 
-def _resolve(generated, evidence, previous, current):
+_WISH = re.compile(r'希望|愿望|想要|想(?!法|象|像|起|到|念)')
+_PLAN = re.compile(r'计划|打算|决定|确定要|将要')
+_DATED = re.compile(r'\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}月\d{1,2}[日号]|'
+                    r'明天|后天|下(?:周|星期|个月)|本(?:周|月)|月底|年底')
+
+
+def _intent_rows(item, memories):
+    # Do not turn a preference's explanation ("likes originals because 想听")
+    # into a future plan. Other ambiguous semantics remain the checker's task.
+    rows = [m for m in memories if m.get('kind') == '计划' or m.get('stance') == '计划'
+            or _WISH.search(m['content']) or _PLAN.search(m['content'])]
+    return rows if (_WISH.search(item['text']) or _PLAN.search(item['text'])
+                    or any(m.get('kind') == '计划' or m.get('stance') == '计划' for m in rows)) else []
+
+
+def _intent_issue(item, memories, current):
+    # Bounded lexical guards, not a general parser of wishes or event deadlines.
+    intent_rows = _intent_rows(item, memories)
+    if not intent_rows:
+        return None
+    def dated(row):
+        if _DATED.search(row['content']):
+            return True
+        try:
+            return _instant(row.get('event_time')) > _instant(row['created_at'])
+        except (ValueError, TypeError):
+            return False
+    # A newer unrelated fact or confirmation cannot extend a stale wish. An
+    # invented valid_until cannot turn an undated wish into a dated plan either.
+    if any(not dated(m) and current >= _recent_deadline([m]) for m in intent_rows):
+        return 'expired_undated_intent'
+    if _PLAN.search(item['text']) and any(_WISH.search(m['content']) for m in intent_rows) and not any(
+            _PLAN.search(m['content']) for m in intent_rows):
+        return 'intent_strengthened'
+    if item['kind'] != 'recent':
+        return 'intent_requires_recent'
+    if any(dated(m) for m in intent_rows) and not item.get('valid_until'):
+        return 'dated_intent_requires_deadline'
+    return None
+
+
+def _resolve(generated, evidence, previous, current, *, quality_checks=False):
     if set(generated)!={'items'} or not isinstance(generated['items'],list):
         raise ValueError('invalid_output')
     protected=copy.deepcopy([s for s in previous['sentences'] if s['author']=='admin'] if previous else [])
@@ -674,12 +716,16 @@ def _resolve(generated, evidence, previous, current):
                     except (TypeError,ValueError):
                         reason='invalid_or_expired_time_range'
                 else:
-                    deadline=_recent_deadline([refs[ref] for ref in item['memory_refs']])
+                    cited=[refs[ref] for ref in item['memory_refs']]
+                    intents=_intent_rows(item,cited) if quality_checks else []
+                    deadline=(min(_recent_deadline([m]) for m in intents) if intents else _recent_deadline(cited))
                     valid['expires_at']=deadline.isoformat()
                     if current>=deadline:
                         reason='invalid_or_expired_time_range'
             elif 'time_range' in item or 'valid_until' in item:
                 reason='unexpected_time_range'
+            if quality_checks:
+                reason=_intent_issue(item,[refs[ref] for ref in item['memory_refs']],current) or reason
             if not reason:
                 valid['text']=_render(valid)
                 if valid['text'].strip() in manual or item['text'].strip() in manual:
@@ -757,8 +803,11 @@ def _check_run_admission(conn, subject_id, run_id):
 
 
 class PersonSummaryEngine:
-    def __init__(self, store, gateway, *, clock=utc_now):
+    def __init__(self, store, gateway, *, clock=utc_now, prompt_version=None):
         self.store,self.gateway,self.clock=store,gateway,clock
+        self.prompt_version=DEFAULT_PROMPT_VERSION if prompt_version is None else prompt_version
+        self.prompts=load_profile_prompts('person_summary',self.prompt_version,PROMPT_VERSIONS)
+        self.prompt_metadata=profile_prompt_metadata(self.prompts)
 
     def update(self, subject_id, *, expected_version, run_id=None):
         return self._run(subject_id,expected_version,'periodic',run_id=run_id)
@@ -782,17 +831,19 @@ class PersonSummaryEngine:
         if getattr(gateway,'health',None):
             gateway.health.check('chat','learning')
         purpose='consolidation_person_summary_'+kind
-        prompt=files('iris').joinpath(f'prompts/person_summary_{kind}_v1.md').read_text(encoding='utf-8')
+        loaded=self.prompts[kind]
+        provenance={key:loaded[key] for key in ('prompt_version','prompt_sha256')}
+        prompt=loaded['text']
         messages=[{'role':'system','content':prompt},{'role':'user','content':dumps(payload)}]
         monotonic=getattr(gateway,'monotonic',time.monotonic); started=monotonic()
         try:
             reply=gateway.chat(messages,purpose,max_tokens=16000,_deadline=started+config[kind+'_timeout_seconds'])
         except ModelError as error:
-            calls.append({'purpose':purpose,'result':error.category,'reason':error.reason or error.category,
+            calls.append({**provenance,'purpose':purpose,'result':error.category,'reason':error.reason or error.category,
                           'duration_ms':round((monotonic()-started)*1000),'usage':{}})
             raise
         outputs[purpose]=reply.content
-        calls.append({'purpose':purpose,'result':'success','duration_ms':round((monotonic()-started)*1000),
+        calls.append({**provenance,'purpose':purpose,'result':'success','duration_ms':round((monotonic()-started)*1000),
                       'usage':reply.usage,'finish_reason':reply.finish_reason})
         if reply.finish_reason!='stop':
             raise ValueError('incomplete_output')
@@ -904,7 +955,7 @@ class PersonSummaryEngine:
         try:
             try:
                 generated=self._call(gateway,'generate',material,outputs,calls,config)
-                sentences,deleted,count=_resolve(generated,evidence,{'sentences':material['admin_sentences']},_instant(stamp).astimezone(ZoneInfo(evidence['timezone'])))
+                sentences,deleted,count=_resolve(generated,evidence,{'sentences':material['admin_sentences']},_instant(stamp).astimezone(ZoneInfo(evidence['timezone'])),quality_checks=self.prompt_version=='v2')
                 checks.update(deleted_sentences=deleted,original_item_count=count,original_sentences=generated['items'])
                 content=''.join(s['text'] for s in sentences)
                 if len(deleted)*2>count:
