@@ -482,7 +482,7 @@ def test_sentence_recovery_metrics_and_materials_remain_scoreable(tmp_path,again
     assert metrics['candidate_deletion_ratio']==int(again)
     assert metrics['proposed_sentences']==3
     assert metrics['deleted_sentence_ratio']==int(again)/3
-    assert report['prompt_versions']==['persona_check_v8','persona_generate_v7','persona_repair_v8']
+    assert report['prompt_versions']==['persona_check_v8','persona_generate_v9','persona_repair_v8']
     assert report['repair_batch_size']==2 and report['max_repair_stage_seconds']==180
     assert report['timeouts_seconds']['persona_check']==180
     manifest=json.loads(materials.read_text())
