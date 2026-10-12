@@ -386,7 +386,12 @@ test("vision 勾选随连接测试和保存发送，保存后图片理解继承�
   };
   render(<SettingsPage />);
   const chat = within(await screen.findByRole("region", { name: "对话模型" }));
-  expect(chat.getByText(/开启后学习时直接看原图/)).toBeVisible();
+  expect(
+    chat.getByText(
+      "对话模型支持图片输入。开启后，图片理解未单独配置时沿用对话模型。学习时是否直接看原图另有开关（尚未提供）。",
+    ),
+  ).toBeVisible();
+  expect(chat.queryByText(/开启后学习时直接看原图/)).not.toBeInTheDocument();
   await userEvent.click(chat.getByLabelText(/支持图片输入/));
   await userEvent.click(chat.getByRole("button", { name: "测试对话模型连接" }));
   expect(requests.find((r) => r.url.endsWith("/chat/test"))?.body.vision).toBe(
