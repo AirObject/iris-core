@@ -23,7 +23,7 @@ PROMPT=files('iris').joinpath('prompts/goal_dedup_judge_v1.md').read_text(encodi
 MODEL_POSSIBLE_PROMPTS={'D2':'goal_dedup_judge_v2.md','D3':'goal_dedup_judge_v3.md',
                         'D4':'goal_dedup_judge_v4.md','D5':'goal_dedup_judge_v5.md',
                         'D6':'goal_dedup_judge_v6.md'}
-DEFAULT_METHOD='D3'
+DEFAULT_METHOD='D6'
 DEFAULTS={'enabled':True,'budget_seconds':5.0,'concurrency':1,'queue_limit':8,
           'pending_fallback_minutes':30,'possible_min_similarity':0}
 MAX_SECONDS=60.0  # Measurement override; the administrator API is capped at 10 s.

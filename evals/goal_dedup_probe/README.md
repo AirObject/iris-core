@@ -1,6 +1,6 @@
 # 目标去重探测
 
-当前默认是 GD4 的 D3，使用明确标准单独判断可能重复；冻结与公开双轮结果见 [GD4_METHODS.md](GD4_METHODS.md) 和 [GD4_RESULTS.md](GD4_RESULTS.md)。`--method D2/D3` 选择对应版本，`--fake` 用法不变。以下 GO 第三、四步保留为历史记录；本轮 GD4 按规划者授权，在同期有学习评测的条件下串行间隔 2 秒调用，出现降级整轮作废，不用于独占性能结论。
+当前默认是 GD4 复核迭代的 D6。新口径分别统计 separate 误提示和 uncertain 命中，不再用两类合计作为误提示门槛；`uncertain_candidate_hit_rate` 覆盖全部 uncertain，有 `expected.candidates` 时核对指向，否则以出现提示计命中。旧的仅有候选注释子集指标保留为 `uncertain_annotated_candidate_hit_rate`。冻结与结果见 [GD4_METHODS.md](GD4_METHODS.md) 和 [GD4_REVIEW_RESULTS.md](GD4_REVIEW_RESULTS.md)。`--method D2/D3/D4/D5/D6` 选择对应版本，`--fake` 用法不变。以下 GO 第三、四步保留为历史记录；GD4 串行间隔 2 秒调用，出现降级整轮作废，不用于独占性能结论。
 
 ## GO 第三步（历史）
 
