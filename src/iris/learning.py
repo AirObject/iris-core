@@ -27,7 +27,7 @@ from .retrieval import Retrieval
 from .persona import persona_context
 
 
-PROMPT_VERSION = "learning_v9"
+PROMPT_VERSION = "learning_v10"
 LEARNING_MAX_TOKENS = 16000
 PROMPT = files("iris").joinpath("prompts", PROMPT_VERSION + ".md").read_text(encoding="utf-8")
 MEMORY_TYPES = {"事件", "事实", "偏好", "关系", "观点", "计划", "自我", "其他"}
@@ -147,7 +147,7 @@ def _strip_memory_annotations(text: str) -> str:
 class LearningEngine:
     def __init__(self, store: Store, gateway: Gateway, *, clock=None,
                  prompt_version: str = PROMPT_VERSION):
-        if prompt_version not in ("learning_v7", "learning_v8", "learning_v9"):
+        if prompt_version not in ("learning_v7", "learning_v8", "learning_v9", "learning_v10"):
             raise ValueError("unsupported learning prompt version")
         self.prompt_version = prompt_version
         self.prompt = (PROMPT if prompt_version == PROMPT_VERSION else

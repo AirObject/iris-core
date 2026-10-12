@@ -13,7 +13,7 @@ def test_current_prompt_is_selected_without_changing_output_budget(store):
     msg(store, 1, "收到")
     gateway = FakeGateway({})
     batch(store, gateway, count=1)
-    assert PROMPT_VERSION == "learning_v9"
+    assert PROMPT_VERSION == "learning_v10"
     assert gateway.requests[0]["max_tokens"] == 16000
 
 
