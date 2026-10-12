@@ -492,7 +492,7 @@ class Consolidation:
             gateway.health=_CallHealth(self,getattr(self.gateway,'health',None),work)
         else:
             gateway=self.gateway
-        deadline=time.monotonic()+120
+        deadline=time.monotonic()+180
         for repair in (False,True):
             call_purpose=purpose+('_repair' if repair else '')
             if isinstance(gateway,Gateway):
