@@ -1,5 +1,4 @@
 """GD4: model evidence is required for new weak review hints."""
-import json
 from datetime import datetime, timezone
 
 import httpx
@@ -77,12 +76,13 @@ def test_conflict_revision_change_during_call_requires_review_again(store):
     '{"decisions":[{"id":true,"verdict":"uncertain"}]}',
     '{"decisions":[]}', '{"answer":"可能是同一件事"}',
 ])
-def test_new_judgment_invalid_schema_uses_existing_failure_policy(store, bad):
+@pytest.mark.parametrize('method', ['D2', 'D3'])
+def test_new_judgment_invalid_schema_uses_existing_failure_policy(store, bad, method):
     model = gateway(store, lambda _: httpx.Response(200, json={
         'choices': [{'message': {'content': bad}, 'finish_reason': 'stop'}]}))
     try:
         with pytest.raises(ModelError) as error:
-            dedup.judge(model, {'id': 2}, [{'id': 1}], method='D2', budget_seconds=1)
+            dedup.judge(model, {'id': 2}, [{'id': 1}], method=method, budget_seconds=1)
         assert error.value.category == 'invalid_output'
         with store.read() as conn:
             assert conn.execute('SELECT result_category FROM model_calls').fetchone()[0] == 'invalid_output'
