@@ -220,7 +220,10 @@ def test_goal_settings_validation(client, payload):
     assert client.patch('/admin/api/settings/goals', json=payload).status_code == 400
 
 
-def test_admin_possible_duplicate_merge_and_dismiss_with_revisions(client):
+def test_admin_possible_duplicate_merge_and_dismiss_with_revisions(client, store):
+    from test_goal_dedup_apply import Judge
+    store.set_setting('goal_dedup_judge', {'enabled': True})
+    client.app.state.goals.gateway = Judge(store, verdict='uncertain')
     first = create(client, content='周五问小林面试结果')['goal']
     second_result = create(client, content='周五问小林的面试结果')
     assert second_result['dedup']['status'] == 'possible_duplicate'
