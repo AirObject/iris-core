@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from importlib.resources import files
 
 from .db import dumps
 from .queue import truncate_material
@@ -48,3 +49,21 @@ class ChatHealthGate:
         return self.real.check(kind, 'learning' if kind == 'chat' else purpose, probe=probe)
     def __getattr__(self, key):
         return getattr(self.real, key)
+
+
+def load_profile_prompts(family, version, allowed):
+    """Snapshot the two UTF-8 prompts; provenance hashes the exact sent text."""
+    if version not in allowed:
+        raise ValueError('unsupported profile prompt version')
+    result = {}
+    for kind in ('generate', 'check'):
+        name = f'{family}_{kind}_{version}'
+        text = files('iris').joinpath(f'prompts/{name}.md').read_text(encoding='utf-8')
+        result[kind] = {'prompt_version': name, 'prompt_sha256': hashlib.sha256(text.encode('utf-8')).hexdigest(),
+                        'text': text}
+    return result
+
+
+def profile_prompt_metadata(prompts):
+    return {'prompt_versions': [p['prompt_version'] for p in prompts.values()],
+            'prompt_sha256': {p['prompt_version']: p['prompt_sha256'] for p in prompts.values()}}

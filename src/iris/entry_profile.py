@@ -9,11 +9,11 @@ import copy
 import json
 import re
 import time
+import unicodedata
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
-from importlib.resources import files
 from threading import Lock
 from zoneinfo import ZoneInfo
 
@@ -22,12 +22,14 @@ from .memory_ops import Visibility, operation
 from .models import Gateway, ModelError
 from .persona import split_sentences
 from .queue import estimate_tokens, truncate_material
-from .profile_common import evidence_hash, setting, whitespace, excerpt, json_object, ChatHealthGate
+from .profile_common import evidence_hash, setting, whitespace, excerpt, json_object, ChatHealthGate, load_profile_prompts, profile_prompt_metadata
 
 DEFAULTS = dict(enabled=True, publish_mode='check_auto', window_days=14,
                 message_tokens=6000, memory_tokens=2000, min_messages=50,
                 update_days=7, min_chars=150, max_chars=500,
                 generate_timeout_seconds=120, check_timeout_seconds=120)
+DEFAULT_PROMPT_VERSION = 'v2'  # Candidate v7 requires public external double judging.
+PROMPT_VERSIONS = ('v2', 'v3', 'v4', 'v5', 'v6', 'v7')
 PUBLISH_MODES = ('check_auto', 'all_manual')
 DEGREES = ('small', 'medium', 'large')
 # The optional prepare partition has its own cap; the 1500-token memory cap is unchanged.
@@ -565,7 +567,7 @@ def _independent_topic(quotes, messages):
 
 
 
-def _named_topic_recurrence(label, quotes, messages):
+def _named_topic_recurrence(label, quotes, messages, *, quality_checks=False):
     # A named work in one observation cannot identify an ambiguous later one.
     # Require explicit original anchors before the semantic independence check.
     titles = re.findall(r'《[^《》]+》', label)
@@ -573,7 +575,88 @@ def _named_topic_recurrence(label, quotes, messages):
         return True
     anchored = [quote for quote in quotes
                 if all(title in _whitespace(messages[quote['message_id']]['content']) for title in titles)]
-    return _independent_topic(anchored, messages)
+    return (_independent_observations(anchored,messages,kind='topic',label=label) if quality_checks
+            else _independent_topic(anchored, messages))
+
+
+# These are lower bounds, not semantic proof of independent events. The checker
+# must still reject continuations, paraphrases and ordinary non-local words.
+_REPORTED = re.compile(r'转(?:发|引|述)|引用|复述|原话|上次.{0,8}(?:说|提)|之前.{0,8}(?:说|提)')
+_REGISTRATION = re.compile(r'接龙|报名|算我|加我|(?<!\w)\+\s*1(?!\d)')
+_GENDERED = re.compile(r'她|妳|祂|(?<!其)(?<!吉)他|\b(?:he|him|his|himself|she|her|hers|herself)\b', re.I)
+
+
+def _observation_text(text):
+    # For copy detection only; displayed quotations retain exact punctuation.
+    return ''.join(c for c in unicodedata.normalize('NFKC', text).casefold() if c.isalnum())
+
+
+def _copies(left, right):
+    a, b = _observation_text(left), _observation_text(right)
+    if not a or not b or a in b or b in a:
+        return True
+    return min(len(a), len(b)) >= 12 and SequenceMatcher(None, a, b, autojunk=False).ratio() >= .85
+
+
+
+def _speaker_bursts(messages):
+    # Context can disqualify a repeated observation but never supply evidence.
+    timed = []
+    for message in messages.values():
+        try:
+            timed.append((_instant(message['occurred_at']), message['message_id'], message['speaker']))
+        except (KeyError, ValueError, TypeError):
+            continue
+    groups = {}; group = 0; previous = None
+    for instant, mid, speaker in sorted(timed):
+        if previous is None or speaker != previous[1] or instant - previous[0] >= timedelta(minutes=30):
+            group += 1
+        groups[mid] = group
+        previous = instant, speaker
+    return groups
+
+
+def _independent_observations(quotes, messages, *, kind, label):
+    originals = {}; bursts = _speaker_bursts(messages)
+    for quote in quotes:
+        message = messages[quote['message_id']]
+        text = _whitespace(message['content'])
+        # A reply carrying a quote is conservatively not a fresh observation,
+        # even when the displayed snippet happens to match its own body first.
+        if (quote['field'] != 'content' or message.get('quote') or _REPORTED.search(text)
+                or _REGISTRATION.search(text)):
+            continue
+        if kind == 'saying' and label not in text:
+            continue
+        try:
+            instant = _instant(message['occurred_at'])
+        except (KeyError, ValueError, TypeError):
+            continue
+        originals[message['message_id']] = (message, instant)
+    values = list(originals.values())
+    for i, (left, left_time) in enumerate(values):
+        for right, right_time in values[i + 1:]:
+            if _copies(left['content'], right['content']):
+                continue
+            gap = abs((right_time - left_time).total_seconds())
+            if kind == 'topic':
+                if left['date'] == right['date'] or gap < 30 * 60:
+                    continue
+            elif (gap < 60 or bursts[left['message_id']] == bursts[right['message_id']]
+                  or (left['speaker'] == right['speaker'] and gap < 30 * 60)):
+                continue
+            return True
+    return False
+
+
+def _quality_issue(item, messages):
+    if _GENDERED.search(item['label'] + ' ' + item['meaning']):
+        return 'gendered_pronoun'
+    if item['kind'] in ('topic', 'saying') and not _independent_observations(
+            item['quotes'], messages, kind=item['kind'], label=item['label']):
+        return ('insufficient_independent_discussions' if item['kind'] == 'topic'
+                else 'insufficient_independent_uses')
+    return None
 
 
 def _render_item(item):
@@ -583,7 +666,7 @@ def _render_item(item):
     return text+'（'+'；'.join('“'+q['text']+'”' for q in item['quotes'])+'）。\n'
 
 
-def _resolve(generated, evidence, previous):
+def _resolve(generated, evidence, previous, *, quality_checks=False):
     messages,owners=_evidence_index(evidence)
     memories={item['ref']:item for item in evidence['memories']}
     manual=[dict(s) for s in previous['sentences'] if s['author']=='admin'] if previous else []
@@ -631,9 +714,11 @@ def _resolve(generated, evidence, previous):
                 reason='duplicate_item'
             elif _contains_account(' '.join([item['label'],item['meaning'],*[q['text'] for q in quotes]]),evidence):
                 reason='account_identifier'
+            elif quality_checks and (issue := _quality_issue(item,messages)):
+                reason=issue
             elif item['kind']=='topic' and not _independent_topic(quotes,messages):
                 reason='insufficient_topic_recurrence'
-            elif item['kind']=='topic' and not _named_topic_recurrence(item['label'],quotes,messages):
+            elif item['kind']=='topic' and not _named_topic_recurrence(item['label'],quotes,messages,quality_checks=quality_checks):
                 reason='insufficient_named_topic_recurrence'
             if not reason:
                 seen.add(key)
@@ -714,8 +799,11 @@ class _HealthGate(ChatHealthGate):
 
 
 class EntryProfileEngine:
-    def __init__(self, store, gateway, *, clock=utc_now):
+    def __init__(self, store, gateway, *, clock=utc_now, prompt_version=None):
         self.store,self.gateway,self.clock=store,gateway,clock
+        self.prompt_version=DEFAULT_PROMPT_VERSION if prompt_version is None else prompt_version
+        self.prompts=load_profile_prompts('entry_profile',self.prompt_version,PROMPT_VERSIONS)
+        self.prompt_metadata=profile_prompt_metadata(self.prompts)
 
     def update(self, entry_id, *, expected_version, run_id=None):
         return self._run(entry_id,expected_version,'periodic',run_id=run_id)
@@ -742,18 +830,20 @@ class EntryProfileEngine:
         if health:
             health.check('chat','learning')
         purpose='consolidation_entry_profile_'+kind
-        prompt=files('iris').joinpath(f'prompts/entry_profile_{kind}_v6.md').read_text(encoding='utf-8')
+        loaded=self.prompts[kind]
+        provenance={key:loaded[key] for key in ('prompt_version','prompt_sha256')}
+        prompt=loaded['text']
         messages=[{'role':'system','content':prompt},{'role':'user','content':dumps(payload)}]
         monotonic=getattr(gateway,'monotonic',time.monotonic)
         started=monotonic(); deadline=started+config[kind+'_timeout_seconds']
         try:
             reply=gateway.chat(messages,purpose,max_tokens=16000,_deadline=deadline)
         except ModelError as error:
-            calls.append({'purpose':purpose,'result':error.category,'reason':error.reason or error.category,
+            calls.append({**provenance,'purpose':purpose,'result':error.category,'reason':error.reason or error.category,
                           'duration_ms':round((monotonic()-started)*1000),'usage':{}})
             raise
         outputs[purpose]=reply.content
-        calls.append({'purpose':purpose,'result':'success','duration_ms':round((monotonic()-started)*1000),
+        calls.append({**provenance,'purpose':purpose,'result':'success','duration_ms':round((monotonic()-started)*1000),
                       'usage':reply.usage,'finish_reason':reply.finish_reason})
         if reply.finish_reason!='stop':
             raise ValueError('incomplete_output')
@@ -839,7 +929,7 @@ class EntryProfileEngine:
             degree='large'
             try:
                 generated=self._call(gateway,'generate',material,outputs,calls,config)
-                sentences,deleted,errors,count,quote_stats=_resolve(generated,evidence,previous)
+                sentences,deleted,errors,count,quote_stats=_resolve(generated,evidence,previous,quality_checks=self.prompt_version=='v7')
                 checks.update(errors=errors,deleted_sentences=deleted,original_sentence_count=count,original_item_count=count,quote_validation=quote_stats,
                               original_sentences=generated.get('items'),deterministic={'passed':not errors and not deleted})
                 content=''.join(s['text'] for s in sentences)

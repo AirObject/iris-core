@@ -5,7 +5,7 @@ from iris.entry_profile import EntryProfileEngine
 from test_entry_profile import Clock, Model, messages
 
 
-def test_entry_profile_uses_v6_generation_and_check_prompts_outside_transactions(store):
+def test_entry_profile_uses_v2_generation_and_check_prompts_outside_transactions(store):
     clock = Clock()
     messages(store, clock)
     model = Model(store)
@@ -23,7 +23,7 @@ def test_entry_profile_uses_v6_generation_and_check_prompts_outside_transactions
     assert [purpose for purpose, _ in prompts] == [
         'consolidation_entry_profile_generate', 'consolidation_entry_profile_check']
     for (_, prompt), kind in zip(prompts, ('generate', 'check'), strict=True):
-        assert prompt == files('iris').joinpath(f'prompts/entry_profile_{kind}_v6.md').read_text(encoding='utf-8')
+        assert prompt == files('iris').joinpath(f'prompts/entry_profile_{kind}_v2.md').read_text(encoding='utf-8')
 
 
 def named_topic(first, second, quotes, *, label='《湖岸画册》的配色'):
