@@ -136,4 +136,4 @@ def test_stage_timeout_without_http_record_is_invalid_and_not_reused(tmp_path):
         assert report['metrics']['calls']['timed_out_calls'] == 0
         assert report['resumed_cases'] == 0
         assert report['check_batch_size'] == 4
-        assert report['max_check_stage_seconds'] == 360
+        assert report['max_check_stage_seconds'] == 900

@@ -42,7 +42,7 @@ CALL_TIMEOUTS = {'persona_generate': 180, 'persona_check': 180,
                  'persona_sentence_repair': 120, 'persona_recheck': 180}
 CHECK_BATCH_SIZE = 4
 CHECK_BATCH_CLAUSES = 6
-MAX_CHECK_STAGE_SECONDS = 360
+MAX_CHECK_STAGE_SECONDS = 900
 REPAIR_BATCH_SIZE = 2
 MAX_REPAIR_STAGE_SECONDS = 180
 REFERENCE = re.compile(r'(?<![A-Za-z0-9])[MP]\s*#?\s*\d+(?![A-Za-z0-9])', re.I)

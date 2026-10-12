@@ -176,10 +176,10 @@ def test_bad_local_index_is_not_silently_renumbered(store):
 def test_whole_stage_timeout_preserves_partial_outputs_without_resetting_budget(store):
     gateway, outputs = BatchGateway(duration=130), {}
     with pytest.raises(ModelError) as error:
-        PersonaEngine(store, gateway)._check_all('persona_check', batch_material(), batch_sentences(), full_content='整稿', outputs=outputs)
+        PersonaEngine(store, gateway)._check_all('persona_check', batch_material(), batch_sentences()*3, full_content='整稿', outputs=outputs)
     assert error.value.reason == 'timeout'
-    assert len(gateway.calls) == 3 and [c[2] for c in gateway.calls] == [180, 310, 360]
-    assert len(outputs['persona_check_batches']) == 3
+    assert len(gateway.calls) == 7 and [c[2] for c in gateway.calls] == [180,310,440,570,700,830,900]
+    assert len(outputs['persona_check_batches']) == 7
     assert current_persona(store)['id'] == 1
 
 
@@ -206,7 +206,7 @@ def test_timeout_in_later_batch_records_attempt_and_keeps_current_version(store)
         def chat(self, messages, purpose, **kwargs):
             reply = super().chat(messages, purpose, **kwargs)
             if purpose == 'persona_check':
-                self.now += 130
+                self.now += 181 if sum(p == 'persona_check' for p,_ in self.calls) == 3 else 130
             return reply
     model = SlowCheck(store, {'sentences': [{'text': f'在那次直播中，我解释了第{i}条规则。',
         'basis': [ref]} for i in range(9)]})
@@ -241,11 +241,11 @@ def test_one_batch_still_has_only_180_seconds(store):
     assert len(gateway.calls) == 1 and gateway.calls[0][2] == 180
 
 
-def test_multiple_batches_can_exceed_180_but_never_reset_the_360_second_stage_cap(store):
+def test_multiple_batches_use_full_request_budget_within_fixed_stage(store):
     gateway = BatchGateway(duration=100)
     result = PersonaEngine(store, gateway)._check_all('persona_check', batch_material(), batch_sentences(), full_content='整稿', outputs={})
     assert len(result['sentences']) == 9
-    assert [c[2] for c in gateway.calls] == [180, 280, 360]
+    assert [c[2] for c in gateway.calls] == [180, 280, 380]
     assert gateway.now == 300
 
 

@@ -138,3 +138,11 @@ def test_unknown_sentence_mapping_cannot_inject_diagnostic_fields(store):
     result = PersonaEngine(store,Forged())._check_all('persona_check',batch_material(),
         batch_sentences(),full_content='完整稿',outputs={})
     assert result['validation_errors'] and result['sentences']==[]
+
+
+def test_three_valid_check_batches_keep_their_request_budget(store):
+    gateway = BatchGateway(duration=130)
+    result=PersonaEngine(store,gateway)._check_all('persona_check',batch_material(),
+        batch_sentences(),full_content='完整稿',outputs={})
+    assert len(result['sentences'])==9
+    assert [c[2] for c in gateway.calls]==[180,310,440]
