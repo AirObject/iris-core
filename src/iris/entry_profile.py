@@ -563,6 +563,17 @@ def _independent_topic(quotes, messages):
 
 
 
+def _named_topic_recurrence(label, quotes, messages):
+    # A named work in one observation cannot identify an ambiguous later one.
+    # Require explicit original anchors before the semantic independence check.
+    titles = re.findall(r'《[^《》]+》', label)
+    if not titles:
+        return True
+    anchored = [quote for quote in quotes
+                if all(title in _whitespace(messages[quote['message_id']]['content']) for title in titles)]
+    return _independent_topic(anchored, messages)
+
+
 def _render_item(item):
     text=ITEM_LABELS[item['kind']]+'：'+item['label']
     if item.get('meaning'):
@@ -620,6 +631,8 @@ def _resolve(generated, evidence, previous):
                 reason='account_identifier'
             elif item['kind']=='topic' and not _independent_topic(quotes,messages):
                 reason='insufficient_topic_recurrence'
+            elif item['kind']=='topic' and not _named_topic_recurrence(item['label'],quotes,messages):
+                reason='insufficient_named_topic_recurrence'
             if not reason:
                 seen.add(key)
                 refs=list(dict.fromkeys([*refs,*(owners[q['message_id']] for q in quotes if q['message_id'] in owners)]))
@@ -727,7 +740,7 @@ class EntryProfileEngine:
         if health:
             health.check('chat','learning')
         purpose='consolidation_entry_profile_'+kind
-        prompt=files('iris').joinpath(f'prompts/entry_profile_{kind}_v2.md').read_text(encoding='utf-8')
+        prompt=files('iris').joinpath(f'prompts/entry_profile_{kind}_v6.md').read_text(encoding='utf-8')
         messages=[{'role':'system','content':prompt},{'role':'user','content':dumps(payload)}]
         monotonic=getattr(gateway,'monotonic',time.monotonic)
         started=monotonic(); deadline=started+config[kind+'_timeout_seconds']
