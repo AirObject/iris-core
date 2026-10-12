@@ -537,8 +537,10 @@ def _insert(conn, subject_id, *, previous, content, sentences, checks, degree, s
 
 def _edit_segments(content, previous):
     # Keep an unchanged structured line with its evidence even if its text has punctuation.
+    # Cleared items retain audit metadata, not text that can match an edit.
     import re
-    known=sorted({s['text'] for s in previous['sentences'] if s.get('kind') in KINDS} if previous else [],key=len,reverse=True)
+    known=sorted({s['text'] for s in previous['sentences'] if s['text'] and s.get('kind') in KINDS}
+                 if previous else [],key=len,reverse=True)
     if not known:
         return split_sentences(content)
     parts=[]; start=0
@@ -558,7 +560,8 @@ def admin_edit(store, subject_id, content, *, expected_version, clock=utc_now):
         selected=_select(conn,subject_id,_instant(stamp))
     old=defaultdict(list)
     for item in previous['sentences'] if previous else []:
-        old[item['text']].append(item)
+        if item['text']:
+            old[item['text']].append(item)
     sentences=[old[text].pop(0) if old[text] else {'text':text,'basis':[],'author':'admin'}
                for text in _edit_segments(content,previous)]
     if _length_errors(content,sentences,config):
