@@ -90,7 +90,7 @@ def test_runtime_threshold_change_during_call_requires_new_review(store):
 
 
 def test_module_settings_validate_persist_and_audit_without_new_http_surface(store):
-    goals = Goals(store, gateway=Judge(store, verdict='uncertain'))
+    goals = Goals(store)
     result = goals.configure_dedup(pending_fallback_minutes=12, possible_min_similarity=.7, actor='admin')
     assert result['pending_fallback_minutes'] == 12 and result['possible_min_similarity'] == .7
     assert dedup.settings(store)['possible_min_similarity'] == .7

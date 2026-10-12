@@ -98,3 +98,17 @@ def test_disabled_model_does_not_create_similarity_only_hints(store):
     assert second['dedup']['status'] == 'created'
     assert second['goal']['possible_duplicate_ids'] == []
     assert goals.create(content=first['content'])['dedup']['status'] == 'merged'
+
+
+def test_default_candidate_does_not_repair_sorted_output_ids(store):
+    # The service must reject an answer reordered by the model, rather than
+    # silently accepting a different item-to-verdict association.
+    model = gateway(store, lambda _: httpx.Response(200, json={
+        'choices': [{'message': {'content': '{"decisions":[{"id":1,"verdict":"different"},{"id":2,"verdict":"different"},{"id":3,"verdict":"different"}]}'}, 'finish_reason': 'stop'}]}))
+    try:
+        with pytest.raises(ModelError) as error:
+            dedup.judge(model, {'id': 4}, [{'id': 1}, {'id': 3}, {'id': 2}],
+                        method=dedup.DEFAULT_METHOD, budget_seconds=1)
+        assert error.value.category == 'invalid_output'
+    finally:
+        model.close()
