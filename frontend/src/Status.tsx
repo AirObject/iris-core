@@ -184,6 +184,10 @@ export default function Status({
               )}
               {kind === "image_understanding" && (
                 <>
+                  <p>
+                    {h.inherited ? "沿用对话模型" : "使用独立图片理解配置"} ·
+                    健康状态按图片理解用途独立记录。
+                  </p>
                   {h.timeout_seconds != null && (
                     <p>
                       整批图片理解预算 {h.timeout_seconds} 秒（含排队与重试）

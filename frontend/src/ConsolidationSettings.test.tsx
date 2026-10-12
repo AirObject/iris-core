@@ -59,6 +59,7 @@ beforeEach(() => {
       conflict_enabled: true,
       dependency_enabled: true,
       persona_enabled: true,
+      person_summary_enabled: true,
       goal_review_enabled: true,
     },
   };
@@ -110,6 +111,7 @@ test("整理设置保存时间、调用预算与所有开关，并显示操作�
     { target: { value: "0" } },
   );
   await userEvent.click(within(section).getByLabelText("矛盾检查与建议"));
+  await userEvent.click(within(section).getByLabelText("定期更新人物摘要"));
   await userEvent.click(
     within(section).getByRole("button", { name: "保存梦境整理设置" }),
   );
@@ -124,6 +126,7 @@ test("整理设置保存时间、调用预算与所有开关，并显示操作�
     conflict_enabled: false,
     dependency_enabled: true,
     persona_enabled: true,
+    person_summary_enabled: false,
     goal_review_enabled: true,
   });
   expect((request.init?.headers as any)["X-Iris-CSRF"]).toBe(

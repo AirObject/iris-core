@@ -60,14 +60,34 @@ beforeEach(() => {
       if (init?.method === "PUT") {
         if (fail)
           return response({ error: { message: "模型设置保存失败" } }, 503);
-        settings.models.image_understanding = {
-          enabled: body.enabled,
-          base_url: body.base_url,
-          model: body.model,
-          dimensions: null,
-          reasoning_effort: body.reasoning_effort,
-          key_set: !!body.api_key,
-        };
+        if (url.endsWith("/chat")) {
+          settings.models.chat = {
+            ...settings.models.chat,
+            ...body,
+            key_set: settings.models.chat.key_set,
+          };
+          if (
+            !settings.models.image_understanding.enabled ||
+            settings.models.image_understanding.inherited
+          ) {
+            settings.models.image_understanding = body.vision
+              ? { ...settings.models.chat, inherited: true }
+              : { ...blank, inherited: false };
+          }
+        } else {
+          settings.models.image_understanding =
+            !body.enabled && settings.models.chat.vision
+              ? { ...settings.models.chat, inherited: true }
+              : {
+                  enabled: body.enabled,
+                  base_url: body.base_url || "",
+                  model: body.model || "",
+                  dimensions: null,
+                  reasoning_effort: body.reasoning_effort ?? null,
+                  key_set: !!body.api_key,
+                  inherited: false,
+                };
+        }
         settings.health.image_understanding = { state: "normal" };
         settings.operations = [
           {
@@ -91,7 +111,7 @@ async function edit() {
   const region = within(
     await screen.findByRole("region", { name: "图片理解模型" }),
   );
-  await userEvent.click(region.getByLabelText("启用图片理解模型"));
+  await userEvent.click(region.getByLabelText("单独配置图片理解模型"));
   fireEvent.change(region.getByLabelText("图片理解模型接口地址"), {
     target: { value: "https://vision.example.test/v1" },
   });
@@ -100,13 +120,13 @@ async function edit() {
   });
   return region;
 }
-test("图片用途默认未启用，独立配置且不提供对话模型预设", async () => {
+test("图片用途默认未启用，未声明 vision 时不沿用且不提供对话模型预设", async () => {
   render(<SettingsPage />);
   const region = within(
     await screen.findByRole("region", { name: "图片理解模型" }),
   );
   expect(region.getByText(/当前状态：未启用/)).toBeVisible();
-  expect(region.getByText(/不沿用对话模型/)).toBeVisible();
+  expect(region.getByText(/未单独配置且对话模型开启 vision/)).toBeVisible();
   expect(region.getByLabelText("图片理解模型接口地址")).toBeDisabled();
   expect(
     region.getByRole("button", { name: "测试图片理解模型连接" }),
@@ -212,7 +232,7 @@ test("已配置图片模型可停用或请求立即重试", async () => {
   expect(requests.find((r) => r.url.endsWith("/retry"))?.init?.method).toBe(
     "POST",
   );
-  await userEvent.click(region.getByLabelText("启用图片理解模型"));
+  await userEvent.click(region.getByLabelText("单独配置图片理解模型"));
   await userEvent.click(
     region.getByRole("button", { name: "保存图片理解模型" }),
   );
@@ -354,4 +374,112 @@ test("图片没有调用时显示零计数，缺少分用途投影时不伪造�
   expect(
     screen.queryByRole("table", { name: "图片理解用量" }),
   ).not.toBeInTheDocument();
+});
+
+test("vision 勾选随连接测试和保存发送，保存后图片理解继承展示同步", async () => {
+  settings.models.chat = {
+    ...blank,
+    enabled: true,
+    model: "chat-vision",
+    base_url: "https://example.test/v1",
+    vision: false,
+  };
+  render(<SettingsPage />);
+  const chat = within(await screen.findByRole("region", { name: "对话模型" }));
+  expect(chat.getByText(/开启后学习时直接看原图/)).toBeVisible();
+  await userEvent.click(chat.getByLabelText(/支持图片输入/));
+  await userEvent.click(chat.getByRole("button", { name: "测试对话模型连接" }));
+  expect(requests.find((r) => r.url.endsWith("/chat/test"))?.body.vision).toBe(
+    true,
+  );
+  await userEvent.click(chat.getByRole("button", { name: "保存对话模型" }));
+  expect(await screen.findByText(/当前图片理解沿用对话模型。/)).toBeVisible();
+  const image = within(screen.getByRole("region", { name: "图片理解模型" }));
+  expect(
+    image.queryByLabelText("图片理解模型接口地址"),
+  ).not.toBeInTheDocument();
+  expect(image.getByLabelText("单独配置图片理解模型")).not.toBeChecked();
+  await userEvent.click(
+    image.getByRole("button", { name: "测试图片理解模型连接" }),
+  );
+  expect(
+    requests.find((r) => r.url.endsWith("/image_understanding/test"))?.body,
+  ).toEqual({});
+  await userEvent.click(chat.getByLabelText(/支持图片输入/));
+  await userEvent.click(chat.getByRole("button", { name: "保存对话模型" }));
+  expect(await image.findByText(/当前状态：未启用/)).toBeVisible();
+});
+test("保存 chat 不覆盖尚未保存的独立图片配置草稿", async () => {
+  settings.models.chat = {
+    ...blank,
+    enabled: true,
+    model: "chat",
+    base_url: "https://example.test/v1",
+    vision: false,
+  };
+  const image = await edit();
+  fireEvent.change(image.getByLabelText("图片理解模型模型名"), {
+    target: { value: "unsaved-vision" },
+  });
+  const chat = within(screen.getByRole("region", { name: "对话模型" }));
+  await userEvent.click(chat.getByLabelText(/支持图片输入/));
+  await userEvent.click(chat.getByRole("button", { name: "保存对话模型" }));
+  expect(await screen.findByText("已保存")).toBeVisible();
+  expect(image.getByLabelText("图片理解模型模型名")).toHaveValue(
+    "unsaved-vision",
+  );
+});
+test("图片独立配置可恢复继承，未保存时不测试旧配置", async () => {
+  settings.models.chat = {
+    ...blank,
+    enabled: true,
+    model: "chat",
+    base_url: "https://example.test/v1",
+    vision: true,
+  };
+  settings.models.image_understanding = {
+    ...blank,
+    enabled: true,
+    model: "independent",
+    base_url: "https://example.test/v1",
+    inherited: false,
+  };
+  render(<SettingsPage />);
+  const image = within(
+    await screen.findByRole("region", { name: "图片理解模型" }),
+  );
+  await userEvent.click(image.getByLabelText("单独配置图片理解模型"));
+  expect(
+    image.getByRole("button", { name: "测试图片理解模型连接" }),
+  ).toBeDisabled();
+  await userEvent.click(
+    image.getByRole("button", { name: "保存图片理解模型" }),
+  );
+  expect(await image.findByText(/当前图片理解沿用对话模型。/)).toBeVisible();
+  expect(requests.find((r) => r.init?.method === "PUT")?.body).toEqual({
+    enabled: false,
+  });
+});
+test("外部 vision 只读，状态页按 inherited 显示来源", async () => {
+  settings.model_source = "external";
+  settings.models.chat = { ...blank, enabled: true, vision: true };
+  const { unmount } = render(<SettingsPage />);
+  const checkbox = await screen.findByLabelText(/支持图片输入/);
+  expect(checkbox).toBeChecked();
+  expect(checkbox).toBeDisabled();
+  unmount();
+  render(
+    <StatusPage
+      data={{
+        ...status,
+        model_health: {
+          image_understanding: { state: "normal", inherited: true },
+        },
+      }}
+      openMemory={vi.fn()}
+    />,
+  );
+  expect(
+    screen.getByText(/沿用对话模型 · 健康状态按图片理解用途独立记录/),
+  ).toBeVisible();
 });
