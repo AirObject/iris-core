@@ -16,7 +16,7 @@ def test_only_first_check_batch_compares_the_complete_draft(store):
     result = PersonaEngine(store, gateway)._check_all('persona_check', batch_material(),
         batch_sentences(), full_content='完整稿', outputs={})
     requests = [c[1] for c in gateway.calls]
-    assert [r['task'] for r in requests] == ['check', 'check_facts', 'check_facts']
+    assert [r['task'] for r in requests] == ['check', 'check_facts_and_rules', 'check_facts_and_rules']
     assert requests[0]['candidate_text'] == '完整稿'
     assert all('previous' not in r and 'candidate_text' not in r for r in requests[1:])
     assert result['change_degree'] == 'small'  # Later batches have no degree task.

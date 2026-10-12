@@ -475,7 +475,7 @@ def test_model_retry_pause_probe_and_resume(store,clock):
         if len(calls)==4:
             output = {'ok':True}
         elif 'candidate' in json.loads(request_data['messages'][-1]['content']):
-            output = {'sentences':[{'index':i+1,'supported':True,'fabricated':False,'scene_qualified':False,
+            output = {'sentences':[{'index':i+1,'persona_kind':'setting','supported':True,'fabricated':False,'scene_qualified':False,
                 'violations':[],'reason':'设定'} for i,_ in enumerate(json.loads(request_data['messages'][-1]['content'])['candidate'])],'change_degree':'small','reason':'措辞'}
         else:
             output = {'sentences':[]}

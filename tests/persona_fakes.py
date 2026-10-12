@@ -5,6 +5,8 @@ import copy
 def add_clause_proofs(output, payload):
     output = copy.deepcopy(output)
     for row, sentence in zip(output.get('sentences', []), payload['candidate']):
+        row.setdefault('persona_kind', 'admin' if sentence['origin']=='admin' else
+                       'setting' if sentence['origin']=='initial_template' or sentence.get('initial_setting') else 'episode')
         proofs = []
         for ref in sentence['evidence_refs']:
             memory = payload['evidence_by_ref'][ref]

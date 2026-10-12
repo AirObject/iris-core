@@ -137,7 +137,7 @@ class BatchGateway:
         request = json.loads(messages[-1]['content'])
         self.calls.append((purpose, request, kwargs['_deadline']))
         self.now += self.duration
-        rows = [{'index': row['index'], 'supported': True, 'fabricated': False,
+        rows = [{'index': row['index'], 'supported': True, 'fabricated': False, 'persona_kind':'admin',
             'scene_qualified': True, 'violations': [], 'reason': '手写句。'} for row in request['candidate']]
         if self.broken == len(self.calls):
             rows[0]['index'] = 99

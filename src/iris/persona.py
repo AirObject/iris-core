@@ -5,6 +5,7 @@ learning or retrieval needs to opt into persona regeneration to keep using it.
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import re
@@ -36,12 +37,15 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v9', 'persona_check': 'persona_check_v12',
-                   'persona_sentence_repair': 'persona_repair_v8', 'persona_recheck': 'persona_check_v12'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v10', 'persona_check': 'persona_check_v13',
+                   'persona_sentence_repair': 'persona_repair_v9', 'persona_recheck': 'persona_check_v13'}
 CALL_TIMEOUTS = {'persona_generate': 180, 'persona_check': 180,
                  'persona_sentence_repair': 120, 'persona_recheck': 180}
-CALL_MAX_TOKENS = {'persona_generate':4096, 'persona_check':4096,
-                   'persona_sentence_repair':2048, 'persona_recheck':4096}
+CALL_MAX_TOKENS = {'persona_generate':4096, 'persona_check':6144,
+                   'persona_sentence_repair':2048, 'persona_recheck':6144}
+PERSONA_KINDS = ('knowledge', 'episode', 'setting', 'admin', 'state', 'task', 'instruction')
+EXCLUDED_KINDS = {'state': 'current state is not persona', 'task': 'pending action is not persona',
+                  'instruction': 'host/model instruction is not persona'}
 CHECK_BATCH_SIZE = 4
 CHECK_BATCH_CLAUSES = 2
 MAX_CHECK_STAGE_SECONDS = 900
@@ -338,7 +342,7 @@ def _check_batches(sentences):
     return batches
 
 
-def _check_payload(material, sentences, *, full_content):
+def _check_payload(material, sentences, *, full_content, proof_choices=True):
     # No unbound memories, former proofs, trace graph or self snapshot in the
     # checker. Every sentence carries only its own currently frozen evidence.
     memories = {(m['memory_id'],m['revision']):m for m in material['evidence']['memories']}
@@ -352,8 +356,11 @@ def _check_payload(material, sentences, *, full_content):
             memory = memories[(basis['memory_id'],basis['revision'])]
             refs.append(memory['ref'])
             evidence[memory['ref']] = {k:memory[k] for k in fields}
-            evidence[memory['ref']]['excerpts'] = [dict(e, source_index=i)
+            evidence[memory['ref']]['excerpts'] = [dict(e, source_index=i,
+                **({'quote_spans':_clause_parts(e['excerpt'])} if proof_choices else {}))
                 for i, e in enumerate(memory['excerpts'], 1)]
+            if proof_choices and not memory['excerpts']:
+                evidence[memory['ref']]['content_spans'] = _clause_parts(memory['content'])
         row = {k:v for k,v in sentence.items() if k not in ('_check_sentence','_check_focus')}
         row.update(index=index, evidence_refs=refs,
                    clauses=sentence.get('_check_focus',_clause_parts(sentence['text'])),
@@ -539,15 +546,28 @@ def _bound_source_issues(sentence, tokens, memories):
                       '现实／线下限定须来自本句绑定原话，不能仅按动作名称推定现实经历')
     predicates = set()
     for clause in re.split(r'[。！？；，.!?;,\n]', sentence['text']):
-        for match in re.finditer(r'(?:[\u3400-\u9fff]完|完成)(?:[了过])?', clause):
+        offsets, position = {0}, 0
+        for token in words(clause):
+            position += len(token)
+            offsets.add(position)
+        for match in re.finditer(r'(?=((?:完成|[\u3400-\u9fff]完)(?:[了过])?))', clause):
+            # 完整/完全/完善 are lexical units, not resultative predicates.
+            # The result suffix must end at a segmentation boundary.
+            resultative = match.group(1)
+            if match.start() + len(resultative) not in offsets:
+                continue
             prefix = clause[:match.start()]
-            explicit_aspect = match.group().endswith(('了', '过'))
+            explicit_aspect = resultative.endswith(('了', '过'))
+            scope_tokens = words(prefix)
+            scope = set(scope_tokens) | {''.join(scope_tokens[i:i+2]) for i in range(len(scope_tokens)-1)}
+            if scope & {'能', '能够', '可以', '假装', '而非'}:
+                continue
             # A bare result in an affirmative assertion also needs a result
             # witness. Negation/intention/preference in a different clause cannot
             # license it. This gate is deliberately only a necessary boundary.
             non_result = re.search(r'没有|没能|未能|尚未|未曾|不曾|未|不|打算|计划|想要|希望|准备|喜欢|偏好|倾向|愿意', prefix)
             if explicit_aspect or not non_result:
-                predicates.add(match.group().rstrip('了过'))
+                predicates.add(resultative.rstrip('了过'))
     for predicate in sorted(predicates):
         if not any(_completion_witness(predicate, source) for source in sources):
             issues.append('completion aspect needs original source support: '
@@ -655,6 +675,18 @@ def _validate_clause_checks(output, payload):
                         source = excerpts[n-1]
                     elif n == 0 and not excerpts:
                         source = {'excerpt': memory['content'], 'date': memory.get('date')}
+                if source is not None and 'quote_index' in proof:
+                    choice = proof['quote_index']
+                    spans = _clause_parts(source['excerpt'])
+                    selected = (spans[choice-1]['text']
+                                if type(choice) is int and 1 <= choice <= len(spans) else None)
+                    # Never choose between conflicting alternatives. Old exact-quote
+                    # outputs remain readable; an indexed output must be unambiguous.
+                    if selected is None or ('quote' in proof and quote != selected):
+                        source = None
+                    else:
+                        quote = selected
+                        proof['quote'] = selected
                 if (source is None or not isinstance(quote, str) or not quote.strip()
                         or quote not in source['excerpt']):
                     issues.append(f'{label}: proof must quote an exact own bound original source')
@@ -676,12 +708,13 @@ def _validate_clause_checks(output, payload):
     return errors, problems
 
 
-def _valid_sentence_verdict(row, index):
+def _valid_sentence_verdict(row, index, *, require_kind=False):
     return (isinstance(row, dict) and type(row.get('index')) is int and row['index'] == index
             and all(type(row.get(k)) is bool for k in ('supported','fabricated','scene_qualified'))
             and isinstance(row.get('reason'), str) and bool(row['reason'].strip())
             and isinstance(row.get('violations'), list)
-            and all(isinstance(v, str) and bool(v.strip()) for v in row['violations']))
+            and all(isinstance(v, str) and bool(v.strip()) for v in row['violations'])
+            and (not require_kind or row.get('persona_kind') in PERSONA_KINDS))
 
 
 def _check_verdicts(output, sentences, *, material=None):
@@ -702,6 +735,8 @@ def _check_verdicts(output, sentences, *, material=None):
             errors.append(f'sentence {index}: invalid model verdict')
             continue
         issues = _surface_issues(sentence, memories=memories) + row.get('clause_errors', [])
+        if isinstance(row.get('persona_kind'), str) and row['persona_kind'] in EXCLUDED_KINDS:
+            issues.append(EXCLUDED_KINDS[row['persona_kind']])
         if not row['supported'] or row['fabricated'] or row['violations']:
             issues.append(row['reason'])
         if (sentence['origin'] == 'memory' and not sentence['initial_setting']
@@ -1011,6 +1046,9 @@ class PersonaEngine:
                     raise ModelError('invalid_output', 'output budget exhausted', reason='output_limit')
                 try:
                     result, _ = parse_json_object_with_status(reply.content)
+                    if set(result) == {'answer'} and isinstance(result['answer'], dict):
+                        outputs[label + '_normalizations'] = ['unwrap_single_answer']
+                        result = result['answer']
                     return result
                 except ValueError:
                     if repair:
@@ -1035,7 +1073,7 @@ class PersonaEngine:
         stage_seconds = min(MAX_CHECK_STAGE_SECONDS, CALL_TIMEOUTS[purpose] * len(subsets))
         deadline = getattr(self.gateway, 'monotonic', time.monotonic)() + stage_seconds
         raw_batches = outputs.setdefault(purpose + '_batches', [])
-        rows, batches, degrees, reasons = {}, [], [], []
+        rows, batches, degrees, reasons, incomplete = {}, [], [], [], []
         window_map = outputs.setdefault(purpose + '_windows', [])
         for batch_index,subset in enumerate(subsets):
             window_map.append([{'sentence_index':s['_check_sentence'],
@@ -1043,7 +1081,7 @@ class PersonaEngine:
                                for s in subset])
             payload = _check_payload(material, subset, full_content=full_content)
             if batch_index:
-                payload['task'] = 'check_facts'
+                payload['task'] = 'check_facts_and_rules'
                 payload.pop('previous')
                 payload.pop('candidate_text')
             raw = {}
@@ -1073,11 +1111,15 @@ class PersonaEngine:
             if mapped:
                 normalized = []
                 for local,(sentence,row) in enumerate(zip(subset,returned),1):
-                    row = {**row, 'clause_errors': []}  # Ignore model-forged diagnostics.
+                    row = {**copy.deepcopy(row), 'clause_errors': []}  # Preserve the raw model output.
                     errors, issues = _validate_clause_checks({'sentences':[row]},
                         {**payload, 'candidate':[payload['candidate'][local-1]]})
-                    malformed = ([] if _valid_sentence_verdict(row,local)
+                    malformed = ([] if _valid_sentence_verdict(row,local,require_kind=True)
                                  else [f'sentence {local}: invalid model verdict']) + errors
+                    if malformed:
+                        incomplete.append(f'batch {batch_index+1}, sentence {local}: ' + '; '.join(malformed))
+                    if isinstance(row.get('persona_kind'), str) and row['persona_kind'] in EXCLUDED_KINDS:
+                        issues.setdefault(local, []).append(EXCLUDED_KINDS[row['persona_kind']])
                     if malformed and sentence['origin'] == 'memory' and not sentence.get('initial_setting'):
                         # Exact sentence mapping is known, but this fact has no valid
                         # verdict. Never accept it: send only this sentence to recovery.
@@ -1086,7 +1128,7 @@ class PersonaEngine:
                                'reason':'invalid sentence check: ' + '; '.join(malformed)}
                         problems[local] = malformed + issues.get(local,[])
                     else:
-                        proof_errors.extend(errors)
+                        proof_errors.extend(malformed)
                         problems.update(issues)
                     # A false/invalid proof cannot be overridden by a true row flag.
                     if _valid_sentence_verdict(row,local) and problems.get(local):
@@ -1118,10 +1160,11 @@ class PersonaEngine:
             degrees.append(degree)
             reasons.append(batch['reason'])
         return {'sentences':[rows[i] for i in sorted(rows)], 'change_degree':degrees[0],
-                'reason':reasons[0], 'batches':batches, 'window_map':window_map}
+                'reason':reasons[0], 'batches':batches, 'window_map':window_map,
+                'incomplete_checks':incomplete}
 
     def _recover_sentences(self, original, initial_model, problems, material, previous, checks, outputs):
-        payload = _check_payload(material, original, full_content=''.join(s['text'] for s in original))
+        payload = _check_payload(material, original, full_content=''.join(s['text'] for s in original), proof_choices=False)
         repairable = {i:original[i-1] for i in problems if original[i-1]['origin'] != 'initial_template'}
         proposed, replacements = {}, {}
         checks['repair_policy'] = 'bound_memory_extract_v1'

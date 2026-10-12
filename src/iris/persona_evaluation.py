@@ -410,8 +410,9 @@ def _run_timeline(configs,case,directory,gateway_factory):
                 attempts = [dict(r) for r in conn.execute('SELECT * FROM persona_attempts ORDER BY id')]
                 calls = [dict(r) for r in conn.execute('SELECT * FROM model_calls ORDER BY id')]
             invalid_calls = _invalid_model_calls(calls)
-            return {'case':case,'complete':complete and not invalid_calls,
-                    'invalid_calls':invalid_calls,'observations':observations,'checkpoints':events,
+            incomplete_checks = _incomplete_checks(observations)
+            return {'case':case,'complete':complete and not invalid_calls and not incomplete_checks,
+                    'invalid_calls':invalid_calls,'incomplete_checks':incomplete_checks,'observations':observations,'checkpoints':events,
                     'attempts':attempts,'calls':calls,'control_operations':control_operations}
         finally:
             if gateway:
@@ -448,10 +449,36 @@ def _invalid_model_calls(calls):
     for call in calls:
         reason = ('rate_limited' if call.get('status_code') == 429 else
                   'timeout' if call.get('timed_out') else
-                  'transport_failure' if call.get('result_category') == 'retryable' else None)
+                  'transport_failure' if call.get('result_category') == 'retryable' else
+                  'output_limit' if call.get('finish_reason') == 'length' else None)
         if reason:
             failures.append({key:call.get(key) for key in
                 ('id','purpose','created_at','duration_ms','status_code','timed_out')} | {'reason':reason})
+    return failures
+
+
+def _incomplete_checks(observations):
+    """Separate missing model verdicts from complete negative quality verdicts.
+
+    Recompute from frozen versions too: earlier reports may have called a safely
+    rejected but technically incomplete check a completed timeline.
+    """
+    failures = []
+    for observation in observations:
+        checks = observation['candidate']['checks']
+        details = {}
+        for phase in ('initial_model', 'model', 'recheck'):
+            result = checks.get(phase)
+            if isinstance(result, dict):
+                errors = result.get('validation_errors', []) + result.get('incomplete_checks', [])
+                if errors:
+                    details[phase] = errors
+        for index, repair in enumerate(checks.get('repair_outputs', []), 1):
+            if isinstance(repair, dict) and repair.get('error') == 'output_limit':
+                details[f'repair_{index}'] = ['output_limit']
+        if details:
+            failures.append({'timeline_id': observation['timeline_id'],
+                'checkpoint_id': observation['checkpoint_id'], 'details': details})
     return failures
 
 
@@ -486,11 +513,15 @@ def _metrics(rows, judgments=None):
     deletions = [len(o['candidate']['checks'].get('deleted_sentences',[])) for o in observations]
     repairs = [len(o['candidate']['checks'].get('repaired_sentences',[])) for o in observations]
     invalid_calls = _invalid_model_calls(calls)
-    result = {'run_valid':all(r['complete'] for r in rows) and not invalid_calls,
+    incomplete_checks = _incomplete_checks(all_versions)
+    incomplete_timelines = sum(not r['complete'] or bool(_incomplete_checks(r['observations'])) for r in rows)
+    result = {'run_valid':not incomplete_timelines and not invalid_calls,
+              'incomplete_check_count':len(incomplete_checks), 'incomplete_checks':incomplete_checks,
               'invalid_call_count':len(invalid_calls),
               'timed_out_attempts':sum(a['reason']=='timeout' for row in rows for a in row['attempts']),
               'run_invalid_reasons':sorted({c['reason'] for c in invalid_calls} |
-                  ({'incomplete_timeline'} if any(not r['complete'] for r in rows) else set())),
+                  ({'incomplete_timeline'} if incomplete_timelines else set()) |
+                  ({'incomplete_model_check'} if incomplete_checks else set())),
               'proposed_sentences':sum(sentence_counts), 'deleted_sentences':sum(deletions),
               'deleted_sentence_ratio':sum(deletions)/sum(sentence_counts) if sum(sentence_counts) else None,
               'candidates_with_deletions':sum(bool(n) for n in deletions),
@@ -508,7 +539,7 @@ def _metrics(rows, judgments=None):
               'untriggered_checkpoints':sum(o['operation']=='checkpoint_current' for o in all_versions),
               'grounded_change_ratio':None, 'violations':{}, 'rejected_candidate_violations':{},
               'must_reflect_coverage':None,'must_not_occurrences':None,
-              'calls':_call_metrics(calls), 'incomplete_timelines':sum(not r['complete'] for r in rows),
+              'calls':_call_metrics(calls), 'incomplete_timelines':incomplete_timelines,
               'change_degree_comparison':[], 'checkpoint_expectations':[],
               'level_reasonable_ratio':None, 'scenarios':{key:[] for key in ('S17','S18','S19')}}
     for row in rows:
@@ -660,7 +691,8 @@ def run_persona_eval(configs, root, *, corpus, out, judge_mode='model', gateway_
             saved = _read_json(path)
             if (saved['signature'] != signature or saved['row_sha256'] != _json_sha256(saved['row'])
                     or saved['row']['case'] != case or saved['row']['complete'] is not True
-                    or _invalid_model_calls(saved['row']['calls'])):
+                    or _invalid_model_calls(saved['row']['calls'])
+                    or _incomplete_checks(saved['row']['observations'])):
                 raise ValueError('invalid or incomplete persona checkpoint')
             row,resumed = saved['row'],resumed+1
         else:

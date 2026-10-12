@@ -43,7 +43,7 @@ class FocusModel:
                         elif self.bad=='wrong_index':part['index']=99
                     parts.append(part)
             rows.append({'index':sentence['index'],'clauses':parts,'supported':True,
-                'fabricated':False,'scene_qualified':True,'violations':[],'reason':'完整句作为语境。'})
+                'fabricated':False,'persona_kind':'episode','scene_qualified':True,'violations':[],'reason':'完整句作为语境。'})
         return ModelReply(dumps({'sentences':rows,'change_degree':'small','reason':'有界变化。'}),'stop',{})
 
 
@@ -56,7 +56,7 @@ def test_large_sentence_is_checked_in_small_windows_without_losing_context(store
     material,sentence=material_and_sentence();before=copy.deepcopy(sentence);model=FocusModel()
     result=run(store,model,material,[sentence])
     assert len(model.calls)==2
-    assert [r['task'] for r,_ in model.calls]==['check','check_facts']
+    assert [r['task'] for r,_ in model.calls]==['check','check_facts_and_rules']
     assert [[p['index'] for p in r['candidate'][0]['clauses']] for r,_ in model.calls]==[[1,2],[3,4]]
     assert all(r['candidate'][0]['text']==sentence['text'] for r,_ in model.calls)
     assert all(r['candidate'][0]['evidence_refs']==['M1'] for r,_ in model.calls)
