@@ -252,7 +252,7 @@ flowchart LR
 
 `persona_context` 在回复准备已有的只读快照中读取当前版正文、生成时间、句子及材料，逐项核对被引用记忆，返回 `version/content/generated_at/needs_update/stale_basis_count`。不读取可能很大的全部自我记忆快照，不调用模型，不改其他分区；失效计数按记忆 ID 去重。管理当前页在同一快照增加失效依据列表。`persona_due` 独立判断至少五条新增／变化，或自生成时刻起经过至少 168 小时且有变化；手动编辑和回滚重新起算，确认不改起点。定期更新调用由梦境整理线接入。
 
-管理接口、分页、状态枚举与请求字段见 README 的 M3 persona 小节。所有读取使用已有管理员会话，写入还需 CSRF 与同源检查；版本 CAS 冲突返回 409。页面轮询不会触发模型。外部评测冻结输入指纹，保留拒绝候选并单列；双判逐句取不利结论，评分格式与双判规则仍沿用冻结的 persona_scoring_v1；优化线同时运行 persona_v1／persona_v2。新增 proposed/deleted/repaired sentence 及 candidate deletion 比例，分母包括全部生成候选修复前的模板和生成句，失败／超时仍保留在检查点统计中。用途与超时、源码、语料、实际设置进入外部材料，删除记录不被当作最终句子判分；它们作为运行诊断完整保留。 `run_valid` 另行反映运行有效性：任何 429、超时、可重试传输错误、输出耗尽或未完成的模型判定均使该次评测无效，`_incomplete_checks` 从版本检查原文重新计算，旧报告的 complete=true 不能遮蔽缺判定；`incomplete_check_count` 单列，完整的语义拒绝仍是有效质量结果。成功重试不能覆盖原始错误；无效时间线不写完成缓存，完整重跑使用新输出目录。
+管理接口、分页、状态枚举与请求字段见 README 的 M3 persona 小节。所有读取使用已有管理员会话，写入还需 CSRF 与同源检查；版本 CAS 冲突返回 409。页面轮询不会触发模型。外部评测冻结输入指纹，保留拒绝候选并单列；双判逐句取不利结论，评分格式与双判规则仍沿用冻结的 persona_scoring_v1；优化线同时运行 persona_v1／persona_v2。新增 proposed/deleted/repaired sentence 及 candidate deletion 比例，分母包括全部生成候选修复前的模板和生成句，失败／超时仍保留在检查点统计中。用途与超时、源码、语料、实际设置进入外部材料，删除记录不被当作最终句子判分；它们作为运行诊断完整保留。 `run_valid` 另行反映运行有效性：任何 429、超时、可重试传输错误、输出耗尽或未完成的模型判定均使该次评测无效，`_incomplete_checks` 从版本检查原文重新计算，旧报告的 complete=true 不能遮蔽缺判定；`incomplete_check_count` 单列，完整的语义拒绝仍是有效质量结果。成功重试不能覆盖原始错误；无效时间线不写完成缓存，完整重跑使用新输出目录。`timeline-progress-*.json` 在每次操作后用 fsync＋同目录原子替换保存已完成检查点、原始尝试和调用；BaseException 中断在关闭 Store 与临时数据库清理前再写快照，部分日志永不用于恢复缓存。技术失败在检查点后停止当前时间线和后续案例，报告 `planned_timelines/executed_timelines/unexecuted_timelines` 与已完成／剩余事件数；正常的完整拒绝判定仍继续执行。中断中的在途调用可能没有用量，不能以零用量计。
 
 ## M3 当前状态（GO 第一步）
 

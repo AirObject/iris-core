@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import tempfile
 import time
 from collections import Counter
@@ -341,11 +342,45 @@ def _observation(store, case_id, checkpoint, previous, candidate):
             'timezone':str(zone),'settings':settings,'subjects':subjects,'memory_state':memory_state,'role_settings':role_settings}
 
 
+def _write_progress(path, value):
+    """Atomic diagnostic only, never a resumable timeline checkpoint."""
+    temporary = path.with_name(path.name + '.' + uuid4().hex + '.tmp')
+    try:
+        with temporary.open('x', encoding='utf-8') as stream:
+            stream.write(json.dumps(value, ensure_ascii=False, indent=2) + '\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def _run_timeline(configs,case,directory,gateway_factory):
     clock = TimelineClock(case['start_at'])
     with tempfile.TemporaryDirectory(prefix='timeline-',dir=directory) as temporary:
         store = Store(Path(temporary)/'iris.db')
         gateway = None
+        observations, events, control_operations = [], [], []
+        complete, completed_events = True, 0
+        journal = Path(directory)/('timeline-progress-' + uuid4().hex + '.json')
+        def snapshot(*, finished=False, interruption=None):
+            with store.read() as conn:
+                attempts = [dict(r) for r in conn.execute('SELECT * FROM persona_attempts ORDER BY id')]
+                calls = [dict(r) for r in conn.execute('SELECT * FROM model_calls ORDER BY id')]
+            invalid_calls = _invalid_model_calls(calls)
+            incomplete_checks = _incomplete_checks(observations)
+            invalid = not complete or bool(invalid_calls) or bool(incomplete_checks)
+            remaining = len(case['events']) - completed_events
+            row = _redacted({'case':case, 'complete':finished and not invalid and not remaining,
+                'completed_events':completed_events, 'remaining_events':remaining,
+                'invalid_calls':invalid_calls, 'incomplete_checks':incomplete_checks,
+                'observations':observations, 'checkpoints':events, 'attempts':attempts,
+                'calls':calls, 'control_operations':control_operations}, configs)
+            _write_progress(journal, {'format_version':1, 'evaluation':'persona',
+                'state':'interrupted' if interruption else 'invalid' if invalid else 'complete' if finished else 'running',
+                'interruption':interruption, 'inflight_usage_unknown':bool(interruption),
+                'row_sha256':_json_sha256(row), 'row':row})
+            return row
         try:
             role = case.get('role',{})
             setup_role(store,role.get('name','Iris'),role.get('background',''),role.get('timezone','Asia/Shanghai'),current=clock())
@@ -368,13 +403,14 @@ def _run_timeline(configs,case,directory,gateway_factory):
                 keys = {f'initial:{i+1}':r[0] for i,r in enumerate(conn.execute('SELECT id FROM memories ORDER BY id'))}
             health = ModelHealth(store,configs,clock=clock) if gateway_factory is Gateway else None
             gateway = gateway_factory(configs,store,health=health,clock=clock)
-            engine, events = PersonaEngine(store,gateway,clock=clock),[]
-            control_operations = []
-            complete = True
+            engine = PersonaEngine(store,gateway,clock=clock)
+            snapshot()
             for ordinal,event in enumerate(case['events']):
                 clock.value = _instant(event['at'])
                 if event['op'] in ('add','edit','delete','forget'):
                     _mutate(store,event,keys,clock)
+                    completed_events = ordinal + 1
+                    snapshot()
                     continue
                 previous = current_persona(store)
                 if event['op'] in ('persona_confirm','persona_reject'):
@@ -383,10 +419,14 @@ def _run_timeline(configs,case,directory,gateway_factory):
                     if pending is None:
                         control_operations.append({'event':event,'status':'noop','reason':'no_pending_candidate',
                                                    'current_version_id':previous['id'],'version':None})
+                        completed_events = ordinal + 1
+                        snapshot()
                         continue
                     action = confirm_candidate if event['op']=='persona_confirm' else reject_candidate
                     version = action(store,pending[0],expected_version=previous['id'],clock=clock)
                     control_operations.append({'event':event,'status':'applied','version':version})
+                    completed_events = ordinal + 1
+                    snapshot()
                     continue
                 if event['op']=='persona_edit':
                     content = event['content'] if 'content' in event else previous['content']+''.join(event['append'])
@@ -406,14 +446,21 @@ def _run_timeline(configs,case,directory,gateway_factory):
                         observations.append(observation)
                     if result['status'] in ('failed','conflict') or (result['status']=='skipped' and result['reason'] not in ('not_due','no_self_evidence')):
                         complete = False
-            with store.read() as conn:
-                attempts = [dict(r) for r in conn.execute('SELECT * FROM persona_attempts ORDER BY id')]
-                calls = [dict(r) for r in conn.execute('SELECT * FROM model_calls ORDER BY id')]
-            invalid_calls = _invalid_model_calls(calls)
-            incomplete_checks = _incomplete_checks(observations)
-            return {'case':case,'complete':complete and not invalid_calls and not incomplete_checks,
-                    'invalid_calls':invalid_calls,'incomplete_checks':incomplete_checks,'observations':observations,'checkpoints':events,
-                    'attempts':attempts,'calls':calls,'control_operations':control_operations}
+                completed_events = ordinal + 1
+                progress = snapshot()
+                if not complete or progress['invalid_calls'] or progress['incomplete_checks']:
+                    # No further model calls in a run already disqualified by a
+                    # technical failure. Complete negative judgments continue.
+                    break
+            return snapshot(finished=True)
+        except BaseException as error:
+            # SIGINT used to delete the only copy of the current timeline. Save
+            # completed calls/raw attempts before TemporaryDirectory cleanup.
+            try:
+                snapshot(interruption=type(error).__name__)
+            except Exception as journal_error:
+                error.add_note('persona progress snapshot failed: ' + type(journal_error).__name__)
+            raise
         finally:
             if gateway:
                 gateway.close()
@@ -640,7 +687,11 @@ def _report(report,directory):
     lines = ['# Persona evaluation', '', f"Judge mode: {report['judge_mode']}; rounds: {report.get('judge_runs',0)}.",
         'Public/dev diagnostics only; this report does not establish the M3 hidden gate.', '',
         '| Metric | Value |','| --- | --- |']
-    for key in ('changes','grounded_change_ratio','generated_candidates','check_rejected_ratio',
+    for key in ('planned_timelines','executed_timelines','unexecuted_timelines'):
+        if key in report:
+            lines.append(f'| {key} | {report[key]} |')
+    for key in ('run_valid','invalid_call_count','incomplete_check_count',
+                'changes','grounded_change_ratio','generated_candidates','check_rejected_ratio',
                 'deleted_sentences','deleted_sentence_ratio','candidate_deletion_ratio','repaired_sentences',
                 'must_reflect_coverage','must_not_occurrences','incomplete_timelines'):
         lines.append(f'| {key} | {metrics[key]} |')
@@ -703,6 +754,8 @@ def run_persona_eval(configs, root, *, corpus, out, judge_mode='model', gateway_
             else:
                 _write_json(checkpoints/f'{index:04}-incomplete-{uuid4().hex[:8]}.json',record)
         rows.append(row)
+        if not row['complete']:
+            break
     metadata = {'source_sha256':source_hash, 'corpus_sha256':_json_sha256(cases),
                 'corpus_file_sha256':identity['corpus_file_sha256'], 'checkpoint_signature':signature,
                 'scoring_version':SCORING_VERSION,'scoring_sha256':identity['scoring_sha256'],
@@ -713,6 +766,8 @@ def run_persona_eval(configs, root, *, corpus, out, judge_mode='model', gateway_
                 'check_batch_size':CHECK_BATCH_SIZE, 'check_batch_clauses':CHECK_BATCH_CLAUSES,
                 'max_check_stage_seconds':MAX_CHECK_STAGE_SECONDS,
                 'repair_batch_size':REPAIR_BATCH_SIZE, 'max_repair_stage_seconds':MAX_REPAIR_STAGE_SECONDS,
+                'planned_timelines':len(cases), 'executed_timelines':len(rows),
+                'unexecuted_timelines':len(cases)-len(rows),
                 'resumed_cases':resumed,'elapsed_seconds':round(time.monotonic()-started,3)}
     directory = out/('judging-materials-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')+'-'+uuid4().hex[:8])
     materials,manifest = _export(rows,metadata,scoring,directory)
@@ -721,6 +776,8 @@ def run_persona_eval(configs, root, *, corpus, out, judge_mode='model', gateway_
     if judge_mode=='external':
         _report(report,out)
         return materials,report
+    if not report['metrics']['run_valid']:
+        return _report(report,out),report
     judgments,judge_calls = _preview(configs,rows,scoring,out)
     report.update(judge_runs=1,judge_model=configs['chat'].model,judgments=judgments,
                   judge_calls=_call_metrics(judge_calls),metrics=_metrics(rows,judgments))
