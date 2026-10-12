@@ -30,7 +30,7 @@ DEFAULTS = dict(enabled=True, publish_mode='check_auto', memory_tokens=3000,
                 min_memories=8, min_changed=5, update_days=14, max_subjects_per_run=10,
                 max_items=5, max_chars=200, max_tokens=250,
                 generate_timeout_seconds=120, check_timeout_seconds=120)
-DEFAULT_PROMPT_VERSION = 'v1'  # v2 stays explicit until the scheduled quality review.
+DEFAULT_PROMPT_VERSION = 'v2'  # EF-02 public external double-judge gate passed.
 PROMPT_VERSIONS = ('v1', 'v2')
 KINDS = {'relationship':'与我的关系', 'fact':'稳定事实', 'preference':'偏好与习惯', 'recent':'近期重要事项'}
 PUBLISH_MODES = ('check_auto','all_manual')

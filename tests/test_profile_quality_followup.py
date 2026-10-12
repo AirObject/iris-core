@@ -67,19 +67,25 @@ def test_factual_join_year_and_preference_reason_are_not_wishes():
     assert summary('甲偏好原声电影', rows, kind='preference')[0]
 
 
-def test_candidate_prompts_loaded_once_and_calls_record_the_exact_hash(store):
+@pytest.mark.parametrize('selected,version', [(None, 'v2'), ('v1', 'v1'), ('v2', 'v2')])
+def test_default_and_explicit_prompts_record_the_exact_sent_hash(store, selected, version):
     from test_person_summary import Clock, Model, seed
     clock = Clock(); seed(store, clock)
     model = Model(store)
-    engine = ps.PersonSummaryEngine(store, model, clock=clock, prompt_version='v2')
+    sent_hashes = []; original = model.chat
+    def chat(request, purpose, **kwargs):
+        sent_hashes.append(hashlib.sha256(request[0]['content'].encode('utf-8')).hexdigest())
+        return original(request, purpose, **kwargs)
+    model.chat = chat
+    engine = ps.PersonSummaryEngine(store, model, clock=clock, prompt_version=selected)
     result = engine.regenerate('a', expected_version=0)
     assert result['status'] == 'published'
     with store.read() as conn:
         calls = json.loads(conn.execute('SELECT calls_json FROM person_summary_attempts').fetchone()[0])
-    for call, kind in zip(calls, ('generate', 'check'), strict=True):
-        content = files('iris').joinpath(f'prompts/person_summary_{kind}_v2.md').read_bytes()
-        assert call['prompt_version'] == f'person_summary_{kind}_v2'
-        assert call['prompt_sha256'] == hashlib.sha256(content).hexdigest()
+    for call, kind, sent_hash in zip(calls, ('generate', 'check'), sent_hashes, strict=True):
+        content = files('iris').joinpath(f'prompts/person_summary_{kind}_{version}.md').read_bytes()
+        assert call['prompt_version'] == f'person_summary_{kind}_{version}'
+        assert call['prompt_sha256'] == hashlib.sha256(content).hexdigest() == sent_hash
 
 
 def test_unrelated_new_memory_cannot_extend_a_recent_wishs_expiry():
@@ -116,3 +122,20 @@ def test_runner_records_loaded_versions_in_fingerprinted_run_json(tmp_path, fami
     assert report['prompt_sha256'] == run['prompt_sha256']
     assert captured and all(sha in run['prompt_sha256'].values() for sha in captured)
     runner._load_materials(materials)  # Input/run/case fingerprint consistency.
+
+
+@pytest.mark.parametrize('version,status', [(None, 'rejected'), ('v1', 'published')])
+def test_default_checks_old_wishes_while_explicit_v1_preserves_baseline(store, version, status):
+    from test_person_summary import Clock, Model, memory, seed
+    clock = Clock(); seed(store, clock)
+    memory(store, clock, '甲同学想学习陶艺。', days_ago=40, importance=100)
+    model = Model(store, items=[{'kind': 'fact', 'text': '甲同学想学习陶艺。',
+                                'memory_refs': ['M1']}])
+    result = ps.PersonSummaryEngine(store, model, clock=clock, prompt_version=version).regenerate('a', expected_version=0)
+    assert result['status'] == status
+    assert '甲同学想学习陶艺。' == model.calls[0][1]['evidence']['memories'][0]['content']
+    if version is None:
+        assert result['version']['checks']['deleted_sentences'][0]['reason'] == 'expired_undated_intent'
+        assert len(model.calls) == 1
+    else:
+        assert len(model.calls) == 2
