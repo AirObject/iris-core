@@ -129,3 +129,41 @@ def test_fake_cli_never_loads_model_configuration_and_marks_output(tmp_path,monk
         materials=json.loads(requests[0]['messages'][-1]['content'])
         assert set(materials)=={'incoming','candidates'}
         assert 'expected' not in str(materials)
+
+
+def test_uncertain_hit_denominator_includes_cases_without_candidate_annotations():
+    rows = [sample({'decision': 'uncertain'}, possible=['g1']),
+            sample({'decision': 'uncertain'}),
+            sample({'decision': 'uncertain', 'candidates': ['g2']}, possible=['g1']),
+            sample({'decision': 'uncertain', 'candidates': ['g2']}, possible=['g2', 'g3'])]
+    result = scoring.report(rows)
+    assert result['uncertain_candidate_hit_rate'] == scoring.ratio(2, 4)
+    assert result['uncertain_possible_rate'] == scoring.ratio(3, 4)
+    assert result['uncertain_annotated_candidate_hit_rate'] == scoring.ratio(1, 2)
+    assert result['uncertain_candidate_outside_cases'] == 2
+    assert result['metric_version'] == 2
+
+
+def test_uncertain_explicit_empty_candidates_does_not_accept_any_hint():
+    result = scoring.report([sample({'decision': 'uncertain', 'candidates': []}, possible=['g1'])])
+    assert result['uncertain_candidate_hit_rate'] == scoring.ratio(0, 1)
+
+
+def test_gd4_gate_retains_uncertain_hits_and_does_not_penalize_them_as_separate():
+    baseline = scoring.report([sample({'decision': 'merge', 'target': 'g1'}, merges=['g1']),
+        sample({'decision': 'separate'}, possible=['g1']),
+        sample({'decision': 'uncertain'}, possible=['g1'])])
+    final = scoring.report([sample({'decision': 'merge', 'target': 'g1'}, merges=['g1']),
+        sample({'decision': 'separate'}), sample({'decision': 'uncertain'}, possible=['g1'])])
+    assert scoring.meets_gd4_gate(final, baseline)
+    lost_uncertain = scoring.report([sample({'decision': 'merge', 'target': 'g1'}, merges=['g1']),
+        sample({'decision': 'separate'}), sample({'decision': 'uncertain'})])
+    assert not scoring.meets_gd4_gate(lost_uncertain, baseline)
+    assert not scoring.meets_gd4_gate({**final, 'valid': False}, baseline)
+    assert not scoring.meets_gd4_gate({**final, 'complete': False}, baseline)
+    assert not scoring.meets_gd4_gate({**final, 'simulation': True}, baseline)
+    assert not scoring.meets_gd4_gate({**final, 'wrong_merge_rate': scoring.ratio(0, 0)}, baseline)
+    assert not scoring.meets_gd4_gate({**final, 'wrong_merge_rate': scoring.ratio(1, 99)}, baseline)
+    assert not scoring.meets_gd4_gate({**final, 'merge_recognition': scoring.ratio(0, 1)}, baseline)
+    assert scoring.meets_gd4_gate({**final, 'separate_possible_rate': scoring.ratio(1, 4)}, baseline)
+    assert not scoring.meets_gd4_gate({**final, 'separate_possible_rate': scoring.ratio(2, 4)}, baseline)

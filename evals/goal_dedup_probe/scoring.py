@@ -33,6 +33,17 @@ def score_case(case, result):
             'possible_outside_candidates': sorted(possible-set(allowed)) if allowed is not None else None}
 
 
+def uncertain_candidate_hit(row):
+    """Annotated candidates restrict a hit; absent annotations accept any hint.
+
+    The denominator is all uncertain cases, including those without candidate
+    annotations. Never treat missing annotations as an empty allowed set.
+    """
+    possible = set(row['possible_targets'])
+    allowed = row['expected'].get('candidates')
+    return bool(possible) if allowed is None else bool(possible & set(allowed))
+
+
 def summarize(rows):
     merge_cases = [r for r in rows if r['expected']['decision'] == 'merge']
     separate = [r for r in rows if r['expected']['decision'] == 'separate']
@@ -40,14 +51,15 @@ def summarize(rows):
     candidates = [r for r in uncertain if r['possible_candidate_hit'] is not None]
     degraded = sum(bool(r['degraded']) for r in rows)
     result = {
-        'cases': len(rows), 'valid': degraded == 0,
+        'metric_version': 2, 'cases': len(rows), 'valid': degraded == 0,
         'invalid_reason': 'degraded_run_must_be_repeated' if degraded else None,
         'wrong_merge_rate': ratio(sum(r['wrong_merges'] for r in rows), sum(len(r['merges']) for r in rows)),
         'merge_recognition': ratio(sum(r['recognized'] for r in merge_cases), len(merge_cases)),
         'separate_possible_rate': ratio(sum(bool(r['possible_targets']) for r in separate), len(separate)),
         'uncertain_possible_rate': ratio(sum(bool(r['possible_targets']) for r in uncertain), len(uncertain)),
         'nonmerge_possible_rate': ratio(sum(bool(r['possible_targets']) for r in [*separate,*uncertain]), len(separate)+len(uncertain)),
-        'uncertain_candidate_hit_rate': ratio(sum(r['possible_candidate_hit'] for r in candidates), len(candidates)),
+        'uncertain_candidate_hit_rate': ratio(sum(uncertain_candidate_hit(r) for r in uncertain), len(uncertain)),
+        'uncertain_annotated_candidate_hit_rate': ratio(sum(r['possible_candidate_hit'] for r in candidates), len(candidates)),
         'uncertain_candidate_outside_cases': sum(bool(r['possible_outside_candidates']) for r in candidates),
         'degraded_cases': degraded, 'pending_cases': sum(r['decision']['status'] == 'pending' for r in rows),
         'model_calls': sum(r['model_calls'] for r in rows),
@@ -92,3 +104,17 @@ def select_method(reports, order=('A','B','C')):
     best = max(summaries[method]['recognition'] for method in eligible)
     tied = [method for method in eligible if best-summaries[method]['recognition'] < .03]
     return min(tied, key=lambda method:(summaries[method]['calls'],summaries[method]['p95'],order.index(method)))
+
+
+def meets_gd4_gate(result, baseline):
+    """Planner's revised GD4 gate; separate errors and uncertain hits stay apart."""
+    if (not result['valid'] or not result.get('complete', True)
+            or result.get('simulation') or result['wrong_merge_rate']['rate'] != 0):
+        return False
+    for key, minimum in (('merge_recognition', True), ('uncertain_candidate_hit_rate', True),
+                         ('separate_possible_rate', False)):
+        value = result[key]['rate']
+        bound = baseline[key]['rate'] if minimum else .25
+        if value is None or bound is None or (value < bound if minimum else value > bound):
+            return False
+    return True

@@ -870,7 +870,7 @@ def _merge(conn,a,b,current,*,actor,semantic=False,reason=None,scope=ALL_ENTRIES
 
 
 def _sequence_conflicts(conn,candidates,proposed,options,*,dismissed=()):
-    if dedup_judge.candidate_method(options)!='C2':
+    if dedup_judge.candidate_method(options)!='C2' and not dedup_judge.model_possible(options):
         return []
     speakers=dedup_judge.source_speakers(conn,[proposed,*candidates])
     return dedup_judge.select_sequence_conflicts(candidates,proposed,source_speakers=speakers,dismissed=dismissed)
@@ -922,12 +922,19 @@ def _create(conn, *, content, kind='normal', deadline=None, reminder_minutes=Non
         candidate['deadline'] = _deadline(candidate['deadline'],role_zone(conn),strict=False) or candidate['deadline']
     options = dedup_judge.connection_settings(conn)
     conflicts = _sequence_conflicts(conn,candidates,proposed,options)
+    model_possible = dedup_judge.model_possible(options)
     if dedup_judge.method(options) == 'A':
         decision = decide_dedup(candidates,proposed,possible_min_similarity=dedup_judge.validate_similarity(options['possible_min_similarity']))
+        if decision['status']=='possible_duplicate' and options.get('method')!='A':
+            # Disabled model judgment cannot manufacture a weak hint. Explicit
+            # A is retained only for reproducing the frozen historical probe.
+            decision = {'status':'created','target_id':None}
     else:
         # Even equal short bodies can refer to different events in their sources.
         # Inside learning's transaction only stage deterministic candidates.
         pending = dedup_judge.select_candidates(candidates,proposed)
+        if model_possible:
+            pending += conflicts  # Stage review; similarity alone must not create a hint.
         decision = ({'status':'pending','target_id':None} if pending else
                     dedup_judge.decision_from_verdicts({},origin=origin,possible_ids=[r['id'] for r in conflicts],
                         scores={r['id']:dedup_judge.similarity(r,proposed) for r in conflicts},
@@ -947,7 +954,7 @@ def _create(conn, *, content, kind='normal', deadline=None, reminder_minutes=Non
         target = _merge(conn,latest,proposed,current,actor=actor,scope=scope)
         decision['target_id'] = target
     else:
-        for row in conflicts:
+        for row in ([] if model_possible else conflicts):
             if dedup_judge.similarity(row,proposed)>=dedup_judge.validate_similarity(options['possible_min_similarity']):
                 _possible(conn,gid,row['id'],current,actor=actor)
         if decision['status']=='possible_duplicate':
@@ -1101,7 +1108,9 @@ class Goals:
             conflicts = _sequence_conflicts(conn,candidates,proposed,options,dismissed=dismissed)
             observed = [proposed,*selected,*conflicts]
             snapshots = [dedup_judge.material(conn,row) for row in observed]
-            incoming,materials = snapshots[0],snapshots[1:1+len(selected)]
+            model_possible = dedup_judge.model_possible(options)
+            incoming = snapshots[0]
+            materials = snapshots[1:] if model_possible else snapshots[1:1+len(selected)]
             source_snapshot = dedup_judge.source_speakers(conn,observed) if conflicts else {}
         revisions = {str(row['id']):row['revision'] for row in [*selected,*conflicts]}
         with self.store.write() as conn:
@@ -1114,10 +1123,12 @@ class Goals:
             remaining = options['budget_seconds']-(timer.monotonic()-started)
             if remaining<=0:
                 raise ModelError('retryable','goal judgment total timeout',reason='timeout')
-            verdicts = dedup_judge.judge(self.gateway,incoming,materials,method=dedup_judge.method(options),
-                         budget_seconds=remaining) if selected else {}
+            verdicts = dedup_judge.judge(self.gateway,incoming,materials,
+                         method=dedup_judge.candidate_method(options) if model_possible else dedup_judge.method(options),
+                         budget_seconds=remaining) if materials else {}
             decision = dedup_judge.decision_from_verdicts(verdicts,origin=proposed['origin'],overflow=overflow,
-                         possible_ids=[row['id'] for row in conflicts],
+                         possible_ids=[] if model_possible else [row['id'] for row in conflicts],
+                         guard_ids=[row['id'] for row in conflicts] if model_possible else [],
                          scores={row['id']:dedup_judge.similarity(row,proposed) for row in [*selected,*conflicts]},
                          min_similarity=options['possible_min_similarity'])
         except ModelError as exc:

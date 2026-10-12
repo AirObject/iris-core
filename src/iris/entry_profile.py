@@ -398,7 +398,8 @@ def _length_errors(content, config, *, structured=False):
 def _edit_segments(content, previous):
     # Quotes can contain punctuation. Preserve unchanged rendered items atomically,
     # and use the legacy sentence splitter only for genuinely new/edited text.
-    known=sorted({s['text'] for s in previous['sentences'] if s.get('format_version')==PROFILE_FORMAT}
+    # Cleared items retain audit metadata, not text that can match an edit.
+    known=sorted({s['text'] for s in previous['sentences'] if s['text'] and s.get('format_version')==PROFILE_FORMAT}
                  if previous else [],key=len,reverse=True)
     if not known:
         return split_sentences(content)
@@ -438,7 +439,8 @@ def admin_edit(store, entry_id, content, *, expected_version, clock=utc_now):
             raise ValueError('profile must contain 150–500 characters')
         old=defaultdict(list)
         for sentence in previous['sentences'] if previous else []:
-            old[sentence['text']].append(sentence)
+            if sentence['text']:
+                old[sentence['text']].append(sentence)
         sentences=[]
         for text in _edit_segments(content,previous):
             sentences.append(old[text].pop(0) if old[text] else {'text':text,'basis':[],'author':'admin','message_count':0})

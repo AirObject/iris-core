@@ -1,3 +1,8 @@
+import {
+  summaryLink,
+  summaryReason,
+  summaryStatuses,
+} from "./person-summary-labels";
 import { MergeDetailReview, mergeReviewLabel } from "./MergeDetailReview";
 import { useState } from "react";
 import { Badge, Pagination, RoleTime, seconds } from "./ui";
@@ -277,6 +282,58 @@ function GoalReviewReport({ data }: { data: MaintenanceReport }) {
   );
 }
 
+function PersonSummaryReport({ data }: { data: MaintenanceReport }) {
+  const [offset, setOffset] = useState(0);
+  const items = data.items.filter((item) => item.outcome === "person_summary");
+  if (
+    !items.length &&
+    data.consolidation?.settings.person_summary_enabled == null
+  )
+    return null;
+  return (
+    <section className="detail-section" aria-label="人物摘要处理结果">
+      <h3>
+        人物摘要处理结果 <Badge>{items.length}</Badge>
+      </h3>
+      {data.consolidation?.settings.person_summary_enabled === false && (
+        <p>本次运行已关闭人物摘要更新。</p>
+      )}
+      {!items.length && <p>本次没有人物摘要处理记录。</p>}
+      {items.slice(offset, offset + 30).map((item) => (
+        <article className="maintenance-item" key={item.item_key}>
+          <p>
+            <Badge>
+              {summaryStatuses[item.details.status || ""] ||
+                item.details.status ||
+                "未记录结果"}
+            </Badge>
+          </p>
+          {item.details.subject_id ? (
+            <a
+              href={summaryLink(item.details.subject_id, item.details.version)}
+            >
+              查看人物 {item.details.subject_id}
+              {item.details.version
+                ? ` 的摘要 v${item.details.version}`
+                : " 的摘要与任务"}
+            </a>
+          ) : (
+            <p>人物摘要步骤异常，未关联具体人物。</p>
+          )}
+          {item.reason && <p>{summaryReason(item.reason)}</p>}
+          {item.details.attempt_id != null && (
+            <p>生成任务 #{item.details.attempt_id}</p>
+          )}
+          <small>
+            <RoleTime value={item.created_at} />
+          </small>
+        </article>
+      ))}
+      <Pagination total={items.length} offset={offset} change={setOffset} />
+    </section>
+  );
+}
+
 export function ConsolidationReportSections({
   data,
   openMemory,
@@ -305,7 +362,8 @@ export function ConsolidationReportSections({
               </p>
               <p className="fine-print">
                 {calls.unknown_usage_calls ?? 0}{" "}
-                次调用用量未知；用量为已知合计，包含实际重试及 persona 调用。
+                次调用用量未知；用量为已知合计，包含实际重试、persona
+                及人物摘要调用。
               </p>
             </>
           )}
@@ -386,6 +444,7 @@ export function ConsolidationReportSections({
           )}
         </section>
       )}
+      <PersonSummaryReport data={data} />
       <GoalReviewReport data={data} />
     </>
   );

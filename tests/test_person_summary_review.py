@@ -69,18 +69,14 @@ def test_confirmation_does_not_change_due_or_inflight_snapshot(store, clock):
     assert ps.PersonSummaryEngine(store, model, clock=clock).regenerate('a', expected_version=1)['status'] == 'published'
 
 
-@pytest.mark.parametrize('lifecycle', ['deleted', 'forgotten', 'purged'])
+@pytest.mark.parametrize('lifecycle', ['deleted', 'forgotten'])
 def test_unavailable_basis_is_filtered_per_item_before_host_return(store, clock, lifecycle):
     mids = seed(store, clock)
     items = [{'kind':'fact','text':'第一条公开事项。','memory_refs':['M1']},
              {'kind':'fact','text':'第二条公开事项。','memory_refs':['M2']}]
     generate(store, clock, items=items)
-    if lifecycle == 'purged':
-        # Also cover reads before the future CF hook has cleared entire fields.
-        purge_memory(store, mids[0], 1, confirm=True)
-    else:
-        with store.write() as conn:
-            conn.execute('UPDATE memories SET lifecycle=? WHERE id=?', (lifecycle, mids[0]))
+    with store.write() as conn:
+        conn.execute('UPDATE memories SET lifecycle=? WHERE id=?', (lifecycle, mids[0]))
     value = ps.current_summary(store, 'a', entry_id='shared', clock=clock)
     assert '第一条' not in value['text'] and '第二条' in value['text']
     assert value['possibly_stale']
@@ -230,7 +226,6 @@ def test_edit_cannot_restore_evidence_cleared_after_read_snapshot(store, clock, 
             armed = False
             with original() as conn:
                 purge_memory(store, mids[0], 1, confirm=True, _conn=conn)
-                ps.purge_memory_references(conn, [mids[0]], clock=clock)
         with original() as conn:
             yield conn
     monkeypatch.setattr(store, 'write', write)

@@ -51,6 +51,7 @@ type ModelValue = {
   key?: string;
   clearKey?: boolean;
   inherited?: boolean;
+  vision?: boolean;
 };
 type Preset = {
   id: string;
@@ -65,6 +66,7 @@ export type Settings = {
   model_source: "local" | "external";
   daily_token_limit: number | null;
   learning_concurrency: number;
+  native_image_learning?: boolean;
   lifecycle: LifecycleConfig;
   recall_judge: RecallJudgeConfig;
   state: StateConfig;
@@ -92,6 +94,7 @@ const body = (v: ModelValue) =>
         model: v.model,
         dimensions: v.dimensions,
         reasoning_effort: v.reasoning_effort,
+        ...(v.vision === undefined ? {} : { vision: v.vision }),
         ...(v.clearKey ? { api_key: "" } : v.key ? { api_key: v.key } : {}),
       };
 
@@ -154,7 +157,8 @@ function ModelFields({
   const [result, setResult] = useState(""),
     [busy, setBusy] = useState(false);
   const judgment = kind === "recall_judge" || kind === "goal_dedup_judge";
-  const inheriting = judgment && value.inherited;
+  const image = kind === "image_understanding";
+  const inheriting = (judgment || image) && value.inherited;
   const unsavedInheritance = inheriting && !settings.models[kind].inherited;
   const canTest = inheriting
     ? settings.models.chat.enabled && !unsavedInheritance
@@ -176,15 +180,23 @@ function ModelFields({
   };
   return (
     <div className="model-fields">
-      {judgment ? (
+      {judgment || image ? (
         <label className="check-label">
           <input
             type="checkbox"
             disabled={readonly}
-            checked={!value.inherited}
+            checked={
+              image ? value.enabled && !value.inherited : !value.inherited
+            }
             onChange={(e) => {
               setResult("");
-              change({ ...value, inherited: !e.target.checked, enabled: true });
+              change({
+                ...value,
+                inherited:
+                  !e.target.checked &&
+                  (!image || !!settings.models.chat.vision),
+                enabled: image ? e.target.checked : true,
+              });
             }}
           />
           单独配置{label}
@@ -202,7 +214,9 @@ function ModelFields({
       )}
       {inheriting ? (
         <p>
-          沿用已保存的对话模型接口、模型和密钥，推理档位 high。当前模型：
+          {image
+            ? "沿用已保存的对话模型接口、模型、密钥和推理档位。当前模型："
+            : "沿用已保存的对话模型接口、模型和密钥，推理档位 high。当前模型："}
           {settings.models.chat.model || "未配置"}。
         </p>
       ) : (
@@ -281,6 +295,19 @@ function ModelFields({
                 }
               />
               移除已保存的密钥
+            </label>
+          )}
+          {kind === "chat" && (
+            <label className="check-label">
+              <input
+                type="checkbox"
+                checked={!!value.vision}
+                onChange={(e) => change({ ...value, vision: e.target.checked })}
+              />
+              支持图片输入（vision）
+              <small>
+                对话模型支持图片输入。开启后，图片理解未单独配置时沿用对话模型。学习时是否直接看原图，请在“用量与学习”中设置。
+              </small>
             </label>
           )}
           {kind !== "embedding" ? (
@@ -460,7 +487,18 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
   const [staleMinutes, setStaleMinutes] = useState(
     String(settings.state.stale_after_minutes),
   );
+  const [nativeImages, setNativeImages] = useState(
+    settings.native_image_learning === true,
+  );
+  const nativeImagesDirty = useRef(false);
+  const nativeImagesAvailable =
+    settings.models.chat.enabled && settings.models.chat.vision === true;
+  useEffect(() => {
+    if (!nativeImagesDirty.current)
+      setNativeImages(settings.native_image_learning === true);
+  }, [settings.native_image_learning]);
   const stateDirty = useRef(false);
+  const modelDirty = useRef(new Set<ModelKind>());
   useEffect(() => {
     if (!stateDirty.current)
       setStaleMinutes(String(settings.state.stale_after_minutes));
@@ -489,6 +527,10 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
     try {
       const latest = await api<Settings>(path, json(method, value));
       setSettings(latest);
+      if (path === "/settings/limits") {
+        nativeImagesDirty.current = false;
+        setNativeImages(latest.native_image_learning === true);
+      }
       if (path === "/settings/state") {
         stateDirty.current = false;
         setStaleMinutes(String(latest.state.stale_after_minutes));
@@ -499,8 +541,20 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
         setOverdueReminders(latest.goals.overdue_reminders);
       }
       for (const kind of modelKinds) {
-        if (path === `/settings/models/${kind}`)
-          setModels((v) => ({ ...v, [kind]: latest.models[kind] }));
+        if (path === `/settings/models/${kind}`) {
+          modelDirty.current.delete(kind);
+          setModels(
+            (v) =>
+              Object.fromEntries(
+                modelKinds.map((k) => [
+                  k,
+                  k === kind || !modelDirty.current.has(k)
+                    ? latest.models[k]
+                    : v[k],
+                ]),
+              ) as Settings["models"],
+          );
+        }
       }
       setSaved("已保存");
       return latest;
@@ -558,9 +612,14 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
             </p>
             {kind === "image_understanding" && (
               <p>
-                独立配置支持图片输入的视觉模型，不沿用对话模型。方舟的接口地址与模型
-                ID
-                以控制台为准，推理档位仅在模型支持时填写。测试连接会发送一张固定测试图片；没有宿主说明且未启用时，图片以“未理解”占位继续学习。
+                {settings.models[kind].inherited
+                  ? "当前图片理解沿用对话模型。"
+                  : settings.models[kind].enabled
+                    ? "当前图片理解使用独立配置。"
+                    : "当前图片理解未启用。"}
+                未单独配置且对话模型开启 vision
+                时会自动沿用；取消独立配置会恢复此规则。
+                测试连接会发送一张固定测试图片，健康状态与用量仍按图片理解用途记录。
               </p>
             )}
             <form
@@ -576,7 +635,10 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
               <ModelFields
                 kind={kind}
                 value={models[kind]}
-                change={(v) => setModels({ ...models, [kind]: v })}
+                change={(v) => {
+                  modelDirty.current.add(kind);
+                  setModels({ ...models, [kind]: v });
+                }}
                 settings={settings}
               />
               {settings.model_source === "local" && (
@@ -619,6 +681,7 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
             void save("/settings/limits", "PATCH", {
               daily_token_limit: limit ? Number(limit) : null,
               learning_concurrency: concurrency,
+              native_image_learning: nativeImages,
             });
           }}
         >
@@ -647,8 +710,32 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
             按角色时区每日恢复；在途调用和未报告的 token
             可能使实际用量超过上限。
           </p>
+          <label className="check-label">
+            <input
+              type="checkbox"
+              aria-describedby="native-image-learning-help native-image-learning-availability"
+              checked={nativeImages}
+              disabled={busy || !nativeImagesAvailable}
+              onChange={(e) => {
+                nativeImagesDirty.current = true;
+                setNativeImages(e.target.checked);
+                setSaved("");
+              }}
+            />
+            学习时直接看原图
+          </label>
+          <p className="lifecycle-help" id="native-image-learning-help">
+            默认关闭。开启后，后续学习把原图交给对话模型；图片描述仍用于回复准备、检索与管理页。超限或不可用的图片沿用描述或占位。
+          </p>
+          <p className="lifecycle-help" id="native-image-learning-availability">
+            {!nativeImagesAvailable
+              ? `${!settings.models.chat.enabled ? "当前对话模型未启用，无法直接看原图。" : "当前对话模型未启用图片输入（vision），此设置暂不生效。"}${settings.model_source === "external" ? "请在外部模型配置中启用对话模型及 vision。" : "请先启用并保存对话模型的“支持图片输入（vision）”。"}`
+              : settings.model_source === "external"
+                ? "这是运行设置，使用外部模型配置时也可以保存。"
+                : "使用已保存的对话模型图片能力；保存后对后续学习生效。"}
+          </p>
           <button className="primary" disabled={busy}>
-            保存用量与并发
+            保存用量与学习
           </button>
         </form>
       </section>

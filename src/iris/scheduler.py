@@ -15,6 +15,7 @@ from .learning import LearningEngine, PROMPT_VERSION
 from .model_health import utc_now
 from .maintenance import Maintenance
 from .memory_ops import operation
+from .media import native_learning_enabled, pending_media_messages, prepare_media
 from .models import MODEL_KINDS, ModelError
 from .queue import FOCUS, form_batch, get_batch, should_learn
 
@@ -37,6 +38,8 @@ class Scheduler:
         self._active, self._probes = {}, {}
         self._goal_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="iris-goal-review")
         self._goal_reviews = {}
+        self._media_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="iris-media-description")
+        self._media_job = None
         self._vectors = None
         self.lifecycle = Maintenance(store, gateway=gateway, clock=clock)
         self._lifecycle_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="iris-lifecycle")
@@ -89,6 +92,7 @@ class Scheduler:
         self._maintenance.shutdown(wait=True, cancel_futures=True)
         self._lifecycle_pool.shutdown(wait=True, cancel_futures=True)
         self._goal_pool.shutdown(wait=True, cancel_futures=True)
+        self._media_pool.shutdown(wait=True, cancel_futures=True)
         log.info("scheduler stopped")
 
     def request_learning(self, entry_id, *, actor="host"):
@@ -170,6 +174,28 @@ class Scheduler:
                     if capacity<=0:
                         break
 
+    def _schedule_media(self):
+        if self._media_job is not None:
+            if not self._media_job.done():
+                return
+            try:
+                self._media_job.result()
+            except Exception as error:
+                log.error("image description interrupted category=%s", type(error).__name__)
+            self._media_job = None
+        if (self._stop.is_set() or not native_learning_enabled(self.store, self.gateway)
+                or not callable(getattr(self.gateway, 'image_understanding', None))):
+            return
+        config = self.gateway.configs.get('image_understanding')
+        if not config or not config.base_url or not config.model:
+            return
+        if self.health and not self.health.allowed('image_understanding'):
+            return
+        messages = pending_media_messages(self.store, limit=8, current=self.clock())
+        if messages:
+            self._media_job = self._media_pool.submit(prepare_media, self.store, self.gateway, messages,
+                                                      clock=self.clock, limit=8, stop=self._stop.is_set)
+
     def tick(self):
         with self._tick_lock:
             if self._stop.is_set():
@@ -187,6 +213,7 @@ class Scheduler:
                 except (OSError, ValueError):
                     log.warning("model configuration could not be reloaded")
             self.lifecycle.observe_schedule()
+            self._schedule_media()
             self.goals.generate_notifications()
             self._schedule_goal_reviews()
             if self.health:

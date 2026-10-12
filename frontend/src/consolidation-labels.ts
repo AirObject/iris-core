@@ -15,6 +15,7 @@ export const consolidationSwitches = [
   ["conflict_enabled", "矛盾检查与建议"],
   ["dependency_enabled", "派生依据复核与建议"],
   ["persona_enabled", "定期更新 persona"],
+  ["person_summary_enabled", "定期更新人物摘要"],
   ["goal_review_enabled", "目标依据复核"],
 ] as const;
 export function consolidationReason(reason: string) {

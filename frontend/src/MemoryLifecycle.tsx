@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { ApiError, api, errorText, json, useData } from "./api";
 import { Badge, Empty, Notice, Pagination, fullTime } from "./ui";
+import { PurgeBackupNotice } from "./PurgeBackupNotice";
 import type { Memory, MemoryDetail, Page, PurgeResult } from "./types";
 
 const protectionReasons: Record<string, string> = {
@@ -15,6 +16,7 @@ export function PurgeSummary({ result }: { result: PurgeResult }) {
   return (
     <div className="lifecycle-stack">
       <Notice>已彻底清除记忆 #{result.memory_id}</Notice>
+      <PurgeBackupNotice notice={result.backup_notice} />
       <section>
         <h3>已删除的来源消息</h3>
         {result.deleted_message_ids.length ? (
@@ -274,7 +276,8 @@ export function MemoryControls({
           <p>
             将删除记忆正文、修订历史，以及只被这条记忆引用且没有其他受保护引用的来源消息。其他引用仍需要的消息会保留，执行后显示消息标识与原因。
           </p>
-          <p>不清除批次尝试中的模型原始输出及调用记录里已有的内容。</p>
+          <p>同时清空可关联的模型原始输出等正文副本。</p>
+          <PurgeBackupNotice notice={detail.purge_preview?.backup_notice} />
           <label className="check-label">
             <input
               type="checkbox"

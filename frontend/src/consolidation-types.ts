@@ -7,6 +7,7 @@ export type ConsolidationConfig = {
   conflict_enabled: boolean;
   dependency_enabled: boolean;
   persona_enabled: boolean;
+  person_summary_enabled?: boolean;
   goal_review_enabled: boolean;
 };
 export type GoalDedupConfig = {
@@ -62,6 +63,9 @@ export type MemorySuggestion = Suggestion & {
   };
 };
 export type ConsolidationDetails = {
+  subject_id?: string;
+  version?: number | null;
+  attempt_id?: number | null;
   suggestion_type?: string;
   unique_details?: MergeDetails | null;
   result_id?: number;

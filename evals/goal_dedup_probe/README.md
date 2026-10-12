@@ -1,5 +1,9 @@
 # 目标去重探测
 
+当前默认是 GD4 复核迭代的 D6。新口径分别统计 separate 误提示和 uncertain 命中，不再用两类合计作为误提示门槛；`uncertain_candidate_hit_rate` 覆盖全部 uncertain，有 `expected.candidates` 时核对指向，否则以出现提示计命中。旧的仅有候选注释子集指标保留为 `uncertain_annotated_candidate_hit_rate`。冻结与结果见 [GD4_METHODS.md](GD4_METHODS.md) 和 [GD4_REVIEW_RESULTS.md](GD4_REVIEW_RESULTS.md)。`--method D2/D3/D4/D5/D6` 选择对应版本，`--fake` 用法不变。以下 GO 第三、四步保留为历史记录；GD4 串行间隔 2 秒调用，出现降级整轮作废，不用于独占性能结论。
+
+## GO 第三步（历史）
+
 候选和提示词冻结提交：`9cacbd02d38f0200dd757316c7b8c8c101dde113`。A／B／C 及选择规则见 [METHODS.md](METHODS.md)，该文件与判断提示词在首次模型调用前提交，此后未修改。独占窗口内 A／B／C 双轮已完成，按冻结规则选中 C，产品默认开启。5 秒预算下也完成连续双轮有效运行；此前 12 次作废尝试均保留，全部数字和作废原因见 [RESULTS.md](RESULTS.md)。
 
 每例固定时钟、独立数据库，按真实 host／internal／admin 路径创建并复核。只将产品材料送给模型；expected 和 category 只在执行结束后的独立评分中读取。保存实际合并记录、候选指向、请求及正文输出、耗时和 token；不保存模型推理原文、请求头或配置。所有完整结果必须放仓库外，输出目录须不存在。
@@ -24,7 +28,7 @@ score_case／report 输出误合并率、应合并识别率、separate／uncerta
 
 前一回合离线就绪检查见 [READINESS.md](READINESS.md)（历史记录，包含当时的草稿默认值和迁移编号）；当前结果与验证见 [RESULTS.md](RESULTS.md)。
 
-## GO 第四步 C2（已选为默认）
+## GO 第四步 C2（历史默认）
 
 候选规则在 [C2_METHOD.md](C2_METHOD.md) 单独冻结；正式双轮结果与采用理由见 [C2_RESULTS.md](C2_RESULTS.md)，历史离线检查见 [C2_READINESS.md](C2_READINESS.md)。C2 两轮误合并均 0/13、识别均 28/28，不应合并中可能重复均 22/39，按冻结规则选为默认。C 沿用 #47 的两轮有效结果，不重跑；全部原始材料保存在仓库外。
 
