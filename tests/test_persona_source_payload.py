@@ -37,6 +37,7 @@ def test_generation_and_check_use_original_without_competing_summary(store):
     checked = requests['persona_check']['evidence_by_ref'][memory['ref']]
     for item in (generated, checked):
         assert 'content' not in item
+        assert item['current_revision_text'] == SUMMARY
         assert item['excerpts'][0]['excerpt'] == ORIGINAL
         assert item['excerpts'][0]['speaker_subject_id'] == 'self'
         assert item['event_time'] == memory['event_time']
@@ -54,6 +55,7 @@ def test_check_and_repair_evidence_projection_does_not_mutate_snapshot(store, pr
     payload = _check_payload(material, [sentence], full_content=sentence['text'], proof_choices=proof_choices)
     item = payload['evidence_by_ref'][memory['ref']]
     assert 'content' not in item and 'content_spans' not in item
+    assert item['current_revision_text'] == SUMMARY
     assert item['excerpts'][0]['excerpt'] == ORIGINAL
     assert material == before
 
