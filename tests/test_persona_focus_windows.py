@@ -96,3 +96,123 @@ def test_late_focus_timeout_keeps_one_stage_deadline_and_partial_raw_outputs(sto
     assert len(model.calls)==7
     assert [d for _,d in model.calls]==[360,490,620,750,880,900,900]
     assert len(outputs['persona_check_batches'])==7
+
+
+class FullSentenceModel(FocusModel):
+    """Return the entire sentence even when a focus window was requested."""
+    def __init__(self, *, mutation=None):
+        super().__init__(); self.mutation = mutation
+
+    def chat(self, messages, purpose, **kwargs):
+        from iris.persona import _clause_parts
+        reply = super().chat(messages, purpose, **kwargs)
+        output = json.loads(reply.content)
+        request = self.calls[-1][0]
+        for sentence, row in zip(request['candidate'], output['sentences']):
+            if sentence['origin'] != 'memory':
+                continue
+            prototype = row['clauses'][0]
+            row['clauses'] = [{**copy.deepcopy(prototype), 'index': part['index']}
+                              for part in _clause_parts(sentence['text'])]
+            if self.mutation is not None and len(self.calls) == 1:
+                self.mutation(row)
+        return ModelReply(dumps(output), 'stop', {})
+
+
+def test_complete_extra_focus_checks_are_validated_and_audited_without_duplicate_requested_parts(store):
+    material, sentence = material_and_sentence(); model = FullSentenceModel(); outputs = {}
+    result = run(store, model, material, [sentence], outputs)
+    assert len(model.calls) == 2  # Planned positive windows are still checked independently.
+    assert not result['incomplete_checks'] and result['sentences'][0]['supported']
+    row = result['sentences'][0]
+    assert [p['index'] for p in row['clauses']] == [1, 2, 3, 4]
+    assert [p['index'] for p in row['additional_clause_checks']] == [3, 4, 1, 2]
+    assert [n['additional_clause_indices'] for n in result['normalizations']] == [[3, 4], [1, 2]]
+    assert all(n['operation'] == 'full_sentence_focus_checks' for n in result['normalizations'])
+    assert all(len(batch['sentences'][0]['clauses']) == 4 for batch in result['batches'])
+    assert all('additional_clause_checks' not in batch['sentences'][0] for batch in result['batches'])
+    assert all('additional_clause_checks' not in json.loads(raw['persona_check'])['sentences'][0]
+               for raw in outputs['persona_check_batches'])
+
+
+@pytest.mark.parametrize('failure', ['unsupported', 'one_date', 'unbound', 'wrong_quote'])
+def test_negative_extra_focus_rejects_whole_sentence_and_is_not_recorded_as_unchecked(store, failure):
+    def mutate(row):
+        extra = row['clauses'][2]
+        if failure == 'unsupported':
+            extra['supported'] = False
+        elif failure == 'one_date':
+            extra['scene_qualified'] = False
+        elif failure == 'unbound':
+            extra['evidence'][0]['ref'] = 'M999'
+        else:
+            extra['evidence'][0]['quote'] = '不存在的原话'
+    material, sentence = material_and_sentence(); model = FullSentenceModel(mutation=mutate)
+    result = run(store, model, material, [sentence])
+    assert len(model.calls) == 1 and not result['incomplete_checks']
+    row = result['sentences'][0]
+    assert not row['supported'] and any('clause 3:' in issue for issue in row['clause_errors'])
+    assert not row.get('unchecked_clause_indices')
+    assert [p['index'] for p in row['additional_clause_checks']] == [3, 4]
+    assert result['skipped_windows'] == [{'planned_batch': 2, 'sentence_index': 1,
+        'clause_indices': [3, 4], 'already_checked_clause_indices': [3, 4],
+        'reason': 'sentence_already_rejected'}]
+
+
+@pytest.mark.parametrize('malformation', ['missing', 'unknown', 'duplicate', 'reordered',
+                                         'bool_index', 'bad_extra_type', 'partial_extra'])
+def test_extra_focus_fallback_never_accepts_incomplete_or_malformed_results(store, malformation):
+    def mutate(row):
+        parts = row['clauses']
+        if malformation == 'missing':
+            parts.pop(0)
+        elif malformation == 'unknown':
+            parts[-1]['index'] = 99
+        elif malformation == 'duplicate':
+            parts[-1]['index'] = 3
+        elif malformation == 'reordered':
+            parts.reverse()
+        elif malformation == 'bool_index':
+            parts[0]['index'] = True
+        elif malformation == 'bad_extra_type':
+            parts[2]['supported'] = 'true'
+        else:
+            parts.pop()
+    material, sentence = material_and_sentence(); model = FullSentenceModel(mutation=mutate)
+    result = run(store, model, material, [sentence])
+    assert result['incomplete_checks'] and not result['sentences'][0]['supported']
+    assert not result['normalizations']
+
+
+def test_model_cannot_forge_additional_focus_audit(store):
+    class Forged(FocusModel):
+        def chat(self, messages, purpose, **kwargs):
+            reply = super().chat(messages, purpose, **kwargs)
+            output = json.loads(reply.content)
+            output['sentences'][0]['additional_clause_checks'] = [{'index': 99}]
+            return ModelReply(dumps(output), 'stop', {})
+    material, sentence = material_and_sentence()
+    result = run(store, Forged(), material, [sentence])
+    assert not result['sentences'][0].get('additional_clause_checks')
+    assert not result['normalizations']
+
+
+def test_later_negative_window_keeps_earlier_extra_proofs_in_coverage_audit(store):
+    class LaterFailure(FullSentenceModel):
+        def chat(self, messages, purpose, **kwargs):
+            reply = super().chat(messages, purpose, **kwargs)
+            if len(self.calls) == 1:
+                return reply
+            output = json.loads(reply.content)
+            row = output['sentences'][0]
+            row['clauses'] = [row['clauses'][2]]
+            row['clauses'][0]['supported'] = False
+            row['supported'] = False
+            row['stop_after_failure'] = True
+            return ModelReply(dumps(output), 'stop', {})
+    material, sentence = material_and_sentence()
+    result = run(store, LaterFailure(), material, [sentence])
+    assert not result['incomplete_checks'] and not result['sentences'][0]['supported']
+    assert not result['sentences'][0].get('unchecked_clause_indices')
+    assert result['short_circuits'][0]['unchecked_clause_indices'] == [4]  # Within that request only.
+    assert [part['index'] for part in result['sentences'][0]['additional_clause_checks']] == [3, 4]

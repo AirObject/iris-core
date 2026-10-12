@@ -37,8 +37,8 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v15', 'persona_check': 'persona_check_v22',
-                   'persona_sentence_repair': 'persona_repair_v13', 'persona_recheck': 'persona_check_v22'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v15', 'persona_check': 'persona_check_v23',
+                   'persona_sentence_repair': 'persona_repair_v13', 'persona_recheck': 'persona_check_v23'}
 CALL_TIMEOUTS = {'persona_generate': 360, 'persona_check': 360,
                  'persona_sentence_repair': 120, 'persona_recheck': 360}
 CALL_MAX_TOKENS = {'persona_generate':16000, 'persona_check':16000,
@@ -716,10 +716,22 @@ def _validate_clause_checks(output, payload):
         index = sentence['index']
         if isinstance(row, dict):
             row.pop('unchecked_clause_indices', None)  # Computed here, never trusted from the model.
+            row.pop('additional_clause_checks', None)
         if sentence['origin'] != 'memory' or sentence.get('initial_setting'):
             continue
         parts = row.get('clauses') if isinstance(row, dict) else None
-        focus = sentence['clauses']
+        requested = sentence['clauses']
+        full = _clause_parts(sentence['text'])
+        # Some models answer the full sentence shown for context. Accept only
+        # that exact complete sequence, not arbitrary overcoverage. Validate all
+        # extra verdicts before projecting the requested window; adverse extras
+        # reject the whole sentence and remain visible in a separate audit list.
+        full_response = (isinstance(parts, list) and len(requested) < len(parts) == len(full)
+            and all(part in full for part in requested)
+            and all(isinstance(part, dict) and type(part.get('index')) is int
+                    and part['index'] == expected['index'] for expected, part in zip(full, parts)))
+        focus = full if full_response else requested
+        row_errors_before = len(errors)
         # One explicit negative proves the whole conjunction false. This is a
         # rejection-only protocol: a retained sentence still needs every focus.
         # Preserve what was not checked rather than inventing verdicts for it.
@@ -791,6 +803,10 @@ def _validate_clause_checks(output, payload):
                     issues.append(f'{label}: single-date claim needs an explicit bounded scene in this sentence')
         if stopped and len(parts) < len(focus) and len(errors) == errors_before:
             row['unchecked_clause_indices'] = [part['index'] for part in focus[len(parts):]]
+        if full_response and len(errors) == row_errors_before:
+            requested_indices = {part['index'] for part in requested}
+            row['additional_clause_checks'] = [part for part in parts if part['index'] not in requested_indices]
+            row['clauses'] = [part for part in parts if part['index'] in requested_indices]
         if issues:
             problems[index] = issues
     return errors, problems
@@ -1172,9 +1188,15 @@ class PersonaEngine:
                 if original in rejected:
                     indices = [p['index'] for p in sentence.get('_check_focus',[])]
                     rows[original]['supported'] = False
-                    rows[original].setdefault('unchecked_clause_indices',[]).extend(indices)
-                    skipped.append({'planned_batch':planned_index+1, 'sentence_index':original,
-                                    'clause_indices':indices, 'reason':'sentence_already_rejected'})
+                    extra_checked = {part['index'] for part in rows[original].get('additional_clause_checks', [])}
+                    unchecked = [index for index in indices if index not in extra_checked]
+                    if unchecked:
+                        rows[original].setdefault('unchecked_clause_indices', []).extend(unchecked)
+                    skip = {'planned_batch':planned_index+1, 'sentence_index':original,
+                            'clause_indices':indices, 'reason':'sentence_already_rejected'}
+                    if extra_checked.intersection(indices):
+                        skip['already_checked_clause_indices'] = [i for i in indices if i in extra_checked]
+                    skipped.append(skip)
                 else:
                     subset.append(sentence)
             if planned and not subset:
@@ -1228,6 +1250,13 @@ class PersonaEngine:
                         {**payload, 'candidate':[payload['candidate'][local-1]]})
                     malformed = ([] if _valid_sentence_verdict(row,local,require_kind=True)
                                  else [f'sentence {local}: invalid model verdict']) + errors
+                    if not malformed and row.get('additional_clause_checks'):
+                        normalizations.append({'batch':batch_index+1, 'sentence_index':sentence['_check_sentence'],
+                            'operation':'full_sentence_focus_checks',
+                            'requested_clause_indices':[part['index'] for part in row['clauses']],
+                            'additional_clause_indices':[part['index'] for part in row['additional_clause_checks']]})
+                    elif malformed:
+                        row.pop('additional_clause_checks', None)
                     if malformed:
                         incomplete.append(f'batch {batch_index+1}, sentence {local}: ' + '; '.join(malformed))
                     elif row.get('unchecked_clause_indices'):
@@ -1274,11 +1303,17 @@ class PersonaEngine:
                         'violations':list(dict.fromkeys(previous['violations']+part['violations'])),
                         'reason':previous['reason']+'；'+part['reason'],
                         'clauses':previous['clauses']+part['clauses'],
+                        'additional_clause_checks':previous.get('additional_clause_checks',[])
+                            + part.get('additional_clause_checks',[]),
                         'unchecked_clause_indices':previous.get('unchecked_clause_indices',[])
                             + part.get('unchecked_clause_indices',[]),
                         'clause_errors':previous['clause_errors']+part['clause_errors']}
             degrees.append(degree)
             reasons.append(batch['reason'])
+        for row in rows.values():
+            extra_checked = {part['index'] for part in row.get('additional_clause_checks', [])}
+            if extra_checked and row.get('unchecked_clause_indices'):
+                row['unchecked_clause_indices'] = [i for i in row['unchecked_clause_indices'] if i not in extra_checked]
         return {'sentences':[rows[i] for i in sorted(rows)], 'change_degree':degrees[0],
                 'reason':reasons[0], 'batches':batches, 'window_map':window_map,
                 'incomplete_checks':incomplete, 'short_circuits':short_circuits,
