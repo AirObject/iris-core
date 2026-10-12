@@ -6,7 +6,6 @@ Evidence IDs are snapshots, not foreign keys that pin cleaned source messages.
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
 import re
 import time
@@ -17,7 +16,6 @@ from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from typing import Protocol
 from difflib import SequenceMatcher
-from importlib.resources import files
 from threading import Lock
 from zoneinfo import ZoneInfo
 
@@ -26,12 +24,14 @@ from .memory_ops import Visibility, operation
 from .models import Gateway, ModelError
 from .persona import split_sentences
 from .queue import estimate_tokens, truncate_material
-from .profile_common import evidence_hash, setting, whitespace, excerpt, json_object, ChatHealthGate
+from .profile_common import evidence_hash, setting, whitespace, excerpt, json_object, ChatHealthGate, load_profile_prompts, profile_prompt_metadata
 
 DEFAULTS = dict(enabled=True, publish_mode='check_auto', window_days=14,
                 message_tokens=6000, memory_tokens=2000, min_messages=50,
                 update_days=7, min_chars=150, max_chars=500,
                 generate_timeout_seconds=120, check_timeout_seconds=120)
+DEFAULT_PROMPT_VERSION = 'v2'
+PROMPT_VERSIONS = ('v2',)
 PUBLISH_MODES = ('check_auto', 'all_manual')
 DEGREES = ('small', 'medium', 'large')
 # The optional prepare partition has its own cap; the 1500-token memory cap is unchanged.
@@ -705,8 +705,11 @@ class _HealthGate(ChatHealthGate):
 
 
 class EntryProfileEngine:
-    def __init__(self, store, gateway, *, clock=utc_now):
+    def __init__(self, store, gateway, *, clock=utc_now, prompt_version=None):
         self.store,self.gateway,self.clock=store,gateway,clock
+        self.prompt_version=DEFAULT_PROMPT_VERSION if prompt_version is None else prompt_version
+        self.prompts=load_profile_prompts('entry_profile',self.prompt_version,PROMPT_VERSIONS)
+        self.prompt_metadata=profile_prompt_metadata(self.prompts)
 
     def update(self, entry_id, *, expected_version, run_id=None):
         return self._run(entry_id,expected_version,'periodic',run_id=run_id)
@@ -733,18 +736,20 @@ class EntryProfileEngine:
         if health:
             health.check('chat','learning')
         purpose='consolidation_entry_profile_'+kind
-        prompt=files('iris').joinpath(f'prompts/entry_profile_{kind}_v2.md').read_text(encoding='utf-8')
+        loaded=self.prompts[kind]
+        provenance={key:loaded[key] for key in ('prompt_version','prompt_sha256')}
+        prompt=loaded['text']
         messages=[{'role':'system','content':prompt},{'role':'user','content':dumps(payload)}]
         monotonic=getattr(gateway,'monotonic',time.monotonic)
         started=monotonic(); deadline=started+config[kind+'_timeout_seconds']
         try:
             reply=gateway.chat(messages,purpose,max_tokens=16000,_deadline=deadline)
         except ModelError as error:
-            calls.append({'purpose':purpose,'result':error.category,'reason':error.reason or error.category,
+            calls.append({**provenance,'purpose':purpose,'result':error.category,'reason':error.reason or error.category,
                           'duration_ms':round((monotonic()-started)*1000),'usage':{}})
             raise
         outputs[purpose]=reply.content
-        calls.append({'purpose':purpose,'result':'success','duration_ms':round((monotonic()-started)*1000),
+        calls.append({**provenance,'purpose':purpose,'result':'success','duration_ms':round((monotonic()-started)*1000),
                       'usage':reply.usage,'finish_reason':reply.finish_reason})
         if reply.finish_reason!='stop':
             raise ValueError('incomplete_output')
@@ -1400,12 +1405,10 @@ class EntryProfileMemoryTask:
     def __init__(self, repository: MemoryProfileRepository | None, gateway, *, limits=None):
         self.repository, self.gateway = repository, gateway
         self.limits = limits or MemoryProfileLimits()
-        self.prompts = {}
-        for stage in ('generate', 'check'):
-            name = f'entry_profile_memory_{stage}_v1'
-            text = files('iris').joinpath(f'prompts/{name}.md').read_text(encoding='utf-8')
-            self.prompts[stage] = dict(name=name, text=text,
-                sha256=hashlib.sha256(text.encode('utf-8')).hexdigest())
+        self.prompts = {stage: dict(name=prompt['prompt_version'], text=prompt['text'],
+                                   sha256=prompt['prompt_sha256'])
+                        for stage, prompt in load_profile_prompts(
+                            'entry_profile_memory', 'v1', ('v1',)).items()}
 
     def _call(self, stage, payload, result):
         self.repository.assert_model_call_allowed()
