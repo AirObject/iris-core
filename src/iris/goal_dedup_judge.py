@@ -21,7 +21,7 @@ PROMPT=files('iris').joinpath('prompts/goal_dedup_judge_v1.md').read_text(encodi
 # GD4: model evidence for possible hints; legacy methods remain probeable.
 # Explicit method overrides are internal to the probe, never an admin option.
 MODEL_POSSIBLE_PROMPTS={'D2':'goal_dedup_judge_v2.md','D3':'goal_dedup_judge_v3.md',
-                        'D4':'goal_dedup_judge_v4.md'}
+                        'D4':'goal_dedup_judge_v4.md','D5':'goal_dedup_judge_v5.md'}
 DEFAULT_METHOD='D3'
 DEFAULTS={'enabled':True,'budget_seconds':5.0,'concurrency':1,'queue_limit':8,
           'pending_fallback_minutes':30,'possible_min_similarity':0}
