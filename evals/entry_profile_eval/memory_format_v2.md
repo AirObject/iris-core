@@ -1,10 +1,10 @@
-# EF-03 主题化评分与运行器输出提案
+# EF-03 主题化评分与运行器输出格式（已批准）
 
-状态：待规划者批准；2026-10-13。此提交只登记新口径与输出契约，后续实现不得把草案的机制测试当成门槛成绩。当前生产入口画像 v2、人物摘要均不变。
+状态：approved_by_planner_20261013；规划者批准日期 2026-10-13。新口径与输出契约已批准，后续实现不得把模拟阶段的机制测试当成门槛成绩。当前生产入口画像 v2、人物摘要均不变。
 
 ## 与 scoring_v2 的逐项差异
 
-| v2 项 | v3 提案 | 理由 |
+| v2 项 | v3（已批准） | 理由 |
 | --- | --- | --- |
 | 文档 sentences，index 定位 | 普通画像记忆列表，以 ID＋revision＋index 定位 | 每条画像是一条可修订的记忆；避免错评旧修订 |
 | 具体讨论对象和正文原话 | 有依据的稳定主题正文；原话移到 sources | 用户要求主题化，不再把具体事件流水账作为画像 |
@@ -18,15 +18,15 @@
 | v2 适用性排除表 | 全量原标签保留；覆盖只作诊断 | 不能为了主题化结果默默改冻结标签、缩小分母 |
 | 拒绝候选单列 | 分阶段导出候选和覆盖，候选不入最终分母 | 准确诊断确定性／模型删条／投影预算分别丢失哪些要点 |
 | profile.checks 可混入材料 | 自检结论只在独立 trace，判分输入不含它 | 避免产品自评影响独立外判 |
-| 双判从严、90%／0 | 保持，空分母不通过；草案阶段不输出门槛通过结论 | 目标未放宽；实施和批准解耦 |
+| 双判从严、90%／0 | 保持，空分母不通过；底层未接通阶段不输出门槛通过结论 | 目标未放宽；实施和批准解耦 |
 
 这里不新增／改写质量语料。现有 entry_profile_v1 cases／groups 输入解析沿用：messages、memories、initial_profile、as_of、timezone 等不变。initial_profile 原样种为受保护人工记忆，不让模型重写；普通 memories 是事实源，不能被直接当成画像成品。
 
 ## 输出契约（format_version=2）
 
-新路径独立于现有 format_version=1 文档运行器。evaluation=`entry_profile_memory`，scoring_version=`entry_profile_scoring_v3`，scoring_status=`draft_pending_planner_approval`，gate_eligible=false。第一阶段 repository_mode=`simulation`；真实写入口尚未授权实现。
+新路径独立于现有 format_version=1 文档运行器。evaluation=`entry_profile_memory`，scoring_version=`entry_profile_scoring_v3`，scoring_status=`approved_by_planner_20261013`，gate_eligible=false。第一阶段 repository_mode=`simulation`；真实写入口尚未授权实现。
 
-外部目录结构：run.json（完整追踪，含生成／自检输出及操作诊断）、judging-materials/manifest.json、round-template.json、scoring.md、cases/*.json。判分者只获得 judging-materials/。所有 JSON 为 UTF-8。文件散列、源码／语料／评分指纹和真实加载的 prompt_versions／prompt_sha256 绑定进 manifest 与轮模板。原始 trace 不复制进判分目录，也不透传模型配置。草案阶段仅离线 fake／显式调用适配函数，不提供默认真实模型命令。
+外部目录结构：run.json（完整追踪，含生成／自检输出及操作诊断）、judging-materials/manifest.json、round-template.json、scoring.md、cases/*.json。判分者只获得 judging-materials/。所有 JSON 为 UTF-8。文件散列、源码／语料／评分指纹和真实加载的 prompt_versions／prompt_sha256 绑定进 manifest 与轮模板。原始 trace 不复制进判分目录，也不透传模型配置。底层未接通阶段仅离线 fake／显式调用适配函数，不提供默认真实模型命令。
 
 case 文档外层为 format_version、evaluation、case_id、input。input 只包含：
 
@@ -38,7 +38,7 @@ case 文档外层为 format_version、evaluation、case_id、input。input 只�
 
 完整 run.json 另存模型原始正文、删项原因、操作回执、游标前后／未扫完、取材截断、修订冲突、重复证据、手写群规冲突。引用存在率单列，不能代替语义有依据率。中间覆盖由外判填写 stage_coverage；程序只能计数与比较索引，不能自行猜测覆盖。
 
-最终统计输出有依据分子／分母、禁止内容条目及投影违规、原 forbidden 命中、人工条目数、全量覆盖与阶段损失、两轮逐项分歧；同时固定标记 scoring_status 和 gate_eligible=false。规划者批准口径后，再单独登记批准状态，不能由命令行自行把草案改成已批准。
+最终统计输出有依据分子／分母、禁止内容条目及投影违规、原 forbidden 命中、人工条目数、全量覆盖与阶段损失、两轮逐项分歧；同时固定标记 scoring_status 和 gate_eligible=false。批准状态由规划者于 2026-10-13 登记，不能由命令行自行改变；真实写入口、硬范围、清除与投影接通后才可将 gate_eligible 设为 true。
 
 ## 第一阶段接口边界
 

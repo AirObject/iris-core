@@ -1,6 +1,6 @@
-# 入口画像记忆外部判分 v3（EF-03 提案，待规划者批准）
+# 入口画像记忆外部判分 v3（规划者已批准，2026-10-13）
 
-状态：draft_pending_planner_approval。本文件尚不是门槛口径；不得据此宣布公开或隐藏验收通过。冻结的 scoring_v2.md、语料及标签不变。逐项变更见 memory_format_v2.md。
+状态：approved_by_planner_20261013。规划者于 2026-10-13 批准本文件为门槛口径；真实写入口、硬范围、清除与投影接通前 gate_eligible 仍为 false，不得宣布公开或隐藏验收通过。冻结的 scoring_v2.md、语料及标签不变。逐项变更见 memory_format_v2.md。
 
 ## 对象与独立性
 
@@ -41,4 +41,4 @@ stage_coverage 分别对生成候选、确定性校验后、模型检查后、�
 
 字段不得增减；memory_results 与 input.memories 完全等长同序，index 从 1 开始，memory_id/revision 必须原样匹配。各覆盖数组与 input.must_cover 等长，forbidden 与 input.forbidden 等长，全为真实布尔值；reason 必须非空。projection_violations 审查实际 text，forbidden 审查最终可用记忆、保留引文和实际 text 的并集。无输出时数组仍按标签长度填 false，memory_results 为空。
 
-双判 supported／所有覆盖取 AND，forbidden 取 OR，violations／projection_violations 取并集，逐项列出原始分歧。预登记目标保持模型有依据 ≥90%、可用输出禁止内容 0；覆盖仅诊断。确定性的来源身份、范围泄漏、非 active 条目、截断、调用失败、模拟存储标志分别报告，不能用语义判分覆盖基础设施失败。只在本评分获批准且真实底层接通后才可用于门槛。
+双判 supported／所有覆盖取 AND，forbidden 取 OR，violations／projection_violations 取并集，逐项列出原始分歧。预登记目标保持模型有依据 ≥90%、可用输出禁止内容 0；覆盖仅诊断。确定性的来源身份、范围泄漏、非 active 条目、截断、调用失败、模拟存储标志分别报告，不能用语义判分覆盖基础设施失败。本评分已获规划者批准；只在真实写入口、硬范围、清除与投影接通后才可用于门槛。
