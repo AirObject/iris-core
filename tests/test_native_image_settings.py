@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from conftest import login_admin
 from iris.api import create_app
+from iris.models import ModelConfig
 
 
 def test_native_limit_default_save_and_old_client_omission(store):
@@ -61,3 +62,45 @@ def test_native_learning_setting_requires_a_boolean(store, value):
         assert response.status_code == 400, response.text
         assert response.json()['error']['fields'][0]['field'] == 'body.native_image_learning'
     assert store.setting('native_image_learning') is None
+
+
+@pytest.mark.parametrize('external', [False, True])
+def test_native_learning_runtime_setting_is_writable_with_local_or_external_models(store, external):
+    options = {'configs': {'chat': ModelConfig('http://127.0.0.1:1/v1', '', 'fake-vision', vision=True)}} if external else {}
+    with TestClient(create_app(store=store, **options), base_url='http://127.0.0.1', client=('127.0.0.1', 12345)) as client:
+        client.app.state.scheduler.stop()
+        login_admin(client)
+        payload = {'daily_token_limit': 12345, 'learning_concurrency': 3, 'native_image_learning': True}
+        response = client.patch('/admin/api/settings/limits', json=payload, headers={'Origin': 'http://127.0.0.1'})
+        assert response.status_code == 200
+        snapshot = client.get('/admin/api/settings').json()
+        assert snapshot['model_source'] == ('external' if external else 'local')
+        assert all(snapshot[key] == value for key, value in payload.items())
+        assert snapshot['learning_image_limit'] == 8
+        with store.read() as conn:
+            row = conn.execute("SELECT actor,details_json FROM admin_operations WHERE action='limits_saved'").fetchone()
+        assert row['actor'] == 'admin'
+        assert json.loads(row['details_json']) == payload
+
+
+@pytest.mark.parametrize('attack', ['session', 'csrf', 'origin', 'cross_site', 'content_type'])
+def test_native_learning_setting_requires_session_and_write_guards(store, attack):
+    with TestClient(create_app(store=store), base_url='http://127.0.0.1', client=('127.0.0.1', 12345)) as client:
+        client.app.state.scheduler.stop()
+        login_admin(client)
+        headers = {}
+        if attack == 'session':
+            client.cookies.clear()
+        elif attack == 'csrf':
+            client.headers.pop('X-Iris-CSRF')
+        elif attack == 'origin':
+            headers['Origin'] = 'http://untrusted.example'
+        elif attack == 'cross_site':
+            headers['Sec-Fetch-Site'] = 'cross-site'
+        else:
+            headers['Content-Type'] = 'text/plain'
+        response = client.patch('/admin/api/settings/limits', json={'native_image_learning': True}, headers=headers)
+        assert response.status_code == (401 if attack == 'session' else 403)
+        assert store.setting('native_image_learning') is None
+        with store.read() as conn:
+            assert conn.execute("SELECT COUNT(*) FROM admin_operations WHERE action='limits_saved'").fetchone()[0] == 0

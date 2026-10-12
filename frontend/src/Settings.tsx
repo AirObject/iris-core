@@ -66,6 +66,7 @@ export type Settings = {
   model_source: "local" | "external";
   daily_token_limit: number | null;
   learning_concurrency: number;
+  native_image_learning?: boolean;
   lifecycle: LifecycleConfig;
   recall_judge: RecallJudgeConfig;
   state: StateConfig;
@@ -305,7 +306,7 @@ function ModelFields({
               />
               支持图片输入（vision）
               <small>
-                对话模型支持图片输入。开启后，图片理解未单独配置时沿用对话模型。学习时是否直接看原图另有开关（尚未提供）。
+                对话模型支持图片输入。开启后，图片理解未单独配置时沿用对话模型。学习时是否直接看原图，请在“用量与学习”中设置。
               </small>
             </label>
           )}
@@ -486,6 +487,16 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
   const [staleMinutes, setStaleMinutes] = useState(
     String(settings.state.stale_after_minutes),
   );
+  const [nativeImages, setNativeImages] = useState(
+    settings.native_image_learning === true,
+  );
+  const nativeImagesDirty = useRef(false);
+  const nativeImagesAvailable =
+    settings.models.chat.enabled && settings.models.chat.vision === true;
+  useEffect(() => {
+    if (!nativeImagesDirty.current)
+      setNativeImages(settings.native_image_learning === true);
+  }, [settings.native_image_learning]);
   const stateDirty = useRef(false);
   const modelDirty = useRef(new Set<ModelKind>());
   useEffect(() => {
@@ -516,6 +527,10 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
     try {
       const latest = await api<Settings>(path, json(method, value));
       setSettings(latest);
+      if (path === "/settings/limits") {
+        nativeImagesDirty.current = false;
+        setNativeImages(latest.native_image_learning === true);
+      }
       if (path === "/settings/state") {
         stateDirty.current = false;
         setStaleMinutes(String(latest.state.stale_after_minutes));
@@ -666,6 +681,7 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
             void save("/settings/limits", "PATCH", {
               daily_token_limit: limit ? Number(limit) : null,
               learning_concurrency: concurrency,
+              native_image_learning: nativeImages,
             });
           }}
         >
@@ -694,8 +710,32 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
             按角色时区每日恢复；在途调用和未报告的 token
             可能使实际用量超过上限。
           </p>
+          <label className="check-label">
+            <input
+              type="checkbox"
+              aria-describedby="native-image-learning-help native-image-learning-availability"
+              checked={nativeImages}
+              disabled={busy || !nativeImagesAvailable}
+              onChange={(e) => {
+                nativeImagesDirty.current = true;
+                setNativeImages(e.target.checked);
+                setSaved("");
+              }}
+            />
+            学习时直接看原图
+          </label>
+          <p className="lifecycle-help" id="native-image-learning-help">
+            默认关闭。开启后，后续学习把原图交给对话模型；图片描述仍用于回复准备、检索与管理页。超限或不可用的图片沿用描述或占位。
+          </p>
+          <p className="lifecycle-help" id="native-image-learning-availability">
+            {!nativeImagesAvailable
+              ? `${!settings.models.chat.enabled ? "当前对话模型未启用，无法直接看原图。" : "当前对话模型未启用图片输入（vision），此设置暂不生效。"}${settings.model_source === "external" ? "请在外部模型配置中启用对话模型及 vision。" : "请先启用并保存对话模型的“支持图片输入（vision）”。"}`
+              : settings.model_source === "external"
+                ? "这是运行设置，使用外部模型配置时也可以保存。"
+                : "使用已保存的对话模型图片能力；保存后对后续学习生效。"}
+          </p>
           <button className="primary" disabled={busy}>
-            保存用量与并发
+            保存用量与学习
           </button>
         </form>
       </section>

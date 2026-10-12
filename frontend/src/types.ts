@@ -315,7 +315,13 @@ export type Revision = {
   revision_after: number;
   created_at: string;
 };
+export type BackupNotice = {
+  scheduled_backup_keep: number | null;
+  upgrade_backup_keep: number;
+  message: string;
+};
 export type MemoryDetail = Memory & {
+  purge_preview?: { backup_notice: BackupNotice };
   visibility: { shared: boolean; visible_in: string[] };
   consolidation_annotations?: MemorySuggestion[];
   speaker: Person;
@@ -338,6 +344,7 @@ export type Page<T> = {
   offset: number;
 };
 export type PurgeResult = {
+  backup_notice?: BackupNotice;
   memory_id: number;
   deleted_message_ids: number[];
   retained_messages: { message_id: number; reasons: string[] }[];
