@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError, field_validator, model_validator
 
-from . import admin_data, admin_graph, trial, people, persona, backup, media, entry_profile
+from . import admin_data, admin_graph, trial, people, persona, backup, media, entry_profile, person_summary
 from .models import IMAGE_TOTAL_TIMEOUT
 from .auth import audit, error
 from .tokens import NewToken, RateLimits
@@ -339,6 +339,37 @@ class EntryProfileSettings(EntryProfileRevision):
         return self
 
 
+class PersonSummaryRevision(Input):
+    expected_version: int = Field(ge=0, le=9223372036854775807, strict=True)
+
+
+class PersonSummaryEdit(PersonSummaryRevision):
+    content: str = Field(min_length=1, max_length=200)
+
+
+class PersonSummaryReject(PersonSummaryRevision):
+    reason: str = Field(default='管理员拒绝', min_length=1, max_length=1000)
+
+    @field_validator('reason')
+    @classmethod
+    def nonblank(cls, value):
+        if not value.strip():
+            raise ValueError('拒绝原因不能为空白')
+        return value.strip()
+
+
+class PersonSummarySettings(PersonSummaryRevision):
+    enabled: bool | None = Field(default=None, strict=True)
+    publish_mode: Literal['check_auto', 'all_manual'] | None = None
+
+    @model_validator(mode='after')
+    def changes(self):
+        fields = self.model_fields_set - {'expected_version'}
+        if not fields or any(getattr(self, key) is None for key in fields):
+            raise ValueError('至少修改一项人物摘要设置，值不能为空')
+        return self
+
+
 GoalId = Annotated[int, PathParameter(gt=0, le=9223372036854775807)]
 
 def goal_time(value):
@@ -554,10 +585,13 @@ def install_admin(app):
         app.state.persona_jobs = jobs
         profile_jobs = entry_profile.EntryProfileJobs(app.state.store, app.state.gateway)
         app.state.entry_profile_jobs = profile_jobs
+        summary_jobs = person_summary.PersonSummaryJobs(app.state.store, app.state.gateway)
+        app.state.person_summary_jobs = summary_jobs
         try:
             yield
         finally:
             # Included router lifespans close before create_app's gateway/store.
+            await asyncio.to_thread(summary_jobs.close)
             await asyncio.to_thread(profile_jobs.close)
             await asyncio.to_thread(jobs.close)
 
@@ -916,6 +950,57 @@ def install_admin(app):
         return JSONResponse({'accepted': True, 'attempt': admin_data.entry_profile_attempt(app.state.store, entry_id, attempt)},
                             status_code=202, headers={'Location': f'/admin/api/entries/{quote(entry_id, safe="")}/profile/attempts/{attempt}'})
 
+    @router.get('/people/{subject_id}/summary')
+    def current_person_summary(subject_id: str):
+        return person_summary.admin_snapshot(app.state.store, subject_id)
+
+    @router.get('/people/{subject_id}/summary/versions')
+    def person_summary_versions(subject_id: str, query: Annotated[Page, Query()]):
+        return person_summary.admin_versions(app.state.store, subject_id, **query.model_dump())
+
+    @router.get('/people/{subject_id}/summary/versions/{version}')
+    def person_summary_version(subject_id: str, version: PersonaId):
+        return person_summary.admin_version(app.state.store, subject_id, version)
+
+    @router.get('/people/{subject_id}/summary/diff')
+    def person_summary_diff(subject_id: str, query: Annotated[PersonaDiff, Query()]):
+        return person_summary.version_diff(app.state.store, subject_id, query.before_version, query.after_version)
+
+    @router.get('/people/{subject_id}/summary/attempts/{attempt_id}')
+    def person_summary_attempt(subject_id: str, attempt_id: PersonaId):
+        return person_summary.admin_attempt(app.state.store, subject_id, attempt_id)
+
+    @router.put('/people/{subject_id}/summary')
+    def edit_person_summary(subject_id: str, payload: PersonSummaryEdit):
+        value = person_summary.admin_edit(app.state.store, subject_id, **payload.model_dump())
+        return person_summary.admin_version(app.state.store, subject_id, value['version'])
+
+    @router.patch('/people/{subject_id}/summary/settings')
+    def person_summary_settings(subject_id: str, payload: PersonSummarySettings):
+        return person_summary.set_settings(app.state.store, subject_id, **payload.model_dump(exclude_unset=True))
+
+    @router.post('/people/{subject_id}/summary/versions/{version}/confirm')
+    def confirm_person_summary(subject_id: str, version: PersonaId, payload: PersonSummaryRevision):
+        person_summary.confirm_candidate(app.state.store, subject_id, version, **payload.model_dump())
+        return person_summary.admin_version(app.state.store, subject_id, version)
+
+    @router.post('/people/{subject_id}/summary/versions/{version}/reject')
+    def reject_person_summary(subject_id: str, version: PersonaId, payload: PersonSummaryReject):
+        person_summary.reject_candidate(app.state.store, subject_id, version, **payload.model_dump())
+        return person_summary.admin_version(app.state.store, subject_id, version)
+
+    @router.post('/people/{subject_id}/summary/versions/{version}/rollback')
+    def rollback_person_summary(subject_id: str, version: PersonaId, payload: PersonSummaryRevision):
+        value = person_summary.rollback(app.state.store, subject_id, version, **payload.model_dump())
+        return person_summary.admin_version(app.state.store, subject_id, value['version'])
+
+    @router.post('/people/{subject_id}/summary/regenerate', status_code=202)
+    def regenerate_person_summary(subject_id: str, payload: PersonSummaryRevision):
+        from urllib.parse import quote
+        attempt = app.state.person_summary_jobs.submit(subject_id, **payload.model_dump())
+        return JSONResponse({'accepted': True, 'attempt': person_summary.admin_attempt(app.state.store, subject_id, attempt)},
+            status_code=202, headers={'Location': f'/admin/api/people/{quote(subject_id, safe="")}/summary/attempts/{attempt}'})
+
     @router.get('/persona')
     def current_persona():
         return admin_data.persona_snapshot(app.state.store)
@@ -1086,6 +1171,14 @@ def install_admin(app):
         result['usage']['by_purpose'] = {'image_understanding': admin_data.image_usage(app.state.store)}
         result['timeouts_seconds']['image_understanding'] = IMAGE_TOTAL_TIMEOUT
         return result
+
+    @app.exception_handler(person_summary.PersonSummaryConflict)
+    async def person_summary_conflict(request, exc):
+        return error('person_summary_conflict', '当前摘要、候选、设置或依据已变化，请刷新后重试', 409)
+
+    @app.exception_handler(person_summary.PersonSummaryBusy)
+    async def person_summary_busy(request, exc):
+        return error('person_summary_generation_in_progress', '已有摘要生成任务或服务正在停止，请查询任务状态', 409)
 
     @app.exception_handler(entry_profile.EntryProfileConflict)
     async def entry_profile_conflict(request, exc):
