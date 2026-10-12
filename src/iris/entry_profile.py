@@ -6,12 +6,16 @@ Evidence IDs are snapshots, not foreign keys that pin cleaned source messages.
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import re
 import time
+import unicodedata
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
+from typing import Protocol
 from difflib import SequenceMatcher
 from importlib.resources import files
 from threading import Lock
@@ -988,3 +992,501 @@ def update_profiles_for_run(store, gateway, run, config, *, clock=utc_now, stop=
                     (run['id'],'entry_profile:'+entry_id,attempt['id'],result.get('reason'),
                      dumps({'entry_id':entry_id,'status':result['status'],'version':attempt['version'],'attempt_id':attempt['id']}),_instant(clock()).isoformat()))
     return True
+
+
+# Memory task, deliberately NOT connected to EntryProfileJobs/context yet.
+# The database adapter (entry subjects, hard scope, receipts, purge and CAS) is
+# a prerequisite owned by subsequent work. No fallback writes to legacy tables.
+MEMORY_PROFILE_IMPORTANCE_CAP = 69
+MEMORY_PROFILE_VIOLATIONS = (*VIOLATIONS, '容易过时的描述')
+_MEMORY_REPORTED = re.compile(r'转(?:发|引|述)|引用|复述|原话|上次.{0,8}(?:说|提)|之前.{0,8}(?:说|提)')
+_MEMORY_REGISTRATION = re.compile(r'接龙|报名|算我|加我|(?<!\w)\+\s*1(?!\d)')
+_MEMORY_GENDERED = re.compile(r'她|妳|祂|(?<!其)(?<!吉)他|\b(?:he|him|his|himself|she|her|hers|herself)\b', re.I)
+
+
+class MemoryProfileUnavailable(ValueError):
+    """Missing lower-layer adapter, unsafe snapshot or insufficient IO budget."""
+
+
+@dataclass(frozen=True)
+class MemoryProfileLimits:
+    new_messages: int = 128
+    anchors: int = 64
+    memories: int = 32
+    message_tokens: int = 6000
+    memory_tokens: int = 2500
+    max_operations: int = 12
+    request_tokens: int = 12000
+    timeout_seconds: int = 120
+
+    def __post_init__(self):
+        if (any(type(v) is not int or v < 1 for v in vars(self).values())
+                or self.timeout_seconds > 120 or self.request_tokens > 12000):
+            raise ValueError('invalid memory profile limits')
+
+
+@dataclass(frozen=True)
+class MemoryProfileSnapshot:
+    """Detached, entry-local snapshot returned AFTER the read transaction ends.
+
+    messages: ordered prefix after cursor, up to scan_through (not max DB ID).
+    anchors: bounded older ORIGINAL evidence, including pending topic anchors.
+    memories: visible ordinary facts with complete, current source_messages.
+    profiles: target memories including forgotten and protected manual bodies.
+    revision/settings, source validity, visibility and receipts MUST be checked
+    again by commit. New messages appended during a call need not invalidate it.
+    """
+    entry_id: str
+    entry_subject_id: str
+    entry_kind: str
+    timezone: str
+    as_of: str
+    settings_revision: int
+    cursor: int
+    scan_through: int
+    has_more: bool
+    messages: tuple[dict, ...] = ()
+    anchors: tuple[dict, ...] = ()
+    memories: tuple[dict, ...] = ()
+    profiles: tuple[dict, ...] = ()
+    enabled: bool = True
+    history_complete: bool = True
+
+
+@dataclass(frozen=True)
+class MemoryProfilePlan:
+    snapshot: MemoryProfileSnapshot
+    material: dict
+    operations: tuple[dict, ...]
+    removed: tuple[dict, ...]
+    # Only examined evidence may become anchors; never model prose.
+    cursor_after: int
+    plan_id: str
+
+
+class MemoryProfileRepository(Protocol):
+    """Contract for the future real adapter, not an alternative memory store.
+
+    commit is atomic: revalidate settings/cursor, every read target including
+    manual protection, all selected sources/revisions/scope and new-evidence
+    receipts; then call ordinary memory writers and advance cursor together.
+    On ANY conflict roll back operations AND cursor, raising EntryProfileConflict.
+    Deduplicate creates, atomically confirm retention at most once per target
+    per plan, receipt every new original evidence identity. A replay must not
+    add retention. Remember bounded original anchors even for rejected items.
+    Retire means ordinary forgetting, never deletion or manual suspension.
+    This contract does not implement hard scope, purge or generic lifecycle.
+    """
+    def snapshot(self, entry_id: str, limits: MemoryProfileLimits) -> MemoryProfileSnapshot: ...
+    def assert_model_call_allowed(self) -> None: ...
+    def commit(self, plan: MemoryProfilePlan) -> dict: ...
+
+
+def _memory_observation_text(text):
+    return ''.join(c for c in unicodedata.normalize('NFKC', text).casefold() if c.isalnum())
+
+
+def _memory_copies(left, right):
+    a, b = _memory_observation_text(left), _memory_observation_text(right)
+    if not a or not b or a in b or b in a:
+        return True
+    return min(len(a), len(b)) >= 12 and SequenceMatcher(None, a, b, autojunk=False).ratio() >= .85
+
+
+def _memory_message(message, snapshot):
+    """Only entry-origin observations. No self output as new group evidence."""
+    if (message.get('entry_id') != snapshot.entry_id or message.get('kind') != 'message'
+            or message.get('speaker') in (None, '', 'self', 'scene')
+            or not isinstance(message.get('ref'), str) or not message['ref']
+            or not isinstance(message.get('content'), str)):
+        return None
+    try:
+        instant = _instant(message['occurred_at'])
+        if instant > _instant(snapshot.as_of):
+            return None
+    except (KeyError, ValueError, TypeError):
+        return None
+    value = {k: copy.deepcopy(message[k]) for k in (
+        'ref', 'position', 'entry_id', 'kind', 'speaker', 'content', 'occurred_at', 'quote') if k in message}
+    value['date'] = instant.astimezone(ZoneInfo(snapshot.timezone)).date().isoformat()
+    value['fingerprint'] = evidence_hash(value)
+    return value
+
+
+def select_memory_profile_material(snapshot, limits=None):
+    """Bounded prefix, then original anchors and fact roots; no age cutoff.
+
+    Budgets apply to full JSON, not just bodies. A message is never silently
+    shortened. The cursor stops BEFORE an unexamined over-budget row. Ineligible
+    kinds are explicitly scanned and may advance the cursor without a model.
+    """
+    limits = limits or MemoryProfileLimits()
+    if (not snapshot.entry_subject_id or snapshot.entry_kind not in ('group', 'live')
+            or not snapshot.enabled):
+        raise MemoryProfileUnavailable('entry_memory_scope_unavailable')
+    ZoneInfo(snapshot.timezone); _instant(snapshot.as_of)
+    if (type(snapshot.cursor) is not int or type(snapshot.scan_through) is not int
+            or snapshot.cursor < 0 or snapshot.scan_through < snapshot.cursor):
+        raise MemoryProfileUnavailable('invalid_cursor')
+    material = dict(entry_id=snapshot.entry_id, entry_subject_id=snapshot.entry_subject_id,
+        as_of=snapshot.as_of, timezone=snapshot.timezone, messages=[], memories=[],
+        profiles=copy.deepcopy(list(snapshot.profiles)), cursor_before=snapshot.cursor,
+        cursor_after=snapshot.cursor, has_more=snapshot.has_more, skipped=[],
+        diagnostics={'history_complete': snapshot.history_complete, 'omitted_anchors': 0,
+                     'omitted_memories': 0, 'truncated_messages': 0})
+    target_ids = [p['memory_id'] for p in snapshot.profiles]
+    if (len(set(target_ids)) != len(target_ids) or any(
+            p.get('owner_entry_id') != snapshot.entry_id or p.get('kind') != '入口画像'
+            or p.get('about') != [snapshot.entry_subject_id] for p in snapshot.profiles)):
+        raise MemoryProfileUnavailable('invalid_profile_scope')
+    used_mem = estimate_tokens(dumps(material['profiles']))
+    if used_mem > limits.memory_tokens:
+        raise MemoryProfileUnavailable('profile_budget_exceeded')
+    used = 0; previous = snapshot.cursor; seen = set()
+    for position, message in enumerate(snapshot.messages):
+        sequence = message.get('position')
+        if (type(sequence) is not int or not previous < sequence <= snapshot.scan_through
+                or message.get('ref') in seen):
+            raise MemoryProfileUnavailable('non_contiguous_snapshot')
+        previous = sequence; seen.add(message.get('ref'))
+        value = _memory_message(message, snapshot)
+        cost = estimate_tokens(dumps(value)) if value else 0
+        if position >= limits.new_messages or used + cost > limits.message_tokens:
+            material['has_more'] = True
+            if material['cursor_after'] == snapshot.cursor:
+                raise MemoryProfileUnavailable('message_budget_exceeded')
+            break
+        material['cursor_after'] = sequence
+        if value:
+            material['messages'].append(value); used += cost
+        else:
+            material['skipped'].append({'position': sequence, 'reason': 'ineligible_source'})
+    else:
+        # The adapter must account for every scanned row; a high-water mark
+        # without its prefix would hide evidence. Gaps in global IDs are fine.
+        if previous != snapshot.scan_through:
+            raise MemoryProfileUnavailable('unexamined_cursor_tail')
+    material['new_refs'] = [m['ref'] for m in material['messages']]
+    for index, message in enumerate(snapshot.anchors):
+        value = _memory_message(message, snapshot)
+        if not value or value['ref'] in seen:
+            continue
+        cost = estimate_tokens(dumps(value))
+        if index >= limits.anchors or used + cost > limits.message_tokens:
+            material['diagnostics']['omitted_anchors'] += 1
+            continue
+        material['messages'].append(value); seen.add(value['ref']); used += cost
+    for index, memory in enumerate(snapshot.memories):
+        sources = [_memory_message(m, snapshot) for m in memory.get('source_messages', [])]
+        if (memory.get('kind') == '入口画像' or memory.get('lifecycle') != 'active'
+                or memory.get('visible') is not True or not sources or any(s is None for s in sources)
+                or type(memory.get('revision')) is not int or memory['revision'] < 1):
+            material['diagnostics']['omitted_memories'] += 1
+            continue
+        value = {k: copy.deepcopy(memory[k]) for k in ('memory_id', 'revision', 'body', 'kind', 'lifecycle')}
+        value['source_messages'] = sources
+        value['fingerprint'] = evidence_hash(value)
+        cost = estimate_tokens(dumps(value))
+        if index >= limits.memories or used_mem + cost > limits.memory_tokens:
+            material['diagnostics']['omitted_memories'] += 1
+            continue
+        material['memories'].append(value); used_mem += cost
+    material['diagnostics']['message_tokens'] = used
+    material['diagnostics']['memory_tokens'] = used_mem
+    return material
+
+
+def _memory_bind_source(raw, material):
+    if (not isinstance(raw, dict) or set(raw) != {'ref', 'field', 'excerpt', 'via_memory'}
+            or not isinstance(raw['ref'], str) or raw['field'] not in ('content', 'quote')
+            or not isinstance(raw['excerpt'], str) or not 1 <= len(raw['excerpt'].strip()) <= 300
+            or (raw['via_memory'] is not None and not isinstance(raw['via_memory'], str))):
+        raise ValueError('invalid_source')
+    memory = None
+    if raw['via_memory'] is not None:
+        memory = next((m for m in material['memories'] if m['memory_id'] == raw['via_memory']), None)
+        pool = memory['source_messages'] if memory else []
+    else:
+        pool = material['messages']
+    message = next((m for m in pool if m['ref'] == raw['ref']), None)
+    if message is None:
+        raise ValueError('invalid_source_reference')
+    quote = message.get('quote') or {}
+    content = message['content'] if raw['field'] == 'content' else quote.get('content', '')
+    speaker = message['speaker'] if raw['field'] == 'content' else quote.get('speaker')
+    if not speaker or not whitespace(raw['excerpt']) or whitespace(raw['excerpt']) not in whitespace(content):
+        raise ValueError('invalid_excerpt')
+    identity = (quote.get('ref') if raw['field'] == 'quote' else message['ref'])
+    if not identity:
+        identity = evidence_hash([speaker, _memory_observation_text(content)])
+    return {**copy.deepcopy(raw), 'excerpt': whitespace(raw['excerpt']),
+            'evidence_identity': identity, 'speaker': speaker,
+            'message': copy.deepcopy(message), 'memory': copy.deepcopy(memory)}
+
+
+def _memory_original(source, category, saying):
+    message = source['message']
+    if (source['field'] != 'content' or message.get('quote')
+            or _MEMORY_REPORTED.search(message['content'])
+            or _MEMORY_REGISTRATION.search(message['content'])):
+        return False
+    return category != 'saying' or saying in source['excerpt']
+
+
+def _memory_independent(left, right, category, messages):
+    a, b = left['message'], right['message']
+    if (left['evidence_identity'] == right['evidence_identity']
+            or _memory_copies(a['content'], b['content'])):
+        return False
+    ta, tb = _instant(a['occurred_at']), _instant(b['occurred_at'])
+    gap = abs((ta - tb).total_seconds())
+    if category == 'topic':
+        return a['date'] != b['date'] and gap >= 30 * 60
+    if category == 'saying':
+        if gap < 60 or ta.replace(second=0, microsecond=0) == tb.replace(second=0, microsecond=0):
+            return False
+        if a['speaker'] == b['speaker']:
+            # Same-author adjacent turns within 30 minutes are a burst even if
+            # a sparse excerpt omitted intervening text. Far-apart uses survive.
+            if gap < 30 * 60:
+                return False
+            ordered = sorted(messages, key=lambda m: (_instant(m['occurred_at']), m['ref']))
+            between = [m for m in ordered if min(ta, tb) <= _instant(m['occurred_at']) <= max(ta, tb)]
+            if len(between) > 1 and all(m['speaker'] == a['speaker'] for m in between):
+                if all((_instant(y['occurred_at']) - _instant(x['occurred_at'])).total_seconds() < 30 * 60
+                       for x, y in zip(between, between[1:])):
+                    return False
+    return True
+
+
+def _memory_validate_operation(raw, index, material):
+    if not isinstance(raw, dict) or raw.get('op') not in ('new', 'confirm', 'revise', 'retire'):
+        raise ValueError('invalid_operation')
+    op = raw['op']; target = None
+    required = {'op', 'sources'}
+    if op != 'new':
+        required |= {'target_id', 'expected_revision'}
+        target = next((p for p in material['profiles'] if p['memory_id'] == raw.get('target_id')), None)
+        if (target is None or type(raw.get('expected_revision')) is not int
+                or target['revision'] != raw['expected_revision'] or target['lifecycle'] == 'deleted'):
+            raise ValueError('invalid_target_revision')
+        if target.get('manual_protected') and op in ('revise', 'retire'):
+            raise ValueError('protected_manual_conflict')
+    if op in ('new', 'revise'):
+        required |= {'category', 'body', 'saying', 'meaning', 'importance'}
+    if set(raw) != required:
+        raise ValueError('invalid_operation_fields')
+    if (not isinstance(raw['sources'], list) or not 1 <= len(raw['sources']) <= 8):
+        raise ValueError('invalid_sources')
+    if op in ('new', 'revise'):
+        if (not isinstance(raw['category'], str) or raw['category'] not in ITEM_LABELS or not isinstance(raw['body'], str)
+                or not 1 <= len(raw['body'].strip()) <= 180
+                or not isinstance(raw['saying'], str) or not isinstance(raw['meaning'], str)
+                or type(raw['importance']) is not int or not 0 <= raw['importance'] <= 100):
+            raise ValueError('invalid_memory_body')
+        category, body, saying, meaning = (raw[k].strip() for k in ('category', 'body', 'saying', 'meaning'))
+        if category == 'saying':
+            if not saying or len(saying) > 40 or body != saying + ('：' + meaning if meaning else ''):
+                raise ValueError('invalid_saying_body')
+        elif saying or meaning:
+            raise ValueError('unexpected_saying_fields')
+        if _MEMORY_GENDERED.search(body):
+            raise ValueError('gendered_pronoun')
+        if _ACCOUNT.search(body):
+            raise ValueError('account_identifier')
+    else:
+        category, body = target['category'], target['body']
+        saying, meaning = target.get('saying', ''), target.get('meaning', '')
+    sources = [_memory_bind_source(source, material) for source in raw['sources']]
+    originals = [s for s in sources if _memory_original(s, category, saying)]
+    contexts = material['messages'] + [m for fact in material['memories'] for m in fact['source_messages']]
+    if category in ('topic', 'saying') and op in ('new', 'revise'):
+        if not any(_memory_independent(a, b, category, contexts)
+                   for i, a in enumerate(originals) for b in originals[i + 1:]):
+            raise ValueError('insufficient_independent_evidence')
+    if op == 'new':
+        # Exact same claim goes through confirm, never duplicate creation.
+        target = next((p for p in material['profiles'] if p['category'] == category
+                       and whitespace(p['body']) == body), None)
+        if target:
+            if target['lifecycle'] == 'deleted':
+                raise ValueError('deleted_target')
+            op = 'confirm'
+    new_ids = list(dict.fromkeys(s['evidence_identity'] for s in sources))
+    if target:
+        old = target.get('sources', [])
+        prior_ids = set(target.get('confirmed_evidence', [])) | {s['evidence_identity'] for s in old}
+        fresh = [s for s in originals if s['evidence_identity'] not in prior_ids
+                 and all(_memory_independent(s, prior, category, contexts) for prior in old)]
+        # Explicit rule quotes may support a change but not repeated quoted use.
+        if category in ('rule', None):
+            fresh = [s for s in sources if s['evidence_identity'] not in prior_ids
+                     and all(not _memory_copies(s['excerpt'], prior['excerpt']) for prior in old)]
+        new_ids = list(dict.fromkeys(s['evidence_identity'] for s in fresh))
+        if not new_ids:
+            raise ValueError('no_new_independent_evidence')
+    return dict(index=index, op=op, category=category, body=body, saying=saying, meaning=meaning,
+                importance=min(raw.get('importance', target.get('importance', 50) if target else 50),
+                               MEMORY_PROFILE_IMPORTANCE_CAP),
+                sources=sources, new_evidence=new_ids,
+                target_id=target['memory_id'] if target else None,
+                expected_revision=target['revision'] if target else None,
+                target=copy.deepcopy(target))
+
+
+def validate_memory_profile_operations(generated, material, limits=None):
+    limits = limits or MemoryProfileLimits()
+    if (not isinstance(generated, dict) or set(generated) != {'operations'}
+            or not isinstance(generated['operations'], list)
+            or len(generated['operations']) > limits.max_operations):
+        raise ValueError('invalid_operations')
+    accepted, removed, seen = [], [], set()
+    for index, raw in enumerate(generated['operations'], 1):
+        try:
+            item = _memory_validate_operation(raw, index, material)
+            key = ('target', item['target_id']) if item['target_id'] else (item['category'], item['body'])
+            if key in seen:
+                raise ValueError('duplicate_operation')
+            seen.add(key); accepted.append(item)
+        except ValueError as error:
+            removed.append(dict(index=index, stage='deterministic', reason=str(error)))
+    return accepted, removed
+
+
+def check_memory_profile_operations(output, operations):
+    if (not isinstance(output, dict) or set(output) != {'operations'}
+            or not isinstance(output['operations'], list) or len(output['operations']) != len(operations)):
+        raise ValueError('invalid_check_count')
+    kept, removed = [], []
+    flags = ('supported', 'stable', 'independent', 'independent_from_previous', 'privacy_safe', 'meaning_supported')
+    for item, verdict in zip(operations, output['operations'], strict=True):
+        if (not isinstance(verdict, dict) or set(verdict) != {
+                'index', *flags, 'meaning_checks', 'evidence_groups', 'violations', 'reason'}
+                or type(verdict['index']) is not int or verdict['index'] != item['index']
+                or any(type(verdict[k]) is not bool for k in flags)
+                or not isinstance(verdict['reason'], str) or not verdict['reason'].strip()
+                or not isinstance(verdict['violations'], list)
+                or any(v not in MEMORY_PROFILE_VIOLATIONS for v in verdict['violations'])
+                or len(set(verdict['violations'])) != len(verdict['violations'])):
+            raise ValueError('invalid_check_verdict')
+        groups = verdict['evidence_groups']
+        if not isinstance(groups, list) or any(not isinstance(g, list) or not g for g in groups):
+            raise ValueError('invalid_evidence_groups')
+        members = [i for group in groups for i in group]
+        if (any(type(i) is not int for i in members) or sorted(members) != list(range(len(item['sources'])))):
+            raise ValueError('invalid_evidence_groups')
+        terms = verdict['meaning_checks']
+        if not isinstance(terms, list) or (item['meaning'] and not terms):
+            raise ValueError('missing_meaning_checks')
+        for term in terms:
+            if (not isinstance(term, dict) or set(term) != {'term', 'source_indices', 'supported'}
+                    or not isinstance(term['term'], str) or not term['term'].strip()
+                    or type(term['supported']) is not bool
+                    or not isinstance(term['source_indices'], list) or not term['source_indices']
+                    or any(type(i) is not int or not 0 <= i < len(item['sources']) for i in term['source_indices'])):
+                raise ValueError('invalid_meaning_check')
+        good = all(verdict[k] for k in flags) and not verdict['violations'] and all(t['supported'] for t in terms)
+        if item['category'] in ('topic', 'saying') and item['op'] in ('new', 'revise'):
+            good = good and len(groups) >= 2
+        if good:
+            kept.append(item)
+        else:
+            removed.append(dict(index=item['index'], stage='model', reason=verdict['reason'], verdict=verdict))
+    return kept, removed
+
+
+class EntryProfileMemoryTask:
+    """Two-call, detached-snapshot producer. Must be explicitly given an adapter."""
+    def __init__(self, repository: MemoryProfileRepository | None, gateway, *, limits=None):
+        self.repository, self.gateway = repository, gateway
+        self.limits = limits or MemoryProfileLimits()
+        self.prompts = {}
+        for stage in ('generate', 'check'):
+            name = f'entry_profile_memory_{stage}_v1'
+            text = files('iris').joinpath(f'prompts/{name}.md').read_text(encoding='utf-8')
+            self.prompts[stage] = dict(name=name, text=text,
+                sha256=hashlib.sha256(text.encode('utf-8')).hexdigest())
+
+    def _call(self, stage, payload, result):
+        self.repository.assert_model_call_allowed()
+        prompt = self.prompts[stage]; purpose = 'consolidation_entry_profile_memory_' + stage
+        if not callable(getattr(self.gateway, 'chat', None)):
+            raise MemoryProfileUnavailable('model_gateway_unavailable')
+        encoded = dumps(payload)
+        if estimate_tokens(prompt['text']) + estimate_tokens(encoded) > self.limits.request_tokens:
+            raise ValueError('request_budget_exceeded')
+        health = getattr(self.gateway, 'health', None)
+        if health:
+            health.check('chat', 'learning')
+        monotonic = getattr(self.gateway, 'monotonic', time.monotonic)
+        started = monotonic()
+        call = dict(purpose=purpose, prompt_version=prompt['name'], prompt_sha256=prompt['sha256'])
+        try:
+            reply = self.gateway.chat([{'role': 'system', 'content': prompt['text']},
+                                       {'role': 'user', 'content': encoded}], purpose,
+                                      max_tokens=16000, _deadline=started + self.limits.timeout_seconds)
+        except ModelError as error:
+            result['calls'].append({**call, 'result': error.category,
+                'duration_ms': round((monotonic() - started) * 1000), 'usage': {}})
+            raise
+        result['outputs'][stage] = reply.content
+        result['calls'].append(dict(**call, result='success', finish_reason=reply.finish_reason,
+            duration_ms=round((monotonic() - started) * 1000), usage=reply.usage))
+        if reply.finish_reason != 'stop':
+            raise ValueError('incomplete_output')
+        return json_object(reply.content)
+
+    def run(self, entry_id):
+        if self.repository is None:
+            raise MemoryProfileUnavailable('memory_repository_unavailable')
+        snapshot = copy.deepcopy(self.repository.snapshot(entry_id, self.limits))
+        if snapshot.entry_id != entry_id:
+            raise MemoryProfileUnavailable('snapshot_entry_mismatch')
+        material = select_memory_profile_material(snapshot, self.limits)
+        result = dict(status='no_new_evidence', material=material, outputs={}, calls=[], removed=[],
+            stages={'generated': [], 'deterministic': [], 'checked': []}, receipt=None,
+            quote_validation={'total': 0, 'matched': 0},
+            prompt_versions=[p['name'] for p in self.prompts.values()],
+            prompt_sha256={p['name']: p['sha256'] for p in self.prompts.values()})
+        if material['cursor_after'] == snapshot.cursor:
+            return result
+        try:
+            operations = []
+            if material['new_refs']:
+                generated = self._call('generate', material, result)
+                rows = generated.get('operations', [])
+                result['stages']['generated'] = copy.deepcopy(rows) if isinstance(rows, list) else []
+                for raw in result['stages']['generated']:
+                    if not isinstance(raw, dict) or not isinstance(raw.get('sources'), list):
+                        continue
+                    for source in raw['sources']:
+                        result['quote_validation']['total'] += 1
+                        try:
+                            _memory_bind_source(source, material)
+                        except ValueError:
+                            continue
+                        result['quote_validation']['matched'] += 1
+                operations, result['removed'] = validate_memory_profile_operations(generated, material, self.limits)
+                result['stages']['deterministic'] = copy.deepcopy(operations)
+                if operations:
+                    # Only item-bound sources, target and original evidence history.
+                    # Unbound neighboring facts cannot supply a meaning or assertion.
+                    checked = self._call('check', dict(entry_id=entry_id, as_of=snapshot.as_of,
+                        operations=operations, protected_rules=[
+                            {k: p[k] for k in ('memory_id', 'revision', 'body')}
+                            for p in material['profiles'] if p.get('manual_protected')]), result)
+                    operations, removed = check_memory_profile_operations(checked, operations)
+                    result['removed'].extend(removed)
+                result['stages']['checked'] = copy.deepcopy(operations)
+            plan = MemoryProfilePlan(snapshot, material, tuple(operations), tuple(result['removed']),
+                                     material['cursor_after'], evidence_hash([material, operations]))
+            result['receipt'] = self.repository.commit(plan)
+            result['status'] = 'committed'
+        except EntryProfileConflict:
+            result.update(status='conflict', reason='snapshot_changed')
+        except ModelError as error:
+            # Do not log provider text: it can echo configuration or source data.
+            result.update(status='failed', reason=error.category)
+        except ValueError as error:
+            result.update(status='failed', reason=str(error))
+        return result
