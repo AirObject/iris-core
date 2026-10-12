@@ -26,7 +26,7 @@ from .retrieval import Retrieval
 from .persona import persona_context
 
 
-PROMPT_VERSION = "learning_v7"
+PROMPT_VERSION = "learning_v9"
 LEARNING_MAX_TOKENS = 16000
 PROMPT = files("iris").joinpath("prompts", PROMPT_VERSION + ".md").read_text(encoding="utf-8")
 MEMORY_TYPES = {"事件", "事实", "偏好", "关系", "观点", "计划", "自我", "其他"}

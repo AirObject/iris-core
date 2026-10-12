@@ -21,18 +21,19 @@ def test_explicit_prompt_version_is_used_for_learning(store, version):
     assert gateway.requests[0]["max_tokens"] == 16000
     with store.read() as conn:
         assert conn.execute("SELECT prompt_version FROM batches WHERE id=?", (formed.id,)).fetchone()[0] == version
-    assert PROMPT_VERSION == "learning_v7"
-    assert PROMPT == files("iris").joinpath("prompts", "learning_v7.md").read_text(encoding="utf-8")
+    assert PROMPT_VERSION == "learning_v9"
+    assert PROMPT == files("iris").joinpath("prompts", "learning_v9.md").read_text(encoding="utf-8")
 
 
-def test_explicit_selection_does_not_change_other_engines_default(store):
-    LearningEngine(store, FakeGateway({}), prompt_version="learning_v8")
+@pytest.mark.parametrize("version", ["learning_v7", "learning_v8"])
+def test_explicit_selection_does_not_change_other_engines_default(store, version):
+    LearningEngine(store, FakeGateway({}), prompt_version=version)
     msg(store, 1, "收到")
     formed = form_batch(store, "A", PROMPT_VERSION, target_count=1)
     gateway = FakeGateway({})
     LearningEngine(store, gateway).run_batch(formed.id, force=True)
     assert gateway.requests[0]["messages"][0] == {"role": "system", "content": PROMPT}
-    assert PROMPT_VERSION == "learning_v7"
+    assert PROMPT_VERSION == "learning_v9"
 
 
 @pytest.mark.parametrize("version", ["", "learning_v6", "learning_v10", "../learning_v9", None])
