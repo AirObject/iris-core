@@ -37,8 +37,8 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v15', 'persona_check': 'persona_check_v23',
-                   'persona_sentence_repair': 'persona_repair_v13', 'persona_recheck': 'persona_check_v23'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v15', 'persona_check': 'persona_check_v24',
+                   'persona_sentence_repair': 'persona_repair_v13', 'persona_recheck': 'persona_check_v24'}
 CALL_TIMEOUTS = {'persona_generate': 360, 'persona_check': 360,
                  'persona_sentence_repair': 120, 'persona_recheck': 360}
 CALL_MAX_TOKENS = {'persona_generate':16000, 'persona_check':16000,
@@ -678,8 +678,10 @@ def _validate_activity_scope(row, sentence, evidence):
             or type(scope['preserved']) is not bool
             or not isinstance(scope['candidate_scope'], str)
             or not isinstance(scope['source_scopes'], list)
-            or any(not isinstance(proof, dict) or set(proof) != {'ref', 'quote'}
+            or any(not isinstance(proof, dict)
+                   or set(proof) not in ({'ref', 'quote'}, {'ref', 'quote', 'preserved'})
                    or not isinstance(proof['ref'], str) or not isinstance(proof['quote'], str)
+                   or ('preserved' in proof and type(proof['preserved']) is not bool)
                    for proof in scope['source_scopes'])):
         return ['invalid activity scope verdict'], []
     issues = []
@@ -691,6 +693,10 @@ def _validate_activity_scope(row, sentence, evidence):
     if scope['preserved'] and not scope['source_scopes']:
         issues.append('activity scope needs its own source qualifier')
     for proof in scope['source_scopes']:
+        # A redundant per-source verdict is meaningful and remains in the audit.
+        # It can add a rejection, never override the overall or literal checks.
+        if proof.get('preserved') is False:
+            issues.append('activity scope not preserved by bound source ' + proof['ref'])
         memory = evidence.get(proof['ref'])
         # Elliptical utterances cannot replace the explicit scope in current text.
         constraint = None if memory is None else (memory.get('current_revision_text') or memory.get('content'))

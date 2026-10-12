@@ -94,7 +94,8 @@ def test_real_payload_requires_scope_only_without_bounded_event(store):
     assert payload['candidate'][0]['scope_check_required'] is True
 
 
-def test_scope_omission_reaches_sentence_deletion_even_with_positive_fact_model(store):
+@pytest.mark.parametrize('failure', ['omitted_qualifier', 'negative_source'])
+def test_scope_omission_reaches_sentence_deletion_even_with_positive_fact_model(store, failure):
     import json
     from iris.db import dumps
     from iris.models import ModelReply
@@ -108,7 +109,8 @@ def test_scope_omission_reaches_sentence_deletion_even_with_positive_fact_model(
     with store.read() as conn:
         material = _generation_material(conn, _settings(conn), previous, '2026-10-13T12:00:00+00:00')
     refs = [m['ref'] for m in material['evidence']['memories'] if m['memory_id'] in mids]
-    broad = '与人交流时，我倾向先听对方的节拍。'
+    broad = ('与人交流时，我倾向先听对方的节拍。' if failure == 'omitted_qualifier'
+             else '在合奏排练中，我先听了对方的节拍。')
 
     class ScopeGateway(FakeGateway):
         def chat(self, messages, purpose, **kwargs):
@@ -119,12 +121,16 @@ def test_scope_omission_reaches_sentence_deletion_even_with_positive_fact_model(
                     if sentence.get('scope_check_required'):
                         row['scope_check'] = {'candidate_scope': '与人交流时',
                             'source_scopes': [{'ref': refs[0], 'quote': '合奏排练'}], 'preserved': True}
+                        if failure == 'negative_source':
+                            row['scope_check']['candidate_scope'] = '合奏排练'
+                            row['scope_check']['source_scopes'][0]['preserved'] = False
                 return ModelReply(dumps(output), 'stop', {})
             return reply
 
     model = ScopeGateway(store, {'sentences': [{'text': broad, 'basis': refs}]}, scene=False)
     result = PersonaEngine(store, model).regenerate(expected_version=previous['id'])
     assert result['version'] and broad not in result['version']['content']
+    assert not result['version']['checks']['initial_model']['incomplete_checks']
     deleted = result['version']['checks']['deleted_sentences']
     assert any('activity scope' in reason for item in deleted for reason in item['reasons'])
 
@@ -146,3 +152,43 @@ def test_scope_can_use_original_when_no_current_text_is_present():
     output['sentences'][0]['scope_check'].update(candidate_scope='合奏排练',
         source_scopes=[{'ref': 'M1', 'quote': '排练'}])
     assert _validate_clause_checks(output, payload) == ([], {})
+
+
+@pytest.mark.parametrize('overall,source', [(True, True), (True, False), (False, True), (False, False)])
+def test_optional_per_source_scope_verdict_is_typed_and_combined_adversely(overall, source):
+    payload, output = fixture()
+    scope = output['sentences'][0]['scope_check']
+    scope['preserved'] = overall
+    scope['source_scopes'][0]['preserved'] = source
+    before = copy.deepcopy(output)
+    errors, problems = _validate_clause_checks(output, payload)
+    assert not errors
+    assert bool(problems) == (not overall or not source)
+    assert output == before  # Keep the extra verdict, never erase a negative.
+
+
+@pytest.mark.parametrize('value', [None, 1, 'true', [], {}])
+def test_per_source_scope_verdict_never_coerces_non_boolean_values(value):
+    payload, output = fixture()
+    output['sentences'][0]['scope_check']['source_scopes'][0]['preserved'] = value
+    errors, _ = _validate_clause_checks(output, payload)
+    assert any('invalid activity scope verdict' in error for error in errors)
+
+
+@pytest.mark.parametrize('target', ['scope', 'proof'])
+def test_per_source_scope_compatibility_does_not_accept_unknown_fields(target):
+    payload, output = fixture()
+    scope = output['sentences'][0]['scope_check']
+    record = scope if target == 'scope' else scope['source_scopes'][0]
+    record['unknown_verdict'] = True
+    errors, _ = _validate_clause_checks(output, payload)
+    assert any('invalid activity scope verdict' in error for error in errors)
+
+
+def test_positive_per_source_flag_cannot_override_missing_literal_qualifier():
+    payload, output = fixture()
+    scope = output['sentences'][0]['scope_check']
+    scope['candidate_scope'] = '节拍'
+    scope['source_scopes'][0]['preserved'] = True
+    errors, problems = _validate_clause_checks(output, payload)
+    assert not errors and 'omitted or broadened' in ' '.join(problems[1])
