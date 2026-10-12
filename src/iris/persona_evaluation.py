@@ -28,7 +28,7 @@ from .memory_ops import setup_role, delete_memory, adjust_retention, lifecycle_s
 from .model_health import ModelHealth
 from .models import Gateway, ModelError, parse_json_object_with_status
 from .persona import (PersonaEngine, admin_edit, current_persona, pending_update, select_evidence,
-                      confirm_candidate, reject_candidate, DEGREES, PUBLISH_MODES, PROMPT_VERSIONS, CALL_TIMEOUTS, _trace, _stale, _settings, split_sentences)
+                      confirm_candidate, reject_candidate, DEGREES, PUBLISH_MODES, PROMPT_VERSIONS, CALL_TIMEOUTS, CHECK_BATCH_SIZE, MAX_CHECK_STAGE_SECONDS, _trace, _stale, _settings, split_sentences)
 
 FORMAT_VERSION = 1
 SCORING_VERSION = 'persona_scoring_v1'
@@ -486,6 +486,7 @@ def _metrics(rows, judgments=None):
     invalid_calls = _invalid_model_calls(calls)
     result = {'run_valid':all(r['complete'] for r in rows) and not invalid_calls,
               'invalid_call_count':len(invalid_calls),
+              'timed_out_attempts':sum(a['reason']=='timeout' for row in rows for a in row['attempts']),
               'run_invalid_reasons':sorted({c['reason'] for c in invalid_calls} |
                   ({'incomplete_timeline'} if any(not r['complete'] for r in rows) else set())),
               'proposed_sentences':sum(sentence_counts), 'deleted_sentences':sum(deletions),
@@ -674,6 +675,7 @@ def run_persona_eval(configs, root, *, corpus, out, judge_mode='model', gateway_
                 'models':identity['models'],'prompt_versions':sorted(set(PROMPT_VERSIONS.values())),
                 'prompt_by_purpose':PROMPT_VERSIONS,
                 'timeouts_seconds':{**CALL_TIMEOUTS,'judge':240},
+                'check_batch_size':CHECK_BATCH_SIZE, 'max_check_stage_seconds':MAX_CHECK_STAGE_SECONDS,
                 'resumed_cases':resumed,'elapsed_seconds':round(time.monotonic()-started,3)}
     directory = out/('judging-materials-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')+'-'+uuid4().hex[:8])
     materials,manifest = _export(rows,metadata,scoring,directory)

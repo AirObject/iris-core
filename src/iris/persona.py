@@ -41,6 +41,7 @@ PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v6', 'persona_check': '
 CALL_TIMEOUTS = {'persona_generate': 120, 'persona_check': 180,
                  'persona_sentence_repair': 120, 'persona_recheck': 180}
 CHECK_BATCH_SIZE = 4
+MAX_CHECK_STAGE_SECONDS = 360
 REFERENCE = re.compile(r'(?<![A-Za-z0-9])[MP]\s*#?\s*\d+(?![A-Za-z0-9])', re.I)
 
 
@@ -258,6 +259,7 @@ def _generation_material(conn, settings, previous, stamp):
             omitted.append({'sentence':sentence, 'reason':'template_evidence_over_budget'})
     return {'evidence':evidence, 'settings':settings, 'as_of':stamp,
         'prompt_versions':PROMPT_VERSIONS, 'timeouts_seconds':CALL_TIMEOUTS, 'check_batch_size':CHECK_BATCH_SIZE,
+        'max_check_stage_seconds':MAX_CHECK_STAGE_SECONDS,
         'role_name':_setting(conn, 'role_name', 'Iris'), 'locked_sentences':retained,
         'omitted_template_sentences':omitted, 'previous':previous['content'],
         'previous_sentences':previous['sentences'],
@@ -970,7 +972,8 @@ class PersonaEngine:
         except ModelError as error:
             # The gateway's late-response path records timed_out but may omit the
             # reason. Keep the attempt diagnostic consistent with that call record.
-            if error.reason is None and error.summary == 'total timeout':
+            if error.reason is None and error.summary in {
+                    'total timeout', 'ReadTimeout', 'WriteTimeout', 'ConnectTimeout', 'PoolTimeout'}:
                 error.reason = 'timeout'
             raise
         finally:
@@ -978,9 +981,11 @@ class PersonaEngine:
                 gateway.close()
 
     def _check_all(self, purpose, material, sentences, *, full_content, outputs):
-        """Small independent fact batches, one total 180-second stage budget."""
+        """Bound each request and the complete serial batch stage, including retries."""
         import time
-        deadline = getattr(self.gateway, 'monotonic', time.monotonic)() + CALL_TIMEOUTS[purpose]
+        batch_count = max(1, (len(sentences) + CHECK_BATCH_SIZE - 1) // CHECK_BATCH_SIZE)
+        stage_seconds = min(MAX_CHECK_STAGE_SECONDS, CALL_TIMEOUTS[purpose] * batch_count)
+        deadline = getattr(self.gateway, 'monotonic', time.monotonic)() + stage_seconds
         raw_batches = outputs.setdefault(purpose + '_batches', [])
         rows, batches, degrees, reasons = [], [], [], []
         for start in range(0, max(1, len(sentences)), CHECK_BATCH_SIZE):

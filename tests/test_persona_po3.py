@@ -115,3 +115,25 @@ def test_relative_time_guard_respects_word_boundaries(text):
 def test_split_relative_time_phrases_still_require_durable_wording(text):
     sentence = {'text':text,'origin':'memory','initial_setting':False,'date_count':3}
     assert 'relative time' in ' '.join(_check_verdicts(approving_verdict([sentence]),[sentence])[2][1])
+
+
+def test_stage_timeout_without_http_record_is_invalid_and_not_reused(tmp_path):
+    from iris.models import ModelError
+
+    class Expired(FakeGateway):
+        def chat(self, *args, **kwargs):
+            raise ModelError('timeout', 'total timeout', reason='timeout')
+
+    case = copy.deepcopy(TIMELINE)
+    case['events'] = case['events'][:2]
+    corpus = tmp_path/'expired.json'
+    corpus.write_text(dumps(case), encoding='utf-8')
+    for _ in range(2):
+        _, report = run_persona_eval({}, tmp_path, corpus=corpus, out=tmp_path/'out',
+            judge_mode='external', gateway_factory=Expired, runner_identity='expired-stage')
+        assert not report['metrics']['run_valid']
+        assert report['metrics']['timed_out_attempts'] == 1
+        assert report['metrics']['calls']['timed_out_calls'] == 0
+        assert report['resumed_cases'] == 0
+        assert report['check_batch_size'] == 4
+        assert report['max_check_stage_seconds'] == 360

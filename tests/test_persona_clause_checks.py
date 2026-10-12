@@ -158,7 +158,7 @@ def test_batches_keep_local_indices_one_deadline_max_degree_and_all_raw_outputs(
     gateway, outputs = BatchGateway(), {}
     result = PersonaEngine(store, gateway)._check_all('persona_check', batch_material(), batch_sentences(), full_content='整稿', outputs=outputs)
     assert [len(c[1]['candidate']) for c in gateway.calls] == [4, 4, 1]
-    assert all(c[2] == 180 for c in gateway.calls)
+    assert [c[2] for c in gateway.calls] == [180, 200, 220]
     assert all([s['index'] for s in c[1]['candidate']] == list(range(1, len(c[1]['candidate']) + 1)) for c in gateway.calls)
     assert [s['index'] for s in result['sentences']] == list(range(1, 10))
     assert result['change_degree'] == 'large'
@@ -174,12 +174,12 @@ def test_bad_local_index_is_not_silently_renumbered(store):
 
 
 def test_whole_stage_timeout_preserves_partial_outputs_without_resetting_budget(store):
-    gateway, outputs = BatchGateway(duration=100), {}
+    gateway, outputs = BatchGateway(duration=130), {}
     with pytest.raises(ModelError) as error:
         PersonaEngine(store, gateway)._check_all('persona_check', batch_material(), batch_sentences(), full_content='整稿', outputs=outputs)
     assert error.value.reason == 'timeout'
-    assert len(gateway.calls) == 2 and [c[2] for c in gateway.calls] == [180, 180]
-    assert len(outputs['persona_check_batches']) == 2
+    assert len(gateway.calls) == 3 and [c[2] for c in gateway.calls] == [180, 310, 360]
+    assert len(outputs['persona_check_batches']) == 3
     assert current_persona(store)['id'] == 1
 
 
@@ -194,7 +194,7 @@ def test_bare_result_cannot_borrow_earlier_clauses_negation_or_preference(text, 
     assert bool(problems(sentence(text), memory())) is not allowed
 
 
-def test_timeout_in_second_batch_records_attempt_and_keeps_current_version(store):
+def test_timeout_in_later_batch_records_attempt_and_keeps_current_version(store):
     from test_persona import FakeGateway
     from iris.persona import select_evidence
     mid = add_self(store, '在那次直播中，我解释了规则。')
@@ -206,7 +206,7 @@ def test_timeout_in_second_batch_records_attempt_and_keeps_current_version(store
         def chat(self, messages, purpose, **kwargs):
             reply = super().chat(messages, purpose, **kwargs)
             if purpose == 'persona_check':
-                self.now += 100
+                self.now += 130
             return reply
     model = SlowCheck(store, {'sentences': [{'text': f'在那次直播中，我解释了第{i}条规则。',
         'basis': [ref]} for i in range(9)]})
@@ -215,8 +215,8 @@ def test_timeout_in_second_batch_records_attempt_and_keeps_current_version(store
     assert current_persona(store)['id'] == 1
     with store.read() as conn:
         row = conn.execute('SELECT outputs_json FROM persona_attempts WHERE id=?', (result['attempt_id'],)).fetchone()
-    assert len(json.loads(row[0])['persona_check_batches']) == 2
-    assert [purpose for purpose, _ in model.calls] == ['persona_generate', 'persona_check', 'persona_check']
+    assert len(json.loads(row[0])['persona_check_batches']) == 3
+    assert [purpose for purpose, _ in model.calls] == ['persona_generate', 'persona_check', 'persona_check', 'persona_check']
 
 
 def test_model_cannot_inject_computed_diagnostics_or_crash_batch_validation(store):
@@ -231,3 +231,28 @@ def test_model_cannot_inject_computed_diagnostics_or_crash_batch_validation(stor
     result = PersonaEngine(store, Noisy())._check_all('persona_check', batch_material(), batch_sentences(), full_content='整稿', outputs={})
     assert len(result['sentences']) == 9
     assert all(row['clause_errors'] == [] for row in result['sentences'])
+
+
+def test_one_batch_still_has_only_180_seconds(store):
+    gateway = BatchGateway(duration=181)
+    with pytest.raises(ModelError) as error:
+        PersonaEngine(store, gateway)._check_all('persona_check', batch_material(), batch_sentences()[:4], full_content='整稿', outputs={})
+    assert error.value.reason == 'timeout'
+    assert len(gateway.calls) == 1 and gateway.calls[0][2] == 180
+
+
+def test_multiple_batches_can_exceed_180_but_never_reset_the_360_second_stage_cap(store):
+    gateway = BatchGateway(duration=100)
+    result = PersonaEngine(store, gateway)._check_all('persona_check', batch_material(), batch_sentences(), full_content='整稿', outputs={})
+    assert len(result['sentences']) == 9
+    assert [c[2] for c in gateway.calls] == [180, 280, 360]
+    assert gateway.now == 300
+
+
+@pytest.mark.parametrize('summary', ['ReadTimeout', 'WriteTimeout', 'ConnectTimeout', 'PoolTimeout'])
+def test_known_gateway_timeout_summary_keeps_timeout_attempt_reason(store, summary):
+    class TimedOut:
+        def chat(self, *args, **kwargs):
+            raise ModelError('retryable', summary)
+    result = PersonaEngine(store, TimedOut()).regenerate(expected_version=1)
+    assert result['status'] == 'failed' and result['reason'] == 'timeout'
