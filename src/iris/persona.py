@@ -37,8 +37,8 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v10', 'persona_check': 'persona_check_v13',
-                   'persona_sentence_repair': 'persona_repair_v9', 'persona_recheck': 'persona_check_v13'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v10', 'persona_check': 'persona_check_v14',
+                   'persona_sentence_repair': 'persona_repair_v9', 'persona_recheck': 'persona_check_v14'}
 CALL_TIMEOUTS = {'persona_generate': 180, 'persona_check': 180,
                  'persona_sentence_repair': 120, 'persona_recheck': 180}
 CALL_MAX_TOKENS = {'persona_generate':6144, 'persona_check':6144,
@@ -560,7 +560,7 @@ def _bound_source_issues(sentence, tokens, memories):
             explicit_aspect = resultative.endswith(('了', '过'))
             scope_tokens = words(prefix)
             scope = set(scope_tokens) | {''.join(scope_tokens[i:i+2]) for i in range(len(scope_tokens)-1)}
-            if scope & {'能', '能够', '可以', '假装', '而非'}:
+            if scope & {'能', '能够', '可以', '假装', '装作', '而非'}:
                 continue
             # A bare result in an affirmative assertion also needs a result
             # witness. Negation/intention/preference in a different clause cannot
@@ -645,14 +645,28 @@ def _validate_clause_checks(output, payload):
         return ['clause checks must cover every sentence'], {}
     for sentence, row in zip(candidates, rows):
         index = sentence['index']
+        if isinstance(row, dict):
+            row.pop('unchecked_clause_indices', None)  # Computed here, never trusted from the model.
         if sentence['origin'] != 'memory' or sentence.get('initial_setting'):
             continue
         parts = row.get('clauses') if isinstance(row, dict) else None
         focus = sentence['clauses']
-        if not isinstance(parts, list) or len(parts) != len(focus):
+        # One explicit negative proves the whole conjunction false. This is a
+        # rejection-only protocol: a retained sentence still needs every focus.
+        # Preserve what was not checked rather than inventing verdicts for it.
+        stopped = (isinstance(row, dict) and row.get('stop_after_failure') is True
+            and row.get('supported') is False and isinstance(parts, list)
+            and 0 < len(parts) <= len(focus) and isinstance(parts[-1], dict)
+            and parts[-1].get('supported') is False)
+        if (isinstance(row, dict) and 'stop_after_failure' in row
+                and (type(row['stop_after_failure']) is not bool
+                     or (row['stop_after_failure'] and not stopped))):
+            errors.append(f'sentence {index}: invalid rejection short circuit')
+            continue
+        if not isinstance(parts, list) or (len(parts) != len(focus) and not stopped):
             errors.append(f'sentence {index}: clause checks must cover every focus span, in order')
             continue
-        issues = []
+        issues, errors_before = [], len(errors)
         for expected, part in zip(focus, parts):
             label = f"clause {expected['index']}"
             if (not isinstance(part, dict) or type(part.get('index')) is not int
@@ -703,6 +717,8 @@ def _validate_clause_checks(output, payload):
                     issues.append(f'{label}: general claim needs at least two distinct dates of its own proof')
                 elif not BOUNDED_SCENE.search(sentence['text']):
                     issues.append(f'{label}: single-date claim needs an explicit bounded scene in this sentence')
+        if stopped and len(parts) < len(focus) and len(errors) == errors_before:
+            row['unchecked_clause_indices'] = [part['index'] for part in focus[len(parts):]]
         if issues:
             problems[index] = issues
     return errors, problems
@@ -1073,7 +1089,7 @@ class PersonaEngine:
         stage_seconds = min(MAX_CHECK_STAGE_SECONDS, CALL_TIMEOUTS[purpose] * len(subsets))
         deadline = getattr(self.gateway, 'monotonic', time.monotonic)() + stage_seconds
         raw_batches = outputs.setdefault(purpose + '_batches', [])
-        rows, batches, degrees, reasons, incomplete = {}, [], [], [], []
+        rows, batches, degrees, reasons, incomplete, short_circuits = {}, [], [], [], [], []
         window_map = outputs.setdefault(purpose + '_windows', [])
         for batch_index,subset in enumerate(subsets):
             window_map.append([{'sentence_index':s['_check_sentence'],
@@ -1118,6 +1134,10 @@ class PersonaEngine:
                                  else [f'sentence {local}: invalid model verdict']) + errors
                     if malformed:
                         incomplete.append(f'batch {batch_index+1}, sentence {local}: ' + '; '.join(malformed))
+                    elif row.get('unchecked_clause_indices'):
+                        short_circuits.append({'batch':batch_index+1,
+                            'sentence_index':sentence['_check_sentence'],
+                            'unchecked_clause_indices':row['unchecked_clause_indices']})
                     if isinstance(row.get('persona_kind'), str) and row['persona_kind'] in EXCLUDED_KINDS:
                         issues.setdefault(local, []).append(EXCLUDED_KINDS[row['persona_kind']])
                     if malformed and sentence['origin'] == 'memory' and not sentence.get('initial_setting'):
@@ -1156,12 +1176,14 @@ class PersonaEngine:
                         'violations':list(dict.fromkeys(previous['violations']+part['violations'])),
                         'reason':previous['reason']+'；'+part['reason'],
                         'clauses':previous['clauses']+part['clauses'],
+                        'unchecked_clause_indices':previous.get('unchecked_clause_indices',[])
+                            + part.get('unchecked_clause_indices',[]),
                         'clause_errors':previous['clause_errors']+part['clause_errors']}
             degrees.append(degree)
             reasons.append(batch['reason'])
         return {'sentences':[rows[i] for i in sorted(rows)], 'change_degree':degrees[0],
                 'reason':reasons[0], 'batches':batches, 'window_map':window_map,
-                'incomplete_checks':incomplete}
+                'incomplete_checks':incomplete, 'short_circuits':short_circuits}
 
     def _recover_sentences(self, original, initial_model, problems, material, previous, checks, outputs):
         payload = _check_payload(material, original, full_content=''.join(s['text'] for s in original), proof_choices=False)

@@ -17,6 +17,7 @@ from test_persona_optimization import Model, prepared
     '在那次共读中，我可以读完目录。',
     '在那次共读中，我能读完目录了。',
     '那次我觉得承认困难比假装读完更舒服。',
+    '那次我觉得承认困难比装作读完更舒服。',
     '那次我把完整解法留给对方选择。',
     '那次我觉得这份目录完全可读。',
     '那次我提出完善目录结构的想法。',
@@ -32,6 +33,7 @@ def test_non_result_scopes_are_not_mistaken_for_completed_actions(text):
     '在那次共读中，我不小心读完了目录。',
     '那次我本来想读完，后来读完了目录。',
     '那次我用智能朗读工具读完了目录。',
+    '那次我装作镇定，随后读完了目录。',
 ])
 def test_actual_results_still_require_source_results_in_the_same_predicate(text):
     assert problems(sentence(text), memory(original='我能读完目录。'))
