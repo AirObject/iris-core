@@ -29,7 +29,7 @@
 ## 可复核材料
 
 - 原始轮：`person-baseline-v1-01/person-summary-20261012T002939-ddcad843`。
-- 完整材料、数据库、模型输出、两轮判分和合并计分均在仓库外 `/Users/cassia/Local/Code/iris-eval-artifacts/EPQ-20261012`；仓库只存本汇总。
+- 完整材料、数据库、模型输出、两轮判分和合并计分均在仓库外 `iris-eval-artifacts/EPQ-20261012`；仓库只存本汇总。
 - 语料文件 SHA-256：`3b6f90f833d520c2d4a1cd6f27ac4648dc7aa37128e5eb86cef8ccd35fc565dd`。
 - 源码指纹：`cd9673a361af274aa9d892a7a52d6736a8e7b3aac583dee795b0eae1196bae72`（起点 main `b896cdf`，生成时未改任何源码或提示词）。
 - 判分材料 SHA-256：`4aa6b504118d505e1a193e7f7895fd6d852e8790ed9b84d881858704ad6d46fe`。
