@@ -37,8 +37,8 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v13', 'persona_check': 'persona_check_v19',
-                   'persona_sentence_repair': 'persona_repair_v11', 'persona_recheck': 'persona_check_v19'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v14', 'persona_check': 'persona_check_v20',
+                   'persona_sentence_repair': 'persona_repair_v12', 'persona_recheck': 'persona_check_v20'}
 CALL_TIMEOUTS = {'persona_generate': 360, 'persona_check': 360,
                  'persona_sentence_repair': 120, 'persona_recheck': 360}
 CALL_MAX_TOKENS = {'persona_generate':16000, 'persona_check':16000,
@@ -52,6 +52,8 @@ MAX_CHECK_STAGE_SECONDS = 900
 REPAIR_BATCH_SIZE = 2
 MAX_REPAIR_STAGE_SECONDS = 180
 BOUNDED_SCENE = re.compile(r'(?:这|那|当|某|本|同)(?:一)?(?:次|场|回|天)|\d{4}-\d{2}-\d{2}|[0-9零〇一二三四五六七八九十廿三]+(?:年|月|日|号)')
+CROSS_SCENE_LINK = re.compile(r'^(?:(?:也|又|还|同样)(?:也)?(?:是)?在(?:这|那)(?:一)?(?:次|场|天|回)|'
+                              r'(?:也(?:是)?)?在同一(?:次|场|天|回))')
 REFERENCE = re.compile(r'(?<![A-Za-z0-9])[MP]\s*#?\s*\d+(?![A-Za-z0-9])', re.I)
 
 
@@ -610,6 +612,11 @@ def _surface_issues(sentence, *, memories=None):
         # Never resolve an event date from the request date: a source may describe
         # a past event. Reject this wording for repair, preserving raw evidence.
         issues.append('relative time is not durable: 自动句须使用有据的事件日期或具体活动，不保留相对日历时间')
+    if not sentence['initial_setting'] and CROSS_SCENE_LINK.search(text.strip()):
+        # A local evidence window has no verified neighbouring-scene antecedent.
+        # Require independent wording rather than guessing that events coincide.
+        issues.append('cross-sentence scene reference needs independent wording: '
+                      '自动句须独立限定本句事件，不用也是在那次／同一场等借邻句关联场景')
     issues.extend(_bound_source_issues(sentence, tokens, memories))
     if not sentence['initial_setting'] and sentence['date_count'] < 2:
         # This is the same necessary boundary used by the proof validator. Apply
