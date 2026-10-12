@@ -274,10 +274,11 @@ def test_long_compound_sentences_are_batched_by_focus_work_as_well_as_sentence_c
     gateway, outputs = FocusGateway(), {}
     result = PersonaEngine(store, gateway)._check_all('persona_check', batch_material(), sentences,
         full_content=''.join(s['text'] for s in sentences), outputs=outputs)
-    assert [len(c[1]['candidate']) for c in gateway.calls] == [2, 2, 1]
+    assert [len(c[1]['candidate']) for c in gateway.calls] == [1]*10
     assert [r['index'] for r in result['sentences']] == list(range(1, 6))
-    assert [c[2] for c in gateway.calls] == [180, 200, 220]
-    assert len(outputs['persona_check_batches']) == 3
+    assert all(len(r['clauses'])==3 for r in result['sentences'])
+    assert [c[2] for c in gateway.calls] == [180+20*i for i in range(10)]
+    assert len(outputs['persona_check_batches']) == 10
 
 
 def test_degree_only_request_explicitly_has_no_fact_check_work(store):
@@ -288,9 +289,15 @@ def test_degree_only_request_explicitly_has_no_fact_check_work(store):
     assert gateway.calls[0][2] == 180
 
 
-def test_one_oversized_sentence_is_never_split_or_truncated_for_batching():
+def test_oversized_sentence_keeps_full_text_while_proof_windows_are_split():
     from iris.persona import _check_batches
     text = '，'.join(f'分句{i}' for i in range(9)) + '。'
     sentence = {'text':text, 'origin':'memory', 'initial_setting':False}
     following = {'text':'管理员原文。', 'origin':'admin'}
-    assert _check_batches([sentence, following]) == [[sentence], [following]]
+    batches=_check_batches([sentence,following])
+    automatic=[s for batch in batches for s in batch if s['origin']=='memory']
+    assert len(batches)==5 and all(s['text']==text for s in automatic)
+    assert [p['index'] for s in automatic for p in s['_check_focus']]==list(range(1,10))
+    assert all(sum(len(s.get('_check_focus',[])) for s in batch)<=2 for batch in batches)
+    assert sum(s['origin']=='admin' for batch in batches for s in batch)==1
+    assert '_check_focus' not in sentence and '_check_sentence' not in following

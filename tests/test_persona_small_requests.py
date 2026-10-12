@@ -100,7 +100,10 @@ def test_mapped_automatic_sentence_with_malformed_check_is_repaired(prepared,bad
             reply = super().chat(messages,purpose,**kwargs)
             if purpose == 'persona_check':
                 value = json.loads(reply.content)
-                value['sentences'][1][bad_field] = {'reason':'','clauses':[], 'supported':1}[bad_field]
+                request=json.loads(messages[-1]['content'])
+                for i,sentence in enumerate(request['candidate']):
+                    if '解释了规则' in sentence['text']:
+                        value['sentences'][i][bad_field] = {'reason':'','clauses':[], 'supported':1}[bad_field]
                 reply.content = dumps(value)
             elif purpose == 'persona_sentence_repair':
                 request=json.loads(messages[-1]['content'])
@@ -165,3 +168,14 @@ def test_empty_fact_check_cannot_be_treated_as_degree_only(prepared):
     assert 'cover every sentence' in ' '.join(result['version']['checks']['model_errors'])
     assert not any(p in ('persona_sentence_repair','persona_recheck') for p,*_ in model.calls)
     assert result['version']['checks']['initial_model']['batches'][0]['sentences']==[]
+
+
+def test_single_date_repair_without_explicit_scene_never_reaches_fact_recheck(prepared):
+    edit_memory(prepared,5,1,content='我在回声读书会交流时说明了故事背景。')
+    model=Model(prepared)
+    result=PersonaEngine(prepared,model).regenerate(expected_version=1)
+    assert result['version']['checks']['passed']
+    assert not any(p=='persona_sentence_repair' for p,*_ in model.calls)
+    requests=[r for p,r,*_ in model.calls if p=='persona_recheck']
+    assert requests and all(r['task']=='degree_only' and r['candidate']==[] for r in requests)
+    assert 'single-date' in str(result['version']['checks']['repair_options_rejected'])

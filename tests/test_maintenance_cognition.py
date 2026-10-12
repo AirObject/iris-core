@@ -522,7 +522,7 @@ def test_persona_dream_step_uses_manual_product_default(store, degree):
     assert len(model.calls) == 2
 
 
-@pytest.mark.parametrize('budget,status',[(2,'failed'),(3,'failed'),(4,'published')])
+@pytest.mark.parametrize('budget,status',[(2,'failed'),(3,'failed'),(4,'failed'),(5,'published')])
 def test_sentence_recovery_consumes_existing_dream_call_budget(store,budget,status):
     from test_persona_optimization import Model
     engine,_,_=persona_case(store,budget=budget)

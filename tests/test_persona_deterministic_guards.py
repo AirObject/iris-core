@@ -96,7 +96,7 @@ def test_repair_options_are_complete_own_memory_and_keep_only_its_basis(prepared
             return reply
     model = SeveralReferences(prepared, repair='我在十月一日的直播中选择了浅灰底。')
     result = PersonaEngine(prepared, model).regenerate(expected_version=1)
-    request = model.calls[2][1]
+    request = next(r for purpose,r,*_ in model.calls if purpose=='persona_sentence_repair')
     refs = request['problems'][0]['allowed_replacement_refs']
     options = request['replacement_text_by_ref']
     assert {options[ref] for ref in refs} == {
@@ -150,7 +150,8 @@ def test_single_date_condition_is_removed_even_when_model_approves_everything(pr
     model = Permissive(prepared, repair=None)
     result = PersonaEngine(prepared, model).regenerate(expected_version=1)
     checks = result['version']['checks']
-    assert checks['initial_model']['sentences'][-1]['supported']
+    assert all(row['supported'] for batch in checks['initial_model']['batches'] for row in batch['sentences'])
+    assert not checks['initial_model']['sentences'][-1]['supported']
     assert checks['passed'] and len(checks['deleted_sentences']) == 1
     assert '遇到' not in result['version']['content']
     assert any('single-date' in e for e in checks['initial_model_errors'])
@@ -190,7 +191,7 @@ def test_repair_request_deduplicates_repeated_complete_replacement_text(prepared
             return reply
     model = RepeatedProblems(prepared)
     result = PersonaEngine(prepared, model).regenerate(expected_version=1)
-    request = model.calls[2][1]
+    request = next(r for purpose,r,*_ in model.calls if purpose=='persona_sentence_repair')
     assert len(request['problems']) == 2
     assert len(request['replacement_text_by_ref']) == 1
     assert all(len(p['allowed_replacement_refs']) == 1 for p in request['problems'])

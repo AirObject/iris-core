@@ -36,15 +36,16 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v9', 'persona_check': 'persona_check_v11',
-                   'persona_sentence_repair': 'persona_repair_v8', 'persona_recheck': 'persona_check_v11'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v9', 'persona_check': 'persona_check_v12',
+                   'persona_sentence_repair': 'persona_repair_v8', 'persona_recheck': 'persona_check_v12'}
 CALL_TIMEOUTS = {'persona_generate': 180, 'persona_check': 180,
                  'persona_sentence_repair': 120, 'persona_recheck': 180}
 CHECK_BATCH_SIZE = 4
-CHECK_BATCH_CLAUSES = 6
+CHECK_BATCH_CLAUSES = 2
 MAX_CHECK_STAGE_SECONDS = 900
 REPAIR_BATCH_SIZE = 2
 MAX_REPAIR_STAGE_SECONDS = 180
+BOUNDED_SCENE = re.compile(r'(?:这|那|当|某|本|同)(?:一)?(?:次|场|回|天)|\d{4}-\d{2}-\d{2}|[0-9零〇一二三四五六七八九十廿三]+(?:年|月|日|号)')
 REFERENCE = re.compile(r'(?<![A-Za-z0-9])[MP]\s*#?\s*\d+(?![A-Za-z0-9])', re.I)
 
 
@@ -312,19 +313,26 @@ def _clause_parts(text):
 
 
 def _check_batches(sentences):
-    """Keep sentences intact, bound both row count and automatic proof work."""
+    """Bound proof work while each window retains its entire sentence context."""
+    views = []
+    for index,sentence in enumerate(sentences,1):
+        base = {**sentence, '_check_sentence':index}
+        if sentence['origin'] == 'memory' and not sentence.get('initial_setting'):
+            parts = _clause_parts(sentence['text'])
+            windows = [parts[i:i+CHECK_BATCH_CLAUSES] for i in range(0,len(parts),CHECK_BATCH_CLAUSES)] or [[]]
+            views.extend({**base, '_check_focus':window} for window in windows)
+        else:
+            views.append(base)  # Protected/setting rows have no automatic proofs.
     batches, batch, work = [], [], 0
-    for sentence in sentences:
-        cost = (len(_clause_parts(sentence['text']))
-                if sentence['origin'] == 'memory' and not sentence.get('initial_setting') else 1)
-        cost = max(1, cost)
+    for view in views:
+        cost = len(view.get('_check_focus',[]))
         if batch and (len(batch) >= CHECK_BATCH_SIZE or work + cost > CHECK_BATCH_CLAUSES):
             batches.append(batch)
             batch, work = [], 0
-        batch.append(sentence)
+        batch.append(view)
         work += cost
     if batch or not batches:
-        batches.append(batch)  # Empty facts still have one change-degree check.
+        batches.append(batch)
     return batches
 
 
@@ -344,7 +352,10 @@ def _check_payload(material, sentences, *, full_content):
             evidence[memory['ref']] = {k:memory[k] for k in fields}
             evidence[memory['ref']]['excerpts'] = [dict(e, source_index=i)
                 for i, e in enumerate(memory['excerpts'], 1)]
-        row = {**sentence, 'index':index, 'evidence_refs':refs, 'clauses':_clause_parts(sentence['text'])}
+        row = {k:v for k,v in sentence.items() if k not in ('_check_sentence','_check_focus')}
+        row.update(index=index, evidence_refs=refs,
+                   clauses=sentence.get('_check_focus',_clause_parts(sentence['text'])),
+                   full_clause_count=len(_clause_parts(sentence['text'])))
         if sentence['origin'] == 'initial_template':
             # The whole original background must not become an extra fact source
             # attached to a name sentence or to a partially omitted template.
@@ -562,6 +573,10 @@ def _surface_issues(sentence, *, memories=None):
         issues.append('relative time is not durable: 自动句须使用有据的事件日期或具体活动，不保留相对日历时间')
     issues.extend(_bound_source_issues(sentence, tokens, memories))
     if not sentence['initial_setting'] and sentence['date_count'] < 2:
+        # This is the same necessary boundary used by the proof validator. Apply
+        # it before selecting a repair that could never pass the later check.
+        if not BOUNDED_SCENE.search(text):
+            issues.append('single-date/unknown-date evidence needs an explicit bounded scene in this sentence')
         # Narrow style restrictions, not a general Chinese entailment parser.
         # In particular, a union of multiple dates is not proof for every clause;
         # the semantic checker must still verify each claim's scope independently.
@@ -652,7 +667,7 @@ def _validate_clause_checks(output, payload):
             if part['supported'] and len(dates) < 2:
                 if not part['scene_qualified']:
                     issues.append(f'{label}: general claim needs at least two distinct dates of its own proof')
-                elif not re.search(r'(?:这|那|当|某|本)(?:一)?(?:次|场|回|天)|\d{4}-\d{2}-\d{2}|[0-9零〇一二三四五六七八九十廿三]+(?:年|月|日|号)', sentence['text']):
+                elif not BOUNDED_SCENE.search(sentence['text']):
                     issues.append(f'{label}: single-date claim needs an explicit bounded scene in this sentence')
         if issues:
             problems[index] = issues
@@ -1008,24 +1023,27 @@ class PersonaEngine:
                 gateway.close()
 
     def _check_all(self, purpose, material, sentences, *, full_content, outputs):
-        """Bound serial checks; only the first batch assesses the complete diff."""
+        """Check small focus windows, then AND facts and union failures per sentence."""
         import time
         subsets = _check_batches(sentences)
         stage_seconds = min(MAX_CHECK_STAGE_SECONDS, CALL_TIMEOUTS[purpose] * len(subsets))
         deadline = getattr(self.gateway, 'monotonic', time.monotonic)() + stage_seconds
         raw_batches = outputs.setdefault(purpose + '_batches', [])
-        rows, batches, degrees, reasons = [], [], [], []
-        for subset in subsets:
-            start = len(rows)
+        rows, batches, degrees, reasons = {}, [], [], []
+        window_map = outputs.setdefault(purpose + '_windows', [])
+        for batch_index,subset in enumerate(subsets):
+            window_map.append([{'sentence_index':s['_check_sentence'],
+                                'clause_indices':[p['index'] for p in s.get('_check_focus',[])]}
+                               for s in subset])
             payload = _check_payload(material, subset, full_content=full_content)
-            if start:
+            if batch_index:
                 payload['task'] = 'check_facts'
                 payload.pop('previous')
                 payload.pop('candidate_text')
             raw = {}
             raw_batches.append(raw)
             batch = self._call(purpose, payload, raw, deadline=deadline)
-            if start == 0:
+            if batch_index == 0:
                 outputs.update(raw)
             checked_batch = {**batch, 'validation_errors': []}
             returned = batch.get('sentences')
@@ -1054,6 +1072,9 @@ class PersonaEngine:
                     else:
                         proof_errors.extend(errors)
                         problems.update(issues)
+                    # A false/invalid proof cannot be overridden by a true row flag.
+                    if _valid_sentence_verdict(row,local) and problems.get(local):
+                        row['supported'] = False
                     normalized.append(row)
                 checked_batch['sentences'] = normalized
             degree, structural, _ = _check_verdicts(checked_batch, subset, material=material)
@@ -1061,13 +1082,27 @@ class PersonaEngine:
             if structural or proof_errors:
                 return {'sentences': [], 'change_degree': 'large', 'reason': 'invalid check batch',
                         'validation_errors': [f'batch {len(batches)}: {e}' for e in structural + proof_errors],
-                        'batches': batches}
-            for local,row in enumerate(checked_batch['sentences'],1):
-                rows.append({**row, 'index':start+local, 'clause_errors':problems.get(local,[])})
+                        'batches': batches, 'window_map':window_map}
+            for local,(sentence,row) in enumerate(zip(subset,checked_batch['sentences']),1):
+                original = sentence['_check_sentence']
+                part = {**row, 'index':original, 'clause_errors':problems.get(local,[]),
+                        'clauses':row.get('clauses') if isinstance(row.get('clauses'),list) else []}
+                if original not in rows:
+                    rows[original] = part
+                else:
+                    previous = rows[original]
+                    rows[original] = {**previous,
+                        'supported':previous['supported'] and part['supported'],
+                        'fabricated':previous['fabricated'] or part['fabricated'],
+                        'scene_qualified':previous['scene_qualified'] and part['scene_qualified'],
+                        'violations':list(dict.fromkeys(previous['violations']+part['violations'])),
+                        'reason':previous['reason']+'；'+part['reason'],
+                        'clauses':previous['clauses']+part['clauses'],
+                        'clause_errors':previous['clause_errors']+part['clause_errors']}
             degrees.append(degree)
             reasons.append(batch['reason'])
-        return {'sentences':rows, 'change_degree':degrees[0],
-                'reason':reasons[0], 'batches':batches}
+        return {'sentences':[rows[i] for i in sorted(rows)], 'change_degree':degrees[0],
+                'reason':reasons[0], 'batches':batches, 'window_map':window_map}
 
     def _recover_sentences(self, original, initial_model, problems, material, previous, checks, outputs):
         payload = _check_payload(material, original, full_content=''.join(s['text'] for s in original))

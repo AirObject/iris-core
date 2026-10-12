@@ -85,20 +85,20 @@ def test_template_is_byte_exact_and_never_sent_to_generator_as_editable_evidence
 
 def test_problem_repaired_once_with_only_its_own_evidence_and_rechecked(prepared):
     result, model = run(prepared)
-    assert [c[0] for c in model.calls] == ['persona_generate','persona_check','persona_sentence_repair','persona_recheck']
-    request = model.calls[2][1]
+    assert [c[0] for c in model.calls] == ['persona_generate','persona_check','persona_check','persona_sentence_repair','persona_recheck']
+    request = next(r for purpose,r,*_ in model.calls if purpose=='persona_sentence_repair')
     assert len(request['problems']) == 1
     assert 'previous' not in request and 'candidate' not in request and 'locked_sentences' not in request
     problem = request['problems'][0]
     assert len(problem['evidence_refs']) == 1
     assert '浅灰底' in request['evidence_by_ref'][problem['evidence_refs'][0]]['content']
     assert '解释' not in dumps(request)
-    assert len(model.calls[3][1]['candidate']) == 1
+    assert len(next(r for purpose,r,*_ in model.calls if purpose=='persona_recheck')['candidate']) == 1
     checks = result['version']['checks']
     assert len(checks['repaired_sentences']) == 1 and not checks['deleted_sentences']
     assert checks['initial_model_errors'] and not checks['model_errors']
     assert len(checks['model']['sentences']) == len(result['version']['sentences'])
-    assert [c[2] for c in model.calls] == [180,180,120,180]
+    assert [c[2] for c in model.calls] == [180,180,180,120,180]
 
 
 @pytest.mark.parametrize('options', [{'again':True}, {'repair':None}, {'repair':'第一句。第二句。'}, {'repair':'我照着M1做。'}, {'malformed':True}])
@@ -185,14 +185,18 @@ def test_each_semantic_failure_can_be_removed_without_rejecting_supported_senten
             reply=super().chat(messages,purpose,**kwargs)
             if purpose=='persona_check':
                 value=json.loads(reply.content)
-                value['sentences'][-1].update(supported=False,violations=[failure],reason=failure)
+                request=json.loads(messages[-1]['content'])
+                for row,candidate in zip(value['sentences'],request['candidate'],strict=True):
+                    if '一向' in candidate['text']:
+                        row.update(supported=False,violations=[failure],reason=failure)
                 reply.content=dumps(value)
             return reply
     model=SpecificFailure(prepared,repair=None)
     result=PersonaEngine(prepared,model).regenerate(expected_version=1)
     checks=result['version']['checks']
     assert checks['passed'] and failure in checks['deleted_sentences'][0]['reasons']
-    assert failure in model.calls[2][1]['problems'][0]['problems']
+    repair=next(r for purpose,r,*_ in model.calls if purpose=='persona_sentence_repair')
+    assert failure in repair['problems'][0]['problems']
     assert '解释了规则' in result['version']['content']
 
 
@@ -346,7 +350,8 @@ def test_automatic_person_references_require_neutral_wording(text,blocked):
     verdict={'sentences':[{'index':1,'supported':True,'fabricated':False,
         'scene_qualified':True,'violations':[],'reason':'模型漏检时仍检查中性指称。'}],
         'change_degree':'small','reason':'有界经历。'}
-    sentence={'text':text,'origin':'memory','initial_setting':False,'date_count':1}
+    # Isolate neutral-token matching from the independent single-date scene gate.
+    sentence={'text':text,'origin':'memory','initial_setting':False,'date_count':2}
     _,errors,problems=_check_verdicts(verdict,[sentence])
     assert not errors and bool(problems)==blocked
     for origin in ('admin','initial_template'):
