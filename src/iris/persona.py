@@ -37,8 +37,8 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v15', 'persona_check': 'persona_check_v24',
-                   'persona_sentence_repair': 'persona_repair_v13', 'persona_recheck': 'persona_check_v24'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v16', 'persona_check': 'persona_check_v25',
+                   'persona_sentence_repair': 'persona_repair_v14', 'persona_recheck': 'persona_check_v25'}
 CALL_TIMEOUTS = {'persona_generate': 360, 'persona_check': 360,
                  'persona_sentence_repair': 120, 'persona_recheck': 360}
 CALL_MAX_TOKENS = {'persona_generate':16000, 'persona_check':16000,
@@ -54,6 +54,9 @@ MAX_REPAIR_STAGE_SECONDS = 180
 BOUNDED_SCENE = re.compile(r'(?:这|那|当|某|本|同)(?:一)?(?:次|场|回|天)|\d{4}-\d{2}-\d{2}|[0-9零〇一二三四五六七八九十廿三]+(?:年|月|日|号)')
 CROSS_SCENE_LINK = re.compile(r'^(?:(?:也|又|还|同样)(?:也)?(?:是)?在(?:这|那)(?:一)?(?:次|场|天|回)|'
                               r'(?:也(?:是)?)?在同一(?:次|场|天|回))')
+PENDING_INTENTION_FRAGMENT = re.compile(
+    r'(?:这|那|它|这些|那些)?(?:还|仍|尚|也)?(?:只是|仅是|仅仅是|只算)'
+    r'(?:一[个项]|[个项])?(?:新(?:的)?)?(?:打算|计划|承诺|意向|设想)(?:而已|罢了)?')
 REFERENCE = re.compile(r'(?<![A-Za-z0-9])[MP]\s*#?\s*\d+(?![A-Za-z0-9])', re.I)
 
 
@@ -620,6 +623,15 @@ def _surface_issues(sentence, *, memories=None):
         # Require independent wording rather than guessing that events coincide.
         issues.append('cross-sentence scene reference needs independent wording: '
                       '自动句须独立限定本句事件，不用也是在那次／同一场等借邻句关联场景')
+    if not sentence['initial_setting'] and any(
+            PENDING_INTENTION_FRAGMENT.fullmatch(part['text'].rstrip('。.!！?？'))
+            for part in _clause_parts(text)):
+        # A narrow, affirmative whole-fragment wording gate, not an intent parser.
+        # Truthfully announcing a still-only plan does not make it an episode.
+        # Negated/conditional phrases and mere occurrences of plan words do not
+        # match; the model must still check all other pending-action semantics.
+        issues.append('explicit pending intention is not persona: '
+                      '明确仅为打算、计划或承诺的片段须修复或删除；日期与宣布行为不豁免待办')
     issues.extend(_bound_source_issues(sentence, tokens, memories))
     if not sentence['initial_setting'] and sentence['date_count'] < 2:
         # This is the same necessary boundary used by the proof validator. Apply
