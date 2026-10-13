@@ -345,7 +345,9 @@ def main(argv: list[str] | None = None) -> int:
                         break
                     result = engine.run_batch(batch.id, force=args.force)
                     print(f"batch {batch.id}: {result}")
-                    if get_batch(store, batch.id).state == "waiting":
+                    after = get_batch(store, batch.id)
+                    if after.state == "waiting" and not (
+                            batch.context_mode == "full" and after.context_mode == "target_only"):
                         break
                 return 0
         finally:

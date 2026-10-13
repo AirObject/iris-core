@@ -410,7 +410,7 @@ def claim_batch(store: Store, batch_id: int, *, force=False, current=None):
         if not force and row["next_retry_at"] and datetime.fromisoformat(row["next_retry_at"]) > instant:
             raise ValueError("batch retry is not due")
         _owned_targets(conn, row)
-        conn.execute("UPDATE batches SET state='running' WHERE id=?", (batch_id,))
+        conn.execute("UPDATE batches SET state='running',next_retry_at=NULL WHERE id=?", (batch_id,))
     return get_batch(store, batch_id)
 
 

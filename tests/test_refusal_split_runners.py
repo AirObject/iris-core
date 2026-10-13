@@ -1,5 +1,6 @@
-"""RS08/18: runners share the queue; fake execution isolates pending learning work."""
+"""RS08/14/18: shared queue, bounded scheduling, and real-engine runner integration."""
 import threading
+from contextlib import closing
 
 
 from conftest import FakeGateway
@@ -19,7 +20,7 @@ class RunnerGateway(FakeGateway):
 
 
 class SplittingExecutor:
-    """Test-only refusal outcome. Production LearningEngine is deliberately untouched."""
+    """Isolate runner ordering; real-engine integration is covered below."""
     visited = []
     def __init__(self, store, gateway):
         self.store = store
@@ -165,3 +166,46 @@ def test_rs14_refusal_usage_counts_once_tree_pauses_at_daily_cap_and_resumes_nex
         assert get_batch(store, left).attempt_count == 0
     finally:
         scheduler.stop()
+
+
+def test_rs18_real_engine_offline_continues_immediate_context_retry(tmp_path, monkeypatch):
+    from conftest import msg
+    from iris.queue import form_batch
+    from iris.learning import PROMPT_VERSION
+    from test_refusal_split_learning import MarkerGateway
+    path = tmp_path / 'actual-offline.db'
+    with closing(Store(path)) as store:
+        msg(store, 1, '安全目标')
+        msg(store, 2, '触发拒绝')
+        root = form_batch(store, 'A', PROMPT_VERSION, target_count=1)
+    class Model(MarkerGateway):
+        def __init__(self, configs, store):
+            super().__init__(store)
+        def close(self):
+            pass
+    monkeypatch.setattr(cli, 'load_test_models', lambda: {})
+    monkeypatch.setattr(cli, 'Gateway', Model)
+    assert cli.main(['--db', str(path), 'learn', 'A', '--force']) == 0
+    with closing(Store(path)) as store:
+        assert get_batch(store, root.id).state == 'succeeded'
+        with store.read() as conn:
+            assert conn.execute("SELECT COUNT(*) FROM messages WHERE learning_state IN ('pending','batched')").fetchone()[0] == 0
+
+
+def test_rs18_real_engine_evaluation_drains_split_and_context_retries(monkeypatch):
+    from test_refusal_split_learning import MarkerGateway
+    class Model(MarkerGateway):
+        def __init__(self, configs, store):
+            super().__init__(store)
+        def close(self):
+            pass
+    case = {'id':'rs-real-runner', 'entry_type':'group', 'messages':[
+        {'type':'message','speaker':'小林','content':'安全甲','at':'2026-10-12T09:00:00+08:00'},
+        {'type':'message','speaker':'小林','content':'触发拒绝','at':'2026-10-12T09:01:00+08:00'},
+        {'type':'message','speaker':'小林','content':'安全乙','at':'2026-10-12T09:02:00+08:00'},
+        {'type':'message','speaker':'小林','content':'安全丙','at':'2026-10-12T09:03:00+08:00'}]}
+    monkeypatch.setattr(evaluation, 'Gateway', Model)
+    result = evaluation._run_case({}, case, judge_mode='external')
+    states = [b['state'] for b in result['actual']['batches']]
+    assert 'split' in states and 'succeeded' in states and states.count('refused') == 1
+    assert not {'waiting','running'} & set(states)
