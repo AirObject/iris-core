@@ -68,11 +68,14 @@ def test_unbound_shared_record_cannot_support_another_sentences_clause():
 
 def test_summary_fallback_only_when_no_original_excerpt_exists():
     request = payload()
-    request['candidate'][0]['text'] = '在那次闲聊中，我喜欢听故事。'
-    request['evidence_by_ref']['M1']['excerpts'] = []
+    from iris.persona import _clause_parts
+    text = '在那次闲聊中，我喜欢听故事。'
+    request['candidate'][0].update(text=text, clauses=_clause_parts(text))
+    request['evidence_by_ref']['M1'].update(content=text, excerpts=[])
     result = verdict()
+    result['sentences'][0]['clauses'] = result['sentences'][0]['clauses'][:len(_clause_parts(text))]
     for part in result['sentences'][0]['clauses']:
-        part.update(scene_qualified=True, evidence=[{'ref': 'M1', 'source_index': 0, 'quote': '摘要不能补证。'}])
+        part.update(scene_qualified=True, evidence=[{'ref': 'M1', 'source_index': 0, 'quote': text}])
     assert validate(result, request) == ([], {})
     request['evidence_by_ref']['M1']['excerpts'] = payload()['evidence_by_ref']['M1']['excerpts']
     assert validate(result, request)[1]

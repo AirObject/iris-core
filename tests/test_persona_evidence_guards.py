@@ -69,7 +69,9 @@ def test_source_less_memory_can_still_supply_its_own_explicit_completion():
     ('在那次联机搭建中，我摆好了纸桥支架。', True),
 ])
 def test_game_only_evidence_requires_explicit_game_scope(text, allowed):
-    assert bool(problems(sentence(text), memory(kind='game'))) is not allowed
+    source = memory(kind='game', original='搭建时我摆好了纸桥支架。',
+                    content='我在那次搭建中摆好了纸桥支架。')
+    assert bool(problems(sentence(text), source)) is not allowed
 
 
 def test_unbound_real_entry_cannot_dilute_game_context_requirement():

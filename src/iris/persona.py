@@ -37,8 +37,8 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v16', 'persona_check': 'persona_check_v27',
-                   'persona_sentence_repair': 'persona_repair_v14', 'persona_recheck': 'persona_check_v27'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v17', 'persona_check': 'persona_check_v28',
+                   'persona_sentence_repair': 'persona_repair_v15', 'persona_recheck': 'persona_check_v28'}
 CALL_TIMEOUTS = {'persona_generate': 360, 'persona_check': 360,
                  'persona_sentence_repair': 120, 'persona_recheck': 360}
 CALL_MAX_TOKENS = {'persona_generate':16000, 'persona_check':16000,
@@ -57,6 +57,15 @@ CROSS_SCENE_LINK = re.compile(r'^(?:(?:也|又|还|同样)(?:也)?(?:是)?在(?:
 PENDING_INTENTION_FRAGMENT = re.compile(
     r'(?:这|那|它|这些|那些)?(?:还|仍|尚|也)?(?:只是|仅是|仅仅是|只算)'
     r'(?:一[个项]|[个项])?(?:新(?:的)?)?(?:打算|计划|承诺|意向|设想)(?:而已|罢了)?')
+# A necessary lexical boundary for explicit opening contexts, not an entailment
+# parser. Dates/entry metadata do not license a concrete topic from another row.
+BOUNDED_CONTEXT = re.compile(
+    r'^(?:在)?(?:(?:这|那|当|某|本)(?:一)?(?:次|场|回|天)|\d{4}-\d{2}-\d{2}|'
+    r'(?:[0-9零〇一二三四五六七八九十廿]+(?:年|月|日|号))+)'
+    r'(?:的)?(?P<context>[^，,。！？!?；;]{1,60}?)(?:中|里|时)(?=[，,])')
+ENTRY_CONTEXT_TERMS = {'live': ('直播',), 'group': ('群聊',),
+                       'private': ('私聊',), 'game': ('游戏', '联机')}
+
 REFERENCE = re.compile(r'(?<![A-Za-z0-9])[MP]\s*#?\s*\d+(?![A-Za-z0-9])', re.I)
 
 
@@ -548,12 +557,39 @@ def _completion_witness(predicate, source):
     return False
 
 
+def _bounded_context_issues(text, sources):
+    """Opening context words need anchors in the actual bound proof sources.
+
+    Current text may retain a domain omitted by an utterance. It still cannot
+    prove the action. Literal overlap never establishes attribution or entailment;
+    the existing semantic and per-focus date checks remain independent.
+    """
+    match = BOUNDED_CONTEXT.match(text.strip())
+    if match is None:
+        return []
+    terms = [word.casefold() for word in words(match['context'])
+             if re.search(r'\w', word) and word not in {'的', '在', '中', '里', '时'}]
+    known = set()
+    for memory, source in sources:
+        for value in (memory.get('current_revision_text') or memory.get('content', ''),
+                      source.get('excerpt', '')):
+            known.update(word.casefold() for word in words(value))
+        # Use the quoted source's entry, never a different source's metadata.
+        kind = source.get('entry_kind') or memory.get('entry_kind')
+        known.update(ENTRY_CONTEXT_TERMS.get(kind, ()))
+    missing = list(dict.fromkeys(term for term in terms if term not in known))
+    return ([f'bounded context needs its own source terms: {", ".join(missing)}']
+            if missing else [])
+
+
 def _bound_source_issues(sentence, tokens, memories):
     if memories is None or sentence['initial_setting']:
         return []
     refs = {(b['memory_id'], b['revision']) for b in sentence.get('basis', [])}
     bound = [m for m in memories if (m['memory_id'], m['revision']) in refs]
-    issues = []
+    context_sources = [(memory, source) for memory in bound for source in
+                       (memory.get('excerpts') or [{'excerpt': memory['content']}])]
+    issues = _bounded_context_issues(sentence['text'], context_sources)
     sources = []
     for memory in bound:
         originals = [e['excerpt'] for e in memory.get('excerpts', [])
@@ -802,7 +838,7 @@ def _validate_clause_checks(output, payload):
                     or not isinstance(part.get('evidence'), list)):
                 errors.append(f'sentence {index}: {label}: invalid clause verdict')
                 continue
-            dates, valid = set(), 0
+            dates, valid, context_sources = set(), 0, []
             for proof in part['evidence']:
                 ref = proof.get('ref') if isinstance(proof, dict) else None
                 n = proof.get('source_index') if isinstance(proof, dict) else None
@@ -832,12 +868,16 @@ def _validate_clause_checks(output, payload):
                     issues.append(f'{label}: proof must quote an exact own bound original source')
                     continue
                 valid += 1
+                context_sources.append((memory, source))
                 if source.get('date'):
                     dates.add(source['date'])
             if not part['supported']:
                 issues.append(f"{label}: {part['reason']}")
             elif not valid:
                 issues.append(f'{label}: no valid original proof')
+            if part['supported'] and valid:
+                issues.extend(f'{label}: {issue}' for issue in
+                              _bounded_context_issues(sentence['text'], context_sources))
             if part['supported'] and len(dates) < 2:
                 if not part['scene_qualified']:
                     issues.append(f'{label}: general claim needs at least two distinct dates of its own proof')
