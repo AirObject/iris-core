@@ -728,9 +728,9 @@ class EntryProfileEngine:
         self.memory_mode = getattr(store,'_memory_profiles',False)
         if self.memory_mode and prompt_version is not None:
             raise EntryProfileRetired('entry_profile_legacy_write_retired')
-        self.prompt_version='v1' if self.memory_mode else DEFAULT_PROMPT_VERSION if prompt_version is None else prompt_version
+        self.prompt_version=MEMORY_PROMPT_VERSION if self.memory_mode else DEFAULT_PROMPT_VERSION if prompt_version is None else prompt_version
         self.prompts=load_profile_prompts('entry_profile_memory' if self.memory_mode else 'entry_profile',
-            self.prompt_version,('v1',) if self.memory_mode else PROMPT_VERSIONS)
+            self.prompt_version,('v1','v2') if self.memory_mode else PROMPT_VERSIONS)
         self.prompt_metadata=profile_prompt_metadata(self.prompts)
 
     def update(self, entry_id, *, expected_version, run_id=None):
@@ -1026,6 +1026,7 @@ def update_profiles_for_run(store, gateway, run, config, *, clock=utc_now, stop=
 
 
 # Memory producer shared by the production SQLite adapter and offline tests.
+MEMORY_PROMPT_VERSION = 'v2'
 MEMORY_PROFILE_IMPORTANCE_CAP = 69
 MEMORY_PROFILE_VIOLATIONS = (*VIOLATIONS, '容易过时的描述')
 _MEMORY_REPORTED = re.compile(r'转(?:发|引|述)|引用|复述|原话|上次.{0,8}(?:说|提)|之前.{0,8}(?:说|提)')
@@ -1363,6 +1364,53 @@ def _memory_validate_operation(raw, index, material):
                 target=copy.deepcopy(target))
 
 
+def validate_memory_profile_shape(generated, limits):
+    """Protocol only: malformed fields get one repair; evidence never does.
+
+    Keep source binding, recurrence, privacy and manual protection in the
+    deterministic/semantic validators. Do not fill defaults into model output.
+    """
+    if (not isinstance(generated, dict) or set(generated) != {'operations'}
+            or not isinstance(generated['operations'], list)
+            or len(generated['operations']) > limits.max_operations):
+        raise ValueError('invalid_operations')
+    for raw in generated['operations']:
+        if not isinstance(raw, dict) or raw.get('op') not in ('new', 'confirm', 'revise', 'retire'):
+            raise ValueError('invalid_operation')
+        required = {'op', 'sources'}
+        if raw['op'] != 'new':
+            required |= {'target_id', 'expected_revision'}
+        if raw['op'] in ('new', 'revise'):
+            required |= {'category', 'body', 'saying', 'meaning', 'importance'}
+        if set(raw) != required:
+            raise ValueError('invalid_operation_fields')
+        if raw['op'] != 'new' and (type(raw['target_id']) not in (str, int)
+                or not str(raw['target_id']).strip() or type(raw['expected_revision']) is not int
+                or raw['expected_revision'] < 1):
+            raise ValueError('invalid_target_fields')
+        if (not isinstance(raw['sources'], list) or not 1 <= len(raw['sources']) <= 8):
+            raise ValueError('invalid_sources')
+        for source in raw['sources']:
+            if (not isinstance(source, dict) or set(source) != {'ref', 'field', 'excerpt', 'via_memory'}
+                    or not isinstance(source['ref'], str) or not source['ref'].strip()
+                    or source['field'] not in ('content', 'quote')
+                    or not isinstance(source['excerpt'], str) or not 1 <= len(source['excerpt'].strip()) <= 300
+                    or (source['via_memory'] is not None and not isinstance(source['via_memory'], str))):
+                raise ValueError('invalid_source_fields')
+        if raw['op'] in ('new', 'revise'):
+            if (not isinstance(raw['category'], str) or raw['category'] not in ITEM_LABELS
+                    or not isinstance(raw['body'], str) or not 1 <= len(raw['body'].strip()) <= 180
+                    or not isinstance(raw['saying'], str) or not isinstance(raw['meaning'], str)
+                    or type(raw['importance']) is not int or not 0 <= raw['importance'] <= 100):
+                raise ValueError('invalid_memory_body')
+            body, saying, meaning = (raw[k].strip() for k in ('body', 'saying', 'meaning'))
+            if raw['category'] == 'saying':
+                if not saying or len(saying) > 40 or body != saying + ('：' + meaning if meaning else ''):
+                    raise ValueError('invalid_saying_body')
+            elif saying or meaning:
+                raise ValueError('unexpected_saying_fields')
+
+
 def validate_memory_profile_operations(generated, material, limits=None):
     limits = limits or MemoryProfileLimits()
     if (not isinstance(generated, dict) or set(generated) != {'operations'}
@@ -1424,63 +1472,103 @@ def check_memory_profile_operations(output, operations):
     return kept, removed
 
 
+def _memory_check_repair_guard(previous, corrected):
+    """A shape correction cannot turn a parsed negative verdict into approval."""
+    if not isinstance(previous, dict) or not isinstance(previous.get('operations'), list):
+        return
+    prior = {v['index']: v for v in previous['operations']
+             if isinstance(v, dict) and type(v.get('index')) is int}
+    for verdict in corrected['operations']:
+        old = prior.get(verdict['index'], {})
+        for key in ('supported', 'stable', 'independent', 'independent_from_previous', 'privacy_safe', 'meaning_supported'):
+            if old.get(key) is False and verdict[key] is not False:
+                raise ValueError('repair_changed_verdict')
+        violations = old.get('violations', [])
+        if isinstance(violations, list) and any(v in MEMORY_PROFILE_VIOLATIONS and v not in verdict['violations']
+                                              for v in violations):
+            raise ValueError('repair_changed_verdict')
+
+
 class EntryProfileMemoryTask:
-    """Two-call, detached-snapshot producer. Must be explicitly given an adapter."""
+    """Two phases with at most one format repair each; detached snapshots."""
     def __init__(self, repository: MemoryProfileRepository | None, gateway, *, limits=None):
         self.repository, self.gateway = repository, gateway
         self.limits = limits or MemoryProfileLimits()
         self.prompts = {stage: dict(name=prompt['prompt_version'], text=prompt['text'],
                                    sha256=prompt['prompt_sha256'])
                         for stage, prompt in load_profile_prompts(
-                            'entry_profile_memory', 'v1', ('v1',)).items()}
+                            'entry_profile_memory', MEMORY_PROMPT_VERSION, ('v1','v2')).items()}
 
     def _call(self, stage, payload, result):
-        self.repository.assert_model_call_allowed()
         prompt = self.prompts[stage]; purpose = 'consolidation_entry_profile_' + stage
         if not callable(getattr(self.gateway, 'chat', None)):
             raise MemoryProfileUnavailable('model_gateway_unavailable')
-        encoded = dumps(payload)
-        if estimate_tokens(prompt['text']) + estimate_tokens(encoded) > self.limits.request_tokens:
+        messages = [{'role': 'system', 'content': prompt['text']},
+                    {'role': 'user', 'content': dumps(payload)}]
+        if sum(estimate_tokens(m['content']) for m in messages) > self.limits.request_tokens:
             raise ValueError('request_budget_exceeded')
-        health = getattr(self.gateway, 'health', None)
-        if health:
-            health.check('chat', 'learning')
         monotonic = getattr(self.gateway, 'monotonic', time.monotonic)
-        started = monotonic()
-        deadline = started + self.limits.timeout_seconds
-        call = dict(purpose=purpose, prompt_version=prompt['name'], prompt_sha256=prompt['sha256'],
-                    timeout_seconds=self.limits.timeout_seconds, result='success')
-        reply = None
-        try:
-            # Gateway retries consume this same deadline. This strict two-call
-            # path does not issue a model JSON-repair request on invalid output.
-            reply = self.gateway.chat([{'role': 'system', 'content': prompt['text']},
-                                       {'role': 'user', 'content': encoded}], purpose,
-                                      max_tokens=16000, _deadline=deadline)
+        deadline = monotonic() + self.limits.timeout_seconds
+        previous = None
+        for attempt in range(2):
+            # Initial HTTP retries and the single syntax/shape repair all use
+            # this phase's original deadline and the gateway's call admission.
+            self.repository.assert_model_call_allowed()
             if monotonic() >= deadline:
                 raise ModelError('retryable', 'total timeout', reason='timeout')
-            if reply.finish_reason != 'stop':
-                raise ValueError('incomplete_output')
-            parsed = json_object(reply.content)
-            if monotonic() >= deadline:
-                raise ModelError('retryable', 'total timeout', reason='timeout')
-            return parsed
-        except ModelError as error:
-            # Gateway may stop before backoff with only a generic retryable
-            # error; preserve the exhausted request deadline in diagnostics.
-            if error.category == 'retryable' and not error.reason and monotonic() >= deadline:
-                error.reason = 'timeout'
-            call.update(result=error.category, reason=error.reason or error.category)
-            raise
-        finally:
-            # Retain late/invalid output for diagnostics without committing the
-            # plan, cursor, memories or projection. Purge guards still apply.
-            if reply is not None:
-                result['outputs'][stage] = reply.content
-                call['finish_reason'] = reply.finish_reason
-            result['calls'].append(dict(call, duration_ms=round((monotonic() - started) * 1000),
-                                        usage=reply.usage if reply is not None else {}))
-            self._record_progress(result)
+            health = getattr(self.gateway, 'health', None)
+            if health:
+                health.check('chat', 'learning')
+            suffix = '_repair' if attempt else ''
+            call = dict(purpose=purpose + suffix, prompt_version=prompt['name'], prompt_sha256=prompt['sha256'],
+                        timeout_seconds=self.limits.timeout_seconds, result='success')
+            reply = None; started = monotonic(); invalid = None; parsed = None
+            try:
+                reply = self.gateway.chat(messages, purpose + suffix, max_tokens=16000, _deadline=deadline)
+                if monotonic() >= deadline:
+                    raise ModelError('retryable', 'total timeout', reason='timeout')
+                try:
+                    if reply.finish_reason != 'stop':
+                        raise ValueError('incomplete_output')
+                    parsed = json_object(reply.content)
+                    if stage == 'generate':
+                        validate_memory_profile_shape(parsed, self.limits)
+                    else:
+                        check_memory_profile_operations(parsed, payload['operations'])
+                        if attempt:
+                            _memory_check_repair_guard(previous, parsed)
+                except ValueError as error:
+                    invalid = str(error)
+                    call['validation_error'] = invalid
+                # Invalid parsing/validation can itself exhaust the budget.
+                if monotonic() >= deadline:
+                    raise ModelError('retryable', 'total timeout', reason='timeout')
+                if invalid is None:
+                    return parsed
+                if attempt:
+                    raise ModelError('invalid_output', 'invalid profile output after one repair', reason='invalid_output')
+            except ModelError as error:
+                if error.category == 'retryable' and not error.reason and monotonic() >= deadline:
+                    error.reason = 'timeout'
+                call.update(result=error.category, reason=error.reason or error.category)
+                raise
+            finally:
+                # Both originals and corrections persist and share purge guards.
+                if reply is not None:
+                    result['outputs'][stage + suffix] = reply.content
+                    call['finish_reason'] = reply.finish_reason
+                result['calls'].append(dict(call, duration_ms=round((monotonic() - started) * 1000),
+                                            usage=reply.usage if reply is not None else {}))
+                self._record_progress(result)
+            previous = parsed
+            messages = messages + [
+                {'role': 'assistant', 'content': reply.content},
+                {'role': 'user', 'content': '上一个回答未通过严格JSON结构校验：' + invalid +
+                 '。只输出修正后的完整JSON对象，遵守系统中的全部必填字段、类型和编号。'
+                 '这是一次格式修正，不新增事实或来源，不改变证据标准，不把语义不通过改成通过；不要解释。'}]
+            if sum(estimate_tokens(m['content']) for m in messages) > self.limits.request_tokens:
+                result['repair_blocked'] = dict(stage=stage, reason='request_budget_exceeded')
+                raise ModelError('invalid_output', 'repair request exceeds material budget', reason='invalid_output')
 
     def _record_progress(self, result):
         record = getattr(self.repository, 'record_model_progress', None)
@@ -1692,7 +1780,8 @@ def memory_profile_rows(conn, entry_id, *, as_of=None, usable_only=False):
             about=[owner[0]],owner_entry_id=entry_id,lifecycle=row['lifecycle'],event_time=None,importance=row['importance'],
             manual_protected=manual,manual_created=bool(row['manual_created']),sources=sources,
             confirmed_evidence=[r[0] for r in conn.execute('SELECT identity FROM entry_profile_evidence_receipts WHERE memory_id=? ORDER BY identity',(row['id'],))],
-            usable=usable,retention=row['retention'],pinned=bool(row['pinned'])))
+            usable=usable,retention=row['retention'],pinned=bool(row['pinned']),
+            last_confirmed_at=row['last_confirmed_at']))
     return profiles
 
 
@@ -1702,7 +1791,8 @@ def _projection_items(conn, entry_id):
     items=[]; omitted=[]; tokens=0
     for row in memory_profile_rows(conn,entry_id,usable_only=True):
         label = ITEM_LABELS.get(row['category'],'管理员说明')
-        item = dict(memory_id=row['memory_id'],text=label+'：'+row['body'])
+        # Rendering is one line per memory; keep the stored manual body lossless.
+        item = dict(memory_id=row['memory_id'],text=label+'：'+whitespace(row['body']))
         cost = estimate_tokens(item['text'])
         # Protected hand-written rules are never removed by the display budget.
         if row['manual_protected'] or len(items)<MAX_ITEMS and tokens+cost<=MAX_PROFILE_TOKENS:

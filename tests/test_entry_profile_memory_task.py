@@ -67,7 +67,7 @@ class FakeGateway:
 def run(snap=None, operations=None, checked=None, hook=None, limits=None):
     repo = SimulationRepository(snap or snapshot())
     operations = [new_topic()] if operations is None else operations
-    gateway = FakeGateway(repo, [{'operations': operations}, checked or check(operations)], hook)
+    gateway = FakeGateway(repo, [{'operations': operations}, checked or check(operations), checked or check(operations)], hook)
     result = EntryProfileMemoryTask(repo, gateway, limits=limits).run('g')
     return repo, gateway, result
 
@@ -84,7 +84,7 @@ def test_new_topic_is_entry_memory_with_decay_cap_and_original_sources():
     assert len(row['sources']) == 2 and repo.cursor == 2
     assert len(gateway.requests) == 2
     assert all('consolidation_entry_profile_' in x['purpose'] for x in result['calls'])
-    assert len(result['prompt_sha256']['entry_profile_memory_generate_v1']) == 64
+    assert len(result['prompt_sha256']['entry_profile_memory_generate_v2']) == 64
 
 
 def test_missing_adapter_fails_closed():
@@ -150,7 +150,7 @@ def test_semantic_failure_drops_item_and_preserves_trace(flag):
 
 def test_invalid_checker_shape_does_not_commit_cursor():
     repo = SimulationRepository(snapshot())
-    gateway = FakeGateway(repo, [{'operations': [new_topic()]}, {'operations': []}])
+    gateway = FakeGateway(repo, [{'operations': [new_topic()]}, {'operations': []}, {'operations': []}])
     result = EntryProfileMemoryTask(repo, gateway).run('g')
     assert result['status'] == 'failed' and repo.cursor == 0 and not repo.profiles
 
@@ -286,7 +286,7 @@ def test_usage_without_meaning_is_allowed_and_meaning_needs_itemized_check():
     assert run(snap, [op])[0].profiles
     snap, op = saying_fixture('2026-10-10T11:00:00+08:00', meaning='等资料齐了再讨论')
     repo, _, result = run(snap, [op])
-    assert result['reason'] == 'missing_meaning_checks' and repo.cursor == 0
+    assert result['reason'] == 'invalid_output' and repo.cursor == 0
     verdict = check([op]); verdict['operations'][0]['meaning_checks'] = [dict(term='等待资料',source_indices=[1],supported=True)]
     assert run(snap, [op], verdict)[0].profiles
     verdict['operations'][0]['meaning_checks'][0]['supported'] = False

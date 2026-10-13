@@ -10,7 +10,7 @@
 {"text":"明确群规／禁忌：禁止广告。","version":1,"generated_at":"2026-10-14T00:00:00+00:00","possibly_stale":false,"memory_ids":[42]}
 ```
 
-四个原字段类型不变。新增 `memory_ids: list[int]`，按 text 的条目顺序一一对应；正文不拼入引用原话。`known_memory_ids` 同时排除画像分区中的对应条目，过滤不回填。version 是入口投影版本，与任何单条 memory.revision、旧文档 version 均不是同一标识。
+四个原字段类型不变。新增 `memory_ids: list[int]`，按 text 的条目顺序一一对应；正文不拼入引用原话。EF-10将每条正文中的换行及连续空白合为一个空格后投影，因此多行“管理员说明”仍只占一条、一行和一个memory_id；管理返回的body与数据库原文保留换行，不丢失内容。`known_memory_ids` 同时排除画像分区中的对应条目，过滤不回填。version 是入口投影版本，与任何单条 memory.revision、旧文档 version 均不是同一标识。
 
 新增、正文修改、撤下、生命周期、依据或可见范围变化导致实际展示集合变化时，同一写事务将 version 加一；同一事务多次变化只加一次。确认强度变化而集合不变、分页查询和读取不加版本。generated_at 仅在投影变化时更新。存在未处理消息／待重建时 possibly_stale=true；依据失效的自动条目直接移出投影。禁用／私聊／无可展示条目返回 null。
 
@@ -32,7 +32,7 @@
 | GET `/admin/api/memories?kind=入口画像&entry_id=...` | 通用记忆分页；新增 kind 枚举。画像项附 owner_entry_id、category、manual_created |
 | GET `/admin/api/memories/{memory_id}` | 通用详情、sources、修订、操作、清除预览；画像项同样附 owner_entry_id、category、manual_created |
 
-profile.memories 中每条包含 memory_id、revision、category、body、author、manual_protected、manual_created、lifecycle、usable、sources 等；memory_id 和 revision 才是逐条编辑的 ID／CAS 值。不可直接使用 projection.version 编辑记忆。category 为 topic／saying／rule／null；null 显示“管理员说明”。
+profile.memories 中每条包含 memory_id、revision、category、body、author、manual_protected、manual_created、lifecycle、usable、sources、last_confirmed_at 等；memory_id 和 revision 才是逐条编辑的 ID／CAS 值。不可直接使用 projection.version 编辑记忆。category 为 topic／saying／rule／null；null 显示“管理员说明”。EF-10兼容新增 last_confirmed_at: string|null，直接返回记忆最近确认时间；读取不改变它，确认时间变化但展示集合不变时不增加投影版本。
 
 migration 每行包含 entry_id、legacy_version、sentence_index、disposition、memory_id（可空）、category、created_at。disposition 为 manual_imported／manual_unclassified／model_rebuild_pending／cleared_history；不另复制一份可变正文，正文从原只读版本或对应记忆读取，仍受清除约束。
 
@@ -58,8 +58,12 @@ migration 每行包含 entry_id、legacy_version、sentence_index、disposition�
 
 ## 后台任务预算（EF-09）
 
-记忆形式任务的生成与检查各有 180 秒请求预算，重试共用本次请求截止时间。到期状态为 failed、reason=timeout；保留调用诊断，不写回记忆、游标或投影。调用诊断兼容新增 timeout_seconds。没有新增路由、请求参数或错误码。旧文档路径及其已保存的 generate_timeout_seconds／check_timeout_seconds 不改；记忆路径沿用独立 MemoryProfileLimits，不以这两个旧设置控制超时；旧字段仍按原运行配置规则校验。
+记忆形式任务的生成与检查各有 180 秒请求预算，首次、HTTP重试和一次JSON结构修正共用本阶段原截止时间。每阶段最多一次格式修正；修正仍失败为failed、reason=invalid_output，语义拒绝不会触发重试。到期状态为 failed、reason=timeout；保留调用诊断，不写回记忆、游标或投影。调用诊断保留 timeout_seconds，格式错误另记validation_error；原始与修正输出分别以generate／generate_repair、check／check_repair保存，同受清除保护。没有新增路由、请求参数或错误码。旧文档路径及其已保存的 generate_timeout_seconds／check_timeout_seconds 不改；记忆路径沿用独立 MemoryProfileLimits，不以这两个旧设置控制超时；旧字段仍按原运行配置规则校验。
 
 ## UX 过渡
 
 入口页展示当前画像记忆列表，逐条编辑／删除／遗忘／恢复；把旧版本入口明确标成只读历史。隐藏旧的整版编辑、候选确认／拒绝和 all_manual 选项。显示“管理员说明”原文，不因 category=null 丢弃。展示任务进度、冲突与预算诊断，不向自动生成引入管理员确认步骤。
+
+## EF-10变更清单
+
+仅兼容新增profile.memories[].last_confirmed_at；多行管理员说明的宿主投影合为同一行，memory_ids对应关系不变。JSON修正新增内部purpose后缀_repair与诊断，不新增路由、请求参数或阶段枚举。生成原始输出保存后仍使用既有checking阶段（包含格式修正期间），最终失败reason区分invalid_output、timeout及call_budget。其余410／CAS／历史与UX过渡规则不变。

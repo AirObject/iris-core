@@ -72,7 +72,7 @@ def test_new_manual_profile_preserves_unknown_category_and_body(store):
     mid = manual(store, '管理员留下的\n未分类说明。', None)
     value = context(store)
     assert value is not None and value['memory_ids'] == [mid]
-    assert value['text'] == '管理员说明：管理员留下的\n未分类说明。'
+    assert value['text'] == '管理员说明：管理员留下的 未分类说明。'
 
 
 class RuleGateway:
@@ -249,7 +249,7 @@ def test_indirect_topic_sources_remain_normalized_in_persisted_projection(store)
 
 def test_default_engine_reports_actual_memory_prompts_and_refuses_legacy_override(store):
     engine=ep.EntryProfileEngine(store,None)
-    assert engine.prompt_metadata['prompt_versions']==['entry_profile_memory_generate_v1','entry_profile_memory_check_v1']
+    assert engine.prompt_metadata['prompt_versions']==['entry_profile_memory_generate_v2','entry_profile_memory_check_v2']
     with pytest.raises(ep.EntryProfileRetired):
         ep.EntryProfileEngine(store,None,prompt_version='v2')
 

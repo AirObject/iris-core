@@ -34,7 +34,7 @@ def scripted_gateway(store, steps):
         payload = json.loads(request.content)
         if answer in ('generate', 'check', 'missing_violations'):
             stage = 'check' if answer == 'missing_violations' else answer
-            reply = fake.chat(payload['messages'], 'consolidation_entry_profile_' + stage)
+            reply = fake.chat(payload['messages'][:2], 'consolidation_entry_profile_' + stage)
             content = reply.content
             if answer == 'missing_violations':
                 output = json.loads(content)
@@ -150,17 +150,16 @@ def test_local_json_processing_cannot_extend_the_deadline(store, monkeypatch):
 
 
 @pytest.mark.parametrize('answer,reason', [('{', None), ('missing_violations', 'invalid_check_verdict')])
-def test_complete_bad_output_is_quality_failure_without_repair_or_new_budget(store, answer, reason):
+def test_complete_bad_output_gets_only_one_format_repair_within_budget(store, answer, reason):
     message(store)
-    steps = [(1, 'generate'), (1, answer)] if reason else [(1, answer)]
+    steps = [(1, 'generate'), (1, answer), (1, answer)] if reason else [(1, answer), (1, answer)]
     with scripted_gateway(store, steps) as (gateway, script):
         result = execute(store, gateway)
     assert result['reason'] != 'timeout'
-    if reason:
-        assert result['reason'] == reason
+    assert result['reason'] == 'invalid_output'
     assert len(script.timeouts) == len(steps)
     assert_no_writeback(store, result)
-    assert all(call['result'] == 'success' for call in result['result']['calls'])
+    assert result['result']['calls'][-1]['result'] == 'invalid_output'
 
 
 def test_saved_legacy_timeouts_are_preserved_and_memory_limits_are_separate(store):
