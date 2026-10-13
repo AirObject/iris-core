@@ -835,7 +835,9 @@ def _validate_clause_checks(output, payload):
         # rejection-only protocol: a retained sentence still needs every focus.
         # Preserve what was not checked rather than inventing verdicts for it.
         complete = isinstance(parts, list) and len(parts) == len(focus)
-        stopped = (not complete and isinstance(row, dict) and row.get('stop_after_failure') is True
+        # The explicit negative is sufficient for rejection. A missing redundant
+        # stop marker is auditable; an explicit false/non-boolean marker is not.
+        stopped = (not complete and isinstance(row, dict) and row.get('stop_after_failure', True) is True
             and row.get('supported') is False and isinstance(parts, list)
             and 0 < len(parts) < len(focus) and isinstance(parts[-1], dict)
             and parts[-1].get('supported') is False)
@@ -1447,6 +1449,12 @@ class PersonaEngine:
                     if malformed:
                         incomplete.append(f'batch {batch_index+1}, sentence {local}: ' + '; '.join(malformed))
                     elif row.get('unchecked_clause_indices'):
+                        if 'stop_after_failure' not in returned[local-1]:
+                            normalizations.append({'batch':batch_index+1,
+                                'sentence_index':sentence['_check_sentence'],
+                                'operation':'negative_prefix_without_stop_marker',
+                                'checked_clause_indices':[part['index'] for part in row['clauses']],
+                                'unchecked_clause_indices':list(row['unchecked_clause_indices'])})
                         short_circuits.append({'batch':batch_index+1,
                             'sentence_index':sentence['_check_sentence'],
                             'unchecked_clause_indices':list(row['unchecked_clause_indices'])})

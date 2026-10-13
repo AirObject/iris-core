@@ -27,11 +27,11 @@ def test_explicit_negative_prefix_is_a_complete_rejection_not_partial_acceptance
     assert not output['sentences'][0]['supported']
 
 
-@pytest.mark.parametrize('mutation', ['no_flag', 'integer_flag', 'positive_row',
+@pytest.mark.parametrize('mutation', ['false_flag', 'integer_flag', 'positive_row',
     'positive_clause', 'empty', 'wrong_index', 'missing_reason', 'wrong_bool'])
 def test_missing_checks_cannot_be_laundered_as_a_negative(mutation):
     request, output = rejected_prefix(); row = output['sentences'][0]
-    if mutation == 'no_flag': row.pop('stop_after_failure')
+    if mutation == 'false_flag': row['stop_after_failure'] = False
     elif mutation == 'integer_flag': row['stop_after_failure'] = 1
     elif mutation == 'positive_row': row['supported'] = True
     elif mutation == 'positive_clause': row['clauses'][0]['supported'] = True
