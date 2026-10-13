@@ -37,8 +37,8 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v16', 'persona_check': 'persona_check_v26',
-                   'persona_sentence_repair': 'persona_repair_v14', 'persona_recheck': 'persona_check_v26'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v16', 'persona_check': 'persona_check_v27',
+                   'persona_sentence_repair': 'persona_repair_v14', 'persona_recheck': 'persona_check_v27'}
 CALL_TIMEOUTS = {'persona_generate': 360, 'persona_check': 360,
                  'persona_sentence_repair': 120, 'persona_recheck': 360}
 CALL_MAX_TOKENS = {'persona_generate':16000, 'persona_check':16000,
@@ -684,7 +684,31 @@ def _validate_activity_scope(row, sentence, evidence):
     """
     if not sentence.get('scope_check_required'):
         return [], []
-    scope = row.get('scope_check') if isinstance(row, dict) else None
+    if not isinstance(row, dict):
+        return ['invalid activity scope verdict'], []
+    parts = row.get('clauses')
+    explicit = 'scope_check' in row
+    # Models may attach the same complete contract to focus objects. Without
+    # a sentence-level verdict every returned focus must carry one; a partial
+    # set cannot stand in for the missing overall judgment. When an overall
+    # verdict exists, every supplied extra still counts, especially negatives.
+    if not explicit and (not isinstance(parts, list) or not parts
+            or any(not isinstance(part, dict) or 'scope_check' not in part for part in parts)):
+        return ['invalid activity scope verdict'], []
+    scopes = [('', row['scope_check'])] if explicit else []
+    if isinstance(parts, list):
+        scopes.extend((f"clause {part.get('index', '?')}: ", part['scope_check'])
+                      for part in parts if isinstance(part, dict) and 'scope_check' in part)
+    errors, issues = [], []
+    for label, scope in scopes:
+        invalid, unsupported = _validate_activity_scope_value(scope, sentence, evidence)
+        errors.extend(label + error for error in invalid)
+        issues.extend(label + issue for issue in unsupported)
+    return errors, issues
+
+
+def _validate_activity_scope_value(scope, sentence, evidence):
+    """Validate one full scope contract, wherever supplied; never infer support."""
     if (not isinstance(scope, dict)
             or set(scope) != {'candidate_scope', 'source_scopes', 'preserved'}
             or type(scope['preserved']) is not bool
