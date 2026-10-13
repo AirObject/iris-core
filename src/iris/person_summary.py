@@ -514,6 +514,32 @@ def _length_errors(content, sentences, config):
             ['token_budget'] if estimate_tokens(content)>config['max_tokens'] else [])
 
 
+def _trim_to_capacity(sentences, config):
+    """Reserve manual items, then greedily fit whole resolved model items.
+
+    Priority is relationship, fact, preference, recent; ties use input order.
+    Kept items retain their original order and all metadata. A non-fitting item
+    is skipped so a later, shorter item can still fit. Limits include rendered
+    labels, time ranges and newlines, using the normal token estimate. Manual
+    overflow is left for the existing rejection path; manual text is never cut.
+    Diagnostic indices refer to this pre-trim resolved list, not raw generation.
+    """
+    priority = {kind: rank for rank, kind in enumerate(('relationship', 'fact', 'preference', 'recent'))}
+    selected = {index for index, sentence in enumerate(sentences) if sentence['author'] == 'admin'}
+    removed = []
+    for index in sorted((i for i in range(len(sentences)) if i not in selected),
+                        key=lambda i: (priority[sentences[i]['kind']], i)):
+        candidate = [s for i, s in enumerate(sentences) if i in selected or i == index]
+        errors = _length_errors(''.join(s['text'] for s in candidate), candidate, config)
+        if errors:
+            removed.append({'index': index + 1, 'sentence': sentences[index],
+                            'reason': errors[0], 'stage': 'capacity'})
+        else:
+            selected.add(index)
+    return ([s for i, s in enumerate(sentences) if i in selected],
+            sorted(removed, key=lambda item: item['index']))
+
+
 def _insert(conn, subject_id, *, previous, content, sentences, checks, degree, status, stamp,
             author, source, material, memory_state, settings_revision, subject_revision):
     version=conn.execute('SELECT COALESCE(MAX(version),0)+1 FROM person_summary_versions WHERE subject_id=?',(subject_id,)).fetchone()[0]
@@ -956,9 +982,14 @@ class PersonSummaryEngine:
             try:
                 generated=self._call(gateway,'generate',material,outputs,calls,config)
                 sentences,deleted,count=_resolve(generated,evidence,{'sentences':material['admin_sentences']},_instant(stamp).astimezone(ZoneInfo(evidence['timezone'])),quality_checks=self.prompt_version=='v2')
-                checks.update(deleted_sentences=deleted,original_item_count=count,original_sentences=generated['items'])
+                sentences,trimmed=_trim_to_capacity(sentences,config)
+                # Capacity omissions are not quality failures and cannot dilute
+                # the existing more-than-half quality-deletion rejection rule.
+                quality_count=count-len(trimmed)
+                checks.update(deleted_sentences=deleted,original_item_count=count,original_sentences=generated['items'],
+                              trimmed_sentences=trimmed,quality_item_count=quality_count)
                 content=''.join(s['text'] for s in sentences)
-                if len(deleted)*2>count:
+                if len(deleted)*2>quality_count:
                     checks['errors'].append('too_many_deleted')
                 checks['errors']+=_length_errors(content,sentences,config)
                 if not checks['errors']:
@@ -971,14 +1002,15 @@ class PersonSummaryEngine:
                     sentences,removed,warnings,degree=_check(output,sentences)
                     checks['deleted_sentences']+=removed; checks['admin_warnings']=warnings
                     content=''.join(s['text'] for s in sentences)
-                    if len(checks['deleted_sentences'])*2>count:
+                    if len(checks['deleted_sentences'])*2>quality_count:
                         checks['errors'].append('too_many_deleted')
                     checks['errors']+=_length_errors(content,sentences,config)
                     if removed:
                         degree='large'
                 checks['passed']=not checks['errors']
                 checks['deterministic']={'passed':checks['passed'],'errors':list(checks['errors']),
-                    'characters':len(content),'tokens':estimate_tokens(content),'deleted_count':len(checks['deleted_sentences'])}
+                    'characters':len(content),'tokens':estimate_tokens(content),'deleted_count':len(checks['deleted_sentences']),
+                    'trimmed_count':len(checks['trimmed_sentences'])}
             except (ModelError,ValueError) as error:
                 if isinstance(error,PersonSummaryConflict):
                     raise

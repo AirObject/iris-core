@@ -247,13 +247,21 @@ def test_upgrade_scrubs_identifiable_previously_purged_batch(tmp_path, monkeypat
         def joinpath(self, name):
             if name == 'migrations':
                 return SimpleNamespace(iterdir=lambda: [p for p in root.joinpath(name).iterdir()
-                    if not p.name.endswith('_purge_raw_outputs.sql')])
+                    if p.name < '029'])
             return root.joinpath(name)
     with monkeypatch.context() as patch:
         patch.setattr('iris.db.files', lambda package: BeforePurge())
         old = Store(path)
-    source, bid, mid = learned(old)
+    # Freeze the pre-029 storage shape; today's learning path requires RS columns.
+    source = msg(old, 1, PROSE)
+    mid = put(old, PROSE, evidence=[source])
     with old.write() as conn:
+        bid = insert(conn, 'batches', entry_id='A', history_ids='[]', target_ids=dumps([source]),
+                     future_ids='[]', state='succeeded', prompt_version='historic', created_at=now(),
+                     result_json=dumps({'created': [mid]}))
+        conn.execute("UPDATE messages SET batch_id=?,learning_state='learned' WHERE id=?", (bid, source))
+        insert(conn, 'batch_attempts', batch_id=bid, number=1, started_at=now(), finished_at=now(),
+               raw_output=PROSE, parse_status='direct', duration_ms=1)
         conn.execute("UPDATE memories SET content='',lifecycle='deleted',purged_at=?,revision=2 WHERE id=?", (now(), mid))
         conn.execute('DELETE FROM sources WHERE memory_id=?', (mid,))
         conn.execute('DELETE FROM messages WHERE id=?', (source,))

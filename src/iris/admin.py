@@ -879,12 +879,19 @@ def install_admin(app):
     def batch(batch_id: int):
         return admin_data.batch_detail(app.state.store, batch_id)
 
+    @router.get("/batches/{batch_id}/tree")
+    def batch_tree(batch_id: int, limit: int = Query(default=100, ge=1, le=200),
+                   offset: int = Query(default=0, ge=0, le=1000000)):
+        return admin_data.batch_tree(app.state.store, batch_id, limit=limit, offset=offset)
+
     @router.post("/batches/{batch_id}/relearn")
     def relearn(batch_id: int, payload: Input):
         with app.state.store.write() as conn:
             row = conn.execute("SELECT entry_id,state FROM batches WHERE id=?", (batch_id,)).fetchone()
             if row is None:
                 raise KeyError(batch_id)
+            if row["state"] == "split":
+                return error("batch_conflict", "拆分父批次不能重学，请选择失败叶子", 409)
             if missing_batch_targets(conn, batch_id):
                 return error("batch_targets_cleared", "目标段消息已清理，无法重新学习；记忆缺口仍保留", 409)
             try:

@@ -80,8 +80,16 @@ def test_B10_content_refusal_clears_next_history(store):
     for i in range(1, 4):
         msg(store, i, f"消息{i}")
     first = form_batch(store, "A", PROMPT_VERSION, target_count=2)
-    assert LearningEngine(store, FakeGateway(ModelError("content_rejection", "provider refusal"))).run_batch(first.id)["state"] == "refused"
-    assert count(store, "memory_gaps") == 1
+    engine = LearningEngine(store, FakeGateway(ModelError("content_rejection", "provider refusal")))
+    assert engine.run_batch(first.id)["state"] == "split"
+    from iris.queue import next_learning_batch
+    while True:
+        with store.read() as conn:
+            head = next_learning_batch(conn, "A")
+        if head is None:
+            break
+        engine.run_batch(head["id"], force=True)
+    assert count(store, "memory_gaps") == 2
     second = form_batch(store, "A", PROMPT_VERSION, target_count=2)
     assert second.history_ids == [] and second.target_ids == [3]
 

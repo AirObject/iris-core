@@ -23,13 +23,13 @@ RESOLUTIONS = ('report_only_v1',)
 DEFAULTS = {'enabled': True, 'max_calls': 50, 'method': 'broad', 'resolution': 'report_only_v1',
             'merge_enabled': True, 'conflict_enabled': True, 'dependency_enabled': True,
             'persona_enabled': True, 'goal_review_enabled': True, 'entry_profile_enabled': True, 'person_summary_enabled': True}
-PROMPT_VERSION = 'consolidation_report_only_v1'
-MERGE_PROMPT_VERSION = 'consolidation_pair_v2'
+PROMPT_VERSION = 'consolidation_report_only_v2'
+MERGE_PROMPT_VERSION = 'consolidation_pair_v3'
 MAX_ANCESTORS = 64
 
 
 class InvalidOutput(ValueError):
-    """The model's decision remained malformed after its one JSON repair."""
+    """Malformed output after repair, or a final report-grounding rejection."""
 
 
 class UnsafeWrite(ValueError):
@@ -71,6 +71,123 @@ IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*")
 
 def visible_sources(payload, evidence):
     return [s for m in payload['memories'] for s in material(m)['sources'] if s['id'] in evidence]
+
+
+# CO-03 list: the planner's nine examples, plus degree markers 非常/稍微.
+# This is a finite lexical guard, not a semantic parser. We deliberately do not
+# equate 一直 with 习惯, or 经常 with 总是. Tokens can miss unstated/paraphrased
+# scope, so model containment checks and external detail scoring still apply.
+DETAIL_QUALIFIERS = ('一直', '总是', '经常', '偶尔', '每次', '多年', '从小', '只', '都', '非常', '稍微')
+SUBJECT_MENTION = re.compile(r'主体\[([^\[\]|]+)(?:\|([^\[\]|]+))?\]')
+REPORT_REFERENCE = re.compile(r'(记忆|来源消息|来源|消息|证据|(?<![A-Za-z_])id)\s*(?:id\s*)?[:：=#]?\s*(\d+)', re.I)
+
+
+def qualifier_details(text):
+    """Return literal spans; a classifier in 一只猫 is not restrictive 只."""
+    pieces = words(text)
+    boundaries = {0}
+    offset = 0
+    for piece in pieces:
+        offset += len(piece)
+        boundaries.add(offset)
+    found = {}
+    for qualifier in DETAIL_QUALIFIERS:
+        for match in re.finditer(re.escape(qualifier), text):
+            if len(qualifier) == 1 and not {match.start(), match.end()} <= boundaries:
+                continue
+            # 每周 and 每周都 express the same quantification. This narrowly
+            # removes redundant 都, not free-standing 都 or 每次/一直.
+            if qualifier == '都' and re.search(r'每(?:天|周|月|年|次|星期[一二三四五六日天])\s*$', text[:match.start()]):
+                continue
+            found[qualifier] = qualifier
+    return found
+
+
+def subject_material(conn, memory):
+    """Only identities in this exact visible material; never the global roster."""
+    visible = material(memory)
+    ids = {memory['speaker'], *memory['about']}
+    ids.update(s[k] for s in visible['sources'] for k in ('sender', 'quote_author') if s.get(k))
+    result = []
+    for row in conn.execute('SELECT id,name FROM subjects WHERE id IN (SELECT value FROM json_each(?)) ORDER BY id',
+                            (dumps(sorted(ids)),)):
+        result.append({'id': row['id'], 'name': row['name'], 'aliases': [
+            r[0] for r in conn.execute('SELECT alias FROM subject_aliases WHERE subject_id=? ORDER BY alias', (row['id'],))]})
+    return result
+
+
+def report_numbers(text):
+    """Normalize Arabic/Chinese numeric literals, without treating 一直 as one."""
+    def normalize(value):
+        if value[0].isascii():
+            return str(Decimal(value).normalize())
+        digits = dict(zip('零〇一二两三四五六七八九', (0, 0, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9)))
+        if all(char in digits for char in value):
+            return str(Decimal(''.join(str(digits[char]) for char in value)).normalize())
+        total = section = digit = 0
+        for char in value:
+            if char in digits:
+                digit = digits[char]
+            else:
+                unit = {'十': 10, '百': 100, '千': 1000, '万': 10000, '亿': 100000000}[char]
+                if unit < 10000:
+                    section += (digit or 1) * unit
+                else:
+                    total += (section + digit or 1) * unit
+                    section = 0
+                digit = 0
+        return str(Decimal(total + section + digit).normalize())
+    text = IDENTIFIER.sub(' ', text)
+    pattern = r'\d+(?:\.\d+)?|[零〇一二两三四五六七八九十百千万亿]+(?=\s*(?:个)?(?:年|月|日|号|点|时|分|秒|次|条|箱|件|米|楼|层|周|天|岁|本|人|%|％))'
+    return {normalize(m[0]) for m in re.finditer(pattern, text)}
+
+
+def validate_report_text(value, payload):
+    """Check structured subjects, source references, numbers and direct quotes.
+
+    Only explicit 主体[id|name] / 主体[id] prose references use the local subject
+    roster; validate() separately checks JSON subject_ids fields. Neither Latin
+    tokens nor Chinese parts of speech identify a subject reference. IDs, names
+    and aliases match exactly, with no spelling correction. Unmarked prose is
+    not a subject authorization boundary; presence checks cannot establish
+    correct attribution, units or entailment.
+    """
+    if value['decision'] in ('keep', 'separate', 'uncertain') and value.get('merge_detail_check', {}).get('outcome') != 'mutual_details':
+        return
+    memories = [material(m) for m in payload['memories']]
+    sources = [s for m in memories for s in m['sources']]
+    subjects = {s['id']: s for m in memories for s in m.get('subjects', [])}
+    texts = [m['content'] or '' for m in memories]
+    texts += [s.get(key) or '' for s in sources for key in ('text', 'quote_content')]
+    timestamps = [m.get(key) or '' for m in memories for key in ('event_time', 'created_at')]
+    timestamps += [s.get('at') or '' for s in sources]
+    numbers = set().union(*(report_numbers(t) for t in [*texts, *timestamps]))
+    # Prose can enumerate visible memories/sources; protocol IDs are checked
+    # separately below and cannot license unrelated factual numeric literals.
+    numbers |= {str(Decimal(n).normalize()) for n in (1, len(memories), len(sources))}
+    for text in [value['reason'], *(u['annotation'] for u in value['updates'] if 'annotation' in u)]:
+        def mention(match):
+            sid, name = match[1], match[2]
+            subject = subjects.get(sid)
+            if subject is None or name is not None and name not in {subject['name'], *subject['aliases']}:
+                raise InvalidOutput('unknown_report_subject')
+            return ' '
+        rest = SUBJECT_MENTION.sub(mention, text)
+        if '主体[' in rest:
+            raise InvalidOutput('invalid_report_subject')
+        def reference(match):
+            allowed = {m['id'] for m in memories} if match[1].lower() in ('记忆', 'id') else {s['id'] for s in sources}
+            if int(match[2]) not in allowed:
+                raise InvalidOutput('unknown_report_reference')
+            return ' '
+        rest = REPORT_REFERENCE.sub(reference, rest)
+        if not report_numbers(rest) <= numbers:
+            raise InvalidOutput('unknown_report_number')
+        for match in re.finditer(r'“([^”]+)”|「([^」]+)」|‘([^’]+)’', text):
+            quote = next(part for part in match.groups() if part is not None)
+            compact = lambda part: ''.join(part.split())
+            if not any(compact(quote) in compact(source) for source in texts):
+                raise InvalidOutput('ungrounded_report_quote')
 
 
 def same_write_sequences(left, right):
@@ -223,6 +340,7 @@ def snapshot(conn, mid):
     result['derived_from'] = [dict(r) for r in conn.execute("""SELECT source_memory_id AS id,source_revision AS revision
         FROM sources WHERE memory_id=? AND kind='memory' ORDER BY source_memory_id,id""", (mid,))]
     result['initial_setting'] = bool(conn.execute("SELECT 1 FROM sources WHERE memory_id=? AND kind='initial_setting'", (mid,)).fetchone())
+    result['subjects'] = subject_material(conn, result)
     result['annotations'] = memory_annotations(conn,[mid])[mid]
     for annotation in result['annotations']:
         annotation['source_keys']=[r[0] for r in conn.execute(
@@ -291,7 +409,7 @@ def merge_exclusion(a,b):
     na,nb=numeric(a['content']),numeric(b['content'])
     if any(not (na[k] <= nb[k] or nb[k] <= na[k]) for k in na.keys() & nb.keys()):
         return 'numbers'
-    negative = r'不|没|未|无|非|\b(?:not|never|no)\b'
+    negative = r'不|没|未|无|非(?!常)|\b(?:not|never|no)\b'
     if bool(re.search(negative,a['content'],re.I)) != bool(re.search(negative,b['content'],re.I)):
         return 'negation'
     if any(s['id']==b['id'] for s in a['derived_from']) or any(s['id']==a['id'] for s in b['derived_from']):
@@ -361,8 +479,8 @@ def work_fingerprint(kind,payload,method):
     value = {'version':PROMPT_VERSION,'method':method,'kind':kind,
              'memories':[semantic(m) for m in payload['memories']],
              'losses':payload.get('losses',[]), 'resolution':payload.get('resolution','original_v1')}
-    # Pair checks cannot reuse pre-MG2 receipts. Dependencies keep their old
-    # fingerprints; legacy resumed merges also pass the write-time detail guard.
+    # Versioned prompts cannot reuse old receipts. Legacy resumed decisions also
+    # pass the current write-time guards before any annotations or merges commit.
     if kind == 'pair' and 'merge_version' in payload:
         value['merge_version'] = payload['merge_version']
     policy = payload.get('policy', pair_policy(DEFAULTS))
@@ -384,6 +502,8 @@ def merge_detail_decision(payload, result):
     keep_id = previous.get('model_keep_id', result.get('keep_id'))
     reason = previous.get('model_reason', result['reason'])
     detail = result.get('unique_details')
+    model_detail = previous.get('model_unique_details', detail)
+    additions = {'a': [], 'b': []}
     pair = [next(m for m in payload['memories'] if m['id'] == mid) for mid in payload['pair_ids']]
     normalize = lambda text: ' '.join(text.split())
     valid = isinstance(detail, dict) and set(detail) == {'a', 'b'}
@@ -402,6 +522,13 @@ def merge_detail_decision(payload, result):
         result.update(decision='uncertain', updates=[])
         result.pop('keep_id', None)
     elif decision == 'merge':
+        detail = {side: list(quotes) for side, quotes in detail.items()}
+        lexical = [qualifier_details(m['content']) for m in pair]
+        additions = {side: [quote for key, quote in lexical[index].items() if key not in lexical[1-index]]
+                     for index, side in enumerate(('a', 'b'))}
+        for side in ('a', 'b'):
+            detail[side].extend(q for q in additions[side] if q not in detail[side])
+        result['unique_details'] = detail
         if detail['a'] and detail['b']:
             outcome = 'mutual_details'
             result.update(decision='uncertain', updates=[])
@@ -413,7 +540,8 @@ def merge_detail_decision(payload, result):
             result['reason'] = (f"保留记忆 {result['keep_id']} 的原正文："+
                                 ('仅此条有独有细节。' if outcome == 'one_sided' else '双方无独有细节，沿用已有正文选择。')+
                                 '模型理由：'+reason)
-    result['merge_detail_check'] = {'outcome': outcome, 'model_decision': decision, 'model_keep_id': keep_id, 'model_reason': reason}
+    result['merge_detail_check'] = {'outcome': outcome, 'model_decision': decision, 'model_keep_id': keep_id, 'model_reason': reason,
+                                    'model_unique_details': model_detail, 'deterministic_unique_details': additions}
     return result
 
 
@@ -467,11 +595,11 @@ class Consolidation:
         purpose='consolidation_dependency' if work['kind']=='dependency' else (
             'consolidation_conflict' if report_only or not payload['merge_allowed'] else 'consolidation_merge')
         if work['kind']=='dependency':
-            name='dependency_report_only_v1'
+            name='dependency_report_only_v2'
         elif report_only:
-            name='conflict_report_only_v1'
+            name='conflict_report_only_v2'
         else:
-            name='pair_v2'  # MG2: same broad candidates, explicit detail containment.
+            name='pair_v3'  # Same broad candidates; deterministic qualifier containment.
         prompt=files('iris').joinpath(f'prompts/consolidation_{name}.md').read_text(encoding='utf-8')
         public={k:v for k,v in payload.items() if k not in ('resolution','policy')}
         public['memories']=[material(m) for m in payload['memories']]
@@ -518,7 +646,7 @@ class Consolidation:
                 if work['kind']=='pair' and not report_only:
                     result=merge_detail_decision(payload,result)
                 return result
-            except UnsafeWrite:
+            except (UnsafeWrite, InvalidOutput):
                 raise
             except (ValueError,TypeError,KeyError) as error:
                 if repair:
@@ -584,6 +712,7 @@ class Consolidation:
             raise UnsafeWrite('unexpected_updates')
         if value['decision']=='weaken' and any('content' in u for u in value['updates']):
             raise UnsafeWrite('weakening_cannot_rewrite')
+        validate_report_text(value, payload)
 
     def _plan_pair(self, get, m, n, settings):
         if m.get('_visibility') != n.get('_visibility'):
@@ -703,6 +832,7 @@ class Consolidation:
 
         def enqueue(kind,payload):
             payload['resolution']=settings['resolution']
+            payload['report_version']=PROMPT_VERSION
             if kind=='pair':
                 payload['policy']=pair_policy(settings)
             with self.store.write() as conn:
@@ -726,13 +856,14 @@ class Consolidation:
             conn.execute('''INSERT OR IGNORE INTO consolidation_run_work(run_id,work_id)
                 SELECT ?,id FROM consolidation_work WHERE state IN ('pending','classified','decided')
                 AND COALESCE(json_extract(payload_json,'$.resolution'),'original_v1')=?
+                AND json_extract(payload_json,'$.report_version')=?
                 AND (kind!='pair' OR json_extract(payload_json,'$.merge_version')=?)
                 AND ((kind='dependency' AND ?)
                      OR (kind='pair' AND (? OR ?)
                          AND COALESCE(json_extract(payload_json,'$.policy.merge_enabled'),1)=?
                          AND COALESCE(json_extract(payload_json,'$.policy.conflict_enabled'),1)=?))
                 ORDER BY importance DESC,julianday(changed_at) DESC,id LIMIT 256''',
-                (run['id'],settings['resolution'],MERGE_PROMPT_VERSION,settings['dependency_enabled'],settings['merge_enabled'],
+                (run['id'],settings['resolution'],PROMPT_VERSION,MERGE_PROMPT_VERSION,settings['dependency_enabled'],settings['merge_enabled'],
                  settings['conflict_enabled'],settings['merge_enabled'],settings['conflict_enabled']))
             conn.execute('UPDATE consolidation_runs SET planned=1 WHERE run_id=?',(run['id'],))
 
@@ -855,6 +986,9 @@ class Consolidation:
                 return False
             try:
                 self._apply_work(work,payload,result,config,blocked)
+            except InvalidOutput as exc:
+                self.fail_work(work,exc,'invalid_output')
+                blocked.add(frozenset(payload.get('pair_ids',[payload.get('target_id')])))
             except Exception as exc:
                 # Store.write rolled back every mutation and its audit record.
                 # The failure receipt is a new short transaction.
@@ -884,6 +1018,8 @@ class Consolidation:
 
     def fail_work(self,work,error,reason,*,retry=False):
         details={'error_type':type(error).__name__,'terminal':not retry}
+        if isinstance(error,InvalidOutput):
+            details['rejection']=str(error)  # Fixed local validation codes only.
         if isinstance(error,UnsafeWrite):
             reason='unsafe_write'
             details['rejection']=str(error)  # Internal validation codes only.
@@ -990,6 +1126,7 @@ class Consolidation:
             raise UnsafeWrite('visibility')
         if work['kind']=='pair' and (result['decision']=='merge' or 'merge_detail_check' in result):
             result=merge_detail_decision(payload,result)
+        validate_report_text(result, payload)
         decision=result['decision']
         details={'action_id':f'co-{work["id"]}','decision':decision,'before_memories':before,
                  'report':result['reason'],'evidence':result['evidence'],

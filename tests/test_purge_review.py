@@ -320,7 +320,7 @@ def before_purge_store(path, monkeypatch):
     class Resources:
         def joinpath(self,name):
             return (SimpleNamespace(iterdir=lambda:[p for p in root.joinpath(name).iterdir()
-                    if not p.name.endswith('_purge_raw_outputs.sql')]) if name=='migrations' else root.joinpath(name))
+                    if p.name < '029']) if name=='migrations' else root.joinpath(name))
     with monkeypatch.context() as patch:
         patch.setattr('iris.db.files',lambda _:Resources())
         return Store(path)
