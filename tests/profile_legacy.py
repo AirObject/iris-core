@@ -7,8 +7,7 @@ import pytest
 from iris import db
 
 
-@pytest.fixture(autouse=True)
-def legacy_schema(monkeypatch):
+def use_legacy_schema(monkeypatch):
     root=db.files('iris')
     class Scripts:
         def iterdir(self):
@@ -17,3 +16,8 @@ def legacy_schema(monkeypatch):
         def joinpath(self,*parts):
             return Scripts() if parts==('migrations',) else root.joinpath(*parts)
     monkeypatch.setattr(db,'files',lambda _:Root())
+
+
+@pytest.fixture(autouse=True)
+def legacy_schema(monkeypatch):
+    use_legacy_schema(monkeypatch)
