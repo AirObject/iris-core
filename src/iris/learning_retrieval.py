@@ -24,7 +24,8 @@ class LearningRetrieval(Retrieval):
             return self._select(candidates, limit=limit)
 
     def _rank(self, conn, text: str, vector, *, participants=(), highlights=False, limit=8, entry_id=None, **filters) -> list[dict]:
-        where, args = _filters(conn, **filters)
+        where, args = _filters(conn, entry_id=entry_id, **filters)
+        where += " AND m.kind!='入口画像'"
         visibility = Visibility(conn)
         where += " AND " + visibility.memory_sql(entry_id)
         scores: dict[int, float] = {}
@@ -46,6 +47,8 @@ class LearningRetrieval(Retrieval):
                 scores[mid] = 1 / (RRF_K + rank)
         if vector is not None and self.index:
             vector_scores = self.index.scores(vector, include_forgotten=bool(filters.get("include_forgotten")))
+            excluded = {r[0] for r in conn.execute("SELECT id FROM memories WHERE kind='入口画像'")}
+            vector_scores = {mid: v for mid,v in vector_scores.items() if mid not in excluded}
             # Apply structured filters before truncating vector ranks.
             if any(filters.get(k) for k in ("people", "kinds", "stances", "time_from", "time_to")):
                 allowed = {r[0] for r in conn.execute("SELECT m.id FROM memories m WHERE " + where, args)}

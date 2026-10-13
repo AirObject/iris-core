@@ -240,7 +240,7 @@ def _select(conn, entry_id, current):
         selected.pop()
     visibility=Visibility(conn)
     memories=[]
-    for row in conn.execute('''SELECT m.* FROM memories m WHERE m.lifecycle='active' AND m.purged_at IS NULL
+    for row in conn.execute('''SELECT m.* FROM memories m WHERE m.lifecycle='active' AND m.kind!='入口画像' AND m.purged_at IS NULL
         AND EXISTS(SELECT 1 FROM sources s JOIN messages x ON x.id=s.message_id
             WHERE s.memory_id=m.id AND s.kind='message' AND x.entry_id=?)
         ORDER BY m.importance DESC,m.id''',(entry_id,)):

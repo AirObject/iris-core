@@ -42,7 +42,7 @@ def memory_rows(conn, sql, args=()):
 
 def catalog(store):
     with store.read() as conn:
-        return {"people": [dict(r) for r in conn.execute("SELECT id,name,kind FROM subjects WHERE merged_into IS NULL ORDER BY name,id")],
+        return {"people": [dict(r) for r in conn.execute("SELECT id,name,kind FROM subjects WHERE kind IN ('person','self') AND merged_into IS NULL ORDER BY name,id")],
                 "entries": [dict(r) for r in conn.execute("SELECT id,name,kind FROM entries ORDER BY name,id")]}
 
 
@@ -94,7 +94,7 @@ def list_memories(store, *, text="", person_id=None, kind=None, entry_id=None,
     order = {"time": "julianday(m.updated_at) DESC,m.id DESC", "retention": "m.retention DESC,m.id DESC",
              "relevance": f"{rank} ASC,julianday(m.updated_at) DESC,m.id DESC"}[sort]
     with store.read() as conn:
-        if person_id and conn.execute("SELECT 1 FROM subjects WHERE id=?", (person_id,)).fetchone():
+        if person_id and conn.execute("SELECT 1 FROM subjects WHERE id=? AND kind IN ('person','self')", (person_id,)).fetchone():
             canonical = canonical_subject(conn, person_id)
             args[person_arg:person_arg + 2] = [canonical, canonical]
         total = conn.execute(f"SELECT COUNT(*) FROM memories m {join} WHERE {where}", [*prefix, *args]).fetchone()[0]
@@ -699,7 +699,7 @@ def bulk_memory_preview(store, *, subject_id=None, entry_id=None, action, includ
     scope = {"subject_id": subject_id} if subject_id else {"entry_id": entry_id}
     with store.read() as conn:
         if subject_id:
-            person = conn.execute("SELECT merged_into FROM subjects WHERE id=?", (subject_id,)).fetchone()
+            person = conn.execute("SELECT merged_into FROM subjects WHERE id=? AND kind IN ('person','self')", (subject_id,)).fetchone()
             if person is None:
                 raise KeyError(subject_id)
             if person["merged_into"]:

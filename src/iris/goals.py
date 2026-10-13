@@ -243,7 +243,7 @@ def _reason(value, default):
 def _basis_annotations(conn, goal_id, *, zone=None):
     zone = zone or role_zone(conn)
     result = []
-    for row in conn.execute("SELECT * FROM goal_basis_annotations WHERE goal_id=? AND status='active' ORDER BY id",(goal_id,)):
+    for row in conn.execute("SELECT * FROM goal_basis_annotations a WHERE goal_id=? AND status='active' AND NOT EXISTS(SELECT 1 FROM memories m WHERE m.id IN (a.memory_id,a.observed_merged_into) AND m.kind='入口画像') ORDER BY id",(goal_id,)):
         item = {key:row[key] for key in ('id','memory_id','basis_revision','observed_revision',
                 'observed_lifecycle','observed_purged','observed_merged_into')}
         item['observed_purged'] = bool(item['observed_purged'])
@@ -258,7 +258,8 @@ def _snapshot(conn, goal_id):
     row = _row(conn,goal_id)
     values = {key:row[key] for key in _SNAPSHOT_FIELDS}
     values['source_message_ids'] = [r[0] for r in conn.execute('SELECT message_id FROM goal_sources WHERE goal_id=? ORDER BY message_id',(goal_id,))]
-    values['promise_memories'] = [dict(r) for r in conn.execute('SELECT memory_id,memory_revision FROM goal_memories WHERE goal_id=? ORDER BY memory_id',(goal_id,))]
+    values['promise_memories'] = [dict(r) for r in conn.execute("""SELECT gm.memory_id,gm.memory_revision FROM goal_memories gm LEFT JOIN memories m ON m.id=gm.memory_id
+        WHERE gm.goal_id=? AND (m.id IS NULL OR m.kind!='入口画像') ORDER BY gm.memory_id""",(goal_id,))]
     values['merged_goal_ids'] = [r[0] for r in conn.execute('SELECT id FROM goals WHERE merged_into=? ORDER BY id',(goal_id,))]
     values['duplicates'] = {str(r[0]):r[1] for r in conn.execute('''SELECT CASE WHEN goal_a=? THEN goal_b ELSE goal_a END,status
         FROM goal_duplicates WHERE goal_a=? OR goal_b=? ORDER BY goal_a,goal_b''',(goal_id,goal_id,goal_id))}
@@ -325,7 +326,7 @@ _INTERNAL_BASIS_GOALS = """g.state='open' AND g.merged_into IS NULL AND
 def _basis_observations(conn, goal_id):
     rows = conn.execute('''SELECT gm.memory_id,gm.memory_revision,m.id AS present_id,m.revision,
         m.lifecycle,m.purged_at,m.merged_into FROM goal_memories gm LEFT JOIN memories m ON m.id=gm.memory_id
-        WHERE gm.goal_id=? ORDER BY gm.memory_id''',(goal_id,))
+        WHERE gm.goal_id=? AND (m.id IS NULL OR m.kind!='入口画像') ORDER BY gm.memory_id''',(goal_id,))
     for row in rows:
         changes = []
         if row['present_id'] is None:
@@ -662,7 +663,7 @@ def goal_detail(conn, goal_id, *, current=None):
         source['occurred_at'] = local_time(source['occurred_at'],zone)
     result['promise_memories'] = [dict(r) for r in conn.execute('''SELECT gm.memory_id AS id,m.content,gm.memory_revision AS revision,
         m.revision AS current_revision,m.lifecycle,m.id IS NULL AS missing FROM goal_memories gm LEFT JOIN memories m ON m.id=gm.memory_id
-        WHERE gm.goal_id=? ORDER BY gm.memory_id''',(goal_id,))]
+        WHERE gm.goal_id=? AND (m.id IS NULL OR m.kind!='入口画像') ORDER BY gm.memory_id''',(goal_id,))]
     for memory in result['promise_memories']:
         memory['missing'] = bool(memory['missing'])
     result['merged_goals'] = [_project(conn,r,current=_current(current),zone=zone) for r in _rows(conn,'merged_into=?',(goal_id,))]
@@ -909,7 +910,7 @@ def _create(conn, *, content, kind='normal', deadline=None, reminder_minutes=Non
         # sharing the actual evidence, with the revision that supported this goal.
         conn.execute('''INSERT OR IGNORE INTO goal_memories(goal_id,memory_id,memory_revision)
             SELECT ?,m.id,m.revision FROM memories m JOIN sources s ON s.memory_id=m.id
-            WHERE m.speaker_subject_id='self' AND m.lifecycle!='deleted' AND s.kind='message'
+            WHERE m.speaker_subject_id='self' AND m.lifecycle!='deleted' AND m.kind!='入口画像' AND s.kind='message'
             AND s.message_id IN ('''+','.join('?' for _ in evidence)+')',(gid,*evidence))
     _record_snapshot(conn,gid,None,actor=actor,action='create',reason='goal created',current=current)
     proposed = _row(conn,gid)

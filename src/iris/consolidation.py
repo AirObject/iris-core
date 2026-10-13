@@ -331,6 +331,13 @@ def snapshot(conn, mid):
     scope = Visibility(conn).memory(mid)
     if scope is not None:
         result['_visibility'] = sorted(scope)
+    if row['owner_entry_id'] is not None:
+        result['_owner_scopes'] = [r[0] for r in conn.execute('SELECT entry_id FROM memory_owner_scopes WHERE memory_id=? ORDER BY entry_id',(mid,))]
+    if row['kind']=='入口画像':
+        profile = conn.execute('SELECT entry_id,category,manual_created FROM entry_profile_memories WHERE memory_id=?',(mid,)).fetchone()
+        result['_entry_profile'] = dict(profile) if profile else None
+        if profile and profile['manual_created']:
+            result['last_edit'] = 'admin'
     result['about'] = [r[0] for r in conn.execute('SELECT subject_id FROM memory_subjects WHERE memory_id=? ORDER BY subject_id',(mid,))]
     result['sources'] = [dict(r) for r in conn.execute("""SELECT DISTINCT m.id,m.dedupe_key AS key,m.entry_id,
         e.kind AS entry_kind,m.sender_subject_id AS sender,m.kind,m.occurred_at AS at,m.content AS text,
@@ -395,7 +402,22 @@ def same_event_time(left, right):
         return left == right
 
 
+def profile_partition_exclusion(a,b):
+    profiles = [m.get('type')=='入口画像' for m in (a,b)]
+    if any(profiles):
+        if not all(profiles):
+            return 'profile_kind'
+        left,right = a.get('_entry_profile'),b.get('_entry_profile')
+        if not left or not right or any(left[k]!=right[k] for k in ('entry_id','category')):
+            return 'profile_partition'
+    if a.get('_owner_scopes') != b.get('_owner_scopes'):
+        return 'owner_scope'
+    return None
+
+
 def merge_exclusion(a,b):
+    if excluded := profile_partition_exclusion(a,b):
+        return excluded
     if a.get('_visibility') != b.get('_visibility'):
         return 'visibility'
     if any(m['lifecycle']=='deleted' or m['merged_into'] for m in (a,b)):
@@ -715,6 +737,8 @@ class Consolidation:
         validate_report_text(value, payload)
 
     def _plan_pair(self, get, m, n, settings):
+        if profile_partition_exclusion(m,n):
+            return None
         if m.get('_visibility') != n.get('_visibility'):
             return None
         # A proposition and its supporting chain belong to dependency review.

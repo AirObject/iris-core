@@ -19,7 +19,7 @@ from iris.entry_profile import (
 from iris.profile_common import evidence_hash
 from .runner import load_corpus, _source_hash
 
-SCORING_STATUS = 'draft_pending_planner_approval'
+SCORING_STATUS = 'approved_by_planner_20261013'
 STAGES = ('generated', 'deterministic', 'checked', 'projected')
 HERE = Path(__file__).resolve().parent
 
@@ -376,7 +376,7 @@ def _read(path):
 
 
 def score_draft(materials, judgments, *, judge_model):
-    """Offline mechanism scorer; draft/simulation can NEVER claim a passed gate."""
+    """Offline mechanism scorer; simulation can NEVER claim a passed gate."""
     materials = Path(materials); paths = list(map(Path, judgments))
     if len(paths) not in (1, 2) or len({p.resolve() for p in paths}) != len(paths) or not judge_model.strip():
         raise ValueError('one or two distinct independent rounds required')
