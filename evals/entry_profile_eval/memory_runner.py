@@ -457,6 +457,7 @@ def run_sqlite(corpus, out, *, gateway_factory=None, configs=None):
     timeout/429 interrupts the run immediately; remaining cases are exported as
     not-run, all preceding traces are retained, and gate_eligible becomes false.
     """
+    from unittest.mock import patch
     from iris.db import Store, dumps
     from iris.entry_profile import EntryProfileEngine, memory_profile_rows, profile_context, _instant
     from iris.memory_ops import write_entry_profile_memory
@@ -482,8 +483,9 @@ def run_sqlite(corpus, out, *, gateway_factory=None, configs=None):
             _load_case(store,{**case,'initial_profile':''})
             entry_id=case['entry']['id']; clock=lambda:_instant(case['as_of'])
             if case.get('initial_profile'):
-                write_entry_profile_memory(store,entry_id,op='new',content=case['initial_profile'],category=None,
-                    importance=80,manual=True,current=clock())
+                with patch('iris.entry_profile.utc_now',clock):
+                    write_entry_profile_memory(store,entry_id,op='new',content=case['initial_profile'],category=None,
+                        importance=80,manual=True,current=clock())
             gateway=(gateway_factory(case['id'],store) if gateway_factory else EvaluationGateway(configs,store=store))
             engine=EntryProfileEngine(store,gateway,clock=clock)
             task=EntryProfileMemoryTask(None,gateway)
@@ -493,7 +495,10 @@ def run_sqlite(corpus, out, *, gateway_factory=None, configs=None):
                 with store.read() as conn:
                     from iris.entry_profile import _memory_state
                     expected=_memory_state(conn,entry_id)['version']
-                outcome=engine.regenerate(entry_id,expected_version=expected)
+                # Use the case's observation time in the transaction projection
+                # too. The public corpus may be later than the device clock.
+                with patch('iris.entry_profile.utc_now',clock):
+                    outcome=engine.regenerate(entry_id,expected_version=expected)
                 result=outcome.get('result')
                 if result is None:
                     result=dict(status='no_new_evidence' if outcome.get('reason')=='no_new_evidence' else 'unavailable',

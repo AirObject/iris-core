@@ -42,3 +42,18 @@ def test_rate_limit_invalidates_once_and_preserves_material_without_retry(tmp_pa
     assert manifest['metadata']['invalidated']['reason']=='rate_limited'
     assert not manifest['metadata']['gate_eligible']
     assert (out/'run.json').is_file() and (out/'judging-materials/cases/0001.json').is_file()
+
+
+def test_case_clock_also_controls_transaction_projection(tmp_path):
+    from evals.entry_profile_eval.memory_runner import run_sqlite
+    corpus,case=corpus_file(tmp_path)
+    case['as_of']='2040-12-15T23:00:00+08:00'
+    case['messages'][0]['at']='2040-12-01T12:00:00+08:00'
+    case['messages'][1]['at']='2040-12-02T12:00:00+08:00'
+    corpus.write_text(json.dumps({'format_version':1,'cases':[case]},ensure_ascii=False))
+    root=tmp_path/'future-corpus-clock'
+    run_sqlite(corpus,root,gateway_factory=lambda _,store:RuleGateway(store))
+    payload=json.loads((root/'judging-materials/cases/0001.json').read_text())['input']
+    assert payload['memories']
+    assert payload['projection']['memory_ids']==[m['memory_id'] for m in payload['memories']]
+    assert payload['projection']['generated_at']==case['as_of']
