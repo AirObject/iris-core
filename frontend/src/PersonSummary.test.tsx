@@ -351,8 +351,11 @@ test("中断任务可重试，初次摘要为空也可编辑", async () => {
   panel();
   expect(await screen.findByText("尚无已发布的人物摘要。")).toBeVisible();
   expect(await screen.findByText("任务被中断，可以重试")).toBeVisible();
-  expect(screen.getByRole("button", { name: "重新生成摘要" })).toBeEnabled();
-  expect(screen.getByRole("button", { name: "编辑摘要" })).toBeEnabled();
+  // Reading the terminal task refreshes the snapshot and briefly locks actions.
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "重新生成摘要" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "编辑摘要" })).toBeEnabled();
+  });
 });
 test("预算保留未改结构化条目的句内标点，手写分条与 Unicode 计数", () => {
   const text = "稳定事实：记录作品。“木工”是爱好。\n";
