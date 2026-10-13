@@ -275,7 +275,7 @@ def test_published_persona_drops_sentences_when_basis_becomes_private(store, sce
     from iris.persona import PersonaEngine, current_persona, persona_context
     from test_persona import FakeGateway as PersonaGateway
     setup_role(store,'Iris')
-    mid=memory(store,[scene['A']])
+    mid=put(store,'那次交流中，我表达了对天文摄影的喜好。',evidence=[scene['A']])
     old=current_persona(store)['id']
     # The existing model fake validates the actual evidence refs.
     store.set_setting('persona_publish_mode','all_auto')
