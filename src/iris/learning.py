@@ -165,9 +165,9 @@ class LearningEngine:
             rows = conn.execute(f"""SELECT m.*,s.name AS sender_name,q.name AS quote_author_name
                 FROM messages m JOIN subjects s ON s.id=m.sender_subject_id
                 LEFT JOIN subjects q ON q.id=m.quote_author_subject_id WHERE m.id IN ({placeholders})""", ids).fetchall()
-            subjects = conn.execute("SELECT id,name,parent_id FROM subjects WHERE merged_into IS NULL").fetchall()
-            aliases = conn.execute("SELECT subject_id,alias FROM subject_aliases WHERE folded_into IS NULL ORDER BY subject_id,alias").fetchall()
-            identities = conn.execute("SELECT subject_id,platform,account_id FROM platform_identities").fetchall()
+            subjects = conn.execute("SELECT id,name,parent_id FROM subjects WHERE merged_into IS NULL AND kind IN ('person','self')").fetchall()
+            aliases = conn.execute("SELECT subject_id,alias FROM subject_aliases WHERE folded_into IS NULL AND subject_id IN (SELECT id FROM subjects WHERE kind IN ('person','self')) ORDER BY subject_id,alias").fetchall()
+            identities = conn.execute("SELECT subject_id,platform,account_id FROM platform_identities WHERE subject_id IN (SELECT id FROM subjects WHERE kind IN ('person','self'))").fetchall()
             persona = persona_context(conn)['content']
             messages = {r["id"]: _row_dict(r) for r in rows}
             for message_id, media in message_media(conn, ids).items():

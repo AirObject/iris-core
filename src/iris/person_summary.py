@@ -18,7 +18,7 @@ from threading import Lock
 from zoneinfo import ZoneInfo
 
 from .db import dumps
-from .memory_ops import Visibility, operation
+from .memory_ops import Visibility, operation, hard_memory_scopes
 from .models import Gateway, ModelError
 from .persona import split_sentences
 from .profile_common import ChatHealthGate, evidence_hash, excerpt, json_object, setting, whitespace, load_profile_prompts, profile_prompt_metadata
@@ -84,7 +84,7 @@ def _runtime(conn):
 
 def _subject(conn, subject_id, *, writable=False):
     row=conn.execute('SELECT id,kind,name,revision,created_at,merged_into,merged_at FROM subjects WHERE id=?',(subject_id,)).fetchone()
-    if row is None:
+    if row is None or row['kind'] == 'entry':
         raise KeyError(subject_id)
     if writable and (row['kind']!='person' or row['id'] in ('self','scene') or row['merged_into'] is not None):
         raise ValueError('subject_unavailable')
@@ -155,7 +155,7 @@ class _SummaryNames(SubjectNames):
     def __init__(self, conn):
         self.labels = {}; self.aliases = defaultdict(list)
         self.names = {r['id']:r['name'] for r in conn.execute(
-            "SELECT id,name FROM subjects WHERE id!='scene' AND merged_into IS NULL")}
+            "SELECT id,name FROM subjects WHERE id!='scene' AND kind IN ('person','self') AND merged_into IS NULL")}
         for sid, name in self.names.items():
             if sid != 'self':
                 self.add(name, sid)
@@ -163,7 +163,7 @@ class _SummaryNames(SubjectNames):
         for row in conn.execute("""SELECT a.subject_id,a.alias FROM subject_aliases a
             JOIN subjects s ON s.id=a.subject_id
             LEFT JOIN messages x ON x.id=a.source_message_id LEFT JOIN entries e ON e.id=x.entry_id
-            WHERE s.id!='scene' AND s.merged_into IS NULL AND a.folded_into IS NULL
+            WHERE s.id!='scene' AND s.kind IN ('person','self') AND s.merged_into IS NULL AND a.folded_into IS NULL
             AND (a.source_message_id IS NULL OR e.visibility='shared') ORDER BY a.alias"""):
             self.add(row['alias'], row['subject_id'])
             self.aliases[row['subject_id']].append(row['alias'])
@@ -234,6 +234,9 @@ def _scopes(conn, memory_ids):
                  else frozenset([row['id'],*json.loads(row['visible_in_json'])]) & universe)
         scope=None if allowed==universe else allowed
         effective[root]=Visibility.intersect(effective[root],scope)
+    for mid,eid in hard_memory_scopes(conn,ids):
+        declared.add(mid)
+        effective[mid]=Visibility.intersect(effective[mid],frozenset({eid}))
     return declared,effective
 
 
@@ -246,10 +249,10 @@ def _dependencies(conn, memory_ids):
 
 def _direct_ids(conn, subject_id, current, *, limit=None):
     sql="""SELECT m.id FROM memories m INDEXED BY memories_dedupe
-        WHERE m.speaker_subject_id=? AND m.lifecycle='active' AND m.purged_at IS NULL
+        WHERE m.speaker_subject_id=? AND m.lifecycle='active' AND m.kind!='入口画像' AND m.purged_at IS NULL
         AND julianday(m.created_at)<=julianday(?) UNION
         SELECT m.id FROM memory_subjects ms INDEXED BY memory_subjects_by_subject
-        JOIN memories m ON m.id=ms.memory_id WHERE ms.subject_id=? AND m.lifecycle='active'
+        JOIN memories m ON m.id=ms.memory_id WHERE ms.subject_id=? AND m.lifecycle='active' AND m.kind!='入口画像'
         AND m.purged_at IS NULL AND julianday(m.created_at)<=julianday(?)"""
     args=[subject_id,current.isoformat(),subject_id,current.isoformat()]
     if limit is not None:
@@ -266,7 +269,7 @@ def _named_ids(conn, subject_id, names):
             continue
         table='memory_fts_'+tokenizer
         found.update(r[0] for r in conn.execute(
-            f'SELECT rowid FROM {table} WHERE {table} MATCH ?', ('content : ('+match_query(tokens)+')',)))
+            f"SELECT f.rowid FROM {table} f JOIN memories m ON m.id=f.rowid WHERE {table} MATCH ? AND m.kind!='入口画像'", ('content : ('+match_query(tokens)+')',)))
     return found
 
 
@@ -285,7 +288,7 @@ def _eligible(conn, subject_id, current, *, names=None):
         return []
     restricted,scopes=_scopes(conn,ids); rows=[]
     for item in conn.execute(f"""SELECT {_MEMORY_SELECT} FROM memories m
-        WHERE m.id IN (SELECT value FROM json_each(?)) AND m.lifecycle='active' AND m.purged_at IS NULL
+        WHERE m.id IN (SELECT value FROM json_each(?)) AND m.lifecycle='active' AND m.kind!='入口画像' AND m.purged_at IS NULL
         AND julianday(m.created_at)<=julianday(?) ORDER BY m.importance DESC,m.retention DESC,
         MAX(julianday(m.updated_at),julianday(m.last_confirmed_at)) DESC,m.id""",(dumps(sorted(ids)),current.isoformat())):
         if item['id'] in restricted or scopes[item['id']] is not None:
@@ -1214,14 +1217,14 @@ def people_context(conn, entry_id, *, participants=None, participant_names=None,
             # Reuse recall's unambiguous ID, not its unfiltered alias provenance.
             # This final snapshot checks only that subject's name/public aliases.
             if sid is None or not conn.execute("""SELECT 1 FROM subjects s
-                WHERE s.id=? AND s.merged_into IS NULL AND (s.name=? OR EXISTS (
+                WHERE s.id=? AND s.kind IN ('person','self') AND s.merged_into IS NULL AND (s.name=? OR EXISTS (
                     SELECT 1 FROM subject_aliases a LEFT JOIN messages m ON m.id=a.source_message_id
                     LEFT JOIN entries e ON e.id=m.entry_id WHERE a.subject_id=s.id AND a.alias=?
                     AND a.folded_into IS NULL AND (a.source_message_id IS NULL OR e.visibility='shared')))""",
                     (sid,ref,ref)).fetchone():
                 continue
         else:
-            exact=conn.execute('SELECT id FROM subjects WHERE id=?',(ref,)).fetchone()
+            exact=conn.execute("SELECT id FROM subjects WHERE id=? AND kind IN ('person','self')",(ref,)).fetchone()
             if exact:
                 sid=canonical_subject(conn,ref)
             else:
@@ -1230,7 +1233,7 @@ def people_context(conn, entry_id, *, participants=None, participant_names=None,
                 matches=conn.execute('''SELECT DISTINCT s.id FROM subjects s
                     LEFT JOIN subject_aliases a ON a.subject_id=s.id AND a.folded_into IS NULL
                     LEFT JOIN messages m ON m.id=a.source_message_id LEFT JOIN entries e ON e.id=m.entry_id
-                    WHERE s.merged_into IS NULL AND (s.name=? OR (a.alias=? AND
+                    WHERE s.merged_into IS NULL AND s.kind IN ('person','self') AND (s.name=? OR (a.alias=? AND
                         (a.source_message_id IS NULL OR e.visibility='shared')))''',(ref,ref)).fetchall()
                 if len(matches)!=1:
                     continue

@@ -102,7 +102,7 @@ def test_non_string_people_values_are_rejected_without_junk_subjects(store, bad,
     _, result = batch(store, FakeGateway({"people": [item]}))
     assert result["dropped"] and field in result["dropped"][0]["reason"]
     with store.read() as conn:
-        assert conn.execute("SELECT COUNT(*) FROM subjects WHERE id NOT IN ('self','scene')").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM subjects WHERE kind='person' AND id NOT IN ('self','scene')").fetchone()[0] == 1
         assert conn.execute("SELECT COUNT(*) FROM subject_links").fetchone()[0] == 0
 
 
