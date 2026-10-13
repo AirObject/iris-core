@@ -400,6 +400,6 @@ def test_same_claim_new_operation_becomes_confirm_not_duplicate():
 
 def test_request_budget_and_timeout_cannot_be_exceeded():
     with pytest.raises(ValueError):
-        MemoryProfileLimits(timeout_seconds=121)
+        MemoryProfileLimits(timeout_seconds=181)
     repo,gateway,result=run(limits=MemoryProfileLimits(request_tokens=1))
     assert result['reason']=='request_budget_exceeded' and not gateway.requests and repo.cursor==0

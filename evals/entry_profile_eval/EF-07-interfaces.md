@@ -56,6 +56,10 @@ migration 每行包含 entry_id、legacy_version、sentence_index、disposition�
 
 错误仍采用 `{"error":{"code":"...","message":"..."}}`：投影版本／设置冲突 409 entry_profile_conflict；已有任务 409 entry_profile_generation_in_progress；记忆修订冲突 409 revision_conflict；对象缺失 404 not_found；参数错误 400 invalid_request。认证／CSRF 错误沿用原接口。
 
+## 后台任务预算（EF-09）
+
+记忆形式任务的生成与检查各有 180 秒请求预算，重试共用本次请求截止时间。到期状态为 failed、reason=timeout；保留调用诊断，不写回记忆、游标或投影。调用诊断兼容新增 timeout_seconds。没有新增路由、请求参数或错误码。旧文档路径及其已保存的 generate_timeout_seconds／check_timeout_seconds 不改；记忆路径沿用独立 MemoryProfileLimits，不读取这两个旧设置。
+
 ## UX 过渡
 
 入口页展示当前画像记忆列表，逐条编辑／删除／遗忘／恢复；把旧版本入口明确标成只读历史。隐藏旧的整版编辑、候选确认／拒绝和 all_manual 选项。显示“管理员说明”原文，不因 category=null 丢弃。展示任务进度、冲突与预算诊断，不向自动生成引入管理员确认步骤。

@@ -1046,11 +1046,11 @@ class MemoryProfileLimits:
     memory_tokens: int = 2500
     max_operations: int = 12
     request_tokens: int = 12000
-    timeout_seconds: int = 120
+    timeout_seconds: int = 180
 
     def __post_init__(self):
         if (any(type(v) is not int or v < 1 for v in vars(self).values())
-                or self.timeout_seconds > 120 or self.request_tokens > 12000):
+                or self.timeout_seconds > 180 or self.request_tokens > 12000):
             raise ValueError('invalid memory profile limits')
 
 
@@ -1447,23 +1447,40 @@ class EntryProfileMemoryTask:
             health.check('chat', 'learning')
         monotonic = getattr(self.gateway, 'monotonic', time.monotonic)
         started = monotonic()
-        call = dict(purpose=purpose, prompt_version=prompt['name'], prompt_sha256=prompt['sha256'])
+        deadline = started + self.limits.timeout_seconds
+        call = dict(purpose=purpose, prompt_version=prompt['name'], prompt_sha256=prompt['sha256'],
+                    timeout_seconds=self.limits.timeout_seconds, result='success')
+        reply = None
         try:
+            # Gateway retries consume this same deadline. This strict two-call
+            # path does not issue a model JSON-repair request on invalid output.
             reply = self.gateway.chat([{'role': 'system', 'content': prompt['text']},
                                        {'role': 'user', 'content': encoded}], purpose,
-                                      max_tokens=16000, _deadline=started + self.limits.timeout_seconds)
+                                      max_tokens=16000, _deadline=deadline)
+            if monotonic() >= deadline:
+                raise ModelError('retryable', 'total timeout', reason='timeout')
+            if reply.finish_reason != 'stop':
+                raise ValueError('incomplete_output')
+            parsed = json_object(reply.content)
+            if monotonic() >= deadline:
+                raise ModelError('retryable', 'total timeout', reason='timeout')
+            return parsed
         except ModelError as error:
-            result['calls'].append({**call, 'result': error.category, 'reason': error.reason or error.category,
-                'duration_ms': round((monotonic() - started) * 1000), 'usage': {}})
-            self._record_progress(result)
+            # Gateway may stop before backoff with only a generic retryable
+            # error; preserve the exhausted request deadline in diagnostics.
+            if error.category == 'retryable' and not error.reason and monotonic() >= deadline:
+                error.reason = 'timeout'
+            call.update(result=error.category, reason=error.reason or error.category)
             raise
-        result['outputs'][stage] = reply.content
-        result['calls'].append(dict(**call, result='success', finish_reason=reply.finish_reason,
-            duration_ms=round((monotonic() - started) * 1000), usage=reply.usage))
-        self._record_progress(result)
-        if reply.finish_reason != 'stop':
-            raise ValueError('incomplete_output')
-        return json_object(reply.content)
+        finally:
+            # Retain late/invalid output for diagnostics without committing the
+            # plan, cursor, memories or projection. Purge guards still apply.
+            if reply is not None:
+                result['outputs'][stage] = reply.content
+                call['finish_reason'] = reply.finish_reason
+            result['calls'].append(dict(call, duration_ms=round((monotonic() - started) * 1000),
+                                        usage=reply.usage if reply is not None else {}))
+            self._record_progress(result)
 
     def _record_progress(self, result):
         record = getattr(self.repository, 'record_model_progress', None)
