@@ -691,6 +691,17 @@ def _surface_issues(sentence, *, memories=None):
     return issues
 
 
+def _repair_claim_key(text):
+    """Only trivial rewordings of an already failed complete claim are equal.
+
+    Keep interior punctuation, names, dates, conditions and negation. Adding a
+    previously missing bounded scope is a real change, as is changing its topic.
+    This comparison never changes the option text or supplies missing evidence.
+    """
+    text = text.strip().rstrip('。.')
+    return re.sub(r'^(?:在)?[这那](?:一)?(?=[次场回])', '当', text)
+
+
 def _repair_options(sentence, material):
     """One complete bound memory, never an arbitrary span or token deletion.
 
@@ -1494,6 +1505,8 @@ class PersonaEngine:
                 _,normalized,deterministic = _deterministic({'sentences':[option]},_editable_material(material),previous)
                 issues = (_surface_issues(normalized[0],memories=material['evidence']['memories'])
                           if normalized else [])
+                if _repair_claim_key(option['text']) == _repair_claim_key(sentence['text']):
+                    issues.append('unchanged failed claim; scene deixis alone is not a repair')
                 if not deterministic['passed'] or issues:
                     checks['repair_options_rejected'].append({'index':i,'option':option,
                         'reasons':deterministic['errors']+issues})
