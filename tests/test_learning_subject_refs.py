@@ -89,7 +89,7 @@ def test_same_name_accounts_keep_number_identity_and_evidence_boundary(store, te
     with store.read() as conn:
         assert {r[0] for r in conn.execute("SELECT speaker_subject_id FROM memories")} == {
             participant_id(store, 1), participant_id(store, 2)}
-        assert {r[0] for r in conn.execute("SELECT name FROM subjects WHERE id NOT IN ('self','scene')")} == {"宋棠"}
+        assert {r[0] for r in conn.execute("SELECT name FROM subjects WHERE kind='person' AND id NOT IN ('self','scene')")} == {"宋棠"}
 
 
 @pytest.mark.parametrize("field", ["about", "speaker", "name", "alias", "same_as", "roleplay"])
@@ -104,7 +104,7 @@ def test_conflicting_or_unknown_number_is_dropped_without_guessing(store, field,
     reason = result["dropped"][0]["reason"]
     assert reason == ("unknown participant number" if "P9" in label else "participant name does not match participant number")
     with store.read() as conn:
-        assert conn.execute("SELECT COUNT(*) FROM subjects WHERE id NOT IN ('self','scene')").fetchone()[0] == 2
+        assert conn.execute("SELECT COUNT(*) FROM subjects WHERE kind='person' AND id NOT IN ('self','scene')").fetchone()[0] == 2
         assert conn.execute("SELECT COUNT(*) FROM subject_links").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM subject_aliases").fetchone()[0] == 0
 
@@ -177,7 +177,7 @@ def test_plain_and_ascii_embedded_names_are_unchanged(store):
     _, result = batch(store, FakeGateway({"memories": [memory("一起出门", [1], "宋棠", names)]}), count=1)
     assert len(result["created"]) == 1 and not result["normalizations"]
     with store.read() as conn:
-        assert {r[0] for r in conn.execute("SELECT name FROM subjects WHERE id NOT IN ('self','scene')")} == set(names)
+        assert {r[0] for r in conn.execute("SELECT name FROM subjects WHERE kind='person' AND id NOT IN ('self','scene')")} == set(names)
 
 
 def test_decorated_alias_declared_in_same_output_keeps_evidence_rules(store):
@@ -203,7 +203,7 @@ def test_ambiguous_relative_parent_is_dropped_before_subject_creation(store):
     assert not result["created"]
     assert [item["reason"] for item in result["dropped"]] == ["subject is ambiguous; use participant number"]
     with store.read() as conn:
-        assert conn.execute("SELECT COUNT(*) FROM subjects WHERE id NOT IN ('self','scene')").fetchone()[0] == 2
+        assert conn.execute("SELECT COUNT(*) FROM subjects WHERE kind='person' AND id NOT IN ('self','scene')").fetchone()[0] == 2
 
 
 @pytest.mark.parametrize("name", ["杏仁", "Mira", "Mira Lane"])
@@ -217,7 +217,7 @@ def test_compact_participant_label_never_creates_a_second_subject(store, name, t
     assert len(result["created"]) == 1 and not result["dropped"]
     with store.read() as conn:
         assert [tuple(row) for row in conn.execute(
-            "SELECT id,name FROM subjects WHERE id NOT IN ('self','scene')")] == [(owner, name)]
+            "SELECT id,name FROM subjects WHERE kind='person' AND id NOT IN ('self','scene')")] == [(owner, name)]
         assert conn.execute("SELECT speaker_subject_id FROM memories").fetchone()[0] == owner
         assert {row[0] for row in conn.execute("SELECT subject_id FROM memory_subjects")} == {owner}
 
@@ -232,4 +232,4 @@ def test_compact_feedback_about_preserves_each_participant(store):
     with store.read() as conn:
         assert {row[0] for row in conn.execute("SELECT subject_id FROM memory_subjects")} == {
             "self", participant_id(store, 1), participant_id(store, 2), participant_id(store, 3)}
-        assert conn.execute("SELECT COUNT(*) FROM subjects WHERE id NOT IN ('self','scene')").fetchone()[0] == 3
+        assert conn.execute("SELECT COUNT(*) FROM subjects WHERE kind='person' AND id NOT IN ('self','scene')").fetchone()[0] == 3
