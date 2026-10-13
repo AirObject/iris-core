@@ -58,7 +58,7 @@ migration 每行包含 entry_id、legacy_version、sentence_index、disposition�
 
 ## 后台任务预算（EF-09）
 
-记忆形式任务的生成与检查各有 180 秒请求预算，重试共用本次请求截止时间。到期状态为 failed、reason=timeout；保留调用诊断，不写回记忆、游标或投影。调用诊断兼容新增 timeout_seconds。没有新增路由、请求参数或错误码。旧文档路径及其已保存的 generate_timeout_seconds／check_timeout_seconds 不改；记忆路径沿用独立 MemoryProfileLimits，不读取这两个旧设置。
+记忆形式任务的生成与检查各有 180 秒请求预算，重试共用本次请求截止时间。到期状态为 failed、reason=timeout；保留调用诊断，不写回记忆、游标或投影。调用诊断兼容新增 timeout_seconds。没有新增路由、请求参数或错误码。旧文档路径及其已保存的 generate_timeout_seconds／check_timeout_seconds 不改；记忆路径沿用独立 MemoryProfileLimits，不以这两个旧设置控制超时；旧字段仍按原运行配置规则校验。
 
 ## UX 过渡
 
