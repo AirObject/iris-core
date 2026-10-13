@@ -18,7 +18,7 @@ from threading import Lock
 from zoneinfo import ZoneInfo
 
 from .db import dumps
-from .memory_ops import Visibility, operation
+from .memory_ops import Visibility, operation, hard_memory_scopes
 from .models import Gateway, ModelError
 from .persona import split_sentences
 from .profile_common import ChatHealthGate, evidence_hash, excerpt, json_object, setting, whitespace, load_profile_prompts, profile_prompt_metadata
@@ -234,7 +234,7 @@ def _scopes(conn, memory_ids):
                  else frozenset([row['id'],*json.loads(row['visible_in_json'])]) & universe)
         scope=None if allowed==universe else allowed
         effective[root]=Visibility.intersect(effective[root],scope)
-    for mid,eid in conn.execute('SELECT memory_id,entry_id FROM memory_owner_scopes WHERE memory_id IN (SELECT value FROM json_each(?))',(dumps(ids),)):
+    for mid,eid in hard_memory_scopes(conn,ids):
         declared.add(mid)
         effective[mid]=Visibility.intersect(effective[mid],frozenset({eid}))
     return declared,effective

@@ -191,6 +191,7 @@ def test_upgrade_030_preserves_people_triggers_and_foreign_keys(tmp_path,monkeyp
         with old.write() as conn:
             conn.execute("INSERT INTO subjects(id,kind,name,created_at) VALUES('friend','person','旧人物',?)",(now(),))
             triggers={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='subjects'")}
+            assert memory_ops.Visibility(conn).memory(999) is None
         old.close()
     upgraded=Store(path)
     try:
@@ -306,3 +307,10 @@ def test_role_settings_do_not_replace_or_project_manual_entry_profiles(store,nam
         sentences=json.loads(version[0])
         assert mid not in {b['memory_id'] for s in sentences for b in s.get('basis',[])}
         assert '人工群规' not in json.dumps(sentences,ensure_ascii=False)
+
+
+def test_missing_hard_scope_table_after_031_fails_closed(store):
+    with store.write() as conn:
+        conn.execute('DROP TABLE memory_owner_scopes')
+        with pytest.raises(sqlite3.OperationalError,match='memory_owner_scopes'):
+            memory_ops.Visibility(conn)

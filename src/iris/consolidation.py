@@ -12,7 +12,7 @@ from importlib.resources import files
 
 from .db import dumps
 from .learning import LearningEngine, PARTICIPANT_NUMBER, _same_claim_sequences
-from .memory_ops import Visibility, lifecycle_settings, operation
+from .memory_ops import Visibility, lifecycle_settings, operation, hard_memory_scopes
 from .model_health import utc_now
 from .models import Gateway, ModelError
 from .search_text import match_query, terms, words
@@ -331,8 +331,9 @@ def snapshot(conn, mid):
     scope = Visibility(conn).memory(mid)
     if scope is not None:
         result['_visibility'] = sorted(scope)
-    if row['owner_entry_id'] is not None:
-        result['_owner_scopes'] = [r[0] for r in conn.execute('SELECT entry_id FROM memory_owner_scopes WHERE memory_id=? ORDER BY entry_id',(mid,))]
+    owners = [r[1] for r in hard_memory_scopes(conn,[mid])]
+    if owners:
+        result['_owner_scopes'] = sorted(owners)
     if row['kind']=='入口画像':
         profile = conn.execute('SELECT entry_id,category,manual_created FROM entry_profile_memories WHERE memory_id=?',(mid,)).fetchone()
         result['_entry_profile'] = dict(profile) if profile else None

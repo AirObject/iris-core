@@ -6,6 +6,7 @@ import json
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import secrets
+import sqlite3
 from weakref import WeakKeyDictionary
 from collections import OrderedDict
 from threading import RLock
@@ -639,6 +640,25 @@ _VISIBILITY_CACHE = OrderedDict()
 _VISIBILITY_LOCK = RLock()
 
 
+def hard_memory_scopes(conn, memory_ids=None):
+    """Read hard bounds; a pre-031 archive cannot contain this new scope type.
+
+    Upgrade fixtures/offline historical reads may precede migration 031. A
+    missing table after that migration is corruption, never global visibility.
+    """
+    sql, args = 'SELECT memory_id,entry_id FROM memory_owner_scopes', ()
+    if memory_ids is not None:
+        sql += ' WHERE memory_id IN (SELECT value FROM json_each(?))'
+        args = (dumps(list(memory_ids)),)
+    try:
+        return conn.execute(sql,args).fetchall()
+    except sqlite3.OperationalError as error:
+        if str(error) != 'no such table: memory_owner_scopes' or conn.execute(
+                "SELECT 1 FROM schema_migrations WHERE version>='031_entry_profile_memories.sql' LIMIT 1").fetchone():
+            raise
+        return []
+
+
 class Visibility:
     """Current effective entry sets. None means all entries; empty means admin-only.
 
@@ -700,7 +720,7 @@ class Visibility:
                 goals[gid] = cls.intersect(goals.get(gid), entries[eid])
         # Hard bounds are singleton owners even when the whole database has
         # only one entry. They never collapse to globally visible None.
-        for mid,eid in conn.execute('SELECT memory_id,entry_id FROM memory_owner_scopes'):
+        for mid,eid in hard_memory_scopes(conn):
             memories[mid] = cls.intersect(memories.get(mid), frozenset({eid}))
         return entries, memories, goals
 
