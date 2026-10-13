@@ -1,13 +1,7 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { EntryProfileDialog } from "./EntryProfile";
+import { EntryProfileHistory } from "./EntryProfileHistory";
 import { setCSRF } from "./api";
 
 const saying = {
@@ -148,25 +142,22 @@ afterEach(() => {
 });
 function panel() {
   return render(
-    <EntryProfileDialog
-      entry={{ id: "print", name: "试印群" }}
-      onClose={vi.fn()}
-      openMemory={vi.fn()}
-    />,
+    <EntryProfileHistory base="/entries/print/profile" openMemory={vi.fn()} />,
   );
 }
 
 test("分类、名称、含义与原话归属分开展示，检查和删含义记录可见", async () => {
   panel();
+  await userEvent.click(
+    await screen.findByRole("button", { name: "查看旧版 v1" }),
+  );
   expect(await screen.findByText("翻面")).toBeVisible();
   expect(screen.getByText("群内说法")).toBeVisible();
   expect(screen.getByText("明确群规")).toBeVisible();
   expect(screen.getByText("含义：检查纸背是否渗墨")).toBeVisible();
   expect(screen.getByText(/消息 #31 · 转引原话 · 原作者：小林/)).toBeVisible();
-  await userEvent.click(
-    screen.getByRole("button", { name: "查看当前依据与检查" }),
-  );
-  const detail = await screen.findByRole("region", { name: "版本详情" });
+
+  const detail = await screen.findByRole("region", { name: "旧版详情" });
   expect(
     await within(detail).findByText(/引用原话核对：2 \/ 3 条通过/),
   ).toBeVisible();
@@ -185,95 +176,6 @@ test("分类、名称、含义与原话归属分开展示，检查和删含义�
   expect(writes).toEqual([]);
 });
 
-test("短 v2 结构化编辑携带原条目位置，未改依据不由客户端重写", async () => {
-  panel();
-  await screen.findByText("翻面");
-  await userEvent.click(screen.getByRole("button", { name: "编辑正文" }));
-  fireEvent.change(screen.getByLabelText("条目 1 含义（可空）"), {
-    target: { value: "" },
-  });
-  expect(screen.getByRole("button", { name: "发布编辑" })).toBeEnabled();
-  await userEvent.click(screen.getByRole("button", { name: "发布编辑" }));
-  await waitFor(() => expect(writes).toHaveLength(1));
-  expect(writes[0].body).toMatchObject({
-    expected_version: 1,
-    items: [
-      {
-        original_index: 0,
-        kind: "saying",
-        label: "翻面",
-        meaning: "",
-        quotes: [{ message_id: 31, text: "翻面看纸背" }],
-      },
-      { original_index: 1, kind: "rule", label: "不要公开地址" },
-    ],
-  });
-  expect(writes[0].body.items[0]).not.toHaveProperty("basis");
-  expect(writes[0].body.items[0]).not.toHaveProperty("author");
-  expect(writes[0].headers["X-Iris-CSRF"]).toBe("profile-ui-csrf");
-});
-
-test("409 保留结构化草稿，刷新后不偷偷替换 expected_version", async () => {
-  panel();
-  await screen.findByText("翻面");
-  await userEvent.click(screen.getByRole("button", { name: "编辑正文" }));
-  fireEvent.change(screen.getByLabelText("条目 1 名称"), {
-    target: { value: "翻到背面" },
-  });
-  failure = 409;
-  snapshot = {
-    ...snapshot,
-    settings: { ...snapshot.settings, current_version: 2 },
-    current: { ...version, version: 2 },
-  };
-  await userEvent.click(screen.getByRole("button", { name: "发布编辑" }));
-  expect(await screen.findByText(/草稿已保留，请先复制草稿/)).toBeVisible();
-  expect(screen.getByLabelText("条目 1 名称")).toHaveValue("翻到背面");
-  expect(screen.getByRole("button", { name: "发布编辑" })).toBeDisabled();
-  expect(writes[0].body.expected_version).toBe(1);
-});
-
-test("总预算与条目上限限制编辑，空含义有效", async () => {
-  snapshot.edit_limits.max_chars = 35;
-  panel();
-  await screen.findByText("翻面");
-  await userEvent.click(screen.getByRole("button", { name: "编辑正文" }));
-  expect(screen.getByRole("button", { name: "发布编辑" })).toBeDisabled();
-  await userEvent.click(screen.getByRole("button", { name: "删除条目 2" }));
-  fireEvent.change(screen.getByLabelText("条目 1 含义（可空）"), {
-    target: { value: "" },
-  });
-  expect(screen.getByRole("button", { name: "发布编辑" })).toBeEnabled();
-  await userEvent.click(screen.getByRole("button", { name: "添加画像条目" }));
-  expect(screen.getByRole("button", { name: "发布编辑" })).toBeDisabled();
-  for (let i = 0; i < 4; i++) {
-    await userEvent.click(screen.getByRole("button", { name: "添加画像条目" }));
-  }
-  expect(screen.getByRole("button", { name: "添加画像条目" })).toBeDisabled();
-});
-
-test("当前条目读取失败可重试，成功前不能误用旧条目编辑", async () => {
-  const original = vi.mocked(fetch).getMockImplementation()!;
-  let failRead = true;
-  vi.mocked(fetch).mockImplementation(async (input, init) => {
-    if (String(input).endsWith("/versions/1") && failRead) {
-      failRead = false;
-      return response(
-        { error: { code: "unavailable", message: "条目读取失败" } },
-        503,
-      );
-    }
-    return original(input, init);
-  });
-  panel();
-  expect(await screen.findByText("条目读取失败")).toBeVisible();
-  expect(screen.getByRole("button", { name: "编辑正文" })).toBeDisabled();
-  await userEvent.click(screen.getByRole("button", { name: "重试当前条目" }));
-  expect(await screen.findByText("翻面")).toBeVisible();
-  expect(screen.getByRole("button", { name: "编辑正文" })).toBeEnabled();
-  expect(writes).toEqual([]);
-});
-
 test("删条阈值按版本说明，任务摘要不误用旧版 30%", async () => {
   version.checks = {
     ...version.checks,
@@ -288,14 +190,44 @@ test("删条阈值按版本说明，任务摘要不误用旧版 30%", async () =
     version: 1,
   };
   panel();
-  expect(
-    await screen.findByText("检查删除比例超出该版本上限，请查看版本检查记录"),
-  ).toBeVisible();
   await userEvent.click(
-    screen.getByRole("button", { name: "查看当前依据与检查" }),
+    await screen.findByRole("button", { name: "查看旧版 v1" }),
   );
+
   expect(
     await screen.findByText("检查累计删除了超过 50% 的模型条目"),
   ).toBeVisible();
   expect(screen.queryByText(/超过 30%/)).not.toBeInTheDocument();
+});
+
+test("旧候选、旧发布版均只读，清除标记可见，无审批或回滚请求", async () => {
+  version.status = "candidate";
+  version.redacted = true;
+  version.redaction_reason = "memory_purged";
+  panel();
+  await userEvent.click(
+    await screen.findByRole("button", { name: "查看旧版 v1" }),
+  );
+  expect(await screen.findByText(/此旧版本的相关内容已彻底清除/)).toBeVisible();
+  expect(screen.getByText("只读历史")).toBeVisible();
+  expect(
+    screen.queryByRole("button", {
+      name: /确认发布|拒绝候选|复制为新版本|回滚/,
+    }),
+  ).not.toBeInTheDocument();
+  expect(writes).toEqual([]);
+});
+
+test("无效模型检查输出安全展示，不影响旧版依据阅读", async () => {
+  version.checks.reason = "invalid_output";
+  version.checks.model = { reason: { invalid: true }, sentences: true };
+  panel();
+  await userEvent.click(
+    await screen.findByRole("button", { name: "查看旧版 v1" }),
+  );
+  expect(
+    await screen.findByText("模型检查输出格式无效，本版未通过检查。"),
+  ).toBeVisible();
+  expect(screen.getByText("含义：检查纸背是否渗墨")).toBeVisible();
+  expect(writes).toEqual([]);
 });

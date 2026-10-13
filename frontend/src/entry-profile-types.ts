@@ -32,6 +32,9 @@ export type ProfileSentence = {
   basis: ProfileBasis[];
 };
 export type ProfileVersion = {
+  legacy?: boolean;
+  redacted?: boolean;
+  redaction_reason?: string | null;
   version: number;
   format_version?: number;
   content: string;
@@ -88,22 +91,58 @@ export type ProfileAttempt = {
   reason?: string | null;
   version?: number | null;
   version_status?: string | null;
+  started_at?: string;
+  finished_at?: string | null;
+};
+export type ProfileCategory = "topic" | "saying" | "rule" | null;
+export type ProfileMemory = {
+  memory_id: number;
+  revision: number;
+  category: ProfileCategory;
+  body: string;
+  owner_entry_id: string;
+  author: "admin" | "model";
+  manual_created: boolean;
+  manual_protected: boolean;
+  lifecycle: string;
+  usable: boolean;
+  retention: number;
+  pinned: boolean;
+  last_confirmed_at?: string | null;
+  sources: {
+    ref: string;
+    field: "content" | "quote";
+    excerpt: string;
+    speaker: string;
+    message: {
+      position: number;
+      content: string;
+      occurred_at: string;
+      entry_id: string;
+    };
+  }[];
 };
 export type ProfileSnapshot = {
+  mode: "memory";
   supported: boolean;
   global_enabled: boolean;
-  edit_limits?: { max_items: number; max_chars: number; max_tokens: number };
-  settings: {
-    enabled: boolean;
-    publish_mode: "check_auto" | "all_manual";
-    current_version: number;
-    revision: number;
-  };
-  current: ProfileVersion | null;
-  pending: ProfileVersion | null;
-  pending_count: number;
-  possibly_stale: boolean;
-  stale_basis: ProfileBasis[];
+  settings: { enabled: boolean; current_version: number; revision: number };
+  projection: {
+    text: string;
+    version: number;
+    generated_at: string;
+    possibly_stale: boolean;
+    memory_ids: number[];
+  } | null;
+  memories: ProfileMemory[];
+  diagnostics: { omitted_memory_ids?: number[] };
+  migration: {
+    legacy_version: number;
+    sentence_index: number;
+    disposition: string;
+    memory_id: number | null;
+  }[];
+  rebuild_pending: boolean;
   latest_attempt: ProfileAttempt | null;
 };
 export type ProfileDiff = {

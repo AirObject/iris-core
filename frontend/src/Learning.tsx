@@ -333,9 +333,6 @@ export default function LearningPage({
                     onClick={() => setProfileEntry(entry)}
                   >
                     入口画像
-                    {entry.entry_profile_pending_count
-                      ? ` · 待确认 ${entry.entry_profile_pending_count}`
-                      : ""}
                   </button>
                   <button
                     className="secondary"
