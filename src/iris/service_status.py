@@ -1,6 +1,6 @@
 """Read-only service diagnostics; timestamps use the role's timezone for usage windows."""
 import json
-from datetime import timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 
 from .model_health import usage_window, utc_now
@@ -30,6 +30,76 @@ def model_health_snapshot(health):
     return result
 
 
+BATCH_STATUS_COLUMNS = "id,entry_id,state,attempt_count,next_retry_at,last_error,created_at,finished_at,result_json"
+
+
+def project_root_batch(conn, row):
+    """v1 keeps five states and one event per root; physical nodes stay internal."""
+    batch = {key: row[key] for key in BATCH_STATUS_COLUMNS.split(",")}
+    batch["result"] = json.loads(batch.pop("result_json"))
+    if batch["state"] != "split":
+        return batch
+    nodes = conn.execute("""SELECT id,state,attempt_count,next_retry_at,last_error,finished_at,
+        result_json,json_array_length(target_ids) AS target_count FROM batches
+        WHERE root_batch_id=? AND id!=? AND substr(split_path,1,length(?))=?
+        ORDER BY split_path,id""", (row["root_batch_id"] or batch["id"], batch["id"],
+                                  row["split_path"], row["split_path"])).fetchall()
+    leaves = [n for n in nodes if n["state"] != "split"]
+    states = {n["state"] for n in leaves}
+    batch["state"] = next((state for state in ("running", "waiting", "refused", "abandoned")
+                           if state in states), "succeeded")
+    active = batch["state"] in ("waiting", "running")
+    relevant = next((n for n in leaves if n["state"] == batch["state"]), None)
+    batch["next_retry_at"] = relevant["next_retry_at"] if active and relevant else None
+    batch["last_error"] = relevant["last_error"] if relevant and batch["state"] != "succeeded" else None
+    finished = [n["finished_at"] for n in leaves if n["finished_at"]]
+    batch["finished_at"] = None if active else max(finished, key=datetime.fromisoformat, default=None)
+    result = {key: [] for key in ("created", "updated", "confirmed")}
+    seen = {key: set() for key in result}
+    for leaf in leaves:
+        if leaf["state"] != "succeeded":
+            continue
+        own = json.loads(leaf["result_json"])
+        for key in result:
+            for mid in own.get(key, []):
+                if mid not in seen[key]:
+                    result[key].append(mid)
+                    seen[key].add(mid)
+    batch["result"] = result
+    batch["split"] = {"node_count": len(nodes) + 1, "leaf_count": len(leaves),
+                      "attempt_count": batch["attempt_count"] + sum(n["attempt_count"] for n in nodes),
+                      "gap_count": conn.execute("""SELECT COUNT(*) FROM memory_gaps g
+                        JOIN batches b ON b.id=g.batch_id WHERE b.root_batch_id=?
+                        AND substr(b.split_path,1,length(?))=?""",
+                        (row["root_batch_id"] or batch["id"], row["split_path"], row["split_path"])).fetchone()[0]}
+    for state in ("waiting", "running", "succeeded", "refused", "abandoned"):
+        batch["split"][state + "_messages"] = sum(n["target_count"] for n in leaves if n["state"] == state)
+    return batch
+
+
+def root_batches(conn):
+    # Rank terminal ROOTS after deriving their public state; children never eat
+    # the 20-root window and relearning an old leaf makes its root active again.
+    # This first pass reads only tree metadata, not historical result bodies.
+    rows = conn.execute("""WITH leaf_states AS (
+        SELECT root_batch_id,MAX(state='running') AS running,MAX(state='waiting') AS waiting,
+            MAX(state='refused') AS refused,MAX(state='abandoned') AS abandoned
+        FROM batches WHERE root_batch_id IS NOT NULL AND state!='split' GROUP BY root_batch_id
+    ), roots AS (
+        SELECT b.id,b.entry_id,CASE WHEN b.state!='split' THEN b.state
+            WHEN l.running THEN 'running' WHEN l.waiting THEN 'waiting'
+            WHEN l.refused THEN 'refused' WHEN l.abandoned THEN 'abandoned'
+            ELSE 'succeeded' END AS state
+        FROM batches b LEFT JOIN leaf_states l ON l.root_batch_id=b.id WHERE b.parent_batch_id IS NULL
+    ), terminal AS (
+        SELECT id,ROW_NUMBER() OVER (PARTITION BY entry_id ORDER BY id DESC) AS position
+        FROM roots WHERE state NOT IN ('waiting','running')
+    ) SELECT b.* FROM batches b JOIN roots r ON r.id=b.id
+        WHERE r.state IN ('waiting','running') OR b.id IN (SELECT id FROM terminal WHERE position<=20)
+        ORDER BY b.id""")
+    return [project_root_batch(conn, row) for row in rows]
+
+
 def service_status(store, scheduler, health, *, clock=utc_now):
     current = clock()
     start, end = usage_window(store, current)
@@ -38,16 +108,9 @@ def service_status(store, scheduler, health, *, clock=utc_now):
     week = (local.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=local.weekday())).astimezone(timezone.utc)
     with store.read() as conn:
         entries = backlog(conn)
-        batches = [dict(r) for r in conn.execute("""SELECT id,entry_id,state,attempt_count,next_retry_at,
-            last_error,created_at,finished_at,result_json FROM batches
-            WHERE state IN ('waiting','running') OR id IN (
-                SELECT id FROM (SELECT id,ROW_NUMBER() OVER (
-                    PARTITION BY entry_id ORDER BY id DESC) AS position
-                    FROM batches WHERE state NOT IN ('waiting','running')) WHERE position<=20)
-            ORDER BY id""")]
+        batches = root_batches(conn)
         by_entry = defaultdict(list)
         for batch in batches:
-            batch["result"] = json.loads(batch.pop("result_json"))
             by_entry[batch["entry_id"]].append(batch)
         for entry in entries:
             own = by_entry[entry["entry_id"]]

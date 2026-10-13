@@ -118,6 +118,30 @@ def adjust_retention(store: Store, memory_id: int, delta: int = 0, *, value=None
         return dict(conn.execute("SELECT * FROM memories WHERE id=?", (memory_id,)).fetchone())
 
 
+def record_batch_memory_effect(conn, batch_id, memory_id, effect):
+    """Reserve a tree's creation/confirmation effect in the apply transaction.
+
+    Caller checks revisions/lifecycle before reserving, and applies the effect
+    before committing. False means another leaf already supplied that increment.
+    Ordinary (unsplit) batches retain their existing per-batch semantics.
+    """
+    if not conn.in_transaction:
+        raise ValueError("memory effects require a write transaction")
+    if effect not in ("created", "confirmed"):
+        raise ValueError("invalid batch memory effect")
+    row = conn.execute("SELECT root_batch_id,state FROM batches WHERE id=?", (batch_id,)).fetchone()
+    if row is None:
+        raise KeyError(batch_id)
+    if row["root_batch_id"] is None:
+        return True
+    if row["state"] != "running":
+        raise ValueError("memory effects require a running leaf")
+    return bool(conn.execute("""INSERT INTO batch_memory_effects
+        (root_batch_id,memory_id,effect,first_batch_id) VALUES(?,?,?,?)
+        ON CONFLICT(root_batch_id,memory_id) DO NOTHING""",
+        (row["root_batch_id"], memory_id, effect, batch_id)).rowcount)
+
+
 def confirm_retention(store, memory_id, *, _conn=None, current=None):
     """Learning-line entry point; caller still owns per-batch confirmation dedupe."""
     with (store.write() if _conn is None else nullcontext(_conn)) as conn:
@@ -315,6 +339,10 @@ def _purge_records(conn, memory_ids, deleted_message_ids, affected):
         for table in sorted({table for table, _ in todo}):
             ids = [rid for name, rid in todo if name == table]
             records |= _purge_refs(conn, table, ids)
+            if table == 'batches':
+                records |= {('batches', str(r[0])) for r in conn.execute('''SELECT parent_batch_id
+                    FROM batches WHERE id IN (SELECT value FROM json_each(?))
+                    AND parent_batch_id IS NOT NULL''', (dumps(ids),))}
             if table == 'entry_profile_versions':
                 parents = [dumps([r[0],r[1]]) for r in conn.execute('''SELECT entry_id,version FROM entry_profile_versions
                     WHERE id IN (SELECT value FROM json_each(?))''', (dumps(ids),))]

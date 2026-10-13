@@ -15,7 +15,7 @@ from .evaluation import export_learning_judgments, run_learning_eval, score_lear
 from .learning import LearningEngine, PROMPT_VERSION
 from .memory_ops import setup_role
 from .models import Gateway, ModelError, load_test_models
-from .queue import add_message, form_batch, get_batch
+from .queue import add_message, form_batch, get_batch, next_learning_batch
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -339,13 +339,15 @@ def main(argv: list[str] | None = None) -> int:
                 engine = LearningEngine(store, gateway)
                 while True:
                     with store.read() as conn:
-                        active = conn.execute("SELECT id FROM batches WHERE entry_id=? AND state='waiting' ORDER BY id LIMIT 1", (args.entry_id,)).fetchone()
-                    batch = get_batch(store, active[0]) if active else form_batch(store, args.entry_id, PROMPT_VERSION)
+                        active = next_learning_batch(conn, args.entry_id)
+                    batch = get_batch(store, active["id"]) if active else form_batch(store, args.entry_id, PROMPT_VERSION)
                     if batch is None:
                         break
                     result = engine.run_batch(batch.id, force=args.force)
                     print(f"batch {batch.id}: {result}")
-                    if get_batch(store, batch.id).state == "waiting":
+                    after = get_batch(store, batch.id)
+                    if after.state == "waiting" and not (
+                            batch.context_mode == "full" and after.context_mode == "target_only"):
                         break
                 return 0
         finally:

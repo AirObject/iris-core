@@ -17,7 +17,7 @@ from .maintenance import Maintenance
 from .memory_ops import operation
 from .media import native_learning_enabled, pending_media_messages, prepare_media
 from .models import MODEL_KINDS, ModelError
-from .queue import FOCUS, form_batch, get_batch, should_learn
+from .queue import FOCUS, form_batch, get_batch, next_learning_batch, should_learn
 
 
 log = logging.getLogger("iris.scheduler")
@@ -243,7 +243,7 @@ class Scheduler:
                 if eid in self._active:
                     continue
                 with self.store.read() as conn:
-                    active = conn.execute("SELECT * FROM batches WHERE entry_id=? AND state IN ('waiting','running') ORDER BY id LIMIT 1", (eid,)).fetchone()
+                    active = next_learning_batch(conn, eid)
                     pending = conn.execute("SELECT id,content,received_at FROM messages WHERE entry_id=? AND learning_state='pending' ORDER BY id", (eid,)).fetchall()
                     latest = conn.execute("SELECT MAX(received_at) FROM messages WHERE entry_id=?", (eid,)).fetchone()[0]
                 if active:

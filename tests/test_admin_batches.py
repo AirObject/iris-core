@@ -240,12 +240,15 @@ def test_reset_keeps_all_frozen_segments_and_later_pending_messages(client, stor
     msg(store, 2, "目标")
     msg(store, 3, "后续")
     formed = form_batch(store, "A", PROMPT_VERSION, target_count=1)
-    LearningEngine(store, FakeGateway(ModelError("content_rejection", "refused"))).run_batch(formed.id)
+    engine = LearningEngine(store, FakeGateway(ModelError("content_rejection", "refused")))
+    assert engine.run_batch(formed.id)["state"] == "waiting"  # one bounded target-only retry
+    assert engine.run_batch(formed.id)["state"] == "refused"
     msg(store, 4, "冻结后新消息")
     response = client.post(f"/admin/api/batches/{formed.id}/relearn", json={})
     assert response.status_code == 200
     reset = get_batch(store, formed.id)
     assert reset.history_ids == [1] and reset.target_ids == [2] and reset.future_ids == [3]
+    assert reset.context_mode == "target_only"
     with store.read() as conn:
         assert [r[0] for r in conn.execute("SELECT learning_state FROM messages ORDER BY id")] == ["learned", "batched", "pending", "pending"]
 
