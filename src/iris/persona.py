@@ -38,11 +38,11 @@ RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 �
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
 PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v17', 'persona_check': 'persona_check_v28',
-                   'persona_sentence_repair': 'persona_repair_v15', 'persona_recheck': 'persona_check_v28'}
+                   'persona_sentence_repair': 'persona_repair_v16', 'persona_recheck': 'persona_check_v28'}
 CALL_TIMEOUTS = {'persona_generate': 360, 'persona_check': 360,
                  'persona_sentence_repair': 120, 'persona_recheck': 360}
 CALL_MAX_TOKENS = {'persona_generate':16000, 'persona_check':16000,
-                   'persona_sentence_repair':2048, 'persona_recheck':16000}
+                   'persona_sentence_repair':16000, 'persona_recheck':16000}
 PERSONA_KINDS = ('knowledge', 'episode', 'setting', 'admin', 'state', 'task', 'instruction')
 EXCLUDED_KINDS = {'state': 'current state is not persona', 'task': 'pending action is not persona',
                   'instruction': 'host/model instruction is not persona'}
@@ -567,8 +567,13 @@ def _bounded_context_issues(text, sources):
     match = BOUNDED_CONTEXT.match(text.strip())
     if match is None:
         return []
-    terms = [word.casefold() for word in words(match['context'])
-             if re.search(r'\w', word) and word not in {'的', '在', '中', '里', '时'}]
+    context = match['context']
+    # Relation words are grammatical glue; quoted titles remain source terms.
+    quoted_terms = {word.casefold() for title in re.findall(r'[《“「『"]([^》”」』"]+)[》”」』"]', context)
+                    for word in words(title)}
+    grammar = {'的', '在', '中', '里', '时', '与', '和', '跟', '同'}
+    terms = [word.casefold() for word in words(context)
+             if re.search(r'\w', word) and (word not in grammar or word.casefold() in quoted_terms)]
     known = set()
     for memory, source in sources:
         for value in (memory.get('current_revision_text') or memory.get('content', ''),

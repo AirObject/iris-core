@@ -137,3 +137,31 @@ def test_an_optimistic_checker_cannot_publish_context_borrowed_from_a_neighbour(
     with store.read() as conn:
         outputs = json.loads(conn.execute('SELECT outputs_json FROM persona_attempts ORDER BY id DESC LIMIT 1').fetchone()[0])
     assert invented in outputs['persona_generate']
+
+
+@pytest.mark.parametrize('relation', ['与', '和', '跟', '同'])
+def test_context_relation_words_do_not_need_literal_evidence(relation):
+    source = '我在青岚的私聊里给每个标记补上了数字。'
+    payload, output = fixture(f'在2028年2月3日{relation}青岚的私聊里，我给每个标记补上了数字。', source=source)
+    memory = payload['evidence_by_ref']['M1']
+    memory.update(content=source, entry_kind='private')
+    memory['excerpts'][0]['entry_kind'] = 'private'
+    assert _validate_clause_checks(output, payload) == ([], {})
+
+
+@pytest.mark.parametrize('context,missing', [('与江鹭的私聊', '江'), ('与青岚的矿石私聊', '矿石')])
+def test_ignoring_relation_words_does_not_license_people_or_topics(context, missing):
+    source = '我在青岚的私聊里给每个标记补上了数字。'
+    payload, output = fixture(f'在2028年2月3日{context}里，我给每个标记补上了数字。', source=source)
+    memory = payload['evidence_by_ref']['M1']
+    memory.update(content=source, entry_kind='private')
+    memory['excerpts'][0]['entry_kind'] = 'private'
+    errors, problems = _validate_clause_checks(output, payload)
+    assert not errors and any(missing in issue for issue in problems[1])
+
+
+@pytest.mark.parametrize('context', ['《与》的直播', '“与”的直播', '「与」的直播'])
+def test_quoted_titles_do_not_gain_the_relation_word_exemption(context):
+    payload, output = fixture(f'在那次{context}中，我给每个标记补上了数字。')
+    errors, problems = _validate_clause_checks(output, payload)
+    assert not errors and any('与' in issue for issue in problems[1])

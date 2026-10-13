@@ -10,7 +10,7 @@ from test_persona_optimization import Model, prepared
 
 
 @pytest.mark.parametrize('purpose,limit', [('persona_generate',16000),('persona_check',16000),
-    ('persona_recheck',16000),('persona_sentence_repair',2048)])
+    ('persona_recheck',16000),('persona_sentence_repair',16000)])
 def test_persona_requests_have_explicit_output_budgets(prepared,purpose,limit):
     class Gateway:
         def chat(self,messages,label,**kwargs):
