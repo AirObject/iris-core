@@ -816,15 +816,20 @@ def _validate_clause_checks(output, payload):
         parts = row.get('clauses') if isinstance(row, dict) else None
         requested = sentence['clauses']
         full = _clause_parts(sentence['text'])
-        # Some models answer the full sentence shown for context. Accept only
-        # that exact complete sequence, not arbitrary overcoverage. Validate all
-        # extra verdicts before projecting the requested window; adverse extras
-        # reject the whole sentence and remain visible in a separate audit list.
-        full_response = (isinstance(parts, list) and len(requested) < len(parts) == len(full)
-            and all(part in full for part in requested)
-            and all(isinstance(part, dict) and type(part.get('index')) is int
-                    and part['index'] == expected['index'] for expected, part in zip(full, parts)))
-        focus = full if full_response else requested
+        # A model may also check other spans from the full sentence context.
+        # Explicit, unique IDs identify them without guessing. Every requested
+        # span must still appear once, in request order; validate every extra
+        # too, so a negative or malformed extra cannot disappear in projection.
+        full_by_index = {part['index']: part for part in full}
+        requested_indices = [part['index'] for part in requested]
+        part_indices = ([part['index'] for part in parts]
+            if isinstance(parts, list) and all(isinstance(part, dict)
+                and type(part.get('index')) is int for part in parts) else [])
+        extra_response = (len(part_indices) > len(requested_indices)
+            and len(set(part_indices)) == len(part_indices)
+            and all(index in full_by_index for index in part_indices)
+            and [index for index in part_indices if index in requested_indices] == requested_indices)
+        focus = [full_by_index[index] for index in part_indices] if extra_response else requested
         row_errors_before = len(errors)
         # One explicit negative proves the whole conjunction false. This is a
         # rejection-only protocol: a retained sentence still needs every focus.
@@ -901,7 +906,7 @@ def _validate_clause_checks(output, payload):
                     issues.append(f'{label}: single-date claim needs an explicit bounded scene in this sentence')
         if stopped and len(parts) < len(focus) and len(errors) == errors_before:
             row['unchecked_clause_indices'] = [part['index'] for part in focus[len(parts):]]
-        if full_response and len(errors) == row_errors_before:
+        if extra_response and len(errors) == row_errors_before:
             requested_indices = {part['index'] for part in requested}
             row['additional_clause_checks'] = [part for part in parts if part['index'] not in requested_indices]
             row['clauses'] = [part for part in parts if part['index'] in requested_indices]
@@ -1323,10 +1328,16 @@ class PersonaEngine:
                 audit['errors'] = errors
                 continue
             completion = completion_rows[0]
-            # Full-sentence extras have already been validated as an exact full
-            # sequence. Retain their adverse verdicts too; never project them away.
-            proof_parts = (completion['clauses'] if checked['sentences'][0].get('additional_clause_checks')
-                           else parts + completion['clauses'])
+            # Both responses were checked independently. Keep prefix spans
+            # absent from this response, and every returned extra (including
+            # adverse repeats of that prefix). Order the merged explicit IDs;
+            # no proof or verdict is synthesized for an omitted span.
+            proof_by_index = {part['index']: part for part in parts}
+            proof_by_index.update({part['index']: part for part in completion['clauses']})
+            proof_parts = [proof_by_index[index] for index in sorted(proof_by_index)]
+            extra_checks = checked['sentences'][0].get('additional_clause_checks')
+            if extra_checks:
+                audit['additional_clause_indices'] = [part['index'] for part in extra_checks]
             combined = {**copy.deepcopy(row), 'clauses': copy.deepcopy(proof_parts),
                 'supported': row['supported'] and completion['supported'] and not problems,
                 'fabricated': row['fabricated'] or completion['fabricated'],
@@ -1425,8 +1436,10 @@ class PersonaEngine:
                     malformed = ([] if _valid_sentence_verdict(row,local,require_kind=True)
                                  else [f'sentence {local}: invalid model verdict']) + errors
                     if not malformed and row.get('additional_clause_checks'):
+                        full_sequence = [part['index'] for part in returned[local-1]['clauses']] == [
+                            part['index'] for part in _clause_parts(sentence['text'])]
                         normalizations.append({'batch':batch_index+1, 'sentence_index':sentence['_check_sentence'],
-                            'operation':'full_sentence_focus_checks',
+                            'operation':('full_sentence_focus_checks' if full_sequence else 'additional_focus_checks'),
                             'requested_clause_indices':[part['index'] for part in row['clauses']],
                             'additional_clause_indices':[part['index'] for part in row['additional_clause_checks']]})
                     elif malformed:

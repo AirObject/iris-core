@@ -160,7 +160,7 @@ def test_negative_extra_focus_rejects_whole_sentence_and_is_not_recorded_as_unch
 
 
 @pytest.mark.parametrize('malformation', ['missing', 'unknown', 'duplicate', 'reordered',
-                                         'bool_index', 'bad_extra_type', 'partial_extra'])
+                                         'bool_index', 'bad_extra_type'])
 def test_extra_focus_fallback_never_accepts_incomplete_or_malformed_results(store, malformation):
     def mutate(row):
         parts = row['clauses']
@@ -176,8 +176,6 @@ def test_extra_focus_fallback_never_accepts_incomplete_or_malformed_results(stor
             parts[0]['index'] = True
         elif malformation == 'bad_extra_type':
             parts[2]['supported'] = 'true'
-        else:
-            parts.pop()
     material, sentence = material_and_sentence(); model = FullSentenceModel(mutation=mutate)
     result = run(store, model, material, [sentence])
     assert result['incomplete_checks'] and not result['sentences'][0]['supported']
