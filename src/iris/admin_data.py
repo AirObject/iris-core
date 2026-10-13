@@ -739,7 +739,10 @@ ENTRY_PROFILE_COLUMNS = '''id,entry_id,version,base_version,content,status,sourc
     COALESCE(json_extract(checks_json,'$.needs_regeneration'),0) AS needs_regeneration'''
 ENTRY_PROFILE_ATTEMPT_COLUMNS = '''id,entry_id,base_version,state,reason,version,started_at,finished_at,
     (SELECT status FROM entry_profile_versions v WHERE v.entry_id=entry_profile_attempts.entry_id
-        AND v.version=entry_profile_attempts.version) AS version_status,
+        AND v.version=entry_profile_attempts.version
+        AND json_type(entry_profile_attempts.material_json,'$.memory_material') IS NULL
+        AND NOT EXISTS(SELECT 1 FROM purge_redactions r WHERE r.table_name='entry_profile_attempts'
+            AND r.row_id=CAST(entry_profile_attempts.id AS TEXT))) AS version_status,
     CASE WHEN state!='running' THEN 'finished'
          WHEN json_type(outputs_json,'$.consolidation_entry_profile_generate') IS NOT NULL OR json_type(outputs_json,'$.outputs.generate') IS NOT NULL THEN 'checking'
          ELSE 'generating' END AS stage'''

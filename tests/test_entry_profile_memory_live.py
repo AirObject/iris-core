@@ -228,3 +228,42 @@ def test_timezone_change_during_check_invalidates_date_based_snapshot(store):
     result=ep.EntryProfileEngine(store,gateway,clock=CLOCK).regenerate('group',expected_version=0)
     assert result['status']=='conflict'
     assert context(store) is None
+
+
+def test_indirect_topic_sources_remain_normalized_in_persisted_projection(store):
+    from iris.memory_ops import entry_profile_source
+    from test_retrieval import put
+    a=message(store,'讨论徒步装备的背包选型。',key='a')
+    b=message(store,'雨天行走的鞋子怎么挑？',key='b',at='2026-10-05T12:00:00+08:00')
+    fact=put(store,'讨论徒步装备。',evidence=[a,b])
+    with store.read() as conn:
+        sources=[entry_profile_source(conn,x,source_memory_id=fact,source_revision=1) for x in (a,b)]
+    result=write_entry_profile_memory(store,'group',op='new',category='topic',content='常聊徒步装备。',sources=sources)
+    assert context(store)['memory_ids']==[result['memory_id']]
+    with store.read() as conn:
+        rows=ep.memory_profile_rows(conn,'group',as_of=CLOCK().isoformat())
+        assert [s['message']['date'] for s in rows[0]['sources']]==['2026-10-01','2026-10-05']
+    assert edit_memory(store,fact,1,content='材料已修订。')
+    assert context(store) is None
+
+
+def test_default_engine_reports_actual_memory_prompts_and_refuses_legacy_override(store):
+    engine=ep.EntryProfileEngine(store,None)
+    assert engine.prompt_metadata['prompt_versions']==['entry_profile_memory_generate_v1','entry_profile_memory_check_v1']
+    with pytest.raises(ep.EntryProfileRetired):
+        ep.EntryProfileEngine(store,None,prompt_version='v2')
+
+
+def test_timezone_change_rechecks_cross_day_sources_in_same_write(store):
+    from iris.memory_ops import entry_profile_source
+    a=message(store,'背包肩带怎么选？',key='near-midnight',at='2026-10-01T23:00:00+08:00')
+    b=message(store,'雨天徒步穿什么鞋？',key='after-midnight',at='2026-10-02T00:00:00+08:00')
+    with store.read() as conn:
+        sources=[entry_profile_source(conn,x) for x in (a,b)]
+    write_entry_profile_memory(store,'group',op='new',category='topic',content='常聊徒步装备。',sources=sources)
+    before=context(store)
+    assert before is not None
+    store.set_setting('timezone','UTC')
+    assert context(store) is None
+    with store.read() as conn:
+        assert ep._memory_state(conn,'group')['version']==before['version']+1

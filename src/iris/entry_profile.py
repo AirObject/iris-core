@@ -725,9 +725,12 @@ class _HealthGate(ChatHealthGate):
 class EntryProfileEngine:
     def __init__(self, store, gateway, *, clock=utc_now, prompt_version=None):
         self.store,self.gateway,self.clock=store,gateway,clock
-        self.memory_mode = prompt_version is None and getattr(store,'_memory_profiles',False)
-        self.prompt_version=DEFAULT_PROMPT_VERSION if prompt_version is None else prompt_version
-        self.prompts=load_profile_prompts('entry_profile',self.prompt_version,PROMPT_VERSIONS)
+        self.memory_mode = getattr(store,'_memory_profiles',False)
+        if self.memory_mode and prompt_version is not None:
+            raise EntryProfileRetired('entry_profile_legacy_write_retired')
+        self.prompt_version='v1' if self.memory_mode else DEFAULT_PROMPT_VERSION if prompt_version is None else prompt_version
+        self.prompts=load_profile_prompts('entry_profile_memory' if self.memory_mode else 'entry_profile',
+            self.prompt_version,('v1',) if self.memory_mode else PROMPT_VERSIONS)
         self.prompt_metadata=profile_prompt_metadata(self.prompts)
 
     def update(self, entry_id, *, expected_version, run_id=None):
@@ -795,7 +798,7 @@ class EntryProfileEngine:
         return self._execute(**reservation['context']) if 'context' in reservation else reservation
 
     def _reserve(self, entry_id, expected, source, *, run_id=None, fail_if_running=False):
-        if self.prompt_version == DEFAULT_PROMPT_VERSION and self.memory_mode:
+        if self.memory_mode:
             return _reserve_memory_task(self,entry_id,expected,source,run_id=run_id,fail_if_running=fail_if_running)
         """Persist admission and take an evidence snapshot; never call a model here."""
         current=_instant(self.clock()); stamp=current.isoformat()
@@ -1574,9 +1577,6 @@ def initialize_memory_profiles(store, conn):
                         category=category,importance=80,manual=True,_conn=conn)
                     mid = result['memory_id']
                     conn.execute('UPDATE memories SET pinned=1 WHERE id=?',(mid,))
-                    # Bind the old paragraph to the converted memory for the
-                    # existing purge index, without rewriting its text.
-                    pass  # Purge linkage is stored in legacy material metadata below.
                     disposition = 'manual_imported' if category else 'manual_unclassified'
                 else:
                     disposition = 'model_rebuild_pending' if body else 'cleared_history'
@@ -1627,7 +1627,14 @@ def _profile_bound_sources(conn, row, zone, as_of):
             _profile_sources(conn,row['owner_entry_id'],[binding],row['id'])
             message = conn.execute('SELECT * FROM messages WHERE id=?',(source['message_id'],)).fetchone()
             fact = _source_fact(conn,binding['source_memory_id'],row['owner_entry_id'],zone,as_of) if binding['source_memory_id'] else None
-            material = dict(messages=[_memory_message(_db_observation(message),snapshot)],memories=[fact] if fact else [])
+            normalized = _memory_message(_db_observation(message),snapshot)
+            if normalized is None:
+                raise ValueError('ineligible_source')
+            if fact:
+                fact['source_messages'] = [_memory_message(m,snapshot) for m in fact['source_messages']]
+                if any(m is None for m in fact['source_messages']):
+                    raise ValueError('ineligible_fact_source')
+            material = dict(messages=[normalized],memories=[fact] if fact else [])
             result.append(_memory_bind_source(dict(ref='msg:'+str(message['id']),field=binding['field'],excerpt=binding['excerpt'],
                 via_memory=str(binding['source_memory_id']) if binding['source_memory_id'] else None),material))
         except (ValueError,TypeError,KeyError):

@@ -60,3 +60,15 @@ def test_enabled_setting_still_uses_projection_cas(client,store):
     assert response.status_code==200,response.text
     assert client.get('/admin/api/entries/group/profile').json()['projection'] is None
     assert client.patch('/admin/api/entries/group/profile/settings',json={'expected_version':version,'enabled':True}).status_code==409
+
+
+def test_memory_attempt_does_not_alias_legacy_candidate_with_same_version(client,store):
+    result=ep.EntryProfileEngine(store,RuleGateway(store),clock=CLOCK).regenerate('group',expected_version=0)
+    with store.write() as conn:
+        ep._insert(conn,'group',previous=0,content='旧候选。',sentences=[],checks={},degree='small',
+            status='candidate',stamp=CLOCK().isoformat(),author='model',source='regenerate',material={},
+            message_through=1,settings_revision=0)
+    attempt=client.get('/admin/api/entries/group/profile/attempts/'+str(result['attempt_id'])).json()
+    assert attempt['state']=='published' and attempt['version']==1
+    assert attempt['version_status'] is None
+    assert client.get('/admin/api/entries/group/profile').json()['latest_attempt']['version_status'] is None

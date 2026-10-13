@@ -120,15 +120,15 @@ CREATE TRIGGER ep_projection_entry_profile_settings_2 AFTER DELETE ON entry_prof
  INSERT OR IGNORE INTO entry_profile_projection_dirty
  SELECT DISTINCT entry_id FROM entry_profile_memories;
 END;
-CREATE TRIGGER ep_projection_runtime_settings_0 AFTER INSERT ON runtime_settings WHEN new.key='entry_profile' BEGIN
+CREATE TRIGGER ep_projection_runtime_settings_0 AFTER INSERT ON runtime_settings WHEN new.key IN ('entry_profile','timezone') BEGIN
  INSERT OR IGNORE INTO entry_profile_projection_dirty
  SELECT DISTINCT entry_id FROM entry_profile_memories;
 END;
-CREATE TRIGGER ep_projection_runtime_settings_1 AFTER UPDATE ON runtime_settings WHEN new.key='entry_profile' BEGIN
+CREATE TRIGGER ep_projection_runtime_settings_1 AFTER UPDATE ON runtime_settings WHEN new.key IN ('entry_profile','timezone') BEGIN
  INSERT OR IGNORE INTO entry_profile_projection_dirty
  SELECT DISTINCT entry_id FROM entry_profile_memories;
 END;
-CREATE TRIGGER ep_projection_runtime_settings_2 AFTER DELETE ON runtime_settings WHEN old.key='entry_profile' BEGIN
+CREATE TRIGGER ep_projection_runtime_settings_2 AFTER DELETE ON runtime_settings WHEN old.key IN ('entry_profile','timezone') BEGIN
  INSERT OR IGNORE INTO entry_profile_projection_dirty
  SELECT DISTINCT entry_id FROM entry_profile_memories;
 END;

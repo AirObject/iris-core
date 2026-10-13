@@ -28,7 +28,7 @@
 | GET `/admin/api/entries/{entry_id}/profile/versions` | 旧文档历史分页；每个版本 `legacy:true`、is_current=false |
 | GET `/admin/api/entries/{entry_id}/profile/versions/{version}` | 旧版本只读详情，`legacy:true`；清除标记和原有依据信息保留 |
 | GET `/admin/api/entries/{entry_id}/profile/diff` | before_version／after_version 仅比较旧文档历史，不接受投影版本替代 |
-| GET `/admin/api/entries/{entry_id}/profile/attempts/{attempt_id}` | 既有任务状态、原因、stage、时间；version 表示该任务的投影版本 |
+| GET `/admin/api/entries/{entry_id}/profile/attempts/{attempt_id}` | 既有任务状态、原因、stage、时间；version 表示该任务的投影版本；新任务 version_status=null，不关联同号的旧文档候选 |
 | GET `/admin/api/memories?kind=入口画像&entry_id=...` | 通用记忆分页；新增 kind 枚举。画像项附 owner_entry_id、category、manual_created |
 | GET `/admin/api/memories/{memory_id}` | 通用详情、sources、修订、操作、清除预览；画像项同样附 owner_entry_id、category、manual_created |
 
