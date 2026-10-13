@@ -37,8 +37,8 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v16', 'persona_check': 'persona_check_v25',
-                   'persona_sentence_repair': 'persona_repair_v14', 'persona_recheck': 'persona_check_v25'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v16', 'persona_check': 'persona_check_v26',
+                   'persona_sentence_repair': 'persona_repair_v14', 'persona_recheck': 'persona_check_v26'}
 CALL_TIMEOUTS = {'persona_generate': 360, 'persona_check': 360,
                  'persona_sentence_repair': 120, 'persona_recheck': 360}
 CALL_MAX_TOKENS = {'persona_generate':16000, 'persona_check':16000,
@@ -1188,6 +1188,79 @@ class PersonaEngine:
             if owned:
                 gateway.close()
 
+    def _complete_positive_focus(self, purpose, payload, batch, outputs, *, deadline):
+        """Check an omitted positive suffix once, without replacing prior judgments.
+
+        This is additional proof work, not acceptance of a partial response. Both
+        calls share the original window deadline. Malformed/negative prefixes
+        cannot use this path, and a failed completion remains incomplete.
+        """
+        rows = batch.get('sentences')
+        candidates = payload['candidate']
+        if (not isinstance(rows, list) or len(rows) != len(candidates)
+                or batch.get('change_degree') not in ('small', 'medium', 'large')
+                or not isinstance(batch.get('reason'), str) or not batch['reason'].strip()
+                or not all(_valid_sentence_verdict(row, i, require_kind=True)
+                           for i, row in enumerate(rows, 1))):
+            return batch
+        merged = copy.deepcopy(batch)
+        for position, (sentence, row) in enumerate(zip(candidates, rows)):
+            parts, requested = row.get('clauses'), sentence['clauses']
+            if (sentence['origin'] != 'memory' or sentence.get('initial_setting')
+                    or not row['supported'] or row['fabricated'] or row['violations']
+                    or row['persona_kind'] in EXCLUDED_KINDS
+                    or row.get('stop_after_failure', False) is not False
+                    or not isinstance(parts, list) or not 0 < len(parts) < len(requested)
+                    or not all(isinstance(part, dict) and part.get('supported') is True
+                               for part in parts)):
+                continue
+            prefix = {**sentence, 'clauses': requested[:len(parts)]}
+            errors, problems = _validate_clause_checks(
+                {'sentences': [copy.deepcopy(row)]}, {**payload, 'candidate': [prefix]})
+            if errors or problems:
+                continue
+            tail = requested[len(parts):]
+            request = {**payload, 'task': 'check_facts_and_rules',
+                'candidate': [{**sentence, 'index': 1, 'clauses': tail}],
+                'evidence_by_ref': {ref: payload['evidence_by_ref'][ref] for ref in sentence['evidence_refs']}}
+            request.pop('previous', None)
+            request.pop('candidate_text', None)
+            audit = {'sentence_index': sentence['index'],
+                'missing_clause_indices': [part['index'] for part in tail],
+                'completed': False, 'outputs': {}}
+            outputs.setdefault(purpose + '_focus_completions', []).append(audit)
+            answer = self._call(purpose, request, audit['outputs'], deadline=deadline)
+            completion_rows = answer.get('sentences')
+            if (not isinstance(completion_rows, list) or len(completion_rows) != 1
+                    or not _valid_sentence_verdict(completion_rows[0], 1, require_kind=True)
+                    or answer.get('change_degree') not in ('small', 'medium', 'large')
+                    or not isinstance(answer.get('reason'), str) or not answer['reason'].strip()):
+                audit['errors'] = ['invalid focus completion verdict']
+                continue
+            checked = copy.deepcopy(answer)
+            errors, problems = _validate_clause_checks(checked, request)
+            if errors:
+                audit['errors'] = errors
+                continue
+            completion = completion_rows[0]
+            # Full-sentence extras have already been validated as an exact full
+            # sequence. Retain their adverse verdicts too; never project them away.
+            proof_parts = (completion['clauses'] if checked['sentences'][0].get('additional_clause_checks')
+                           else parts + completion['clauses'])
+            combined = {**copy.deepcopy(row), 'clauses': copy.deepcopy(proof_parts),
+                'supported': row['supported'] and completion['supported'] and not problems,
+                'fabricated': row['fabricated'] or completion['fabricated'],
+                'scene_qualified': row['scene_qualified'] and completion['scene_qualified'],
+                'persona_kind': completion['persona_kind'],
+                'violations': list(dict.fromkeys(row['violations'] + completion['violations'])),
+                'reason': row['reason'] + '；补查：' + completion['reason']}
+            for key in ('scope_check', 'stop_after_failure'):
+                if key in completion:
+                    combined[key] = copy.deepcopy(completion[key])
+            merged['sentences'][position] = combined
+            audit['completed'] = True
+        return merged
+
     def _check_all(self, purpose, material, sentences, *, full_content, outputs):
         """Check small focus windows, then AND facts and union failures per sentence."""
         import time
@@ -1230,8 +1303,12 @@ class PersonaEngine:
                 payload.pop('candidate_text')
             raw = {}
             raw_batches.append(raw)
+            window_deadline = min(deadline, getattr(self.gateway, 'monotonic', time.monotonic)()
+                                  + CALL_TIMEOUTS[purpose])
             try:
-                batch = self._call(purpose, payload, raw, deadline=deadline)
+                batch = self._call(purpose, payload, raw, deadline=window_deadline)
+                original_batch = batch
+                batch = self._complete_positive_focus(purpose, payload, batch, raw, deadline=window_deadline)
             except ModelError as error:
                 if error.reason != 'output_limit':
                     raise
@@ -1241,7 +1318,6 @@ class PersonaEngine:
                         'reason':'incomplete check: output_limit',
                         'validation_errors':[f'batch {batch_index+1}: output_limit; no complete judgment'],
                         'batches':batches, 'window_map':window_map}
-            original_batch = batch
             if not subset and set(batch) == {'change_degree','reason'}:
                 # No factual rows were requested. The dedicated degree-only
                 # contract need not ask the model to echo an empty list.
