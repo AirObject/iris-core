@@ -54,3 +54,7 @@ def test_entry_document_candidates_are_not_selectable(store):
     for version in ('v3', 'v4', 'v5', 'v6', 'v7'):
         with pytest.raises(ValueError):
             EntryProfileEngine(store, None, prompt_version=version)
+
+
+# Historical document-path regression on the pre-switch schema.
+from profile_legacy import legacy_schema

@@ -37,6 +37,10 @@ def memory_rows(conn, sql, args=()):
         row["about"] = [dict(r) for r in conn.execute("""SELECT s.id,s.name FROM memory_subjects ms
             JOIN subjects s ON s.id=ms.subject_id WHERE ms.memory_id=? ORDER BY s.id""", (row["id"],))]
         row["tags"] = [r[0] for r in conn.execute("SELECT tag FROM memory_tags WHERE memory_id=? ORDER BY tag", (row["id"],))]
+        if row.get('kind')=='入口画像':
+            meta=conn.execute('SELECT entry_id AS owner_entry_id,category,manual_created FROM entry_profile_memories WHERE memory_id=?',(row['id'],)).fetchone()
+            if meta:
+                row.update(dict(meta),manual_created=bool(meta['manual_created']))
     return rows
 
 
@@ -311,6 +315,8 @@ def learning_entries(store):
                 AND m.learning_state IN ('pending','batched')) AS pending_count
             FROM entries e ORDER BY e.name,e.id""")]
         for entry in items:
+            if getattr(store,'_memory_profiles',False):
+                entry['entry_profile_pending_count']=0
             entry["filters"] = json.loads(entry["filters_json"])
             entry["queue_wait"] = entry_queue_wait(conn, entry, instant)
             entry.pop("filters_json")
@@ -735,12 +741,14 @@ ENTRY_PROFILE_ATTEMPT_COLUMNS = '''id,entry_id,base_version,state,reason,version
     (SELECT status FROM entry_profile_versions v WHERE v.entry_id=entry_profile_attempts.entry_id
         AND v.version=entry_profile_attempts.version) AS version_status,
     CASE WHEN state!='running' THEN 'finished'
-         WHEN json_type(outputs_json,'$.consolidation_entry_profile_generate') IS NOT NULL THEN 'checking'
+         WHEN json_type(outputs_json,'$.consolidation_entry_profile_generate') IS NOT NULL OR json_type(outputs_json,'$.outputs.generate') IS NOT NULL THEN 'checking'
          ELSE 'generating' END AS stage'''
 
 
 def _entry_profile_summary(row, current, conn):
-    return _redaction(conn,'entry_profile_versions',row) | {'is_current':row['version']==current,'needs_regeneration':bool(row['needs_regeneration'])}
+    from .entry_profile import memory_profile_enabled
+    legacy=memory_profile_enabled(conn)
+    return _redaction(conn,'entry_profile_versions',row) | {'legacy':legacy,'is_current':not legacy and row['version']==current,'needs_regeneration':bool(row['needs_regeneration'])}
 
 
 def entry_profile_snapshot(store, entry_id):
@@ -748,6 +756,19 @@ def entry_profile_snapshot(store, entry_id):
     with store.read() as conn:
         entry = profiles._entry(conn, entry_id)
         settings = profiles._settings(conn, entry_id)
+        if profiles.memory_profile_enabled(conn):
+            projection=profiles.profile_context(conn,entry_id)
+            state=profiles._memory_state(conn,entry_id)
+            latest=conn.execute(f'SELECT {ENTRY_PROFILE_ATTEMPT_COLUMNS} FROM entry_profile_attempts WHERE entry_id=? ORDER BY id DESC LIMIT 1',(entry_id,)).fetchone()
+            return dict(entry=entry,supported=entry['kind'] in ('group','live'),mode='memory',
+                global_enabled=profiles._runtime(conn)['enabled'],settings=settings,projection=projection,
+                current=projection,pending=None,pending_count=0,legacy_write_status=410,
+                memories=profiles.memory_profile_rows(conn,entry_id),
+                diagnostics=json.loads(state['diagnostics_json']),
+                migration=[dict(r) for r in conn.execute('SELECT * FROM entry_profile_legacy_migration WHERE entry_id=? ORDER BY legacy_version,sentence_index',(entry_id,))],
+                cursor=state['cursor'],rebuild_pending=bool(state['rebuild_pending']),
+                possibly_stale=bool(projection and projection['possibly_stale']),stale_basis=[],
+                latest_attempt=_redaction(conn,'entry_profile_attempts',latest) if latest else None)
         current = conn.execute(f'SELECT {ENTRY_PROFILE_COLUMNS} FROM entry_profile_versions WHERE entry_id=? AND version=?',
                                (entry_id, settings['current_version'])).fetchone()
         pending = conn.execute(f"SELECT {ENTRY_PROFILE_COLUMNS} FROM entry_profile_versions WHERE entry_id=? AND status='candidate' ORDER BY version DESC",

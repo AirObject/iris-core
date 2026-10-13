@@ -673,7 +673,7 @@ def _install_host_openapi(app):
     prepare = obj({"persona": obj({"version": nullable(integer), "content": string, "generated_at": nullable(string),
                          "needs_update": boolean, "stale_basis_count": integer}), "memories": array(memory), "recent_messages": array(recent),
         "state": state_or_empty, "goals": array(goal), "hints": array(hint), "judgment": mapping, "recall_id": string,
-        "entry_profile": nullable(obj({"text": string, "version": integer, "generated_at": string, "possibly_stale": boolean})),
+        "entry_profile": nullable(obj({"text": string, "version": integer, "generated_at": string, "possibly_stale": boolean, "memory_ids": array(integer)})),
         "people": array(obj({"subject_id": string, "name": string, "text": string, "version": integer,
                               "generated_at": string, "possibly_stale": boolean}))})
     search = obj({"memories": array(memory), "hints": array(hint), "recall_id": string,
@@ -711,7 +711,7 @@ def _install_host_openapi(app):
          prepare, {"persona": {"version": None, "content": "", "generated_at": None, "needs_update": False, "stale_basis_count": 0},
                    "memories": [], "recent_messages": [], "state": {}, "goals": [], "entry_profile": None, "people": [],
                    "hints": [], "judgment": {"status": "disabled"}, "recall_id": "recall-id"},
-         "返回 persona、memories、recent_messages、state、goals、hints、entry_profile、people 八个分区，以及 judgment 和 recall_id，不生成回复。people 是 v1 兼容新增：最多 3 人、合计 1000 个估算 token，people_limit=0 关闭；participant_names 可按主体 ID 或显式参与者名字／别名提供本次显示名，仅影响 people.name。显式 participants 顺序优先，否则按本入口最近发言排序；仅返回已发布且当前依据仍可见的摘要，不触发生成。entry_profile 仅返回本入口已发布且启用的画像，否则为 null；生成时间与 possibly_stale 供宿主判断时效，不触发生成。仅本入口近期消息；sources 的范围外 entry_id、entry_name、occurred_at 为 null；其他授权入口的待学习情况仅以数量和接收时间范围加入 hints。text 省略时自适应近期消息，空字符串表示显式空查询。known_memory_ids 排除已在宿主上下文中的记忆。subject_annotations 标注可能同一人与虚构扮演，不附联系证据原文。模型故障时正常返回并提示降级。"),
+         "返回 persona、memories、recent_messages、state、goals、hints、entry_profile、people 八个分区，以及 judgment 和 recall_id，不生成回复。people 是 v1 兼容新增：最多 3 人、合计 1000 个估算 token，people_limit=0 关闭；participant_names 可按主体 ID 或显式参与者名字／别名提供本次显示名，仅影响 people.name。显式 participants 顺序优先，否则按本入口最近发言排序；仅返回已发布且当前依据仍可见的摘要，不触发生成。entry_profile 返回本入口启用且当前可用的画像记忆投影，否则为 null；memory_ids 与 text 中展示条目一一对应并排除 known_memory_ids。version 只在写事务改变可展示集合时递增；生成时间与 possibly_stale 供宿主判断时效，读取不触发生成。仅本入口近期消息；sources 的范围外 entry_id、entry_name、occurred_at 为 null；其他授权入口的待学习情况仅以数量和接收时间范围加入 hints。text 省略时自适应近期消息，空字符串表示显式空查询。known_memory_ids 排除已在宿主上下文中的记忆。subject_annotations 标注可能同一人与虚构扮演，不附联系证据原文。模型故障时正常返回并提示降级。"),
         ("post", base + "/memories/search", {"text": "观星", "entry_id": "group-a", "include_forgotten": False,
                                             "include_state": False, "include_goals": False},
          search, {"memories": [], "hints": [], "recall_id": "recall-id"},

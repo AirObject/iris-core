@@ -490,40 +490,39 @@ def test_v1_openapi_over_http_after_admin_login(client):
 
 
 def test_prepare_entry_profile_additive_local_partition(client, store):
-    from iris.entry_profile import admin_edit, set_settings
-    from test_entry_profile import TEXTS
+    from iris.entry_profile import set_settings, profile_context
+    from iris.memory_ops import write_entry_profile_memory
     msg(store, 0, '本入口消息', entry='A')
     msg(store, 0, '其他入口消息', entry='B')
     headers = scoped(client, {'kind': 'entries', 'entries': ['A']})
     response = client.post('/api/v1/entries/A/prepare', json={'judge': False}, headers=headers)
     assert response.status_code == 200 and response.json()['entry_profile'] is None
     before = response.json()
-    profile = admin_edit(store, 'A', ''.join(TEXTS), expected_version=0)
-    admin_edit(store, 'B', ''.join(TEXTS[::-1]), expected_version=0)
+    own = write_entry_profile_memory(store,'A',op='new',category='rule',content='本入口禁止广告。',manual=True)
+    write_entry_profile_memory(store,'B',op='new',category='rule',content='其他入口禁止刷屏。',manual=True)
+    with store.read() as conn:
+        profile=profile_context(conn,'A')
     response = client.post('/api/v1/entries/A/prepare', json={'judge': False}, headers=headers)
     assert response.status_code == 200
-    assert response.json()['entry_profile'] == {'text': profile['content'], 'version': 1,
-        'generated_at': profile['generated_at'], 'possibly_stale': False}
+    assert response.json()['entry_profile'] == profile
+    assert profile['memory_ids']==[own['memory_id']]
     for key in ('memories', 'recent_messages', 'state', 'goals', 'persona'):
         assert response.json()[key] == before[key]
     assert client.post('/api/v1/entries/B/prepare', json={'judge': False}, headers=headers).status_code == 403
     search = client.post('/api/v1/memories/search', json={'entry_id': 'A', 'text': ''}, headers=headers)
     assert search.status_code == 200 and 'entry_profile' not in search.json()
-    set_settings(store, 'A', expected_version=1, enabled=False)
+    set_settings(store, 'A', expected_version=profile['version'], enabled=False)
     assert client.post('/api/v1/entries/A/prepare', json={'judge': False}, headers=headers).json()['entry_profile'] is None
 
 
-def test_prepare_only_published_profile_and_stale_marker(client, store):
-    from iris.entry_profile import EntryProfileEngine, set_settings
-    from test_entry_profile import Clock, Model, messages
-    clock = Clock()
-    messages(store, clock, entry='A')
-    set_settings(store, 'A', expected_version=0, publish_mode='all_manual')
-    result = EntryProfileEngine(store, Model(store), clock=clock).regenerate('A', expected_version=0)
-    assert result['status'] == 'candidate'
-    assert client.post('/api/v1/entries/A/prepare', json={'judge': False}).json()['entry_profile'] is None
-    from iris.entry_profile import confirm_candidate
-    version = confirm_candidate(store, 'A', 1, expected_version=0)
+def test_prepare_memory_profile_removes_invalid_evidence_instead_of_displaying_stale_text(client, store):
+    from iris.memory_ops import entry_profile_source, write_entry_profile_memory
+    mid=msg(store,0,'本群长期禁止广告。',entry='A')
+    with store.read() as conn:
+        source=entry_profile_source(conn,mid)
+    write_entry_profile_memory(store,'A',op='new',category='rule',content='禁止广告。',sources=[source])
+    response=client.post('/api/v1/entries/A/prepare',json={'judge':False})
+    assert response.json()['entry_profile']['memory_ids']
     with store.write() as conn:
-        conn.execute('DELETE FROM messages WHERE id=?', (version['sentences'][0]['basis'][0]['message_id'],))
-    assert client.post('/api/v1/entries/A/prepare', json={'judge': False}).json()['entry_profile']['possibly_stale']
+        conn.execute("UPDATE messages SET content='已经变更的原话。' WHERE id=?",(mid,))
+    assert client.post('/api/v1/entries/A/prepare',json={'judge':False}).json()['entry_profile'] is None

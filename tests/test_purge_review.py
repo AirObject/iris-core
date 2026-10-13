@@ -613,3 +613,7 @@ def test_upgrade_clears_pre_hook_person_summary_copies(tmp_path,monkeypatch):
         assert record(store,'consolidation_calls',other_call)['raw_output']=='独立的依赖建议'
     finally:
         store.close()
+
+
+# These regressions exercise the retained legacy projection/purge machinery.
+from profile_legacy import legacy_schema

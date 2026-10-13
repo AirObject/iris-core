@@ -92,3 +92,7 @@ def test_interrupted_attempt_is_reported_without_publishing_or_repeating(store,m
         assert attempt['state']=='failed' and attempt['reason']=='interrupted'
     assert len(engine.gateway.calls)==1
     assert [i for i in engine.report(rid)['items'] if i['outcome']=='entry_profile']
+
+
+# Historical document-path regression on the pre-switch schema.
+from profile_legacy import legacy_schema

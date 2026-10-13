@@ -255,3 +255,7 @@ def test_longer_memory_excerpt_is_available_when_daily_sampling_shortens_body(st
     assert not deleted and not errors
     assert resolved[0]['basis'][0]['memory_id']
     assert _evidence_index(material)[0][1]['content'].endswith('渗墨0')
+
+
+# Historical document-path regression on the pre-switch schema.
+from profile_legacy import legacy_schema

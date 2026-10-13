@@ -1140,7 +1140,7 @@ def write_entry_profile_memory(store, entry_id, *, op, content=None, category=No
                 or (not (isinstance(category,str) and category in ENTRY_PROFILE_CATEGORIES) and not (manual and category is None))
                 or type(importance) is not int or not 0 <= importance <= 100):
             raise ValueError('invalid profile body')
-        content = whitespace(content)
+        content = content if manual else whitespace(content)
         importance = importance if manual else min(importance,69)
     if op != 'new' and (type(memory_id) is not int or type(expected_revision) is not int):
         raise ValueError('expected revision required')
@@ -1203,11 +1203,10 @@ def write_entry_profile_memory(store, entry_id, *, op, content=None, category=No
         else:
             revision = expected_revision
         if op=='retire':
-            delete_memory(store,memory_id,expected_revision,actor='entry_profile',_conn=conn,current=current)
-            revision += 1
+            manage_memory(store,memory_id,expected_revision,action='forget',_conn=conn,_record=False)
         if fresh or op=='new':
             for value in bound:
-                note = dumps({key:value[key] for key in ('field','excerpt','message_sha256')})
+                note = dumps({key:value[key] for key in ('field','excerpt','message_sha256','source_memory_id','source_revision')})
                 existing = conn.execute("SELECT id FROM sources WHERE memory_id=? AND kind='message' AND message_id=? AND note=?",
                     (memory_id,value['message_id'],note)).fetchone()
                 source_id = existing[0] if existing else conn.execute("""INSERT INTO sources(memory_id,kind,message_id,note,created_at)

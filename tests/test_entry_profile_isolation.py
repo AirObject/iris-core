@@ -118,6 +118,7 @@ def test_profile_purge_redacts_projected_versions_raw_outputs_and_late_writes(st
 
 
 def test_compatible_profile_merge_preserves_receipts_and_purge_cascade(store):
+    store.set_setting('entry_profile', {'enabled':False})
     from test_consolidation import Model, merge_answer, run
     from iris.memory_ops import entry_profile_source
     from iris.db import now

@@ -48,6 +48,15 @@ class Store:
         )
         self._writer.execute("INSERT OR IGNORE INTO runtime_settings(key,value_json) VALUES('retrieval',?)",
             (files("iris").joinpath("retrieval_defaults.json").read_text(encoding="utf-8"),))
+        self._memory_profiles = bool(self._writer.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='entry_profile_memory_state' AND type='table'").fetchone())
+        if self._memory_profiles:
+            # Deterministic legacy hand-written conversion before serving reads.
+            # Model rebuilding remains asynchronous in the periodic entry task.
+            from .entry_profile import initialize_memory_profiles
+            with self.write() as conn:
+                initialize_memory_profiles(self, conn)
+
 
     def recover_inflight(self, *, current=None) -> None:
         # A running batch had no committed result. Count the interrupted attempt once.
@@ -122,6 +131,9 @@ class Store:
             self._writer.execute("BEGIN IMMEDIATE")
             try:
                 yield self._writer
+                if getattr(self, '_memory_profiles', False):
+                    from .entry_profile import flush_memory_profile_projections
+                    flush_memory_profile_projections(self._writer)
             except BaseException:
                 self._writer.rollback()
                 raise

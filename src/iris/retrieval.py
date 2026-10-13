@@ -644,7 +644,7 @@ class Retrieval:
             if visibility.token != visibility_token:
                 result["goals"] = self._goals(conn, entry_id, min(goal_limit, 10), participants=participant_ids, current=self.clock())
             result["persona"] = persona_context(conn)
-            result["entry_profile"] = profile_context(conn, entry_id)
+            result["entry_profile"] = profile_context(conn, entry_id, known_memory_ids=known_memory_ids)
             result["state"] = current_state(conn, current=self.clock())
             result.update(memories=final, recent_messages=recent, judgment=diagnostic)
             result['hints'].append({'code': 'recall_judgment', **diagnostic,

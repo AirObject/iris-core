@@ -83,7 +83,7 @@ def test_new_topic_is_entry_memory_with_decay_cap_and_original_sources():
     assert row['importance'] == 69 and row['pinned'] is False
     assert len(row['sources']) == 2 and repo.cursor == 2
     assert len(gateway.requests) == 2
-    assert all('entry_profile_memory_' in x['purpose'] for x in result['calls'])
+    assert all('consolidation_entry_profile_' in x['purpose'] for x in result['calls'])
     assert len(result['prompt_sha256']['entry_profile_memory_generate_v1']) == 64
 
 

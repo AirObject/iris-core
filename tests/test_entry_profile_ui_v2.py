@@ -80,3 +80,7 @@ def test_total_budget_and_csrf(client, store):
     assert client.put(BASE, json={'expected_version': 1, 'items': too_long}).status_code == 400
     client.headers.pop('X-Iris-CSRF')
     assert client.put(BASE, json={'expected_version': 1, 'items': [original()]}).status_code == 403
+
+
+# Historical document-path regression on the pre-switch schema.
+from profile_legacy import legacy_schema

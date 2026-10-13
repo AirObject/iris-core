@@ -1,8 +1,4 @@
-"""Draft memory-format adapter and OFFLINE simulator. No live model CLI.
-
-Simulation is explicit in every export and never a gate result. The production
-repository, host projection, hard scope and lifecycle integration are not here.
-"""
+"""Real SQLite execution and offline independent scoring; explicit simulation remains non-gating."""
 from __future__ import annotations
 
 import copy
@@ -382,7 +378,9 @@ def score_draft(materials, judgments, *, judge_model):
         raise ValueError('one or two distinct independent rounds required')
     manifest = _read(materials / 'manifest.json'); metadata = manifest['metadata']
     if (metadata.get('format_version') != 2 or metadata.get('evaluation') != 'entry_profile_memory'
-            or metadata.get('scoring_status') != SCORING_STATUS or metadata.get('gate_eligible') is not False
+            or metadata.get('scoring_status') != SCORING_STATUS or type(metadata.get('gate_eligible')) is not bool
+            or metadata.get('repository_mode') not in ('simulation','sqlite')
+            or (metadata.get('gate_eligible') and (metadata.get('repository_mode')!='sqlite' or metadata.get('execution_kind')!='real' or metadata.get('invalidated')))
             or manifest.get('materials_sha256') != evidence_hash({k: v for k, v in manifest.items() if k != 'materials_sha256'})):
         raise ValueError('material fingerprint/format mismatch')
     scoring_path = materials / 'scoring.md'
@@ -445,6 +443,134 @@ def score_draft(materials, judgments, *, judge_model):
         quote_matched=sum(e['diagnostics']['quote_matched'] for e in manifest['cases']),
         infrastructure=[dict(case_id=e['case_id'], status=e['execution_status'], **e['diagnostics']) for e in manifest['cases']],
         meets_threshold=None)
-    return dict(scoring_status=SCORING_STATUS, gate_eligible=False, repository_mode=metadata['repository_mode'],
+    if metadata['gate_eligible'] and len(rounds)==2:
+        metrics['meets_threshold']=bool(total and grounded/total>=.9 and not prohibited and not forbidden and not metrics['incomplete_cases'])
+    return dict(scoring_status=SCORING_STATUS, gate_eligible=metadata['gate_eligible'], repository_mode=metadata['repository_mode'],
         materials_sha256=manifest['materials_sha256'], judge_model=judge_model, judge_runs=len(rounds),
         original_judgments=rounds, judgments=combined, disagreements=differences, coverage_losses=losses, metrics=metrics)
+
+
+def run_sqlite(corpus, out, *, gateway_factory=None, configs=None):
+    """Sequential production engine, actual SQLite writes and host projection.
+
+    Factory injection is explicitly fake and cannot claim a quality gate. A
+    timeout/429 interrupts the run immediately; remaining cases are exported as
+    not-run, all preceding traces are retained, and gate_eligible becomes false.
+    """
+    from iris.db import Store, dumps
+    from iris.entry_profile import EntryProfileEngine, memory_profile_rows, profile_context, _instant
+    from iris.memory_ops import write_entry_profile_memory
+    from iris.models import Gateway, ModelError
+    from .runner import _load_case, _model_metadata, _redacted
+    if (gateway_factory is None)==(configs is None):
+        raise ValueError('provide exactly one real configuration or fake gateway factory')
+    root=Path(out); root.mkdir(parents=True,exist_ok=False)
+    materials=root/'judging-materials'; cases=load_corpus(corpus)
+    entries=[]; traces=[]; hashes={}; invalid=None
+
+    class EvaluationGateway(Gateway):
+        def _record(self,*args,**kwargs):
+            super()._record(*args,**kwargs)
+            status=kwargs.get('status_code',args[7] if len(args)>7 else None)
+            if status==429 or kwargs.get('timed_out'):
+                # Record the network outcome, but do not retry a tainted round.
+                raise ModelError('retryable','evaluation interrupted',reason='rate_limited' if status==429 else 'timeout')
+
+    for index,case in enumerate(cases,1):
+        store=Store(root/'databases'/f'{index:04d}.db'); gateway=None
+        try:
+            _load_case(store,{**case,'initial_profile':''})
+            entry_id=case['entry']['id']; clock=lambda:_instant(case['as_of'])
+            if case.get('initial_profile'):
+                write_entry_profile_memory(store,entry_id,op='new',content=case['initial_profile'],category=None,
+                    importance=80,manual=True,current=clock())
+            gateway=(gateway_factory(case['id'],store) if gateway_factory else EvaluationGateway(configs,store=store))
+            engine=EntryProfileEngine(store,gateway,clock=clock)
+            task=EntryProfileMemoryTask(None,gateway)
+            hashes.update({p['name']:p['sha256'] for p in task.prompts.values()})
+            results=[]
+            while not invalid:
+                with store.read() as conn:
+                    from iris.entry_profile import _memory_state
+                    expected=_memory_state(conn,entry_id)['version']
+                outcome=engine.regenerate(entry_id,expected_version=expected)
+                result=outcome.get('result')
+                if result is None:
+                    result=dict(status='no_new_evidence' if outcome.get('reason')=='no_new_evidence' else 'unavailable',
+                        reason=outcome.get('reason'),material={'profiles':[],'messages':[],'memories':[]},
+                        stages={s:[] for s in STAGES[:-1]},calls=[],outputs={},removed=[])
+                results.append(result)
+                if result.get('reason') in ('timeout','rate_limited') or any(c.get('reason') in ('timeout','rate_limited') for c in result['calls']):
+                    invalid=dict(case_id=case['id'],page=len(results),reason=result.get('reason'))
+                    break
+                if result['status']!='committed' or not result['material'].get('has_more'):
+                    break
+            if not results:
+                results=[dict(status='not_run',reason='earlier_timeout_or_429',material={'profiles':[],'messages':[],'memories':[]},
+                    stages={s:[] for s in STAGES[:-1]},calls=[],outputs={},removed=[])]
+            with store.read() as conn:
+                profiles=memory_profile_rows(conn,entry_id,as_of=case['as_of'],usable_only=True)
+                projection=profile_context(conn,entry_id)
+                calls=[dict(r) for r in conn.execute('''SELECT purpose,model,status_code,result_category,timed_out,finish_reason,
+                    reasoning_effort,prompt_tokens,completion_tokens,duration_ms FROM model_calls ORDER BY id''')]
+                migration=[dict(r) for r in conn.execute('SELECT * FROM entry_profile_legacy_migration')]
+            payload=judging_input(case,results[-1],profiles)
+            payload['projection']=projection or dict(text='',memory_ids=[])
+            displayed=set(payload['projection']['memory_ids'])
+            payload['stages']['projected']=[m for m in payload['memories'] if m['memory_id'] in displayed]
+            document=dict(format_version=2,evaluation='entry_profile_memory',case_id=case['id'],input=payload)
+            relative=f'cases/{index:04d}.json';_write(materials/relative,document)
+            traces.append(dict(case_id=case['id'],pages=results,model_calls=calls,migration=migration))
+            diagnostics=dict(pages=len(results),
+                quote_total=sum(r.get('quote_validation',{}).get('total',0) for r in results),
+                quote_matched=sum(r.get('quote_validation',{}).get('matched',0) for r in results),
+                omitted_anchors=sum(r['material'].get('diagnostics',{}).get('omitted_anchors',0) for r in results),
+                omitted_memories=sum(r['material'].get('diagnostics',{}).get('omitted_memories',0) for r in results),
+                truncated_messages=sum(r['material'].get('diagnostics',{}).get('truncated_messages',0) for r in results),
+                failed_calls=sum(c.get('result')!='success' for r in results for c in r['calls']))
+            entries.append(dict(case_id=case['id'],file=relative,sha256=evidence_hash(document),
+                judgment_file=f'{index:04d}.json',execution_status=results[-1]['status'],diagnostics=diagnostics))
+            # Durable progress after each case; never lose earlier successful traces.
+            _write(root/'progress.json',_redacted(dict(cases=traces,invalidated=invalid),configs or {}))
+        finally:
+            if gateway is not None and callable(getattr(gateway,'close',None)):
+                gateway.close()
+            store.close()
+    scoring=(HERE/'scoring_v3.md').read_text(encoding='utf-8')
+    metadata=dict(format_version=2,evaluation='entry_profile_memory',scoring_version='entry_profile_scoring_v3',
+        scoring_status=SCORING_STATUS,gate_eligible=configs is not None and invalid is None,repository_mode='sqlite',
+        execution_kind='real' if configs is not None else 'fake',invalidated=invalid,
+        corpus_sha256=hashlib.sha256(Path(corpus).read_bytes()).hexdigest(),source_sha256=_source_hash(),
+        scoring_sha256=hashlib.sha256(scoring.encode()).hexdigest(),prompt_versions=list(hashes),prompt_sha256=hashes,
+        models=_model_metadata(configs or {}))
+    _write(root/'run.json',_redacted(dict(metadata=metadata,cases=traces),configs or {}))
+    manifest=dict(metadata=metadata,cases=entries,run_sha256=hashlib.sha256((root/'run.json').read_bytes()).hexdigest())
+    manifest['materials_sha256']=evidence_hash(manifest)
+    _write(materials/'manifest.json',manifest);_write(materials/'round-template.json',manifest)
+    (materials/'scoring.md').write_text(scoring,encoding='utf-8')
+    return manifest
+
+
+def main():
+    import argparse
+    parser=argparse.ArgumentParser(description='Entry-profile memory execution / offline scoring')
+    sub=parser.add_subparsers(dest='command',required=True)
+    run=sub.add_parser('run');run.add_argument('--corpus',required=True);run.add_argument('--out',required=True)
+    score=sub.add_parser('score');score.add_argument('--materials',required=True)
+    score.add_argument('--judgments',action='append',required=True);score.add_argument('--judge-model',required=True);score.add_argument('--out',required=True)
+    args=parser.parse_args()
+    if args.command=='run':
+        from iris.models import load_test_models
+        manifest=run_sqlite(args.corpus,args.out,configs=load_test_models())
+        print(json.dumps(dict(cases=len(manifest['cases']),gate_eligible=manifest['metadata']['gate_eligible'],
+                              invalidated=manifest['metadata']['invalidated']),ensure_ascii=False))
+        if manifest['metadata']['invalidated']:
+            raise SystemExit(2)
+    else:
+        result=score_draft(args.materials,args.judgments,judge_model=args.judge_model)
+        _write(Path(args.out),result)
+        print(json.dumps(result['metrics'],ensure_ascii=False))
+
+
+if __name__=='__main__':
+    main()
