@@ -389,7 +389,14 @@ def _document(row, metadata):
             'scoring_version':metadata['scoring_version'],'input':_payload(row)}
 
 
-def run_eval(corpus, out, *, configs=None, gateway_factory=Gateway, extra_input=None):
+def _record_prompts(metadata, engine):
+    actual = engine.prompt_metadata
+    if metadata['prompt_versions'] and any(metadata[key] != value for key, value in actual.items()):
+        raise ValueError('profile prompts changed during evaluation')
+    metadata.update(actual)
+
+
+def run_eval(corpus, out, *, configs=None, gateway_factory=Gateway, extra_input=None, prompt_version=None):
     cases=load_corpus(corpus); configs=configs or {}; root=Path(out)
     corpus_file_sha256=hashlib.sha256(Path(corpus).read_bytes()).hexdigest()
     root.mkdir(parents=True,exist_ok=True)
@@ -399,10 +406,9 @@ def run_eval(corpus, out, *, configs=None, gateway_factory=Gateway, extra_input=
     metadata={'source_sha256':_source_hash(),'corpus_sha256':_json_sha256(cases),
         'corpus_file_sha256':corpus_file_sha256,
         'fake_only':not bool(configs),'models':_model_metadata(configs),'extra_input_sha256':_json_sha256(extra_input),
-        'prompt_versions':['person_summary_generate_v1','person_summary_check_v1'],
+        'prompt_versions':[], 'prompt_sha256':{},
         'scoring_version':SCORING_VERSION,'scoring_sha256':hashlib.sha256(scoring.encode()).hexdigest(),
         'timeouts_seconds':{'generate':120,'check':120}}
-    metadata['input_sha256']=_json_sha256(metadata)
     rows=[]; started=time.monotonic()
     # Always a fresh DB/run: no completed result is selected or reused by score.
     for index,case in enumerate(cases):
@@ -419,7 +425,8 @@ def run_eval(corpus, out, *, configs=None, gateway_factory=Gateway, extra_input=
                 due=summary_due(store,case['subject_id'],clock=clock)
                 if not case.get('expect_none',False):
                     selected=select_material(store,case['subject_id'],clock=clock)
-                engine=PersonSummaryEngine(store,gateway,clock=clock)
+                engine=PersonSummaryEngine(store,gateway,clock=clock,prompt_version=prompt_version)
+                _record_prompts(metadata,engine)
                 result=engine.regenerate(case['subject_id'],expected_version=base_version)
             except Exception as error:
                 # Never echo exception text from providers, payloads or configuration.
@@ -439,10 +446,12 @@ def run_eval(corpus, out, *, configs=None, gateway_factory=Gateway, extra_input=
             if gateway and callable(getattr(gateway,'close',None)):
                 gateway.close()
             store.close()
+    metadata['input_sha256']=_json_sha256(metadata)
     rows=_redacted(rows,configs)
     materials=directory/'judging-materials'; materials.mkdir()
     manifest={'format_version':1,'evaluation':'person_summary','run':metadata,
-              'run_sha256':_write_json(materials/'run.json',{'rows':rows}),'cases':[]}
+              'run_sha256':_write_json(materials/'run.json',{'rows':rows, 'prompt_versions':metadata['prompt_versions'],
+                  'prompt_sha256':metadata['prompt_sha256']}),'cases':[]}
     (materials/'scoring.md').write_text(scoring,encoding='utf-8')
     manifest['scoring_sha256']=hashlib.sha256((materials/'scoring.md').read_bytes()).hexdigest()
     for index,row in enumerate(rows):
@@ -632,6 +641,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     commands=parser.add_subparsers(dest='command',required=True)
     run=commands.add_parser('run');run.add_argument('--corpus',required=True);run.add_argument('--out',required=True)
+    run.add_argument('--prompt-version', choices=['v1', 'v2'], help='Explicit candidate; omission uses the product default')
     run.add_argument('--fake-responses',help='Explicit JSON array of fake responses; never loads model configuration')
     grade=commands.add_parser('score');grade.add_argument('--materials',required=True);grade.add_argument('--judgments',action='append',required=True)
     grade.add_argument('--judge-model',required=True);grade.add_argument('--out',required=True)
@@ -642,9 +652,9 @@ def main():
             if not isinstance(values,list):
                 parser.error('fake responses must be a JSON array')
             gateway=_Responses(values)
-            result=run_eval(args.corpus,args.out,configs={},gateway_factory=lambda configs,store:gateway,extra_input=values)
+            result=run_eval(args.corpus,args.out,configs={},gateway_factory=lambda configs,store:gateway,extra_input=values,prompt_version=args.prompt_version)
         else:
-            result=run_eval(args.corpus,args.out,configs=load_test_models())
+            result=run_eval(args.corpus,args.out,configs=load_test_models(),prompt_version=args.prompt_version)
         print('Materials: '+result['materials'])
         print(dumps(result['metrics']))
     else:
