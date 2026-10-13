@@ -1455,13 +1455,20 @@ class EntryProfileMemoryTask:
         except ModelError as error:
             result['calls'].append({**call, 'result': error.category, 'reason': error.reason or error.category,
                 'duration_ms': round((monotonic() - started) * 1000), 'usage': {}})
+            self._record_progress(result)
             raise
         result['outputs'][stage] = reply.content
         result['calls'].append(dict(**call, result='success', finish_reason=reply.finish_reason,
             duration_ms=round((monotonic() - started) * 1000), usage=reply.usage))
+        self._record_progress(result)
         if reply.finish_reason != 'stop':
             raise ValueError('incomplete_output')
         return json_object(reply.content)
+
+    def _record_progress(self, result):
+        record = getattr(self.repository, 'record_model_progress', None)
+        if record is not None:
+            record(result)
 
     def run(self, entry_id):
         if self.repository is None:
@@ -1728,6 +1735,15 @@ class SQLiteMemoryProfileRepository:
             # concurrent writers are allowed. RLock ownership distinguishes it.
             if self.store._lock._is_owned():
                 raise RuntimeError('model call in write transaction')
+
+    def record_model_progress(self, result):
+        if self.attempt_id is None:
+            return
+        # The admitted material already carries purge roots. Existing redaction
+        # triggers suppress late output after a concurrent clear.
+        with self.store.write() as conn:
+            conn.execute("""UPDATE entry_profile_attempts SET outputs_json=?,calls_json=?
+                WHERE id=? AND state='running'""",(dumps({'outputs':result['outputs']}),dumps(result['calls']),self.attempt_id))
 
     def snapshot(self, entry_id, limits):
         if self.prepared_snapshot is not None:

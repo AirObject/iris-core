@@ -267,3 +267,15 @@ def test_timezone_change_rechecks_cross_day_sources_in_same_write(store):
     assert context(store) is None
     with store.read() as conn:
         assert ep._memory_state(conn,'group')['version']==before['version']+1
+
+
+def test_attempt_persists_generation_before_the_check_call(store):
+    from iris.admin_data import entry_profile_snapshot
+    message(store)
+    observed=[]
+    def during_check():
+        latest=entry_profile_snapshot(store,'group')['latest_attempt']
+        observed.append(latest['stage'])
+        assert latest['stage']=='checking'
+    result=ep.EntryProfileEngine(store,RuleGateway(store,during_check),clock=CLOCK).regenerate('group',expected_version=0)
+    assert result['status']=='published' and observed==['checking']
