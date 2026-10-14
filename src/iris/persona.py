@@ -814,6 +814,7 @@ def _validate_clause_checks(output, payload):
             row.pop('unchecked_clause_indices', None)  # Computed here, never trusted from the model.
             row.pop('additional_clause_checks', None)
             row.pop('repeated_clause_checks', None)
+            row.pop('guard_rejected_prefix', None)
         if sentence['origin'] != 'memory' or sentence.get('initial_setting'):
             continue
         parts = row.get('clauses') if isinstance(row, dict) else None
@@ -839,6 +840,16 @@ def _validate_clause_checks(output, payload):
         # rejection-only protocol: a retained sentence still needs every focus.
         # Preserve what was not checked rather than inventing verdicts for it.
         complete = isinstance(parts, list) and len(parts) == len(focus)
+        # A structurally valid positive prefix can already fail an independent
+        # proof/date/scope guard. Validate it before classifying the omitted tail:
+        # a known adverse conjunct rejects the sentence without inventing a
+        # model verdict for the missing spans. This never permits retention.
+        guardable_prefix = (not complete and _valid_sentence_verdict(row, index, require_kind=True)
+            and row['supported'] and not row['fabricated'] and not row['violations']
+            and row['persona_kind'] not in EXCLUDED_KINDS and 'stop_after_failure' not in row
+            and isinstance(parts, list) and 0 < len(parts) < len(focus)
+            and part_indices == [part['index'] for part in focus[:len(parts)]]
+            and all(part.get('supported') is True for part in parts))
         # The explicit negative is sufficient for rejection. A missing redundant
         # stop marker is auditable; an explicit false/non-boolean marker is not.
         stopped = (not complete and isinstance(row, dict) and row.get('stop_after_failure', True) is True
@@ -850,7 +861,7 @@ def _validate_clause_checks(output, payload):
                      or (row['stop_after_failure'] and not complete and not stopped))):
             errors.append(f'sentence {index}: invalid rejection short circuit')
             continue
-        if not isinstance(parts, list) or (not complete and not stopped):
+        if not isinstance(parts, list) or (not complete and not stopped and not guardable_prefix):
             errors.append(f'sentence {index}: clause checks must cover every focus span, in order')
             continue
         scope_errors, issues = _validate_activity_scope(row, sentence, payload['evidence_by_ref'])
@@ -910,6 +921,13 @@ def _validate_clause_checks(output, payload):
                     issues.append(f'{label}: general claim needs at least two distinct dates of its own proof')
                 elif not BOUNDED_SCENE.search(sentence['text']):
                     issues.append(f'{label}: single-date claim needs an explicit bounded scene in this sentence')
+        if guardable_prefix:
+            if issues and len(errors) == row_errors_before:
+                row['supported'] = False
+                row['guard_rejected_prefix'] = True
+                row['unchecked_clause_indices'] = [part['index'] for part in focus[len(parts):]]
+            else:
+                errors.append(f'sentence {index}: clause checks must cover every focus span, in order')
         if stopped and len(parts) < len(focus) and len(errors) == errors_before:
             row['unchecked_clause_indices'] = [part['index'] for part in focus[len(parts):]]
         if expanded_response and len(errors) == row_errors_before:
@@ -1667,7 +1685,13 @@ class PersonaEngine:
                     if malformed:
                         incomplete.append(f'batch {batch_index+1}, sentence {local}: ' + '; '.join(malformed))
                     elif row.get('unchecked_clause_indices'):
-                        if 'stop_after_failure' not in returned[local-1]:
+                        if row.get('guard_rejected_prefix'):
+                            normalizations.append({'batch':batch_index+1,
+                                'sentence_index':sentence['_check_sentence'],
+                                'operation':'positive_prefix_rejected_by_evidence_guard',
+                                'checked_clause_indices':[part['index'] for part in row['clauses']],
+                                'unchecked_clause_indices':list(row['unchecked_clause_indices'])})
+                        elif 'stop_after_failure' not in returned[local-1]:
                             normalizations.append({'batch':batch_index+1,
                                 'sentence_index':sentence['_check_sentence'],
                                 'operation':'negative_prefix_without_stop_marker',

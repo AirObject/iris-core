@@ -117,7 +117,12 @@ def test_only_a_valid_unambiguously_positive_prefix_is_eligible_for_completion(s
         else: row['persona_kind'] = 'task'
     model = PrefixModel(first=mutate)
     result, _, _ = check(store, model)
-    assert len(model.calls) == 1 and result['incomplete_checks']
+    assert len(model.calls) == 1
+    if bad == 'no_proof':
+        assert not result['incomplete_checks'] and not result['sentences'][0]['supported']
+        assert result['sentences'][0]['guard_rejected_prefix']
+    else:
+        assert result['incomplete_checks']
 
 
 def test_full_sentence_completion_cannot_hide_an_adverse_extra_focus(store):
