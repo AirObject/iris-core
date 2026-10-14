@@ -39,8 +39,8 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v17', 'persona_check': 'persona_check_v28',
-                   'persona_sentence_repair': 'persona_repair_v16', 'persona_recheck': 'persona_check_v28'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v17', 'persona_check': 'persona_check_v29',
+                   'persona_sentence_repair': 'persona_repair_v16', 'persona_recheck': 'persona_check_v29'}
 CALL_TIMEOUTS = {'persona_generate': 360, 'persona_check': 360,
                  'persona_sentence_repair': 120, 'persona_recheck': 360}
 CALL_MAX_TOKENS = {'persona_generate':16000, 'persona_check':16000,
@@ -815,6 +815,7 @@ def _validate_clause_checks(output, payload):
             row.pop('additional_clause_checks', None)
             row.pop('repeated_clause_checks', None)
             row.pop('guard_rejected_prefix', None)
+            row.pop('unchecked_scope_check', None)
         if sentence['origin'] != 'memory' or sentence.get('initial_setting'):
             continue
         parts = row.get('clauses') if isinstance(row, dict) else None
@@ -864,7 +865,13 @@ def _validate_clause_checks(output, payload):
         if not isinstance(parts, list) or (not complete and not stopped and not guardable_prefix):
             errors.append(f'sentence {index}: clause checks must cover every focus span, in order')
             continue
-        scope_errors, issues = _validate_activity_scope(row, sentence, payload['evidence_by_ref'])
+        scope_absent = (sentence.get('scope_check_required') and 'scope_check' not in row
+            and not any(isinstance(part, dict) and 'scope_check' in part for part in parts))
+        # An omitted support obligation may stay unchecked only when another
+        # fully validated obligation already rejects this conjunction. Supplied
+        # scope objects, even malformed/partial ones, are never ignored.
+        scope_errors, issues = (([], []) if scope_absent else
+            _validate_activity_scope(row, sentence, payload['evidence_by_ref']))
         errors.extend(f'sentence {index}: {error}' for error in scope_errors)
         errors_before = len(errors)
         for expected, part in zip(focus, parts):
@@ -921,6 +928,13 @@ def _validate_clause_checks(output, payload):
                     issues.append(f'{label}: general claim needs at least two distinct dates of its own proof')
                 elif not BOUNDED_SCENE.search(sentence['text']):
                     issues.append(f'{label}: single-date claim needs an explicit bounded scene in this sentence')
+        if scope_absent:
+            if (issues and len(errors) == row_errors_before
+                    and _valid_sentence_verdict(row, index, require_kind=True)):
+                row['supported'] = False
+                row['unchecked_scope_check'] = True
+            else:
+                errors.append(f'sentence {index}: invalid activity scope verdict')
         if guardable_prefix:
             if issues and len(errors) == row_errors_before:
                 row['supported'] = False
@@ -1564,6 +1578,8 @@ class PersonaEngine:
             # never replace an adverse proof. Projection validates each again.
             proof_parts = sorted(parts + completion['clauses'], key=lambda part: part['index'])
             checked_row = checked['sentences'][0]
+            if checked_row.get('unchecked_scope_check'):
+                audit['unchecked_scope_check'] = True
             extra_checks = checked_row.get('additional_clause_checks')
             if extra_checks:
                 audit['additional_clause_indices'] = [part['index'] for part in extra_checks]
@@ -1682,6 +1698,11 @@ class PersonaEngine:
                             'operation':'repeated_focus_checks',
                             'requested_clause_indices':[part['index'] for part in row['clauses']],
                             'repeated_clause_indices':[part['index'] for part in row['repeated_clause_checks']]})
+                    if not malformed and row.get('unchecked_scope_check'):
+                        normalizations.append({'batch':batch_index+1,
+                            'sentence_index':sentence['_check_sentence'],
+                            'operation':'scope_omitted_after_evidence_rejection',
+                            'checked_clause_indices':[part['index'] for part in row['clauses']]})
                     if malformed:
                         incomplete.append(f'batch {batch_index+1}, sentence {local}: ' + '; '.join(malformed))
                     elif row.get('unchecked_clause_indices'):
@@ -1747,6 +1768,8 @@ class PersonaEngine:
                         'unchecked_clause_indices':previous.get('unchecked_clause_indices',[])
                             + part.get('unchecked_clause_indices',[]),
                         'clause_errors':previous['clause_errors']+part['clause_errors']}
+                if part.get('unchecked_scope_check'):
+                    rows[original]['unchecked_scope_check'] = True
             degrees.append(degree)
             reasons.append(batch['reason'])
         for row in rows.values():
