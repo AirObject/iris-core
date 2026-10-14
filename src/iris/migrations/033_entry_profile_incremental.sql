@@ -72,7 +72,7 @@ CREATE TRIGGER ep_admission_dirty_delete AFTER DELETE ON entry_profile_admission
  INSERT OR IGNORE INTO entry_profile_projection_dirty SELECT entry_id FROM entry_profile_memories WHERE memory_id=old.memory_id;
 END;
 -- Sources and work are indexed for erasure before any provider response can arrive.
-CREATE TRIGGER ep_incremental_work_insert AFTER INSERT ON entry_profile_incremental_work BEGIN
+CREATE TRIGGER purge_entry_profile_incremental_work_insert AFTER INSERT ON entry_profile_incremental_work BEGIN
  INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision)
  SELECT 'entry_profile_incremental_work',CAST(new.id AS TEXT),
  CASE j.key WHEN 'message_id' THEN 'message' ELSE 'memory' END,CAST(j.atom AS TEXT),0
@@ -84,7 +84,7 @@ CREATE TRIGGER ep_incremental_work_insert AFTER INSERT ON entry_profile_incremen
  SELECT 'entry_profile_incremental_work',CAST(new.id AS TEXT),'entry_profile_attempts',CAST(new.attempt_id AS TEXT),0
  WHERE new.attempt_id IS NOT NULL;
 END;
-CREATE TRIGGER ep_incremental_work_update AFTER UPDATE ON entry_profile_incremental_work BEGIN
+CREATE TRIGGER purge_entry_profile_incremental_work_update AFTER UPDATE ON entry_profile_incremental_work BEGIN
  INSERT OR IGNORE INTO purge_record_refs(table_name,row_id,ref_kind,ref_id,revision)
  SELECT 'entry_profile_incremental_work',CAST(new.id AS TEXT),
  CASE j.key WHEN 'message_id' THEN 'message' ELSE 'memory' END,CAST(j.atom AS TEXT),0
@@ -105,7 +105,7 @@ CREATE TRIGGER ep_incremental_work_update AFTER UPDATE ON entry_profile_incremen
  WHERE id=new.id AND EXISTS(SELECT 1 FROM purge_redactions p WHERE p.table_name='entry_profile_incremental_work' AND p.row_id=CAST(new.id AS TEXT))
  AND (new.state!='cancelled' OR new.payload_json!='{}' OR new.outputs_json!='{}' OR new.calls_json!='[]' OR new.result_json!='{}' OR new.parsed_json IS NOT NULL);
 END;
-CREATE TRIGGER ep_incremental_work_delete AFTER DELETE ON entry_profile_incremental_work BEGIN
+CREATE TRIGGER purge_entry_profile_incremental_work_delete AFTER DELETE ON entry_profile_incremental_work BEGIN
  DELETE FROM purge_record_refs WHERE table_name='entry_profile_incremental_work' AND row_id=CAST(old.id AS TEXT);
  DELETE FROM purge_redactions WHERE table_name='entry_profile_incremental_work' AND row_id=CAST(old.id AS TEXT);
 END;

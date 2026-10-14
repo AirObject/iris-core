@@ -521,6 +521,10 @@ def test_prepare_memory_profile_removes_invalid_evidence_instead_of_displaying_s
     with store.read() as conn:
         source=entry_profile_source(conn,mid)
     write_entry_profile_memory(store,'A',op='new',category='rule',content='禁止广告。',sources=[source])
+    assert client.post('/api/v1/entries/A/prepare',json={'judge':False}).json()['entry_profile'] is None
+    from iris.entry_profile import EntryProfileEngine
+    from test_entry_profile_incremental import Gateway
+    EntryProfileEngine(store,Gateway(store,observations=lambda p:{'observations':[]})).regenerate('A',expected_version=0)
     response=client.post('/api/v1/entries/A/prepare',json={'judge':False})
     assert response.json()['entry_profile']['memory_ids']
     with store.write() as conn:
