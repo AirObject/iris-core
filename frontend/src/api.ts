@@ -77,7 +77,13 @@ export const json = (method: string, body?: unknown): RequestInit => ({
 });
 export const errorText = (error: unknown) =>
   error instanceof ApiError
-    ? error.message
+    ? error.status === 410 &&
+      [
+        "entry_profile_legacy_write_retired",
+        "entry_profile_publish_mode_retired",
+      ].includes(error.code)
+      ? "旧画像的整版编辑、回滚和候选审批已退役。请在入口画像页逐条管理画像记忆；旧版本仅供查看。"
+      : error.message
     : "无法连接服务，请检查服务是否仍在运行";
 
 export function useData<T>(path: string | null, interval = 0) {
