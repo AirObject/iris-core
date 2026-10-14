@@ -79,7 +79,7 @@ def test_repair_cannot_rewrite_or_borrow_details_even_when_recheck_would_approve
     selected=checks['repair_selections'][0]['selected']
     assert selected['text']=='我在十月一日的直播中选择了浅灰底。'
     assert selected['text'] != replacement
-    assert [s['text'] for s in model.calls[-1][1]['candidate']]==[selected['text']]
+    assert [s['text'] for s in next(r for p,r,*_ in model.calls if p=='persona_recheck' and r['candidate'])['candidate']]==[selected['text']]
     assert checks['repaired_sentences'][0]['after']['basis']==[{'memory_id':5,'revision':1}]
     assert '解释了规则' in result['version']['content']
 
@@ -106,8 +106,8 @@ def test_repair_options_are_complete_own_memory_and_keep_only_its_basis(prepared
     assert len(changed['before']['basis']) == 2 and changed['before']['date_count'] == 2
     assert changed['after']['basis'] == [{'memory_id': 5, 'revision': 1}]
     assert changed['after']['dates'] == ['2026-10-01']
-    assert model.calls[-1][1]['candidate'][0]['evidence_refs'] == [refs[0]]
-    assert model.calls[-1][1]['candidate'][0]['date_count'] == 1
+    assert next(r for p,r,*_ in model.calls if p=='persona_recheck' and r['candidate'])['candidate'][0]['evidence_refs'] == [refs[0]]
+    assert next(r for p,r,*_ in model.calls if p=='persona_recheck' and r['candidate'])['candidate'][0]['date_count'] == 1
 
 
 @pytest.mark.parametrize('memory, replacement, retained', [
@@ -202,5 +202,5 @@ def test_repair_request_deduplicates_repeated_complete_replacement_text(prepared
     assert len(selections)==2 and selections[0]['selected']==selections[1]['selected']
     assert len(checks['repaired_sentences'])==1
     assert checks['deleted_sentences'][0]['stage']=='repair_duplicate'
-    requests=[r for p,r,*_ in model.calls if p=='persona_recheck']
+    requests=[r for p,r,*_ in model.calls if p=='persona_recheck' and r['candidate']]
     assert len(requests)==1 and len(requests[0]['candidate'])==1

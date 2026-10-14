@@ -94,7 +94,7 @@ def test_precheck_failure_can_use_eligible_whole_memory_repair_and_recheck(prepa
     assert original in result['version']['content'] and bad not in result['version']['content']
     assert checks['precheck_rejections'][0]['index']==2
     assert checks['repaired_sentences'][0]['index']==2
-    rechecks=[p for purpose,p in model.calls if purpose=='persona_recheck']
+    rechecks=[p for purpose,p in model.calls if purpose=='persona_recheck' and p['candidate']]
     assert len(rechecks)==1 and [s['text'] for s in rechecks[0]['candidate']]==[original]
     assert result['status']=='current'
 

@@ -29,7 +29,7 @@ from .memory_ops import setup_role, delete_memory, adjust_retention, lifecycle_s
 from .model_health import ModelHealth
 from .models import Gateway, ModelError, parse_json_object_with_status
 from .persona import (PersonaEngine, admin_edit, current_persona, pending_update, select_evidence,
-                      confirm_candidate, reject_candidate, DEGREES, PUBLISH_MODES, PROMPT_VERSIONS, CALL_TIMEOUTS, CALL_MAX_TOKENS, CHECK_BATCH_SIZE, CHECK_BATCH_CLAUSES, MAX_CHECK_STAGE_SECONDS, REPAIR_POLICY, check_transport, _trace, _stale, _settings, split_sentences)
+                      confirm_candidate, reject_candidate, DEGREES, PUBLISH_MODES, PROMPT_VERSIONS, DEGREE_PROMPT_VERSION, CALL_TIMEOUTS, CALL_MAX_TOKENS, CHECK_BATCH_SIZE, CHECK_BATCH_CLAUSES, MAX_CHECK_STAGE_SECONDS, REPAIR_POLICY, check_transport, _trace, _stale, _settings, split_sentences)
 
 FORMAT_VERSION = 1
 SCORING_VERSION = 'persona_scoring_v1'
@@ -759,7 +759,7 @@ def run_persona_eval(configs, root, *, corpus, out, judge_mode='model', gateway_
     metadata = {'source_sha256':source_hash, 'corpus_sha256':_json_sha256(cases),
                 'corpus_file_sha256':identity['corpus_file_sha256'], 'checkpoint_signature':signature,
                 'scoring_version':SCORING_VERSION,'scoring_sha256':identity['scoring_sha256'],
-                'models':identity['models'],'prompt_versions':sorted(set(PROMPT_VERSIONS.values())),
+                'models':identity['models'],'prompt_versions':sorted({*PROMPT_VERSIONS.values(),DEGREE_PROMPT_VERSION}),
                 'prompt_by_purpose':PROMPT_VERSIONS,
                 'timeouts_seconds':{**CALL_TIMEOUTS,'judge':240},
                 'output_token_limits':CALL_MAX_TOKENS,

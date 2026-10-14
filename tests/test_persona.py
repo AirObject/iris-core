@@ -136,7 +136,7 @@ def test_s02_s03_publication(store, clock, degree, status):
     result, gateway = generate(store, clock, degree=degree)
     assert result['version']['status'] == status
     assert current_persona(store)['id'] == (old if status == 'pending' else result['version']['id'])
-    assert [p for p, _ in gateway.calls] == ['persona_generate', 'persona_check']
+    assert [p for p, _ in gateway.calls] == ['persona_generate', 'persona_check', 'persona_check']
     assert result['version']['sentences'][-1]['basis'] == [{'memory_id': 1, 'revision': 1}]
     assert result['version']['checks']['deterministic']['warnings']  # under 300 is advisory
 
@@ -491,7 +491,7 @@ def test_model_retry_pause_probe_and_resume(store,clock):
         clock.value += timedelta(seconds=61)
         assert gateway.probe('chat')
         result = PersonaEngine(store,gateway,clock=clock).regenerate(expected_version=1)
-        assert result['status']=='current' and len(calls)==6
+        assert result['status']=='current' and len(calls)==7
     finally:
         gateway.close()
         client.close()
@@ -594,6 +594,6 @@ def test_generation_and_check_share_injected_snapshot_time(store, clock):
 
     result, gateway = generate(store, clock, callback=advance_during_call)
     assert result['status'] == 'current'
-    assert [payload['as_of'] for _, payload in gateway.calls] == [snapshot, snapshot]
+    assert [payload['as_of'] for _, payload in gateway.calls] == [snapshot, snapshot, snapshot]
     assert result['version']['material']['as_of'] == snapshot
     assert result['version']['created_at'] == clock.value.isoformat()

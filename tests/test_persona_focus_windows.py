@@ -49,14 +49,14 @@ class FocusModel:
 
 def run(store, model, material, sentences, outputs=None):
     return PersonaEngine(store,model)._check_all('persona_check',material,sentences,
-        full_content=''.join(s['text'] for s in sentences),outputs=outputs if outputs is not None else {})
+        full_content=''.join(s['text'] for s in sentences),outputs=outputs if outputs is not None else {}, assess_degree=False)
 
 
 def test_large_sentence_is_checked_in_small_windows_without_losing_context(store):
     material,sentence=material_and_sentence();before=copy.deepcopy(sentence);model=FocusModel()
     result=run(store,model,material,[sentence])
     assert len(model.calls)==2
-    assert [r['task'] for r,_ in model.calls]==['check','check_facts_and_rules']
+    assert [r['task'] for r,_ in model.calls]==['check_facts_and_rules','check_facts_and_rules']
     assert [[p['index'] for p in r['candidate'][0]['clauses']] for r,_ in model.calls]==[[1,2],[3,4]]
     assert all(r['candidate'][0]['text']==sentence['text'] for r,_ in model.calls)
     assert all(r['candidate'][0]['evidence_refs']==['M1'] for r,_ in model.calls)

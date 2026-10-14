@@ -31,7 +31,8 @@ def test_generation_and_check_use_original_without_competing_summary(store):
     model = FakeGateway(store, {'sentences': [{'text': ORIGINAL, 'basis': [memory['ref']]}]})
     result = PersonaEngine(store, model).regenerate(expected_version=previous['id'])
     assert result['status'] == 'current'
-    requests = dict(model.calls)
+    requests = {purpose: payload for purpose,payload in model.calls
+                if payload.get('task') != 'degree_only'}
     generated = next(m for m in requests['persona_generate']['evidence']['memories']
                      if m['memory_id'] == memory['memory_id'])
     checked = requests['persona_check']['evidence_by_ref'][memory['ref']]
@@ -67,7 +68,8 @@ def test_memory_without_utterances_retains_its_own_text_as_fallback(store):
     model = FakeGateway(store, {'sentences': [{'text': SUMMARY, 'basis': [memory['ref']]}]})
     result = PersonaEngine(store, model).regenerate(expected_version=previous['id'])
     assert result['status'] == 'current'
-    requests = dict(model.calls)
+    requests = {purpose: payload for purpose,payload in model.calls
+                if payload.get('task') != 'degree_only'}
     generated = next(m for m in requests['persona_generate']['evidence']['memories']
                      if m['memory_id'] == memory['memory_id'])
     checked = requests['persona_check']['evidence_by_ref'][memory['ref']]

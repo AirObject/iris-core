@@ -157,15 +157,15 @@ def batch_sentences():
     return [{'text': f'手写第{i}句。', 'origin': 'admin', 'basis': []} for i in range(9)]
 
 
-def test_batches_keep_local_indices_deadlines_first_degree_and_all_raw_outputs(store):
+def test_batches_keep_local_indices_deadlines_final_degree_and_all_raw_outputs(store):
     gateway, outputs = BatchGateway(), {}
     result = PersonaEngine(store, gateway)._check_all('persona_check', batch_material(), batch_sentences(), full_content='整稿', outputs=outputs)
-    assert [len(c[1]['candidate']) for c in gateway.calls] == [4, 4, 1]
-    assert [c[2] for c in gateway.calls] == [360, 380, 400]
+    assert [len(c[1]['candidate']) for c in gateway.calls] == [4, 4, 1, 0]
+    assert [c[2] for c in gateway.calls] == [360, 380, 400, 420]
     assert all([s['index'] for s in c[1]['candidate']] == list(range(1, len(c[1]['candidate']) + 1)) for c in gateway.calls)
     assert [s['index'] for s in result['sentences']] == list(range(1, 10))
     assert result['change_degree'] == 'small'
-    assert len(outputs['persona_check_batches']) == 3
+    assert len(outputs['persona_check_batches']) == 4
     assert all('persona_check' in batch for batch in outputs['persona_check_batches'])
 
 
@@ -227,8 +227,9 @@ def test_model_cannot_inject_computed_diagnostics_or_crash_batch_validation(stor
         def chat(self, *args, **kwargs):
             reply = super().chat(*args, **kwargs)
             value = json.loads(reply.content)
-            value['validation_errors'] = 4
-            value['sentences'][0]['clause_errors'] = {'bogus': True}
+            if value['sentences']:
+                value['validation_errors'] = 4
+                value['sentences'][0]['clause_errors'] = {'bogus': True}
             reply.content = dumps(value)
             return reply
     result = PersonaEngine(store, Noisy())._check_all('persona_check', batch_material(), batch_sentences(), full_content='整稿', outputs={})
@@ -248,8 +249,8 @@ def test_multiple_batches_use_full_request_budget_within_fixed_stage(store):
     gateway = BatchGateway(duration=100)
     result = PersonaEngine(store, gateway)._check_all('persona_check', batch_material(), batch_sentences(), full_content='整稿', outputs={})
     assert len(result['sentences']) == 9
-    assert [c[2] for c in gateway.calls] == [360, 460, 560]
-    assert gateway.now == 300
+    assert [c[2] for c in gateway.calls] == [360, 460, 560, 660]
+    assert gateway.now == 400
 
 
 @pytest.mark.parametrize('summary', ['ReadTimeout', 'WriteTimeout', 'ConnectTimeout', 'PoolTimeout'])

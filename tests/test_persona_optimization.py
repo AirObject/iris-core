@@ -85,7 +85,7 @@ def test_template_is_byte_exact_and_never_sent_to_generator_as_editable_evidence
 
 def test_problem_repaired_once_with_only_its_own_evidence_and_rechecked(prepared):
     result, model = run(prepared)
-    assert [c[0] for c in model.calls] == ['persona_generate','persona_check','persona_recheck']
+    assert [c[0] for c in model.calls] == ['persona_generate','persona_check','persona_recheck','persona_recheck']
     selection = result['version']['checks']['repair_selections'][0]
     assert len(selection['eligible_options']) == 1
     request = next(r for purpose,r,*_ in model.calls if purpose=='persona_recheck')
@@ -98,7 +98,7 @@ def test_problem_repaired_once_with_only_its_own_evidence_and_rechecked(prepared
     assert len(checks['repaired_sentences']) == 1 and not checks['deleted_sentences']
     assert checks['initial_model_errors'] and not checks['model_errors']
     assert len(checks['model']['sentences']) == len(result['version']['sentences'])
-    assert [c[2] for c in model.calls] == [360,360,360]
+    assert [c[2] for c in model.calls] == [360,360,360,360]
 
 
 def test_failed_recheck_is_removed_with_audit_and_good_sentences_survive(prepared):
@@ -393,7 +393,7 @@ def test_neutral_reference_repair_and_recheck_override_model_approval(prepared,r
     result=PersonaEngine(prepared,model).regenerate(expected_version=1)
     version=result['version']
     assert version['checks']['passed']
-    assert [c[0] for c in model.calls]==['persona_generate','persona_check','persona_recheck']
+    assert [c[0] for c in model.calls]==['persona_generate','persona_check','persona_recheck'] + ([] if removed else ['persona_recheck'])
     assert bool(version['checks']['deleted_sentences'])==removed
     assert bool(version['checks']['repaired_sentences']) == (not removed)
     assert 'neutral person reference' in ' '.join(version['checks']['initial_model_errors'])

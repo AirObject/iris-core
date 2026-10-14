@@ -39,8 +39,9 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v19', 'persona_check': 'persona_check_v31',
-                   'persona_recheck': 'persona_check_v31'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v19', 'persona_check': 'persona_check_v32',
+                   'persona_recheck': 'persona_check_v32'}
+DEGREE_PROMPT_VERSION = 'persona_degree_v1'
 CALL_TIMEOUTS = {'persona_generate': 360, 'persona_check': 360,
                  'persona_recheck': 360}
 CALL_MAX_TOKENS = {'persona_generate':16000, 'persona_check':16000,
@@ -283,7 +284,7 @@ def _generation_material(conn, settings, previous, stamp):
         else:
             omitted.append({'sentence':sentence, 'reason':'template_evidence_over_budget'})
     return {'evidence':evidence, 'settings':settings, 'as_of':stamp,
-        'prompt_versions':PROMPT_VERSIONS, 'timeouts_seconds':CALL_TIMEOUTS, 'output_token_limits':CALL_MAX_TOKENS, 'check_batch_size':CHECK_BATCH_SIZE,
+        'prompt_versions':PROMPT_VERSIONS, 'degree_prompt_version':DEGREE_PROMPT_VERSION, 'timeouts_seconds':CALL_TIMEOUTS, 'output_token_limits':CALL_MAX_TOKENS, 'check_batch_size':CHECK_BATCH_SIZE,
         'max_check_stage_seconds':MAX_CHECK_STAGE_SECONDS, 'check_batch_clauses':CHECK_BATCH_CLAUSES,
         'repair_policy':REPAIR_POLICY,
         'role_name':_setting(conn, 'role_name', 'Iris'), 'locked_sentences':retained,
@@ -1576,7 +1577,9 @@ class PersonaEngine:
                 # budget/recording subclass. Never close its shared pools.
                 gateway = copy.copy(gateway)
                 gateway.gateway = streamed
-        prompt = files('iris').joinpath(f'prompts/{PROMPT_VERSIONS[purpose]}.md').read_text(encoding='utf-8')
+        prompt_version = (DEGREE_PROMPT_VERSION if purpose in ('persona_check','persona_recheck')
+                          and payload.get('task')=='degree_only' else PROMPT_VERSIONS[purpose])
+        prompt = files('iris').joinpath(f'prompts/{prompt_version}.md').read_text(encoding='utf-8')
         messages = [{'role':'system','content':prompt}, {'role':'user','content':dumps(payload)}]
         try:
             for repair in (False, True):
@@ -1707,14 +1710,15 @@ class PersonaEngine:
             audit['completed'] = True
         return merged
 
-    def _check_all(self, purpose, material, sentences, *, full_content, outputs):
+    def _check_all(self, purpose, material, sentences, *, full_content, outputs, assess_degree=True):
         """Check small focus windows, then AND facts and union failures per sentence."""
         import time
-        subsets = _check_batches(sentences)
-        stage_seconds = min(MAX_CHECK_STAGE_SECONDS, CALL_TIMEOUTS[purpose] * len(subsets))
+        subsets = _check_batches(sentences) if sentences else []
+        # Preserve the old stage allowance: comparison shares it, never adds a window budget.
+        stage_seconds = min(MAX_CHECK_STAGE_SECONDS, CALL_TIMEOUTS[purpose] * max(1,len(subsets)))
         deadline = getattr(self.gateway, 'monotonic', time.monotonic)() + stage_seconds
         raw_batches = outputs.setdefault(purpose + '_batches', [])
-        rows, batches, degrees, reasons, incomplete, short_circuits = {}, [], [], [], [], []
+        rows, batches, incomplete, short_circuits = {}, [], [], []
         rejected, skipped, normalizations = set(), [], []
         outputs[purpose + '_skipped_windows'] = skipped
         window_map = outputs.setdefault(purpose + '_windows', [])
@@ -1743,11 +1747,11 @@ class PersonaEngine:
                                 'clause_indices':[p['index'] for p in s.get('_check_focus',[])]}
                                for s in subset])
             payload = _check_payload(material, subset, full_content=full_content)
-            if batch_index:
-                payload['task'] = 'check_facts_and_rules'
-                payload.pop('previous')
-                payload.pop('candidate_text')
-            raw = {}
+            payload['task'] = 'check_facts_and_rules'
+            payload.pop('previous')
+            payload.pop('candidate_text')
+            raw = {purpose+'_task':'check_facts_and_rules',
+                   purpose+'_prompt_version':PROMPT_VERSIONS[purpose]}
             raw_batches.append(raw)
             window_deadline = min(deadline, getattr(self.gateway, 'monotonic', time.monotonic)()
                                   + CALL_TIMEOUTS[purpose])
@@ -1764,13 +1768,6 @@ class PersonaEngine:
                         'reason':'incomplete check: output_limit',
                         'validation_errors':[f'batch {batch_index+1}: output_limit; no complete judgment'],
                         'batches':batches, 'window_map':window_map}
-            if not subset and set(batch) == {'change_degree','reason'}:
-                # No factual rows were requested. The dedicated degree-only
-                # contract need not ask the model to echo an empty list.
-                batch = {**batch, 'sentences':[]}
-                operation = 'degree_only_empty_sentences'
-                raw.setdefault(purpose + '_normalizations',[]).append(operation)
-                normalizations.append({'batch':batch_index+1, 'operation':operation})
             if batch_index == 0:
                 outputs.update(raw)
             checked_batch = {**batch, 'validation_errors': []}
@@ -1877,14 +1874,55 @@ class PersonaEngine:
                         'clause_errors':previous['clause_errors']+part['clause_errors']}
                 if part.get('unchecked_scope_check'):
                     rows[original]['unchecked_scope_check'] = True
-            degrees.append(degree)
-            reasons.append(batch['reason'])
         for row in rows.values():
             extra_checked = {part['index'] for part in row.get('additional_clause_checks', [])}
             if extra_checked and row.get('unchecked_clause_indices'):
                 row['unchecked_clause_indices'] = [i for i in row['unchecked_clause_indices'] if i not in extra_checked]
-        return {'sentences':[rows[i] for i in sorted(rows)], 'change_degree':degrees[0],
-                'reason':reasons[0], 'batches':batches, 'window_map':window_map,
+        degree, reason, degree_errors = 'large', 'degree deferred to recovery', []
+        assessment = {'status':'deferred_to_recovery'}
+        if rejected or incomplete:
+            assessment = {'status':'deferred_after_rejection'}
+            reason = 'degree not assessed after factual rejection'
+        elif assess_degree:
+            # The degree model sees only the completed draft and previous current
+            # version. It cannot rejudge facts or replace any adverse proof.
+            payload = _check_payload(material, [], full_content=full_content)
+            raw = {purpose+'_task':'degree_only', purpose+'_prompt_version':DEGREE_PROMPT_VERSION}
+            raw_batches.append(raw)
+            window_map.append([])
+            try:
+                comparison = self._call(purpose, payload, raw, deadline=deadline)
+            except ModelError as error:
+                if error.reason != 'output_limit':
+                    raise
+                comparison = None
+                degree_errors = ['degree: output_limit; no complete judgment']
+                assessment = {'status':'invalid', 'error':'output_limit'}
+            finally:
+                if not batches:
+                    outputs.update(raw)
+            degree_only = not batches
+            if comparison is not None:
+                batches.append(comparison)  # Preserve the exact degree-only object.
+                normalized = comparison
+                if set(comparison)=={'change_degree','reason'}:
+                    normalized = {**comparison, 'sentences':[]}
+                    operation = 'degree_only_empty_sentences'
+                    raw.setdefault(purpose+'_normalizations',[]).append(operation)
+                    normalizations.append({'batch':len(batches), 'operation':operation})
+                if set(comparison) not in ({'change_degree','reason'}, {'sentences','change_degree','reason'}):
+                    degree_errors.append('degree: invalid fields')
+                degree, errors, _ = _check_verdicts(normalized, [], material=material)
+                degree_errors.extend('degree: '+error for error in errors)
+                assessment = {'status':'invalid' if degree_errors else 'complete', 'output':comparison}
+                reason = comparison.get('reason') or 'invalid degree judgment'
+            if degree_only:
+                outputs.update(raw)
+            if degree_errors:
+                degree, reason = 'large', 'incomplete degree judgment'
+        return {'sentences':[rows[i] for i in sorted(rows)], 'change_degree':degree,
+                'reason':reason, 'batches':batches, 'window_map':window_map,
+                'degree_assessment':assessment, 'validation_errors':degree_errors,
                 'incomplete_checks':incomplete, 'short_circuits':short_circuits,
                 'skipped_windows':skipped, 'normalizations':normalizations}
 
@@ -1982,8 +2020,8 @@ class PersonaEngine:
         retained = [s for i,s in enumerate(retained) if i not in discarded]
         verdicts = [{**v,'index':i+1} for i,v in enumerate(v for j,v in enumerate(verdicts) if j not in discarded)]
         if discarded:
-            # No third model pass: its degree described a draft that still contained
-            # rejected repairs. Conservatively require confirmation of this final diff.
+            # Rejected repairs defer the comparison. Conservatively require
+            # confirmation of the final diff without another model pass.
             degree = 'large'
             checks['degree_override'] = 'sentences_removed_after_recheck'
         if ''.join(s['text'] for s in retained) == previous['content']:
@@ -2065,7 +2103,8 @@ class PersonaEngine:
                     # Its comparison draft must also exclude prechecked failures.
                     # Recovery reassesses the final assembled text after any edit.
                     model = self._check_all('persona_check', material, eligible,
-                        full_content=''.join(sentence['text'] for sentence in eligible), outputs=outputs)
+                        full_content=''.join(sentence['text'] for sentence in eligible), outputs=outputs,
+                        assess_degree=not bool(problems))
                     degree, structural, semantic_problems = _check_verdicts(model, eligible, material=material)
                 problems.update({positions[i-1]:reasons for i,reasons in semantic_problems.items()})
                 initial_errors = structural + [f'sentence {i}: {reason}'

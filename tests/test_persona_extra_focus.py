@@ -32,7 +32,7 @@ def check(store, model, *, count=4, purpose='persona_check'):
     material, sentence = material_and_sentence(count)
     outputs = {}
     result = PersonaEngine(store, model)._check_all(purpose, material, [sentence],
-        full_content=sentence['text'], outputs=outputs)
+        full_content=sentence['text'], outputs=outputs, assess_degree=False)
     return result, material, sentence, outputs
 
 

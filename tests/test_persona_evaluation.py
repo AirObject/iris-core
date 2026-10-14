@@ -87,7 +87,7 @@ def make_round(materials, target, *, disagree=False):
 
 def test_timeline_external_export_and_cache(material, tmp_path):
     directory, report, corpus, scoring = material
-    assert FakeGateway.calls == 4
+    assert FakeGateway.calls == 6
     rows = report['rows'][0]['observations']
     assert [r['candidate']['status'] for r in rows] == ['current','current','current','pending']
     assert rows[1]['candidate']['sentences'][-1]['date_count'] == 1
@@ -96,7 +96,7 @@ def test_timeline_external_export_and_cache(material, tmp_path):
     assert report['metrics']['admin_publications'] == 1
     _, repeat = run_persona_eval({},tmp_path,corpus=corpus,out=tmp_path/'out',judge_mode='external',
         gateway_factory=FakeGateway,runner_identity='fake-format-v1',scoring_path=scoring)
-    assert FakeGateway.calls == 4 and repeat['resumed_cases'] == 1
+    assert FakeGateway.calls == 6 and repeat['resumed_cases'] == 1
     assert directory.joinpath('run.json').is_file()
 
 
@@ -482,7 +482,7 @@ def test_sentence_recovery_metrics_and_materials_remain_scoreable(tmp_path,again
     assert metrics['candidate_deletion_ratio']==int(again)
     assert metrics['proposed_sentences']==3
     assert metrics['deleted_sentence_ratio']==int(again)/3
-    assert report['prompt_versions']==['persona_check_v31','persona_generate_v19']
+    assert report['prompt_versions']==['persona_check_v32','persona_degree_v1','persona_generate_v19']
     assert report['repair_policy']=='first_eligible_bound_memory_v2'
     assert 'persona_sentence_repair' not in report['timeouts_seconds']
     assert report['timeouts_seconds']['persona_check']==360

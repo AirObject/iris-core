@@ -49,7 +49,7 @@ def test_unique_bound_option_is_selected_without_model_vote(prepared):
     result=PersonaEngine(prepared,model).regenerate(expected_version=1)
     checks=result['version']['checks']
     assert result['status']=='current' and text in result['version']['content']
-    assert [p for p,_ in model.calls]==['persona_generate','persona_check','persona_recheck']
+    assert [p for p,_ in model.calls]==['persona_generate','persona_check','persona_recheck','persona_recheck']
     assert checks['repair_policy']=='first_eligible_bound_memory_v2'
     selection=checks['repair_selections'][0]
     assert selection['index']==2 and selection['selected']==selection['eligible_options'][0]

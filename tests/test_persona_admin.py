@@ -97,7 +97,7 @@ def test_s02_s03_background_publication(client, degree, status):
     v = client.get(f"/admin/api/persona/versions/{attempt['version_id']}").json()
     assert v['change_degree'] == degree and v['checks']['passed']
     assert len(v['checks']['model']['sentences']) == len(v['sentences'])
-    assert [p for p, _ in gateway(client).calls] == ['persona_generate', 'persona_check']
+    assert [p for p, _ in gateway(client).calls] == ['persona_generate', 'persona_check', 'persona_check']
 
 
 def test_s04_rejection_reason_and_previous_preserved(client):

@@ -26,4 +26,5 @@ def test_interruption_keeps_partial_check_replies_and_never_publishes(store):
     outputs = json.loads(attempt['outputs_json'])
     assert len(outputs['persona_check_batches']) == 2
     assert json.loads(outputs['persona_check_batches'][0]['persona_check'])['sentences']
-    assert outputs['persona_check_batches'][1] == {}  # No invented reply to the interrupted call.
+    assert set(outputs['persona_check_batches'][1]) == {'persona_check_task', 'persona_check_prompt_version'}
+    assert 'persona_check' not in outputs['persona_check_batches'][1]  # No invented reply.

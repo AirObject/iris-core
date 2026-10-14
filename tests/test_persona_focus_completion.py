@@ -37,7 +37,7 @@ def check(store, model, *, purpose='persona_check', protected=False, outputs=Non
     material, sentence = material_and_sentence(4)
     sentences = batch_sentences()[:1] + [sentence] if protected else [sentence]
     result = PersonaEngine(store, model)._check_all(purpose, material, sentences,
-        full_content=''.join(s['text'] for s in sentences), outputs=outputs if outputs is not None else {})
+        full_content=''.join(s['text'] for s in sentences), outputs=outputs if outputs is not None else {}, assess_degree=False)
     return result, material, sentences
 
 
@@ -51,7 +51,8 @@ def test_positive_prefix_requires_a_real_check_of_only_the_missing_focus(store, 
     assert model.calls[1][0]['task'] == 'check_facts_and_rules'
     assert all(r['candidate'][0]['text'] == sentences[0]['text'] for r, _ in model.calls)
     assert all(r['candidate'][0]['evidence_refs'] == ['M1'] for r, _ in model.calls)
-    assert result['change_degree'] == 'medium'  # A completion does not rejudge the comparison.
+    assert result['change_degree'] == 'large'
+    assert result['degree_assessment']['status'] == 'deferred_to_recovery'  # Facts cannot supply a comparison.
     assert not result['incomplete_checks'] and not _check_verdicts(result, sentences, material=material)[2]
     assert [p['index'] for p in result['sentences'][0]['clauses']] == [1, 2, 3, 4]
     assert len(result['batches'][0]['sentences'][0]['clauses']) == 1  # Original remains incomplete.

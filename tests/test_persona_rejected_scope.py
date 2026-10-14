@@ -48,7 +48,7 @@ def check_scope(store, model, purpose='persona_check', *, second_sentence=False)
     sentences = [sentence, sentence] if second_sentence else [sentence]
     outputs = {}
     result = PersonaEngine(store, model)._check_all(purpose, material, sentences,
-        full_content=''.join(s['text'] for s in sentences), outputs=outputs)
+        full_content=''.join(s['text'] for s in sentences), outputs=outputs, assess_degree=False)
     return result, material, sentences, outputs
 
 
