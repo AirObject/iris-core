@@ -12,11 +12,13 @@ import re
 import unicodedata
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
-from threading import Lock
+from threading import Event, Lock
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
 from importlib.resources import files
 from zoneinfo import ZoneInfo
+
+import httpx
 
 from .db import dumps
 from .memory_ops import Visibility
@@ -1219,6 +1221,185 @@ class PersonaJobs:
         self._executor.shutdown(wait=True)
 
 
+# The tested GLM deployment supports SSE with a final usage packet. Other chat
+# models retain their existing transport; no shared Gateway/client is mutated.
+CHECK_STREAM_MODELS = frozenset({'glm-5.3-flash'})
+
+
+def check_transport(config):
+    return 'sse' if config and config.model.casefold() in CHECK_STREAM_MODELS else 'json'
+
+
+class _PersonaCheckStreamClient:
+    """Adapt one persona call's SSE to the Gateway's complete-response boundary.
+
+    The Gateway continues to own retries, health, usage and total deadlines.
+    Only timings/counts leave this adapter; reasoning is transient response data.
+    A partial stream never becomes a successful chat response.
+    """
+    def __init__(self, client, monotonic, deadline):
+        self.client, self.monotonic, self.deadline = client, monotonic, deadline
+        self.purpose = None
+        self._lock, self._cancelled, self._finished = Lock(), Event(), Event()
+        self._finished.set()
+        self._response, self._attempts = None, []
+
+    def snapshot(self):
+        with self._lock:
+            return copy.deepcopy(self._attempts)
+
+    def cancel(self):
+        self._cancelled.set()
+        with self._lock:
+            response = self._response
+        if response is not None:
+            try:
+                response.close()
+            except httpx.HTTPError:
+                pass
+        # Usually already finished. If Gateway's future deadline won the race,
+        # close the in-flight body and give its worker time to leave the stream.
+        self._finished.wait(timeout=1)
+
+    def post(self, url, *, headers, json, timeout):
+        import json as json_module
+        started = self.monotonic()
+        audit = {'purpose': self.purpose, 'mode': 'sse', 'status_code': None,
+            'complete': False, 'received_done': False, 'chunks': 0,
+            'first_headers_seconds': None, 'first_data_seconds': None,
+            'first_reasoning_seconds': None, 'first_content_seconds': None,
+            'last_data_seconds': None, 'max_data_gap_seconds': 0,
+            'reasoning_chars': 0, 'content_chars': 0, 'events': []}
+        with self._lock:
+            self._attempts.append(audit)
+            self._finished.clear()
+
+        def elapsed():
+            return round(self.monotonic() - started, 3)
+
+        def mark(**values):
+            with self._lock:
+                audit.update(values)
+
+        def guard():
+            if self._cancelled.is_set() or self.monotonic() >= self.deadline:
+                raise httpx.ReadTimeout('persona check total deadline')
+
+        def trace(name, info):
+            # Never inspect info: it includes URLs, headers and request objects.
+            if (name.startswith(('connection.', 'http11.', 'http2.'))
+                    and name.endswith(('.started', '.complete', '.failed'))):
+                with self._lock:
+                    if len(audit['events']) < 64:
+                        audit['events'].append({'event': name, 'seconds': elapsed()})
+
+        content, reasoning, refusal = [], {}, []
+        finish, usage, flags = None, None, {}
+        last_data = 0
+        try:
+            guard()
+            body = {**json, 'stream': True, 'stream_options': {'include_usage': True}}
+            with self.client.stream('POST', url, headers=headers, json=body,
+                                    timeout=timeout, extensions={'trace': trace}) as response:
+                with self._lock:
+                    self._response = response
+                mark(status_code=response.status_code, first_headers_seconds=elapsed())
+                guard()
+                if response.status_code >= 400:
+                    response.read()
+                    guard()
+                    # Keep the real status and Retry-After for Gateway; provider
+                    # prose remains transient and is scrubbed by its recorder.
+                    return response
+                data_lines = []
+                for line in response.iter_lines():
+                    guard()
+                    if line:
+                        if line.startswith('data:'):
+                            data_lines.append(line[5:].lstrip(' '))
+                        continue
+                    if not data_lines:
+                        continue
+                    raw, data_lines = '\n'.join(data_lines), []
+                    instant = elapsed()
+                    mark(first_data_seconds=audit['first_data_seconds'] if audit['first_data_seconds'] is not None else instant,
+                         last_data_seconds=instant,
+                         max_data_gap_seconds=max(audit['max_data_gap_seconds'], round(instant - last_data, 3)))
+                    last_data = instant
+                    if raw == '[DONE]':
+                        mark(received_done=True)
+                        break
+                    packet = json_module.loads(raw)
+                    if not isinstance(packet, dict) or packet.get('error'):
+                        raise ValueError('invalid persona stream packet')
+                    mark(chunks=audit['chunks'] + 1)
+                    if audit['chunks'] > 100000:
+                        raise ValueError('persona stream exceeds packet limit')
+                    if packet.get('usage') is not None:
+                        if not isinstance(packet['usage'], dict):
+                            raise ValueError('invalid persona stream usage')
+                        usage = packet['usage']
+                    for key in ('input_sensitive', 'output_sensitive', 'base_resp'):
+                        if key in packet:
+                            flags[key] = packet[key]
+                    choices = packet.get('choices')
+                    if not isinstance(choices, list) or len(choices) > 1:
+                        raise ValueError('invalid persona stream choices')
+                    for choice in choices:
+                        if (not isinstance(choice, dict) or type(choice.get('index')) is not int
+                                or choice['index'] != 0 or not isinstance(choice.get('delta'), dict)):
+                            raise ValueError('invalid persona stream choice')
+                        delta = choice['delta']
+                        for key in ('content', 'reasoning_content', 'reasoning', 'refusal'):
+                            value = delta.get(key)
+                            if value is None:
+                                continue
+                            if not isinstance(value, str) or (finish is not None and value):
+                                raise ValueError('invalid persona stream delta')
+                            if key == 'content':
+                                content.append(value)
+                                mark(content_chars=audit['content_chars'] + len(value))
+                                if value and audit['first_content_seconds'] is None:
+                                    mark(first_content_seconds=instant)
+                            elif key == 'refusal':
+                                refusal.append(value)
+                            else:
+                                reasoning.setdefault(key, []).append(value)
+                                mark(reasoning_chars=audit['reasoning_chars'] + len(value))
+                                if value and audit['first_reasoning_seconds'] is None:
+                                    mark(first_reasoning_seconds=instant)
+                        ended = choice.get('finish_reason')
+                        if ended is not None:
+                            if ended not in ('stop', 'length', 'content_filter') or finish not in (None, ended):
+                                raise ValueError('invalid persona stream finish')
+                            finish = ended
+                    if audit['content_chars'] + audit['reasoning_chars'] > 1000000:
+                        raise ValueError('persona stream exceeds content limit')
+                guard()
+                if not audit['received_done'] or finish is None:
+                    raise ValueError('incomplete persona stream')
+                message = {'role': 'assistant', 'content': ''.join(content),
+                           **{key: ''.join(parts) for key, parts in reasoning.items()}}
+                if refusal:
+                    message['refusal'] = ''.join(refusal)
+                data = {**flags, 'choices': [{'index': 0, 'message': message, 'finish_reason': finish}]}
+                if usage is not None:
+                    data['usage'] = usage
+                mark(complete=True, finish_reason=finish)
+                return httpx.Response(response.status_code, json=data)
+        except (httpx.HTTPError, ValueError, TypeError, KeyError) as error:
+            mark(error_type=type(error).__name__)
+            raise
+        finally:
+            with self._lock:
+                audit['elapsed_seconds'] = elapsed()
+                audit['max_data_gap_seconds'] = max(
+                    audit['max_data_gap_seconds'], round(elapsed() - last_data, 3))
+                audit['cancelled'] = self._cancelled.is_set()
+                self._response = None
+                self._finished.set()
+
+
 class PersonaEngine:
     def __init__(self, store, gateway, *, clock=utc_now):
         self.store, self.gateway, self.clock = store, gateway, clock
@@ -1231,18 +1412,31 @@ class PersonaEngine:
 
     def _call(self, purpose, payload, outputs, *, deadline=None):
         """Per-purpose total budget includes HTTP retries and at most one JSON repair."""
-        gateway, owned = self.gateway, False
+        gateway, owned, stream = self.gateway, False, None
         if gateway is None:
             raise ModelError('paused', 'model unconfigured', paused=True, reason='unconfigured')
+        import time
+        monotonic = getattr(gateway, 'monotonic', time.monotonic)
+        deadline = min(deadline, monotonic() + CALL_TIMEOUTS[purpose]) if deadline is not None else monotonic() + CALL_TIMEOUTS[purpose]
         if isinstance(gateway, Gateway) and gateway.health is None:
             from .model_health import ModelHealth
             health = ModelHealth(self.store, gateway._raw_configs, clock=self.clock)
             gateway = Gateway(gateway._raw_configs, self.store, client=gateway.client, health=health,
-                              clock=self.clock, sleeper=gateway.sleeper, monotonic=gateway.monotonic, jitter=gateway.jitter)
+                              clock=self.clock, sleeper=gateway.sleeper, monotonic=monotonic, jitter=gateway.jitter)
             owned = True
-        import time
-        monotonic = getattr(gateway, 'monotonic', time.monotonic)
-        deadline = min(deadline, monotonic() + CALL_TIMEOUTS[purpose]) if deadline is not None else monotonic() + CALL_TIMEOUTS[purpose]
+        inner = gateway if isinstance(gateway, Gateway) else getattr(gateway, 'gateway', None)
+        if (isinstance(inner, Gateway) and purpose in ('persona_check', 'persona_recheck')
+                and check_transport(inner.configs.get('chat')) == 'sse'):
+            stream = _PersonaCheckStreamClient(inner.client, monotonic, deadline)
+            streamed = copy.copy(inner)
+            streamed.client, streamed._own_client = stream, False
+            if inner is gateway:
+                gateway = streamed
+            else:
+                # The maintenance facade retains its stop hook and per-HTTP
+                # budget/recording subclass. Never close its shared pools.
+                gateway = copy.copy(gateway)
+                gateway.gateway = streamed
         prompt = files('iris').joinpath(f'prompts/{PROMPT_VERSIONS[purpose]}.md').read_text(encoding='utf-8')
         messages = [{'role':'system','content':prompt}, {'role':'user','content':dumps(payload)}]
         try:
@@ -1255,6 +1449,8 @@ class PersonaEngine:
                     # budget. Gateway still records the actual persona purpose.
                     health.check('chat', 'learning')
                 label = purpose + ('_repair' if repair else '')
+                if stream is not None:
+                    stream.purpose = label
                 reply = gateway.chat(messages, label, max_tokens=CALL_MAX_TOKENS[purpose], _deadline=deadline)
                 outputs[label] = reply.content
                 outputs[label + '_finish_reason'] = reply.finish_reason
@@ -1283,6 +1479,10 @@ class PersonaEngine:
                 error.reason = 'timeout'
             raise
         finally:
+            if stream is not None:
+                stream.cancel()
+                for audit in stream.snapshot():
+                    outputs.setdefault(audit['purpose'] + '_transport', []).append(audit)
             if owned:
                 gateway.close()
 
