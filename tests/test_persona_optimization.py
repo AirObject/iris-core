@@ -85,25 +85,24 @@ def test_template_is_byte_exact_and_never_sent_to_generator_as_editable_evidence
 
 def test_problem_repaired_once_with_only_its_own_evidence_and_rechecked(prepared):
     result, model = run(prepared)
-    assert [c[0] for c in model.calls] == ['persona_generate','persona_check','persona_sentence_repair','persona_recheck']
-    request = next(r for purpose,r,*_ in model.calls if purpose=='persona_sentence_repair')
-    assert len(request['problems']) == 1
-    assert 'previous' not in request and 'candidate' not in request and 'locked_sentences' not in request
-    problem = request['problems'][0]
-    assert len(problem['evidence_refs']) == 1
-    assert '浅灰底' in request['evidence_by_ref'][problem['evidence_refs'][0]]['excerpts'][0]['excerpt']
-    assert '解释' not in dumps(request)
+    assert [c[0] for c in model.calls] == ['persona_generate','persona_check','persona_recheck']
+    selection = result['version']['checks']['repair_selections'][0]
+    assert len(selection['eligible_options']) == 1
+    request = next(r for purpose,r,*_ in model.calls if purpose=='persona_recheck')
+    assert len(request['evidence_by_ref']) == 1
+    record = next(iter(request['evidence_by_ref'].values()))
+    assert '浅灰底' in record['excerpts'][0]['excerpt']
+    assert record['memory_id'] == 5
     assert len(next(r for purpose,r,*_ in model.calls if purpose=='persona_recheck')['candidate']) == 1
     checks = result['version']['checks']
     assert len(checks['repaired_sentences']) == 1 and not checks['deleted_sentences']
     assert checks['initial_model_errors'] and not checks['model_errors']
     assert len(checks['model']['sentences']) == len(result['version']['sentences'])
-    assert [c[2] for c in model.calls] == [360,360,120,360]
+    assert [c[2] for c in model.calls] == [360,360,360]
 
 
-@pytest.mark.parametrize('options', [{'again':True}, {'repair':None}, {'repair':'第一句。第二句。'}, {'repair':'我照着M1做。'}, {'malformed':True}])
-def test_failed_or_invalid_repair_is_removed_with_audit_and_good_sentences_survive(prepared, options):
-    result, model = run(prepared, **options)
+def test_failed_recheck_is_removed_with_audit_and_good_sentences_survive(prepared):
+    result, model = run(prepared, again=True)
     version = result['version']
     assert result['status'] in ('current','pending') and version['checks']['passed']
     assert '一向' not in version['content'] and '浅灰底' not in version['content']
@@ -111,7 +110,8 @@ def test_failed_or_invalid_repair_is_removed_with_audit_and_good_sentences_survi
     deleted = version['checks']['deleted_sentences']
     assert len(deleted) == 1 and deleted[0]['sentence']['text'] == '我一向喜欢浅灰底。'
     assert deleted[0]['reasons']
-    assert [c[0] for c in model.calls].count('persona_sentence_repair') == 1
+    assert [c[0] for c in model.calls].count('persona_recheck') == 1
+    assert not any(c[0]=='persona_sentence_repair' for c in model.calls)
     assert version['checks']['deterministic']['passed']
 
 
@@ -146,7 +146,7 @@ def test_admin_removal_after_sentence_recovery_still_forces_large(prepared):
     assert result['version']['checks']['admin_content_removed_or_changed']
 
 
-@pytest.mark.parametrize('point', ['persona_sentence_repair','persona_recheck'])
+@pytest.mark.parametrize('point', ['persona_check','persona_recheck'])
 def test_concurrent_evidence_edit_during_recovery_cannot_publish(prepared, point):
     model=Model(prepared)
     def hook(purpose):
@@ -158,7 +158,7 @@ def test_concurrent_evidence_edit_during_recovery_cannot_publish(prepared, point
     assert current_persona(prepared)['id']==1
 
 
-@pytest.mark.parametrize('point', ['persona_check','persona_sentence_repair','persona_recheck'])
+@pytest.mark.parametrize('point', ['persona_check','persona_recheck'])
 def test_model_failure_is_not_silently_treated_as_a_failed_sentence(prepared, point):
     model=Model(prepared)
     def hook(purpose):
@@ -195,15 +195,15 @@ def test_each_semantic_failure_can_be_removed_without_rejecting_supported_senten
                         row.update(supported=False,violations=[failure],reason=failure)
                 reply.content=dumps(value)
             return reply
-    model=SpecificFailure(prepared,repair=None)
+    model=SpecificFailure(prepared,again=True)
     result=PersonaEngine(prepared,model).regenerate(expected_version=1)
     checks=result['version']['checks']
     assert not checks['precheck_rejections']
     assert any('偏爱' in row['text'] for purpose,payload,_ in model.calls
                if purpose=='persona_check' for row in payload['candidate'])
     assert checks['passed'] and failure in checks['deleted_sentences'][0]['reasons']
-    repair=next(r for purpose,r,*_ in model.calls if purpose=='persona_sentence_repair')
-    assert failure in repair['problems'][0]['problems']
+    assert failure in ' '.join(checks['initial_model_errors'])
+    assert checks['repair_selections']
     assert '解释了规则' in result['version']['content']
 
 
@@ -218,14 +218,16 @@ def test_repair_cannot_replace_or_expand_evidence(prepared):
             return reply
     result=PersonaEngine(prepared,ForgedBasis(prepared)).regenerate(expected_version=1)
     assert result['version']['checks']['passed']
-    assert len(result['version']['checks']['deleted_sentences'])==1
-    assert not result['version']['checks']['repaired_sentences']
+    checks=result['version']['checks']
+    assert not checks['deleted_sentences']
+    assert checks['repaired_sentences'][0]['after']['basis']==[{'memory_id':5,'revision':1}]
+    assert checks['repair_outputs']==[]
 
 
 def test_current_version_conflict_during_repair_is_not_overwritten(prepared):
     model=Model(prepared)
     def hook(purpose):
-        if purpose=='persona_sentence_repair':
+        if purpose=='persona_recheck':
             admin_edit(prepared,'管理员新发布的内容。',expected_version=1)
     model.hook=hook
     with pytest.raises(PersonaConflict):
@@ -234,6 +236,7 @@ def test_current_version_conflict_during_repair_is_not_overwritten(prepared):
 
 
 def test_unchanged_bad_repair_is_removed_without_rechecking_as_good(prepared):
+    edit_memory(prepared,5,1,content='我一向喜欢浅灰底。')
     result,model=run(prepared,repair='我一向喜欢浅灰底。')
     assert not result['version']['checks']['repaired_sentences']
     assert '一向' not in result['version']['content']
@@ -244,13 +247,14 @@ def test_unchanged_bad_repair_is_removed_without_rechecking_as_good(prepared):
 def test_shared_pause_and_dream_budget_gate_also_apply_to_repair(prepared,reason):
     model=Model(prepared)
     def hook(purpose):
-        if purpose=='persona_sentence_repair':
+        if purpose=='persona_recheck':
             raise ModelError('paused','not admitted',paused=True,reason=reason)
     model.hook=hook
     result=PersonaEngine(prepared,model).regenerate(expected_version=1)
     assert result['status']=='skipped' and result['reason']==reason
     assert current_persona(prepared)['id']==1
-    assert not [p for p,_,_ in model.calls if p=='persona_recheck']
+    assert [p for p,_,_ in model.calls].count('persona_recheck')==1
+    assert not any(p=='persona_sentence_repair' for p,_,_ in model.calls)
 
 
 @pytest.mark.parametrize('duration,success',[(181,True),(361,False)])
@@ -384,11 +388,12 @@ def test_neutral_reference_repair_and_recheck_override_model_approval(prepared,r
                     row.update(supported=True,fabricated=False,scene_qualified=True,violations=[])
             reply.content=dumps(value)
             return reply
+    edit_memory(prepared,4,1,content=replacement)
     model=MissedPronoun(prepared,repair=replacement)
     result=PersonaEngine(prepared,model).regenerate(expected_version=1)
     version=result['version']
     assert version['checks']['passed']
-    assert [c[0] for c in model.calls]==['persona_generate','persona_check','persona_sentence_repair','persona_recheck']
+    assert [c[0] for c in model.calls]==['persona_generate','persona_check','persona_recheck']
     assert bool(version['checks']['deleted_sentences'])==removed
     assert bool(version['checks']['repaired_sentences']) == (not removed)
     assert 'neutral person reference' in ' '.join(version['checks']['initial_model_errors'])

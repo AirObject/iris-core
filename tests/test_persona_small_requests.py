@@ -47,11 +47,7 @@ class ManyRepairs(Model):
             reply.content = dumps({'sentences': [
                 {'text':f'我一向会确认第{i}页。', 'basis':[m['ref']]}
                 for i,m in enumerate(request['evidence']['memories'],1)]})
-        elif purpose == 'persona_sentence_repair':
-            assert len(request['problems']) <= 2
-            reply.content = dumps({'repairs':[
-                {'index':r['index'],'text':request['replacement_text_by_ref'][r['allowed_replacement_refs'][0]]}
-                for r in request['problems']]})
+        elif purpose == 'persona_recheck':
             self.now += self.duration
         return reply
 
@@ -63,34 +59,33 @@ def five_memories(store):
     store.set_setting('persona_publish_mode', 'small_medium_auto')
 
 
-def test_repair_batches_keep_indices_and_only_own_options(store):
+def test_deterministic_selections_keep_indices_and_only_own_options(store):
     five_memories(store)
-    model = ManyRepairs(store)
-    result = PersonaEngine(store, model).regenerate(expected_version=1)
-    assert result['version']['checks']['passed']
-    requests = [c[1] for c in model.calls if c[0] == 'persona_sentence_repair']
-    assert [len(r['problems']) for r in requests] == [2,2,1]
-    indices = [p['index'] for r in requests for p in r['problems']]
-    assert indices == list(range(2,7))
-    for request in requests:
-        refs = {ref for p in request['problems'] for ref in p['allowed_replacement_refs']}
-        assert set(request['replacement_text_by_ref']) == refs
-        assert set(request['evidence_by_ref']) == refs
-    assert len(result['version']['checks']['repair_outputs']) == 3
-    assert len(result['version']['checks']['repaired_sentences']) == 5
+    model=ManyRepairs(store)
+    result=PersonaEngine(store,model).regenerate(expected_version=1)
+    checks=result['version']['checks']
+    assert checks['passed'] and not any(p=='persona_sentence_repair' for p,*_ in model.calls)
+    selections=checks['repair_selections']
+    assert [s['index'] for s in selections]==list(range(2,7))
+    assert all(len(s['eligible_options'])==1 and s['selected']==s['eligible_options'][0] for s in selections)
+    assert len({s['selected']['basis'][0] for s in selections})==5
+    assert len(checks['repaired_sentences'])==5 and checks['repair_outputs']==[]
+    assert all(change['after']['basis']==change['before']['basis'] for change in checks['repaired_sentences'])
 
 
-def test_repair_batches_share_total_budget_and_timeout_never_publishes(store):
+def test_selected_repairs_still_share_recheck_budget_and_timeout_never_publishes(store):
     five_memories(store)
-    model = ManyRepairs(store, duration=70)
-    result = PersonaEngine(store, model).regenerate(expected_version=1)
-    assert result['status'] == 'failed' and result['reason'] == 'timeout'
-    requests = [c for c in model.calls if c[0] == 'persona_sentence_repair']
-    assert [c[2] for c in requests] == [120,110,40]
-    assert current_persona(store)['id'] == 1
+    model=ManyRepairs(store,duration=350)
+    result=PersonaEngine(store,model).regenerate(expected_version=1)
+    assert result['status']=='failed' and result['reason']=='timeout'
+    requests=[c for c in model.calls if c[0]=='persona_recheck']
+    assert [c[2] for c in requests]==[360,360,200]
+    assert current_persona(store)['id']==1
     with store.read() as conn:
-        outputs = json.loads(conn.execute('select outputs_json from persona_attempts').fetchone()[0])
-    assert len(outputs['persona_sentence_repair_batches']) == 3
+        outputs=json.loads(conn.execute('SELECT outputs_json FROM persona_attempts').fetchone()[0])
+    assert len(outputs['persona_recheck_batches'])==3
+    assert len(outputs['persona_repair_selections'])==5
+    assert 'persona_sentence_repair_batches' not in outputs
 
 
 @pytest.mark.parametrize('bad_field', ['reason','clauses','supported'])
@@ -109,7 +104,7 @@ def test_mapped_automatic_sentence_with_malformed_check_is_repaired(prepared,bad
                 request=json.loads(messages[-1]['content'])
                 reply.content=dumps({'repairs':[{'index':p['index'], 'text':None} for p in request['problems']]})
             return reply
-    result = PersonaEngine(prepared,Malformed(prepared)).regenerate(expected_version=1)
+    result = PersonaEngine(prepared,Malformed(prepared,again=True)).regenerate(expected_version=1)
     assert result['version']['checks']['passed']
     assert '解释了规则' not in result['version']['content']
     assert result['version']['checks']['deleted_sentences']

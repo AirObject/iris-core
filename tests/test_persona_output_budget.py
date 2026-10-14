@@ -10,7 +10,7 @@ from test_persona_optimization import Model, prepared
 
 
 @pytest.mark.parametrize('purpose,limit', [('persona_generate',16000),('persona_check',16000),
-    ('persona_recheck',16000),('persona_sentence_repair',16000)])
+    ('persona_recheck',16000)])
 def test_persona_requests_have_explicit_output_budgets(prepared,purpose,limit):
     class Gateway:
         def chat(self,messages,label,**kwargs):
@@ -54,21 +54,10 @@ def test_incomplete_check_rejects_candidate_and_preserves_current(prepared,purpo
     assert outputs[purpose+'_batches'][0][purpose+'_finish_reason']=='length'
 
 
-def test_truncated_repair_is_deleted_once_instead_of_accepted(prepared):
-    class Truncated(Model):
-        def chat(self,messages,label,**kwargs):
-            reply=super().chat(messages,label,**kwargs)
-            if label=='persona_sentence_repair':
-                reply.finish_reason='length'
-            return reply
-    model=Truncated(prepared)
-    result=PersonaEngine(prepared,model).regenerate(expected_version=1)
-    assert result['version']['checks']['passed']
-    assert '浅灰底' not in result['version']['content']
-    assert result['version']['checks']['repair_outputs'][0]['error']=='output_limit'
-    assert len(result['version']['checks']['deleted_sentences'])==1
-    assert sum(c[0]=='persona_sentence_repair' for c in model.calls)==1
-    assert not any(c[0]=='persona_sentence_repair_repair' for c in model.calls)
+def test_removed_selector_has_no_active_prompt_or_request_budget():
+    from iris.persona import PROMPT_VERSIONS, CALL_TIMEOUTS, CALL_MAX_TOKENS
+    assert all('persona_sentence_repair' not in mapping
+               for mapping in (PROMPT_VERSIONS,CALL_TIMEOUTS,CALL_MAX_TOKENS))
 
 
 def test_output_exhaustion_has_separate_call_metric():

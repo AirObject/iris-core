@@ -29,7 +29,7 @@ from .memory_ops import setup_role, delete_memory, adjust_retention, lifecycle_s
 from .model_health import ModelHealth
 from .models import Gateway, ModelError, parse_json_object_with_status
 from .persona import (PersonaEngine, admin_edit, current_persona, pending_update, select_evidence,
-                      confirm_candidate, reject_candidate, DEGREES, PUBLISH_MODES, PROMPT_VERSIONS, CALL_TIMEOUTS, CALL_MAX_TOKENS, CHECK_BATCH_SIZE, CHECK_BATCH_CLAUSES, MAX_CHECK_STAGE_SECONDS, REPAIR_BATCH_SIZE, MAX_REPAIR_STAGE_SECONDS, check_transport, _trace, _stale, _settings, split_sentences)
+                      confirm_candidate, reject_candidate, DEGREES, PUBLISH_MODES, PROMPT_VERSIONS, CALL_TIMEOUTS, CALL_MAX_TOKENS, CHECK_BATCH_SIZE, CHECK_BATCH_CLAUSES, MAX_CHECK_STAGE_SECONDS, REPAIR_POLICY, check_transport, _trace, _stale, _settings, split_sentences)
 
 FORMAT_VERSION = 1
 SCORING_VERSION = 'persona_scoring_v1'
@@ -767,7 +767,7 @@ def run_persona_eval(configs, root, *, corpus, out, judge_mode='model', gateway_
                     for purpose in ('persona_check','persona_recheck')},
                 'check_batch_size':CHECK_BATCH_SIZE, 'check_batch_clauses':CHECK_BATCH_CLAUSES,
                 'max_check_stage_seconds':MAX_CHECK_STAGE_SECONDS,
-                'repair_batch_size':REPAIR_BATCH_SIZE, 'max_repair_stage_seconds':MAX_REPAIR_STAGE_SECONDS,
+                'repair_policy':REPAIR_POLICY,
                 'planned_timelines':len(cases), 'executed_timelines':len(rows),
                 'unexecuted_timelines':len(cases)-len(rows),
                 'resumed_cases':resumed,'elapsed_seconds':round(time.monotonic()-started,3)}

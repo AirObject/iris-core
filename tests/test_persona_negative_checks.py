@@ -83,9 +83,9 @@ def test_negative_with_unchecked_focus_is_deleted_never_retained(prepared):
     class Negative(Model):
         def chat(self, messages, purpose, **kwargs):
             reply = super().chat(messages, purpose, **kwargs); value = json.loads(reply.content)
-            if purpose == 'persona_check':
+            if purpose in ('persona_check','persona_recheck'):
                 for row in value['sentences']:
-                    if row['persona_kind'] == 'episode' and len(row.get('clauses', [])) > 1:
+                    if row['persona_kind'] == 'episode' and (len(row.get('clauses', [])) > 1 or purpose=='persona_recheck'):
                         row.update(supported=False, stop_after_failure=True)
                         row['clauses'] = row['clauses'][:1]
                         row['clauses'][0].update(supported=False, evidence=[], reason='人物归属无据。')

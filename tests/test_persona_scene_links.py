@@ -42,8 +42,8 @@ def test_positive_model_verdict_cannot_retain_cross_sentence_scene_link(store):
     result=PersonaEngine(store,model).regenerate(expected_version=current_persona(store)['id'])
     assert result['version']['checks']['passed']
     assert text not in result['version']['content']
-    deleted=result['version']['checks']['deleted_sentences']
-    assert any('cross-sentence scene reference' in ' '.join(d['reasons']) for d in deleted)
+    repaired=result['version']['checks']['repaired_sentences']
+    assert len(repaired)==1 and repaired[0]['after']['text']=='在那次配音里，我核对了稿页。'
     assert not any(s['text']==text for _,request in model.calls if request.get('candidate') for s in request['candidate'])
     assert any('cross-sentence scene reference' in ' '.join(item['reasons'])
                for item in result['version']['checks']['precheck_rejections'])

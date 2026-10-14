@@ -57,8 +57,8 @@ def test_relative_time_override_survives_an_approving_model(prepared):
     result = PersonaEngine(prepared, Permissive(prepared,repair=None)).regenerate(expected_version=1)
     version = result['version']
     assert version['checks']['passed']
-    assert len(version['checks']['deleted_sentences']) == 1
-    assert 'relative time' in ' '.join(version['checks']['deleted_sentences'][0]['reasons'])
+    assert len(version['checks']['repaired_sentences']) == 1
+    assert 'relative time' in ' '.join(version['checks']['precheck_rejections'][0]['reasons'])
     assert '今天' not in version['content']
 
 

@@ -66,6 +66,7 @@ def test_a_changed_claim_or_new_bounded_scope_still_gets_semantic_recheck(store,
     result, model = run(store, original, replacement)
     assert result['version']['checks']['passed']
     assert replacement in result['version']['content']
-    assert any(purpose == 'persona_sentence_repair' for purpose, _ in model.calls)
+    assert not any(purpose == 'persona_sentence_repair' for purpose, _ in model.calls)
+    assert result['version']['checks']['repair_selections'][0]['selected']['text']==replacement
     assert result['version']['checks']['repaired_sentences']
     assert any(payload['candidate'] for purpose, payload in model.calls if purpose == 'persona_recheck')

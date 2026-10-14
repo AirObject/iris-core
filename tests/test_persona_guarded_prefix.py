@@ -136,9 +136,9 @@ def test_guard_rejected_prefix_cannot_publish_the_unchecked_claim(prepared):
     class NoProof(Model):
         def chat(self, messages, purpose, **kwargs):
             reply = super().chat(messages, purpose, **kwargs); value = json.loads(reply.content)
-            if purpose == 'persona_check':
+            if purpose in ('persona_check','persona_recheck'):
                 for row in value['sentences']:
-                    if row['persona_kind'] == 'episode' and len(row.get('clauses', [])) > 1:
+                    if row['persona_kind'] == 'episode' and (len(row.get('clauses', [])) > 1 or purpose=='persona_recheck'):
                         row['clauses'] = row['clauses'][:1]
                         row['clauses'][0]['evidence'] = []
             reply.content = dumps(value)

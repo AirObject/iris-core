@@ -40,19 +40,18 @@ RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 �
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
 PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v19', 'persona_check': 'persona_check_v31',
-                   'persona_sentence_repair': 'persona_repair_v18', 'persona_recheck': 'persona_check_v31'}
+                   'persona_recheck': 'persona_check_v31'}
 CALL_TIMEOUTS = {'persona_generate': 360, 'persona_check': 360,
-                 'persona_sentence_repair': 120, 'persona_recheck': 360}
+                 'persona_recheck': 360}
 CALL_MAX_TOKENS = {'persona_generate':16000, 'persona_check':16000,
-                   'persona_sentence_repair':16000, 'persona_recheck':16000}
+                   'persona_recheck':16000}
 PERSONA_KINDS = ('knowledge', 'episode', 'setting', 'admin', 'state', 'task', 'instruction')
 EXCLUDED_KINDS = {'state': 'current state is not persona', 'task': 'pending action is not persona',
                   'instruction': 'host/model instruction is not persona'}
 CHECK_BATCH_SIZE = 4
 CHECK_BATCH_CLAUSES = 2
 MAX_CHECK_STAGE_SECONDS = 900
-REPAIR_BATCH_SIZE = 2
-MAX_REPAIR_STAGE_SECONDS = 180
+REPAIR_POLICY = 'first_eligible_bound_memory_v2'
 BOUNDED_SCENE = re.compile(r'(?:这|那|当|某|本|同)(?:一)?(?:次|场|回|天)|\d{4}-\d{2}-\d{2}|[0-9零〇一二三四五六七八九十廿三]+(?:年|月|日|号)')
 CROSS_SCENE_LINK = re.compile(r'^(?:(?:也|又|还|同样)(?:也)?(?:是)?在(?:这|那)(?:一)?(?:次|场|天|回)|'
                               r'(?:也(?:是)?)?在同一(?:次|场|天|回))')
@@ -286,7 +285,7 @@ def _generation_material(conn, settings, previous, stamp):
     return {'evidence':evidence, 'settings':settings, 'as_of':stamp,
         'prompt_versions':PROMPT_VERSIONS, 'timeouts_seconds':CALL_TIMEOUTS, 'output_token_limits':CALL_MAX_TOKENS, 'check_batch_size':CHECK_BATCH_SIZE,
         'max_check_stage_seconds':MAX_CHECK_STAGE_SECONDS, 'check_batch_clauses':CHECK_BATCH_CLAUSES,
-        'repair_batch_size':REPAIR_BATCH_SIZE, 'max_repair_stage_seconds':MAX_REPAIR_STAGE_SECONDS,
+        'repair_policy':REPAIR_POLICY,
         'role_name':_setting(conn, 'role_name', 'Iris'), 'locked_sentences':retained,
         'omitted_template_sentences':omitted, 'previous':previous['content'],
         'previous_sentences':previous['sentences'],
@@ -1890,10 +1889,9 @@ class PersonaEngine:
                 'skipped_windows':skipped, 'normalizations':normalizations}
 
     def _recover_sentences(self, original, initial_model, problems, material, previous, checks, outputs):
-        payload = _check_payload(material, original, full_content=''.join(s['text'] for s in original), proof_choices=False)
         repairable = {i:original[i-1] for i in problems if original[i-1]['origin'] != 'initial_template'}
-        proposed, replacements = {}, {}
-        checks['repair_policy'] = 'bound_memory_extract_v1'
+        replacements = {}
+        checks['repair_policy'] = REPAIR_POLICY
         checks['repair_options_rejected'] = []
         for i,sentence in repairable.items():
             replacements[i] = []
@@ -1908,45 +1906,19 @@ class PersonaEngine:
                         'reasons':deterministic['errors']+issues})
                 else:
                     replacements[i].append(option)
-        eligible = [i for i in repairable if replacements[i]]
-        checks['repair_outputs'] = []
-        if eligible:
-            import time
-            monotonic = getattr(self.gateway,'monotonic',time.monotonic)
-            deadline = monotonic() + MAX_REPAIR_STAGE_SECONDS
-            raw_batches = outputs.setdefault('persona_sentence_repair_batches',[])
-            for start in range(0,len(eligible),REPAIR_BATCH_SIZE):
-                indices = eligible[start:start+REPAIR_BATCH_SIZE]
-                request = {**material['settings'], 'task':'repair', 'as_of':material['as_of'],
-                    'repair_policy':checks['repair_policy'],
-                    'replacement_text_by_ref':{option['basis'][0]:option['text']
-                        for i in indices for option in replacements[i]},
-                    'problems':[{'index':i,'text':original[i-1]['text'],'problems':problems[i],
-                        'evidence_refs':[option['basis'][0] for option in replacements[i]],
-                        'allowed_replacement_refs':[option['basis'][0] for option in replacements[i]]}
-                        for i in indices]}
-                refs = set(request['replacement_text_by_ref'])
-                request['evidence_by_ref'] = {ref:record for ref,record in payload['evidence_by_ref'].items() if ref in refs}
-                raw = {}
-                raw_batches.append(raw)
-                try:
-                    repaired = self._call('persona_sentence_repair',request,raw,deadline=deadline)
-                except ModelError as error:
-                    if error.reason != 'output_limit':
-                        raise
-                    # This was the sentence's one permitted repair. No valid repair
-                    # means deletion below, never use even parseable partial output.
-                    repaired = {'repairs':[], 'error':'output_limit'}
-                if start == 0:
-                    outputs.update(raw)
-                    checks['repair_output'] = repaired
-                checks['repair_outputs'].append(repaired)
-                rows = repaired.get('repairs')
-                if (isinstance(rows,list) and len(rows)==len(indices)
-                        and all(isinstance(r,dict) and type(r.get('index')) is int for r in rows)
-                        and {r['index'] for r in rows}==set(indices)):
-                    proposed.update({r['index']:r for r in rows})
+        # The extractor already has a finite, snapshot-ordered set of complete
+        # bound texts. Choose once deterministically, then let the independent
+        # semantic recheck accept or delete it. A model selector adds no proof
+        # and can consume an entire request budget before that actual check.
+        # Do not try a later option after a negative recheck.
+        selections = [{'index':i, 'eligible_options':options, 'selected':options[0]}
+                      for i,options in replacements.items() if options]
+        selected = {item['index']:item['selected'] for item in selections}
+        checks['repair_selections'] = selections
+        checks['repair_outputs'] = []  # No model selection opinions were requested.
+        outputs['persona_repair_selections'] = copy.deepcopy(selections)
         retained, verdicts, modifications, positions = [], [], [], []
+        seen_replacements = {}
         def deleted(index, stage, reasons, replacement=None):
             item = {'index':index, 'sentence':original[index-1], 'stage':stage, 'reasons':reasons}
             if replacement is not None:
@@ -1962,16 +1934,11 @@ class PersonaEngine:
                             for reason in item['reasons']]
                 deleted(i,'repair_options',problems[i]+['no deterministically eligible bound replacement']+rejected)
                 continue
-            row = proposed.get(i,{})
-            text = row.get('text')
-            if (not isinstance(text,str) or not text.strip() or text==sentence['text']
-                    or set(row) != {'index','text'} or sentence['origin']=='initial_template'):
-                deleted(i,'repair',problems[i]+['no valid changed sentence; immutable templates are never rewritten'])
+            option = selected.get(i)
+            if option is None or sentence['origin']=='initial_template':
+                deleted(i,'repair',problems[i]+['immutable templates are never rewritten'])
                 continue
-            option = next((option for option in replacements[i] if option['text'] == text), None)
-            if option is None:
-                deleted(i,'repair_extract',problems[i]+['repair must match one complete bound memory text'],text)
-                continue
+            text = option['text']
             # The other original references cannot inflate this extraction's date
             # count. No new memory or revision can enter through model output.
             raw = {'text':text, 'basis':option['basis']}
@@ -1982,6 +1949,13 @@ class PersonaEngine:
                 # Keep them out of semantic recheck; its degree sees the final text.
                 deleted(i,'repair_deterministic',problems[i]+deterministic['errors']+surface,text)
                 continue
+            key = (normalized[0]['text'], tuple((b['memory_id'], b['revision'])
+                                               for b in normalized[0]['basis']))
+            if key in seen_replacements:
+                deleted(i,'repair_duplicate',problems[i]+[
+                    f"same complete bound replacement already selected for sentence {seen_replacements[key]}"],text)
+                continue
+            seen_replacements[key] = i
             positions.append((len(retained),i))
             modifications.append(normalized[0])
             retained.append(normalized[0])
@@ -2000,7 +1974,7 @@ class PersonaEngine:
         for j,(position,original_index) in enumerate(positions,1):
             if j in bad:
                 discarded.add(position)
-                deleted(original_index,'recheck',bad[j],retained[position]['text'])
+                deleted(original_index,'recheck',problems[original_index]+bad[j],retained[position]['text'])
             else:
                 verdicts[position] = recheck['sentences'][j-1]
                 checks['repaired_sentences'].append({'index':original_index,

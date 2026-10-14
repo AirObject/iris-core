@@ -92,9 +92,9 @@ def test_unmarked_negative_cannot_publish_the_rejected_claim(prepared):
     class Negative(Model):
         def chat(self, messages, purpose, **kwargs):
             reply = super().chat(messages, purpose, **kwargs); value = json.loads(reply.content)
-            if purpose == 'persona_check':
+            if purpose in ('persona_check','persona_recheck'):
                 for row in value['sentences']:
-                    if row['persona_kind'] == 'episode' and len(row.get('clauses', [])) > 1:
+                    if row['persona_kind'] == 'episode' and (len(row.get('clauses', [])) > 1 or purpose=='persona_recheck'):
                         row.update(supported=False, fabricated=True)
                         row['clauses'] = row['clauses'][:1]
                         row['clauses'][0].update(supported=False, evidence=[], reason='The actor has no evidence.')

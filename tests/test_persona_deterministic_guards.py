@@ -74,12 +74,13 @@ def test_repair_cannot_rewrite_or_borrow_details_even_when_recheck_would_approve
     model = Model(prepared, repair=replacement)
     result = PersonaEngine(prepared, model).regenerate(expected_version=1)
     checks = result['version']['checks']
-    assert checks['passed'] and not checks['repaired_sentences']
-    deleted = checks['deleted_sentences']
-    assert len(deleted) == 1 and deleted[0]['replacement'] == replacement
-    assert deleted[0]['stage'] == 'repair_extract'
-    assert 'complete bound memory' in ' '.join(deleted[0]['reasons'])
-    assert model.calls[-1][1]['candidate'] == []
+    assert checks['passed'] and len(checks['repaired_sentences'])==1
+    assert not any(p=='persona_sentence_repair' for p,*_ in model.calls)
+    selected=checks['repair_selections'][0]['selected']
+    assert selected['text']=='我在十月一日的直播中选择了浅灰底。'
+    assert selected['text'] != replacement
+    assert [s['text'] for s in model.calls[-1][1]['candidate']]==[selected['text']]
+    assert checks['repaired_sentences'][0]['after']['basis']==[{'memory_id':5,'revision':1}]
     assert '解释了规则' in result['version']['content']
 
 
@@ -96,10 +97,10 @@ def test_repair_options_are_complete_own_memory_and_keep_only_its_basis(prepared
             return reply
     model = SeveralReferences(prepared, repair='我在十月一日的直播中选择了浅灰底。')
     result = PersonaEngine(prepared, model).regenerate(expected_version=1)
-    request = next(r for purpose,r,*_ in model.calls if purpose=='persona_sentence_repair')
-    refs = request['problems'][0]['allowed_replacement_refs']
-    options = request['replacement_text_by_ref']
-    assert {options[ref] for ref in refs} == {
+    selection=result['version']['checks']['repair_selections'][0]
+    options=selection['eligible_options']
+    refs=[option['basis'][0] for option in options]
+    assert {option['text'] for option in options} == {
         '我在十月二日的直播里读了目录。', '我在十月一日的直播中选择了浅灰底。'}
     changed = result['version']['checks']['repaired_sentences'][0]
     assert len(changed['before']['basis']) == 2 and changed['before']['date_count'] == 2
@@ -110,7 +111,7 @@ def test_repair_options_are_complete_own_memory_and_keep_only_its_basis(prepared
 
 
 @pytest.mark.parametrize('memory, replacement, retained', [
-    ('我没有在十月一日的直播中选择浅灰底。', '我在十月一日的直播中选择浅灰底。', False),
+    ('我没有在十月一日的直播中选择浅灰底。', '我在十月一日的直播中选择浅灰底。', True),
     ('我在十月一日的直播中选择了浅灰底。只是临时试用，并非偏好。',
      '我在十月一日的直播中选择了浅灰底。', False),
     ('我在十月一日的直播中选择了浅灰底', '我在十月一日的直播中选择了浅灰底。', True),
@@ -122,6 +123,8 @@ def test_repair_preserves_negation_whole_context_and_only_allows_terminal_period
     checks = result['version']['checks']
     assert checks['passed'] and bool(checks['repaired_sentences']) is retained
     assert bool(checks['deleted_sentences']) is (not retained)
+    if retained:
+        assert checks['repaired_sentences'][0]['after']['text']==memory.rstrip('。')+'。'
 
 
 def test_exact_repair_cannot_bypass_single_date_guard(prepared):
@@ -155,7 +158,7 @@ def test_single_date_condition_is_removed_even_when_model_approves_everything(pr
     assert checks['precheck_rejections'][0]['index'] == 3
     assert all('遇到' not in row['text'] for purpose,payload,_ in model.calls
                if purpose == 'persona_check' for row in payload['candidate'])
-    assert checks['passed'] and len(checks['deleted_sentences']) == 1
+    assert checks['passed'] and len(checks['repaired_sentences']) == 1
     assert '遇到' not in result['version']['content']
     assert any('single-date' in e for e in checks['initial_model_errors'])
 
@@ -194,9 +197,10 @@ def test_repair_request_deduplicates_repeated_complete_replacement_text(prepared
             return reply
     model = RepeatedProblems(prepared)
     result = PersonaEngine(prepared, model).regenerate(expected_version=1)
-    request = next(r for purpose,r,*_ in model.calls if purpose=='persona_sentence_repair')
-    assert len(request['problems']) == 2
-    assert len(request['replacement_text_by_ref']) == 1
-    assert all(len(p['allowed_replacement_refs']) == 1 for p in request['problems'])
-    assert '我在十月一日的直播中选择了浅灰底。' not in dumps(request['problems'])
-    assert len(result['version']['checks']['repaired_sentences']) == 2
+    checks=result['version']['checks']
+    selections=checks['repair_selections']
+    assert len(selections)==2 and selections[0]['selected']==selections[1]['selected']
+    assert len(checks['repaired_sentences'])==1
+    assert checks['deleted_sentences'][0]['stage']=='repair_duplicate'
+    requests=[r for p,r,*_ in model.calls if p=='persona_recheck']
+    assert len(requests)==1 and len(requests[0]['candidate'])==1

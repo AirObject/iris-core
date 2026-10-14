@@ -183,7 +183,7 @@ def test_refusal_and_missing_usage_are_not_invented(prepared):
 
 
 @pytest.mark.parametrize('purpose,model', [('persona_generate','glm-5.3-flash'),
-    ('persona_sentence_repair','glm-5.3-flash'), ('persona_check','another-model')])
+    ('persona_recheck','another-model'), ('persona_check','another-model')])
 def test_other_purposes_and_models_keep_existing_nonstream_transport(prepared, purpose, model):
     def respond(req, now, n):
         assert 'stream' not in json.loads(req.content)
