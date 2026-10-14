@@ -70,7 +70,7 @@ migration 每行包含 entry_id、legacy_version、sentence_index、disposition�
 | independent_days | integer，按角色时区及确定性独立性规则累计的本地日期数 |
 | independent_uses | integer，去掉转引、复述、接龙、刷屏等后的独立依据次数 |
 | admission_reason | string 或 null，例如 evidence_budget_exceeded、basis_changed、reject、invalid_output、timeout |
-| sources | 已审依据；自动候选可为空，不将未审引文作为已发布依据 |
+| sources | 已审依据；自动候选可为空，不将未审引文作为已发布依据。人工条目新增的自动确认引文也先进入 pending_sources，人工正文照常可用 |
 | pending_sources | 尚未准入检查的绑定依据，仅管理侧诊断；继续受硬范围和清除约束 |
 
 profile 顶层及 latest_attempt／attempt 详情兼容加 `progress`：scan_cursor（已持久排队位置）、applied_cursor（连续完成位置）、observation_chunks、completed_chunks、pending_checks、failed_checks、rejected_checks、observation_gaps、unscanned_messages、waiting_candidates、oldest_pending_at（string 或 null）。两类游标都是数据库消息 ID，不是发生时间。待审候选不等于失败；observation_gaps 非零时 applied_cursor 不越过缺口。

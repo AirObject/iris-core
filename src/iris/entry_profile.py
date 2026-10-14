@@ -1776,7 +1776,7 @@ def memory_profile_rows(conn, entry_id, *, as_of=None, usable_only=False):
         manual = _profile_manual(conn,row)
         sources = _profile_bound_sources(conn,row,zone,as_of)
         admission=conn.execute('SELECT * FROM entry_profile_admissions WHERE memory_id=?',(row['id'],)).fetchone() if incremental_profile_enabled(conn) else None
-        if admission and not manual:
+        if admission:
             _,sources=_inc_candidate_sources(conn,row,admission,as_of)
         body = row['content']; saying,_,meaning = body.partition('：') if row['category']=='saying' else ('','','')
         supported = manual or bool(sources)
@@ -1794,7 +1794,7 @@ def memory_profile_rows(conn, entry_id, *, as_of=None, usable_only=False):
             body=body,saying=saying,meaning=meaning,author='admin' if manual else 'model',speaker='self',stance=row['stance'],
             about=[owner[0]],owner_entry_id=entry_id,lifecycle=row['lifecycle'],event_time=None,importance=row['importance'],
             manual_protected=manual,manual_created=bool(row['manual_created']),sources=sources,
-            pending_sources=[x for x in _inc_all_sources(conn,row,as_of) if x.get('source_id') not in json.loads(admission['checked_sources_json'])] if admission and not manual else [],
+            pending_sources=[x for x in _inc_all_sources(conn,row,as_of) if x.get('source_id') not in json.loads(admission['checked_sources_json'])] if admission else [],
             confirmed_evidence=[r[0] for r in conn.execute('SELECT identity FROM entry_profile_evidence_receipts WHERE memory_id=? ORDER BY identity',(row['id'],))],
             usable=usable,retention=row['retention'],pinned=bool(row['pinned']),
             last_confirmed_at=row['last_confirmed_at'],

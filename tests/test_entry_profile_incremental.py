@@ -611,3 +611,19 @@ def test_progress_counts_only_live_automatic_waiting_candidates(store):
     row=next(r for r in profiles(store) if not r['manual_protected'])
     assert manage_memory(store,row['memory_id'],row['revision'],action='forget')
     with store.read() as conn: assert ep.incremental_progress(conn,'group')['waiting_candidates']==0
+
+
+def test_manual_body_remains_visible_without_publishing_unchecked_confirmation_quote(store):
+    add(store,'本群长期禁止广告。另外，同事最近离婚的事情不要外传。')
+    manual=write_entry_profile_memory(store,'group',op='new',manual=True,
+        content='禁止广告。',category='rule')['memory_id']
+    before=projection(store)
+    gateway=Gateway(store,lambda p:{'observations':[{'op':'confirm','memory_id':manual,
+        'source_refs':[source(p['messages'][0])]}]})
+    run(store,gateway)
+    row=profiles(store)[0]
+    assert row['manual_protected'] and row['usable'] and row['admission_state']=='manual'
+    assert row['sources']==[]
+    assert len(row['pending_sources'])==1
+    assert projection(store)['text']==before['text'] and projection(store)['version']==before['version']
+    assert len(gateway.calls)==1
