@@ -2098,7 +2098,7 @@ def incremental_prompts():
     from importlib.resources import files
     import hashlib
     result={}
-    for stage,name in (('observe','entry_profile_observe_v3'),('admit','entry_profile_admit_v3')):
+    for stage,name in (('observe','entry_profile_observe_v4'),('admit','entry_profile_admit_v4')):
         value=files('iris').joinpath('prompts',name+'.md').read_text(encoding='utf-8')
         result[stage]=dict(name=name,text=value,sha256=hashlib.sha256(value.encode()).hexdigest())
     return result
@@ -2286,18 +2286,19 @@ def _inc_entity_terms(body):
     return list(dict.fromkeys(result))
 
 
+def _inc_term_present(term, text):
+    term=unicodedata.normalize('NFKC',term).casefold()
+    text=unicodedata.normalize('NFKC',text).casefold()
+    if re.fullmatch(r'\d+(?:\.\d+)?%?',term):
+        return bool(re.search(r'(?<![\d.])'+re.escape(term)+r'(?![\d.])',text))
+    if re.search(r'[a-z]',term):
+        return bool(re.search(r'(?<![a-z0-9])'+re.escape(term)+r'(?![a-z0-9])',text))
+    return term in text
+
+
 def _inc_missing_entities(body, evidence):
-    texts=[unicodedata.normalize('NFKC',x).casefold() for x in evidence]
-    missing=[]
-    for term in _inc_entity_terms(body):
-        term=unicodedata.normalize('NFKC',term).casefold()
-        if re.fullmatch(r'\d+(?:\.\d+)?%?',term):
-            found=any(re.search(r'(?<![\d.])'+re.escape(term)+r'(?![\d.])',x) for x in texts)
-        elif re.search(r'[a-z]',term):
-            found=any(re.search(r'(?<![a-z0-9])'+re.escape(term)+r'(?![a-z0-9])',x) for x in texts)
-        else: found=any(term in x for x in texts)
-        if not found: missing.append(term)
-    return missing
+    return [unicodedata.normalize('NFKC',term).casefold() for term in _inc_entity_terms(body)
+            if not any(_inc_term_present(term,text) for text in evidence)]
 
 
 def _inc_rule_reason(sources):
@@ -2370,43 +2371,69 @@ def _inc_source_key(source):
     return (source['message']['position'],source['field'],source['excerpt'])
 
 
-def _inc_groups(sources, category, saying=''):
-    ordered=sorted(sources,key=lambda s:(s['message']['position'],s.get('source_id',0)))
-    messages=[s['message'] for s in ordered]
+def _inc_topic_roots(ordered):
+    """Keep the complete graph even when only some excerpts mention a detail."""
     roots=list(range(len(ordered)))
     def root(index):
         while roots[index]!=index:
             roots[index]=roots[roots[index]];index=roots[index]
         return index
-    if category=='topic':
-        # Only genuine identity/reply/follow-up links may propagate. Calendar
-        # proximity and substring similarity cannot join whole discussion days.
-        for i,source in enumerate(ordered):
-            content=_memory_observation_text(source['message']['content'])
-            for j,prior in enumerate(ordered[:i]):
-                if (source['evidence_identity']==prior['evidence_identity'] or
-                        source.get('burst_id') and source.get('burst_id')==prior.get('burst_id') or
-                        content and content==_memory_observation_text(prior['message']['content']) or
-                        _inc_same_discussion(source,prior)):
-                    roots[root(i)]=root(j)
+    for i,source in enumerate(ordered):
+        content=_memory_observation_text(source['message']['content'])
+        for j,prior in enumerate(ordered[:i]):
+            if (source['evidence_identity']==prior['evidence_identity'] or
+                    source.get('burst_id') and source.get('burst_id')==prior.get('burst_id') or
+                    content and content==_memory_observation_text(prior['message']['content']) or
+                    _inc_same_discussion(source,prior)):
+                roots[root(i)]=root(j)
+    return [root(i) for i in range(len(ordered))]
+
+
+def _inc_topic_witnesses(ordered, roots, eligible=None):
     selected=[];selected_roots=set()
     for i,source in enumerate(ordered):
-        if category in ('topic','saying') and not _inc_original(source,category,saying): continue
-        if category=='topic':
-            identity=root(i)
-            if identity in selected_roots: continue
-            # At most one original per local date. Do not turn this necessary
-            # threshold into an equivalence edge linking every source that day.
-            if any(source['message']['date']==prior['message']['date'] or
-                    abs((_instant(source['message']['occurred_at'])-
-                         _instant(prior['message']['occurred_at'])).total_seconds())<30*60
-                    for prior in selected): continue
-            selected_roots.add(identity)
-        elif any(source['evidence_identity']==prior['evidence_identity'] or
-                 source.get('burst_id') and source.get('burst_id')==prior.get('burst_id') or
-                 not _memory_independent(source,prior,category,messages) for prior in selected): continue
+        if eligible is not None and _inc_source_key(source) not in eligible: continue
+        if not _inc_original(source,'topic','') or roots[i] in selected_roots: continue
+        # Same-day peers need not be equivalent, but cannot satisfy recurrence.
+        if any(source['message']['date']==prior['message']['date'] or
+                abs((_instant(source['message']['occurred_at'])-
+                     _instant(prior['message']['occurred_at'])).total_seconds())<30*60
+                for prior in selected): continue
+        selected.append(source);selected_roots.add(roots[i])
+    return selected
+
+
+def _inc_groups(sources, category, saying=''):
+    ordered=sorted(sources,key=lambda s:(s['message']['position'],s.get('source_id',0)))
+    if category=='topic':
+        return _inc_topic_witnesses(ordered,_inc_topic_roots(ordered))
+    messages=[s['message'] for s in ordered];selected=[]
+    for source in ordered:
+        if category=='saying' and not _inc_original(source,category,saying): continue
+        if any(source['evidence_identity']==prior['evidence_identity'] or
+                source.get('burst_id') and source.get('burst_id')==prior.get('burst_id') or
+                not _memory_independent(source,prior,category,messages) for prior in selected): continue
         selected.append(source)
     return selected
+
+
+def _inc_topic_details(body, witnesses, page=None):
+    """Literal recurrence hints, never a substitute for semantic clause review.
+
+    Compute links before filtering by entity or page, so an omitted bridge
+    cannot split one event into two discussions. Quotes are not original uses.
+    """
+    ordered=sorted(witnesses,key=lambda s:(s['message']['position'],s.get('source_id',0)))
+    roots=_inc_topic_roots(ordered)
+    page_keys={_inc_source_key(s) for s in page} if page is not None else None
+    result=[]
+    for term in _inc_entity_terms(body):
+        eligible={_inc_source_key(s) for s in ordered if _inc_term_present(term,s['excerpt'])}
+        all_matches=_inc_topic_witnesses(ordered,roots,eligible)
+        matches=_inc_topic_witnesses(ordered,roots,eligible & page_keys) if page_keys is not None else all_matches
+        result.append(dict(term=term,independent_uses=len(matches),all_evidence_uses=len(all_matches),
+                           message_ids=[s['message']['position'] for s in matches]))
+    return result
 
 
 def _inc_enough(sources, category, saying=''):
@@ -2469,6 +2496,20 @@ def _inc_directory(conn, entry_id, messages, limits):
     rows=memory_profile_rows(conn,entry_id)
     pool=[{k:r[k] for k in ('memory_id','revision','category','body','manual_protected','independent_days','independent_uses','last_confirmed_at')}
           for r in rows if r['lifecycle']!='deleted']
+    for row in pool:
+        if row['category']!='topic' or row['manual_protected']: continue
+        current=next(r for r in rows if r['memory_id']==row['memory_id'])
+        if current['admission_state']=='accepted': continue
+        # Feedback is data, not evidence. Keep it revision/body scoped and on
+        # the existing memory purge dependency; never copy old source excerpts.
+        rejected=conn.execute("""SELECT parsed_json FROM entry_profile_incremental_work
+            WHERE entry_id=? AND memory_id=? AND memory_revision=? AND kind='admit' AND state='rejected'
+            AND json_extract(payload_json,'$.memory.body')=? ORDER BY id DESC LIMIT 1""",
+            (entry_id,row['memory_id'],row['revision'],row['body'])).fetchone()
+        if rejected and rejected['parsed_json']:
+            vote=json.loads(rejected['parsed_json'])
+            row['admission_feedback']={k:vote[k] for k in ('decision','violations')}
+            row['admission_feedback']['reason']=vote['reason'][:240]
     terms=set(segmented(' '.join(m['content'] for m in messages)).split())
     cursor=_memory_state(conn,entry_id)['scan_cursor']
     # Stable lexical selection, confirmation recency, and rotation share the directory.
@@ -2819,6 +2860,14 @@ class IncrementalProfileTask:
         def include(source):
             if _inc_source_key(source) not in {_inc_source_key(s) for s in core}: core.append(source)
         for source in selected[:1 if category=='rule' else 2]: include(source)
+        if category=='topic' and not retire:
+            # Every page must carry the two actual witnesses to a named detail
+            # when they exist; a whole-bundle count cannot prove a page's body.
+            ordered=sorted(witnesses,key=lambda s:(s['message']['position'],s.get('source_id',0)))
+            roots=_inc_topic_roots(ordered)
+            for term in _inc_entity_terms(body):
+                eligible={_inc_source_key(s) for s in ordered if _inc_term_present(term,s['excerpt'])}
+                for source in _inc_topic_witnesses(ordered,roots,eligible)[:2]: include(source)
         for source in witnesses:
             if source['message']['position'] in definitions: include(source)
             if proposal and any(source['message']['position']==r['message_id'] and source['field']==r['field'] for r in proposal['source_refs']): include(source)
@@ -2843,8 +2892,13 @@ class IncrementalProfileTask:
             meaning=proposal['meaning'] if proposal else body.partition('：')[2] if category=='saying' else '',
             definition_refs=definitions,sources=[])
         if proposal: memory.update(action=proposal['action'],old_body=row['content'])
+        def page_memory(page):
+            value={**memory,'sources':[public_source(s) for s in page]}
+            if category=='topic' and not retire:
+                value['topic_detail_review']=_inc_topic_details(body,witnesses,page)
+            return value
         def fits(page):
-            return len(page)<=self.limits.evidence and estimate_tokens(dumps({**memory,'sources':[public_source(s) for s in page]}))<=self.limits.evidence_tokens
+            return len(page)<=self.limits.evidence and estimate_tokens(dumps(page_memory(page)))<=self.limits.evidence_tokens
         if not fits(core):
             conn.execute("UPDATE entry_profile_admissions SET reason='evidence_budget_exceeded' WHERE memory_id=?",(row['id'],))
             return None
@@ -2871,8 +2925,8 @@ class IncrementalProfileTask:
                      zone,snapshot['settings_revision'],self.prompts['admit']['sha256']])
         first=None
         for index,page in enumerate(pages):
-            key=_hash([group,index]);page_memory={**memory,'sources':[public_source(s) for s in page]}
-            payload=dict(entry_id=row['owner_entry_id'],as_of=stamp,timezone=zone,memory=page_memory,
+            key=_hash([group,index])
+            payload=dict(entry_id=row['owner_entry_id'],as_of=stamp,timezone=zone,memory=page_memory(page),
                 _snapshot={**snapshot,'bundle':dict(key=group,index=index,count=len(pages))})
             if conn.execute('SELECT 1 FROM entry_profile_incremental_work WHERE work_key=?',(key,)).fetchone(): continue
             wid=conn.execute('''INSERT INTO entry_profile_incremental_work(entry_id,work_key,kind,memory_id,memory_revision,
