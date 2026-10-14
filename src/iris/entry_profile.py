@@ -1781,9 +1781,12 @@ def memory_profile_rows(conn, entry_id, *, as_of=None, usable_only=False):
         body = row['content']; saying,_,meaning = body.partition('：') if row['category']=='saying' else ('','','')
         supported = manual or bool(sources)
         if not manual and row['category'] in ('topic','saying'):
-            originals = [s for s in sources if _memory_original(s,row['category'],saying)]
-            supported = any(_memory_independent(a,b,row['category'],[s['message'] for s in sources])
-                            for i,a in enumerate(originals) for b in originals[i+1:])
+            if admission:
+                supported = _inc_enough(sources,row['category'],saying)
+            else:
+                originals = [s for s in sources if _memory_original(s,row['category'],saying)]
+                supported = any(_memory_independent(a,b,row['category'],[s['message'] for s in sources])
+                                for i,a in enumerate(originals) for b in originals[i+1:])
         visible = visibility.memory_visible(row['id'],entry_id)
         usable = row['lifecycle']=='active' and supported and visible and not row['merged_into']
         if admission and not manual:
@@ -2095,7 +2098,7 @@ def incremental_prompts():
     from importlib.resources import files
     import hashlib
     result={}
-    for stage,name in (('observe','entry_profile_observe_v2'),('admit','entry_profile_admit_v2')):
+    for stage,name in (('observe','entry_profile_observe_v3'),('admit','entry_profile_admit_v3')):
         value=files('iris').joinpath('prompts',name+'.md').read_text(encoding='utf-8')
         result[stage]=dict(name=name,text=value,sha256=hashlib.sha256(value.encode()).hexdigest())
     return result
@@ -2209,12 +2212,9 @@ def _inc_all_sources(conn, row, as_of):
 # Conservative grammatical normalization; no semantic synonym or corpus vocabulary table.
 _INC_PARTICLES = '呀啊吧呢吗嘛啦哦哟呀呗'
 _INC_CLASSIFIERS = '个盏张本道座次遍圈条份件段层块片台只支枚'
-_INC_ABSTRACT = frozenset('话题 事项 方面 原因 问题 方式 方法 情况 内容 事情 规则 群规 规范 说明 资料 要求 物品 设备 材料 工具 装备 作品 用途 人员 成员 差异 信息 关系 部分 状态 结构 效果 质量 过程 步骤 对象 定义 个人 大家'.split())
 _INC_ONCE = re.compile(r'今天|今晚|明天|昨[天晚]|这次|本次|此次|当天|这回|本周|下周|(?<!每)周[一二三四五六日天]|\d{1,2}月\d{1,2}[日号]|\d{1,2}[:：]\d{2}')
-_INC_PUBLIC_RULE = re.compile(r'群规|群公告|本群|本频道|本入口|本直播间|直播间.{0,5}(?:规矩|规定|禁止|不设)|(?:全体|所有)(?:群友|成员)|管理员.{0,6}(?:宣布|公告|规定)')
-_INC_PERSONAL_RULE = re.compile(r'(?:我|本人).{0,12}(?:个人|私事|安排|预约|检查|住址|电话)|(?:给我|替我|帮我)|(?:^|[，。！；])\s*你(?!们)|[\w\u4e00-\u9fff]{1,8}[，,]\s*你(?!们)|@\S+')
+_INC_PERSONAL_RULE = re.compile(r'(?:(?:我|本人)(?:的|自己的)|(?:我|本人)个人的?).{0,8}(?:个人|私事|安排|预约|住址|电话)|(?:我(?!们)|本人)(?:刚|已经|还|要|将)?预约|(?:给我|替我|帮我)(?!们)|[\w\u4e00-\u9fff]{1,8}[，,]\s*你(?!们)|@(?!(?:所有人|全体成员|everyone|all)(?:\s|$|[，,：:]))\S+',re.I)
 _INC_EXTERNAL_RULE = re.compile(r'(?:公司|学校|协会|机构|单位|组织).{0,4}(?:规定|要求|制度)')
-_INC_CONSENT = re.compile(r'同意|赞成|支持这条|就按这个|照此执行')
 _INC_FOLLOWUP = re.compile(r'还有吗|怎么样了|有结果了吗|有消息了吗|后来呢|找到[了啦]|已经.{0,8}(?:寄|发|给)|之前问|上次问|前几天.{0,6}(?:问|求)|(?:进度|结果).{0,3}(?:怎样|如何)|接着上次|跟进|催办')
 _INC_REQUEST = re.compile(r'[?？]|求|谁有|能否|有没有|想找|帮忙|拜托')
 
@@ -2262,17 +2262,27 @@ def _inc_saying_used(saying, excerpt):
 
 
 def _inc_entity_terms(body):
-    # Existing installed jieba dictionary only; never modify the retrieval tokenizer.
+    """Literal anchors, not an open-ended inventory of nouns in a theme.
+
+    Dictionary person/place/organization names are deterministic hints only.
+    Unknown names and ordinary words used as brands remain the semantic check's
+    responsibility unless explicitly named or written as an identifier.
+    """
     from jieba import posseg
-    terms=re.findall(r'《([^》]+)》|〈([^〉]+)〉',body)
-    result=[a or b for a,b in terms]
+    body=unicodedata.normalize('NFKC',body)
+    result=[a or b for a,b in re.findall(r'《([^》]+)》|〈([^〉]+)〉',body)]
+    result+=re.findall(r'(?:品牌|型号|系列|产品名|地名|公司名|作品名)(?:为|是|叫|名为|[:：])?\s*[“「『"]([^”」』"]+)[”」』"]',body)
+    # Preserve composite dates/times: matching their individual numbers is not enough.
+    result+=re.findall(r'\d{4}年\d{1,2}月\d{1,2}[日号]|\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}月\d{1,2}[日号]|\d{1,2}[:：]\d{2}',body)
     result+=re.findall(r'(?<![a-zA-Z0-9_.])\d+(?:\.\d+)?(?:%|％)?',body)
-    result+=re.findall(r'(?<![a-zA-Z0-9])[a-zA-Z][a-zA-Z0-9]*(?:[-_][a-zA-Z0-9]+)*(?![a-zA-Z0-9])',body)
+    identifiers=re.findall(r'(?<![a-zA-Z0-9])[a-zA-Z][a-zA-Z0-9]*(?:[-_][a-zA-Z0-9]+)*(?![a-zA-Z0-9])',body)
+    result.extend(term for term in identifiers if any(c.isupper() or c.isdigit() for c in term))
     for word,flag in posseg.cut(body,HMM=False):
-        if word in _INC_ABSTRACT: continue
-        if (flag.startswith(('nr','ns','nt','nz')) and len(word)>=2
-                or flag=='n' and len(word)>=2 or flag=='m' and re.fullmatch(r'[零〇一二两三四五六七八九十百千万]+',word)):
+        if flag.startswith(('nr','ns','nt')) and len(word)>=2:
             result.append(word)
+        elif flag=='m':
+            quantity=re.match(r'[零〇一二两三四五六七八九十百千万]+',word)
+            if quantity: result.append(quantity[0])
     return list(dict.fromkeys(result))
 
 
@@ -2291,17 +2301,15 @@ def _inc_missing_entities(body, evidence):
 
 
 def _inc_rule_reason(sources):
-    # Always inspect full actual content, not just a conveniently shortened excerpt.
-    texts=[s['message']['content'] if s['field']=='content' else (s['message'].get('quote') or {}).get('content','') for s in sources]
-    eligible=[]
-    for source,text in zip(sources,texts):
+    # This is only a negative guard. Announcement/authority/lasting scope must
+    # be proved by the per-memory checker, not by a positive keyword allowlist.
+    for source in sources:
+        text=(source['message']['content'] if source['field']=='content'
+              else (source['message'].get('quote') or {}).get('content',''))
         timing=re.sub(r'(?:从|自)(?:今天|明天|\d{1,2}月\d{1,2}[日号])(?:起|开始)','',text)
         if _INC_ONCE.search(timing) or _INC_PERSONAL_RULE.search(text): continue
-        if _INC_EXTERNAL_RULE.search(text) and not _INC_PUBLIC_RULE.search(text): continue
-        eligible.append((source,text))
-    if any(_INC_PUBLIC_RULE.search(text) for _,text in eligible): return None
-    speakers={s['speaker'] for s,t in eligible}
-    if len(speakers)>=2 and any(_INC_CONSENT.search(t) for _,t in eligible): return None
+        if _INC_EXTERNAL_RULE.search(text): continue
+        return None
     return 'rule_scope_not_established'
 
 
@@ -2315,20 +2323,37 @@ def _inc_original(source, category, saying):
     return category!='saying' or _inc_saying_used(saying,source['excerpt'])
 
 
+def _inc_request_object(text):
+    """Longest explicit noun span in a request; no corpus objects or synonyms."""
+    from jieba import posseg
+    spans=[];current=''
+    for word,flag in posseg.cut(text,HMM=False):
+        if flag.startswith('n') or flag=='eng':
+            current+=word
+        else:
+            if len(current)>=2: spans.append(current)
+            current=''
+    if len(current)>=2: spans.append(current)
+    longest=max(map(len,spans),default=0)
+    return [s for s in spans if len(s)==longest]
+
+
 def _inc_same_discussion(left, right):
     a,b=left['message'],right['message']
     if _instant(a['occurred_at'])>_instant(b['occurred_at']): a,b=b,a
     quote=b.get('quote') or {}
+    quoted=_memory_observation_text(quote.get('content',''))
+    # Without a reply ID, require the actual author's complete quoted text.
+    # A short contained phrase is neither a reply link nor an event identity.
     if quote and (quote.get('ref')==a['ref'] or
-            quote.get('speaker')==a['speaker'] and _memory_copies(quote.get('content',''),a['content'])):
+            quote.get('speaker')==a['speaker'] and quoted and
+            quoted==_memory_observation_text(a['content'])):
         return True
-    follow=_INC_FOLLOWUP.search(b['content'])
-    if not follow: return False
-    if re.fullmatch(r'\s*(?:还有吗|怎么样了|有结果了吗|有消息了吗|后来呢)[?？。！!\s]*',b['content']): return True
-    if not _INC_REQUEST.search(a['content']): return False
-    left_terms=set(_inc_entity_terms(a['content']))
-    right_terms=set(_inc_entity_terms(b['content']))
-    return bool(left_terms&right_terms or re.search(r'之前问|上次问|接着上次|前几天',b['content']))
+    if (a['speaker']!=b['speaker'] or not _INC_FOLLOWUP.search(b['content'])
+            or not _INC_REQUEST.search(a['content'])):
+        return False
+    text=_memory_observation_text(b['content'])
+    return any(_memory_observation_text(obj) in text for obj in _inc_request_object(a['content']))
 
 
 def _inc_body_reason(category,body,saying,sources):
@@ -2354,12 +2379,15 @@ def _inc_groups(sources, category, saying=''):
             roots[index]=roots[roots[index]];index=roots[index]
         return index
     if category=='topic':
-        # Transitive reply/follow-up chains, including non-original quoted links.
+        # Only genuine identity/reply/follow-up links may propagate. Calendar
+        # proximity and substring similarity cannot join whole discussion days.
         for i,source in enumerate(ordered):
+            content=_memory_observation_text(source['message']['content'])
             for j,prior in enumerate(ordered[:i]):
                 if (source['evidence_identity']==prior['evidence_identity'] or
                         source.get('burst_id') and source.get('burst_id')==prior.get('burst_id') or
-                        not _memory_independent(source,prior,category,messages) or _inc_same_discussion(source,prior)):
+                        content and content==_memory_observation_text(prior['message']['content']) or
+                        _inc_same_discussion(source,prior)):
                     roots[root(i)]=root(j)
     selected=[];selected_roots=set()
     for i,source in enumerate(ordered):
@@ -2367,6 +2395,12 @@ def _inc_groups(sources, category, saying=''):
         if category=='topic':
             identity=root(i)
             if identity in selected_roots: continue
+            # At most one original per local date. Do not turn this necessary
+            # threshold into an equivalence edge linking every source that day.
+            if any(source['message']['date']==prior['message']['date'] or
+                    abs((_instant(source['message']['occurred_at'])-
+                         _instant(prior['message']['occurred_at'])).total_seconds())<30*60
+                    for prior in selected): continue
             selected_roots.add(identity)
         elif any(source['evidence_identity']==prior['evidence_identity'] or
                  source.get('burst_id') and source.get('burst_id')==prior.get('burst_id') or
