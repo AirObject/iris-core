@@ -223,3 +223,7 @@ def test_quote_diagnostic_counts_rejected_draft_quotes():
     profile={'status':'rejected','checks':{'quote_validation':{'total':3,'passed':1}}}
     rows=[{'complete':True,'result':{'version':profile},'calls':[],'attempts':[]}]
     assert _runner._metrics(rows)['quote_validation_pass_rate']==1/3
+
+
+# Historical document-path regression on the pre-switch schema.
+from profile_legacy import legacy_schema

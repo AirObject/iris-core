@@ -107,9 +107,12 @@ def _settings(conn, entry_id):
     _entry(conn, entry_id)
     defaults = _runtime(conn)
     row = conn.execute('SELECT * FROM entry_profile_settings WHERE entry_id=?', (entry_id,)).fetchone()
-    return (dict(row) | {'enabled':bool(row['enabled'])}) if row else dict(
+    result = (dict(row) | {'enabled':bool(row['enabled'])}) if row else dict(
         entry_id=entry_id, enabled=True, publish_mode=defaults['publish_mode'], revision=0,
         current_version=0, updated_at=None)
+    if memory_profile_enabled(conn):
+        result.update(current_version=_memory_state(conn,entry_id)['version'],publish_mode='check_auto',mode='memory')
+    return result
 
 
 def profile_settings(store, entry_id):
@@ -142,7 +145,8 @@ def _version(conn, entry_id, version):
 
 
 def _current(conn, entry_id):
-    version = _settings(conn, entry_id)['current_version']
+    row = conn.execute('SELECT current_version FROM entry_profile_settings WHERE entry_id=?',(entry_id,)).fetchone()
+    version = row[0] if row else 0
     return _version(conn, entry_id, version) if version else None
 
 
@@ -306,7 +310,8 @@ def _view(conn, value):
         return None
     value={**value,'stale_basis':_stale(conn,value['entry_id'],value['sentences'])}
     value['possibly_stale']=bool(value['stale_basis'])
-    value['is_current']=_settings(conn,value['entry_id'])['current_version']==value['version']
+    value['legacy']=memory_profile_enabled(conn)
+    value['is_current']=not value['legacy'] and _settings(conn,value['entry_id'])['current_version']==value['version']
     return value
 
 
@@ -315,8 +320,10 @@ def current_profile(store, entry_id):
         return _view(conn,_current(conn,entry_id))
 
 
-def profile_context(conn, entry_id):
+def profile_context(conn, entry_id, *, known_memory_ids=()):
     """Optional prepare partition; no writes, calls or cross-entry reads."""
+    if memory_profile_enabled(conn):
+        return memory_profile_context(conn,entry_id,known_memory_ids=known_memory_ids)
     if (_entry(conn,entry_id)['kind'] not in ('group','live')
             or not _settings(conn,entry_id)['enabled'] or not _runtime(conn)['enabled']):
         return None
@@ -341,6 +348,8 @@ def list_versions(store, entry_id, *, limit=50, offset=0):
 
 
 def _due(conn, entry_id, current):
+    if memory_profile_enabled(conn):
+        return _memory_due(conn,entry_id,current)
     entry=_entry(conn,entry_id); config=_runtime(conn); settings=_settings(conn,entry_id)
     previous=_current(conn,entry_id)
     window_count=conn.execute('''SELECT COUNT(*) FROM messages WHERE entry_id=?
@@ -382,14 +391,19 @@ def set_settings(store, entry_id, *, expected_version, enabled=None, publish_mod
         raise ValueError('invalid publish mode')
     stamp=_instant(clock()).isoformat()
     with store.write() as conn:
-        _expect(conn,entry_id,expected_version)
+        if memory_profile_enabled(conn):
+            _memory_expect(conn,entry_id,expected_version)
+            if publish_mode not in (None,'check_auto'):
+                raise EntryProfileRetired('entry_profile_publish_mode_retired')
+        else:
+            _expect(conn,entry_id,expected_version)
         settings=_ensure(conn,entry_id,stamp)
         values={'enabled':settings['enabled'] if enabled is None else enabled,
                 'publish_mode':settings['publish_mode'] if publish_mode is None else publish_mode}
         conn.execute('UPDATE entry_profile_settings SET enabled=?,publish_mode=?,revision=revision+1,updated_at=? WHERE entry_id=?',
                      (values['enabled'],values['publish_mode'],stamp,entry_id))
         _audit(conn,'settings',entry_id,stamp,expected_version=expected_version,**values)
-        return _settings(conn,entry_id)
+    return profile_settings(store,entry_id)
 
 
 def _length_errors(content, config, *, structured=False):
@@ -434,6 +448,7 @@ def _insert(conn, entry_id, *, previous, content, sentences, checks, degree, sta
 
 
 def admin_edit(store, entry_id, content, *, expected_version, clock=utc_now):
+    require_legacy_write(store,entry_id)
     stamp=_instant(clock()).isoformat()
     with store.write() as conn:
         previous=_expect(conn,entry_id,expected_version); settings=_ensure(conn,entry_id,stamp)
@@ -463,6 +478,7 @@ def version_diff(store, entry_id, before, after):
 
 
 def rollback(store, entry_id, version, *, expected_version, clock=utc_now):
+    require_legacy_write(store,entry_id)
     stamp=_instant(clock()).isoformat()
     with store.write() as conn:
         _expect(conn,entry_id,expected_version); settings=_ensure(conn,entry_id,stamp)
@@ -476,6 +492,7 @@ def rollback(store, entry_id, version, *, expected_version, clock=utc_now):
 
 
 def confirm_candidate(store, entry_id, version, *, expected_version, clock=utc_now):
+    require_legacy_write(store,entry_id)
     stamp=_instant(clock()).isoformat()
     with store.write() as conn:
         _expect(conn,entry_id,expected_version); value=_version(conn,entry_id,version)
@@ -490,6 +507,7 @@ def confirm_candidate(store, entry_id, version, *, expected_version, clock=utc_n
 
 
 def reject_candidate(store, entry_id, version, *, expected_version, reason='administrator_rejected', clock=utc_now):
+    require_legacy_write(store,entry_id)
     stamp=_instant(clock()).isoformat()
     with store.write() as conn:
         _expect(conn,entry_id,expected_version); value=_version(conn,entry_id,version)
@@ -707,9 +725,17 @@ class _HealthGate(ChatHealthGate):
 class EntryProfileEngine:
     def __init__(self, store, gateway, *, clock=utc_now, prompt_version=None):
         self.store,self.gateway,self.clock=store,gateway,clock
-        self.prompt_version=DEFAULT_PROMPT_VERSION if prompt_version is None else prompt_version
-        self.prompts=load_profile_prompts('entry_profile',self.prompt_version,PROMPT_VERSIONS)
+        self.memory_mode = getattr(store,'_memory_profiles',False)
+        self.incremental_mode = self.memory_mode and getattr(store,'_incremental_profiles',False)
+        if self.memory_mode and prompt_version is not None:
+            raise EntryProfileRetired('entry_profile_legacy_write_retired')
+        self.prompt_version=MEMORY_PROMPT_VERSION if self.memory_mode else DEFAULT_PROMPT_VERSION if prompt_version is None else prompt_version
+        self.prompts=load_profile_prompts('entry_profile_memory' if self.memory_mode else 'entry_profile',
+            self.prompt_version,('v1','v2') if self.memory_mode else PROMPT_VERSIONS)
         self.prompt_metadata=profile_prompt_metadata(self.prompts)
+        if self.incremental_mode:
+            loaded=incremental_prompts()
+            self.prompt_metadata=dict(prompt_versions=[p['name'] for p in loaded.values()],prompt_sha256={p['name']:p['sha256'] for p in loaded.values()})
 
     def update(self, entry_id, *, expected_version, run_id=None):
         return self._run(entry_id,expected_version,'periodic',run_id=run_id)
@@ -762,7 +788,7 @@ class EntryProfileEngine:
 
     def _skip(self, entry_id, expected, source, due, reason, run_id, stamp):
         with self.store.write() as conn:
-            _expect(conn,entry_id,expected)
+            (_memory_expect if self.memory_mode else _expect)(conn,entry_id,expected)
             _audit(conn,'generation_skipped',entry_id,stamp,base_version=expected,reason=reason,source=source)
             attempt=conn.execute('''INSERT OR IGNORE INTO entry_profile_attempts(entry_id,run_id,base_version,state,
                     reason,local_day,started_at,finished_at) VALUES(?,?,?,'skipped',?,?,?,?)''',
@@ -776,6 +802,10 @@ class EntryProfileEngine:
         return self._execute(**reservation['context']) if 'context' in reservation else reservation
 
     def _reserve(self, entry_id, expected, source, *, run_id=None, fail_if_running=False):
+        if self.incremental_mode:
+            return _reserve_incremental_task(self,entry_id,expected,source,run_id=run_id,fail_if_running=fail_if_running)
+        if self.memory_mode:
+            return _reserve_memory_task(self,entry_id,expected,source,run_id=run_id,fail_if_running=fail_if_running)
         """Persist admission and take an evidence snapshot; never call a model here."""
         current=_instant(self.clock()); stamp=current.isoformat()
         with self.store.write() as conn:
@@ -827,8 +857,12 @@ class EntryProfileEngine:
             source=source,stamp=stamp,previous=previous,due=due,config=config,settings=settings,
             gateway=gateway,evidence=evidence,material=material,attempt=attempt)}
 
-    def _execute(self, *, entry_id, expected, source, stamp, previous, due, config, settings,
-                 gateway, evidence, material, attempt):
+    def _execute(self, *, entry_id, expected=None, source=None, stamp=None, previous=None, due=None, config=None, settings=None,
+                 gateway=None, evidence=None, material=None, attempt=None, memory_repository=None, incremental_task=None):
+        if incremental_task is not None:
+            return _execute_incremental_task(self,entry_id,attempt,incremental_task,due)
+        if memory_repository is not None:
+            return _execute_memory_task(self,entry_id,attempt,gateway,memory_repository,due)
         outputs={}; calls=[]; sentences=None
         try:
             checks={'format_version':PROFILE_FORMAT,'passed':False,'errors':[],'deleted_sentences':[],'model':None}
@@ -959,6 +993,8 @@ class EntryProfileJobs:
 
 def update_profiles_for_run(store, gateway, run, config, *, clock=utc_now, stop=None):
     """One durable consolidation step. The supplied gateway owns max_calls admission."""
+    if getattr(store,'_incremental_profiles',False):
+        return _update_incremental_for_run(store,gateway,run,config,clock=clock,stop=stop)
     if not config.get('entry_profile_enabled',True):
         return True
     with store.read() as conn:
@@ -999,9 +1035,8 @@ def update_profiles_for_run(store, gateway, run, config, *, clock=utc_now, stop=
     return True
 
 
-# Memory task, deliberately NOT connected to EntryProfileJobs/context yet.
-# The database adapter (entry subjects, hard scope, receipts, purge and CAS) is
-# a prerequisite owned by subsequent work. No fallback writes to legacy tables.
+# Memory producer shared by the production SQLite adapter and offline tests.
+MEMORY_PROMPT_VERSION = 'v2'
 MEMORY_PROFILE_IMPORTANCE_CAP = 69
 MEMORY_PROFILE_VIOLATIONS = (*VIOLATIONS, '容易过时的描述')
 _MEMORY_REPORTED = re.compile(r'转(?:发|引|述)|引用|复述|原话|上次.{0,8}(?:说|提)|之前.{0,8}(?:说|提)')
@@ -1022,11 +1057,11 @@ class MemoryProfileLimits:
     memory_tokens: int = 2500
     max_operations: int = 12
     request_tokens: int = 12000
-    timeout_seconds: int = 120
+    timeout_seconds: int = 180
 
     def __post_init__(self):
         if (any(type(v) is not int or v < 1 for v in vars(self).values())
-                or self.timeout_seconds > 120 or self.request_tokens > 12000):
+                or self.timeout_seconds > 180 or self.request_tokens > 12000):
             raise ValueError('invalid memory profile limits')
 
 
@@ -1339,6 +1374,53 @@ def _memory_validate_operation(raw, index, material):
                 target=copy.deepcopy(target))
 
 
+def validate_memory_profile_shape(generated, limits):
+    """Protocol only: malformed fields get one repair; evidence never does.
+
+    Keep source binding, recurrence, privacy and manual protection in the
+    deterministic/semantic validators. Do not fill defaults into model output.
+    """
+    if (not isinstance(generated, dict) or set(generated) != {'operations'}
+            or not isinstance(generated['operations'], list)
+            or len(generated['operations']) > limits.max_operations):
+        raise ValueError('invalid_operations')
+    for raw in generated['operations']:
+        if not isinstance(raw, dict) or raw.get('op') not in ('new', 'confirm', 'revise', 'retire'):
+            raise ValueError('invalid_operation')
+        required = {'op', 'sources'}
+        if raw['op'] != 'new':
+            required |= {'target_id', 'expected_revision'}
+        if raw['op'] in ('new', 'revise'):
+            required |= {'category', 'body', 'saying', 'meaning', 'importance'}
+        if set(raw) != required:
+            raise ValueError('invalid_operation_fields')
+        if raw['op'] != 'new' and (type(raw['target_id']) not in (str, int)
+                or not str(raw['target_id']).strip() or type(raw['expected_revision']) is not int
+                or raw['expected_revision'] < 1):
+            raise ValueError('invalid_target_fields')
+        if (not isinstance(raw['sources'], list) or not 1 <= len(raw['sources']) <= 8):
+            raise ValueError('invalid_sources')
+        for source in raw['sources']:
+            if (not isinstance(source, dict) or set(source) != {'ref', 'field', 'excerpt', 'via_memory'}
+                    or not isinstance(source['ref'], str) or not source['ref'].strip()
+                    or source['field'] not in ('content', 'quote')
+                    or not isinstance(source['excerpt'], str) or not 1 <= len(source['excerpt'].strip()) <= 300
+                    or (source['via_memory'] is not None and not isinstance(source['via_memory'], str))):
+                raise ValueError('invalid_source_fields')
+        if raw['op'] in ('new', 'revise'):
+            if (not isinstance(raw['category'], str) or raw['category'] not in ITEM_LABELS
+                    or not isinstance(raw['body'], str) or not 1 <= len(raw['body'].strip()) <= 180
+                    or not isinstance(raw['saying'], str) or not isinstance(raw['meaning'], str)
+                    or type(raw['importance']) is not int or not 0 <= raw['importance'] <= 100):
+                raise ValueError('invalid_memory_body')
+            body, saying, meaning = (raw[k].strip() for k in ('body', 'saying', 'meaning'))
+            if raw['category'] == 'saying':
+                if not saying or len(saying) > 40 or body != saying + ('：' + meaning if meaning else ''):
+                    raise ValueError('invalid_saying_body')
+            elif saying or meaning:
+                raise ValueError('unexpected_saying_fields')
+
+
 def validate_memory_profile_operations(generated, material, limits=None):
     limits = limits or MemoryProfileLimits()
     if (not isinstance(generated, dict) or set(generated) != {'operations'}
@@ -1400,44 +1482,108 @@ def check_memory_profile_operations(output, operations):
     return kept, removed
 
 
+def _memory_check_repair_guard(previous, corrected):
+    """A shape correction cannot turn a parsed negative verdict into approval."""
+    if not isinstance(previous, dict) or not isinstance(previous.get('operations'), list):
+        return
+    prior = {v['index']: v for v in previous['operations']
+             if isinstance(v, dict) and type(v.get('index')) is int}
+    for verdict in corrected['operations']:
+        old = prior.get(verdict['index'], {})
+        for key in ('supported', 'stable', 'independent', 'independent_from_previous', 'privacy_safe', 'meaning_supported'):
+            if old.get(key) is False and verdict[key] is not False:
+                raise ValueError('repair_changed_verdict')
+        violations = old.get('violations', [])
+        if isinstance(violations, list) and any(v in MEMORY_PROFILE_VIOLATIONS and v not in verdict['violations']
+                                              for v in violations):
+            raise ValueError('repair_changed_verdict')
+
+
 class EntryProfileMemoryTask:
-    """Two-call, detached-snapshot producer. Must be explicitly given an adapter."""
+    """Two phases with at most one format repair each; detached snapshots."""
     def __init__(self, repository: MemoryProfileRepository | None, gateway, *, limits=None):
         self.repository, self.gateway = repository, gateway
         self.limits = limits or MemoryProfileLimits()
         self.prompts = {stage: dict(name=prompt['prompt_version'], text=prompt['text'],
                                    sha256=prompt['prompt_sha256'])
                         for stage, prompt in load_profile_prompts(
-                            'entry_profile_memory', 'v1', ('v1',)).items()}
+                            'entry_profile_memory', MEMORY_PROMPT_VERSION, ('v1','v2')).items()}
 
     def _call(self, stage, payload, result):
-        self.repository.assert_model_call_allowed()
-        prompt = self.prompts[stage]; purpose = 'consolidation_entry_profile_memory_' + stage
+        prompt = self.prompts[stage]; purpose = 'consolidation_entry_profile_' + stage
         if not callable(getattr(self.gateway, 'chat', None)):
             raise MemoryProfileUnavailable('model_gateway_unavailable')
-        encoded = dumps(payload)
-        if estimate_tokens(prompt['text']) + estimate_tokens(encoded) > self.limits.request_tokens:
+        messages = [{'role': 'system', 'content': prompt['text']},
+                    {'role': 'user', 'content': dumps(payload)}]
+        if sum(estimate_tokens(m['content']) for m in messages) > self.limits.request_tokens:
             raise ValueError('request_budget_exceeded')
-        health = getattr(self.gateway, 'health', None)
-        if health:
-            health.check('chat', 'learning')
         monotonic = getattr(self.gateway, 'monotonic', time.monotonic)
-        started = monotonic()
-        call = dict(purpose=purpose, prompt_version=prompt['name'], prompt_sha256=prompt['sha256'])
-        try:
-            reply = self.gateway.chat([{'role': 'system', 'content': prompt['text']},
-                                       {'role': 'user', 'content': encoded}], purpose,
-                                      max_tokens=16000, _deadline=started + self.limits.timeout_seconds)
-        except ModelError as error:
-            result['calls'].append({**call, 'result': error.category,
-                'duration_ms': round((monotonic() - started) * 1000), 'usage': {}})
-            raise
-        result['outputs'][stage] = reply.content
-        result['calls'].append(dict(**call, result='success', finish_reason=reply.finish_reason,
-            duration_ms=round((monotonic() - started) * 1000), usage=reply.usage))
-        if reply.finish_reason != 'stop':
-            raise ValueError('incomplete_output')
-        return json_object(reply.content)
+        deadline = monotonic() + self.limits.timeout_seconds
+        previous = None
+        for attempt in range(2):
+            # Initial HTTP retries and the single syntax/shape repair all use
+            # this phase's original deadline and the gateway's call admission.
+            self.repository.assert_model_call_allowed()
+            if monotonic() >= deadline:
+                raise ModelError('retryable', 'total timeout', reason='timeout')
+            health = getattr(self.gateway, 'health', None)
+            if health:
+                health.check('chat', 'learning')
+            suffix = '_repair' if attempt else ''
+            call = dict(purpose=purpose + suffix, prompt_version=prompt['name'], prompt_sha256=prompt['sha256'],
+                        timeout_seconds=self.limits.timeout_seconds, result='success')
+            reply = None; started = monotonic(); invalid = None; parsed = None
+            try:
+                reply = self.gateway.chat(messages, purpose + suffix, max_tokens=16000, _deadline=deadline)
+                if monotonic() >= deadline:
+                    raise ModelError('retryable', 'total timeout', reason='timeout')
+                try:
+                    if reply.finish_reason != 'stop':
+                        raise ValueError('incomplete_output')
+                    parsed = json_object(reply.content)
+                    if stage == 'generate':
+                        validate_memory_profile_shape(parsed, self.limits)
+                    else:
+                        check_memory_profile_operations(parsed, payload['operations'])
+                        if attempt:
+                            _memory_check_repair_guard(previous, parsed)
+                except ValueError as error:
+                    invalid = str(error)
+                    call['validation_error'] = invalid
+                # Invalid parsing/validation can itself exhaust the budget.
+                if monotonic() >= deadline:
+                    raise ModelError('retryable', 'total timeout', reason='timeout')
+                if invalid is None:
+                    return parsed
+                if attempt:
+                    raise ModelError('invalid_output', 'invalid profile output after one repair', reason='invalid_output')
+            except ModelError as error:
+                if error.category == 'retryable' and not error.reason and monotonic() >= deadline:
+                    error.reason = 'timeout'
+                call.update(result=error.category, reason=error.reason or error.category)
+                raise
+            finally:
+                # Both originals and corrections persist and share purge guards.
+                if reply is not None:
+                    result['outputs'][stage + suffix] = reply.content
+                    call['finish_reason'] = reply.finish_reason
+                result['calls'].append(dict(call, duration_ms=round((monotonic() - started) * 1000),
+                                            usage=reply.usage if reply is not None else {}))
+                self._record_progress(result)
+            previous = parsed
+            messages = messages + [
+                {'role': 'assistant', 'content': reply.content},
+                {'role': 'user', 'content': '上一个回答未通过严格JSON结构校验：' + invalid +
+                 '。只输出修正后的完整JSON对象，遵守系统中的全部必填字段、类型和编号。'
+                 '这是一次格式修正，不新增事实或来源，不改变证据标准，不把语义不通过改成通过；不要解释。'}]
+            if sum(estimate_tokens(m['content']) for m in messages) > self.limits.request_tokens:
+                result['repair_blocked'] = dict(stage=stage, reason='request_budget_exceeded')
+                raise ModelError('invalid_output', 'repair request exceeds material budget', reason='invalid_output')
+
+    def _record_progress(self, result):
+        record = getattr(self.repository, 'record_model_progress', None)
+        if record is not None:
+            record(result)
 
     def run(self, entry_id):
         if self.repository is None:
@@ -1489,7 +1635,1536 @@ class EntryProfileMemoryTask:
             result.update(status='conflict', reason='snapshot_changed')
         except ModelError as error:
             # Do not log provider text: it can echo configuration or source data.
-            result.update(status='failed', reason=error.category)
+            result.update(status='failed', reason=error.reason or error.category)
         except ValueError as error:
             result.update(status='failed', reason=str(error))
         return result
+
+
+class EntryProfileRetired(ValueError):
+    """A legacy whole-document write is retired on the memory path."""
+
+
+def memory_profile_enabled(conn):
+    return bool(conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='entry_profile_memory_state'").fetchone())
+
+
+def _memory_state(conn, entry_id):
+    _entry(conn, entry_id)
+    row = conn.execute('SELECT * FROM entry_profile_memory_state WHERE entry_id=?', (entry_id,)).fetchone()
+    if row is None:
+        raise EntryProfileConflict('memory_profile_state_missing')
+    return dict(row)
+
+
+def initialize_memory_profiles(store, conn):
+    """Lossless deterministic hand-written conversion, idempotent at startup.
+
+    Only the last published profile contributes manual items; previous versions
+    remain read-only history. Never revive removed historical rules. Model items
+    are diagnosed and rebuilt asynchronously from original evidence.
+    """
+    from .memory_ops import write_entry_profile_memory
+    stamp = utc_now().isoformat()
+    runtime = _setting(conn, 'entry_profile', {})
+    if runtime.get('publish_mode') == 'all_manual':
+        conn.execute("UPDATE runtime_settings SET value_json=? WHERE key='entry_profile'",
+                     (dumps({**runtime, 'publish_mode':'check_auto'}),))
+        operation(conn, 'entry_profile_publish_mode_migrated', 'settings', 'entry_profile',
+                  {'before':'all_manual','after':'check_auto'}, actor='migration', stamp=stamp)
+    for row in conn.execute('SELECT * FROM entry_profile_memory_state WHERE legacy_pending=1').fetchall():
+        entry_id = row['entry_id']
+        setting_row = conn.execute('SELECT * FROM entry_profile_settings WHERE entry_id=?', (entry_id,)).fetchone()
+        if setting_row and setting_row['publish_mode'] == 'all_manual':
+            conn.execute("UPDATE entry_profile_settings SET publish_mode='check_auto',revision=revision+1,updated_at=? WHERE entry_id=?", (stamp,entry_id))
+            operation(conn, 'entry_profile_publish_mode_migrated', 'entry', entry_id,
+                      {'before':'all_manual','after':'check_auto'}, actor='migration', stamp=stamp)
+        legacy = conn.execute('SELECT * FROM entry_profile_versions WHERE entry_id=? AND version=?',
+                             (entry_id, setting_row['current_version'] if setting_row else 0)).fetchone()
+        if legacy:
+            sentences = json.loads(legacy['sentences_json'])
+            if not sentences and legacy['author']=='admin' and legacy['content']:
+                sentences = [{'text':legacy['content'],'author':'admin'}]
+            # Preserve a baseline signature so removing an old model-only
+            # projection also advances the entry's existing version sequence.
+            conn.execute('UPDATE entry_profile_memory_state SET projection_json=? WHERE entry_id=?',
+                         (dumps([{'legacy':legacy['version']}]) if legacy['content'] else '[]',entry_id))
+            for index, sentence in enumerate(sentences, 1):
+                body = sentence.get('text','')
+                kind = sentence.get('category',sentence.get('kind'))
+                category = kind if kind in ITEM_LABELS else None
+                mid = None
+                if sentence.get('author') == 'admin' and body:
+                    result = write_entry_profile_memory(store,entry_id,op='new',content=body,
+                        category=category,importance=80,manual=True,_conn=conn)
+                    mid = result['memory_id']
+                    conn.execute('UPDATE memories SET pinned=1 WHERE id=?',(mid,))
+                    disposition = 'manual_imported' if category else 'manual_unclassified'
+                else:
+                    disposition = 'model_rebuild_pending' if body else 'cleared_history'
+                conn.execute('''INSERT OR IGNORE INTO entry_profile_legacy_migration
+                    VALUES(?,?,?,?,?,?,?)''',(entry_id,legacy['version'],index,disposition,mid,category,stamp))
+            material=json.loads(legacy['material_json'])
+            material['migration_memory_refs']=[dict(memory_id=r['memory_id'],revision=1) for r in conn.execute(
+                'SELECT memory_id FROM entry_profile_legacy_migration WHERE entry_id=? AND legacy_version=? AND memory_id IS NOT NULL',
+                (entry_id,legacy['version']))]
+            conn.execute('UPDATE entry_profile_versions SET material_json=? WHERE id=?', (dumps(material),legacy['id']))
+        conn.execute('UPDATE entry_profile_memory_state SET legacy_pending=0 WHERE entry_id=?',(entry_id,))
+        conn.execute('INSERT OR IGNORE INTO entry_profile_projection_dirty VALUES(?)',(entry_id,))
+
+
+def _db_observation(row):
+    value = dict(ref='msg:'+str(row['id']), position=row['id'], entry_id=row['entry_id'],
+                 kind=row['kind'], speaker=row['sender_subject_id'], content=row['content'], occurred_at=row['occurred_at'])
+    if row['quote_content']:
+        value['quote'] = dict(speaker=row['quote_author_subject_id'],content=row['quote_content'])
+    return value
+
+
+def _source_fact(conn, mid, entry_id, zone, as_of):
+    row = conn.execute("SELECT * FROM memories WHERE id=? AND kind!='入口画像' AND lifecycle='active' AND purged_at IS NULL",(mid,)).fetchone()
+    if not row or not Visibility(conn).memory_visible(mid,entry_id):
+        return None
+    roots = conn.execute('''WITH RECURSIVE parents(id) AS (
+        SELECT ? UNION SELECT s.source_memory_id FROM sources s JOIN parents p ON p.id=s.memory_id WHERE s.kind='memory')
+        SELECT DISTINCT x.* FROM parents p JOIN sources s ON s.memory_id=p.id JOIN messages x ON x.id=s.message_id
+        WHERE s.kind='message' ORDER BY x.id LIMIT 33''',(mid,)).fetchall()
+    if not roots or len(roots)>32 or any(r['entry_id']!=entry_id for r in roots):
+        return None
+    return dict(memory_id=str(mid),revision=row['revision'],body=row['content'],kind=row['kind'],
+        lifecycle=row['lifecycle'],visible=True,source_messages=[_db_observation(r) for r in roots])
+
+
+def _profile_bound_sources(conn, row, zone, as_of):
+    """Current revision's excerpts only; old audit evidence cannot prove a revision."""
+    from .memory_ops import _profile_sources
+    snapshot = MemoryProfileSnapshot(row['owner_entry_id'], '', 'group', zone, as_of, 0, 0, 0, False)
+    result = []
+    for source in conn.execute('''SELECT s.* FROM entry_profile_revision_sources r JOIN sources s ON s.id=r.source_id
+            WHERE r.memory_id=? AND r.revision=? AND s.kind='message' ORDER BY s.id''',(row['id'],row['revision'])):
+        try:
+            note = json.loads(source['note'])
+            binding = {key:note.get(key) for key in ('field','excerpt','message_sha256','source_memory_id','source_revision')}
+            binding['message_id'] = source['message_id']
+            _profile_sources(conn,row['owner_entry_id'],[binding],row['id'])
+            message = conn.execute('SELECT * FROM messages WHERE id=?',(source['message_id'],)).fetchone()
+            fact = _source_fact(conn,binding['source_memory_id'],row['owner_entry_id'],zone,as_of) if binding['source_memory_id'] else None
+            normalized = _memory_message(_db_observation(message),snapshot)
+            if normalized is None:
+                raise ValueError('ineligible_source')
+            if fact:
+                fact['source_messages'] = [_memory_message(m,snapshot) for m in fact['source_messages']]
+                if any(m is None for m in fact['source_messages']):
+                    raise ValueError('ineligible_fact_source')
+            material = dict(messages=[normalized],memories=[fact] if fact else [])
+            result.append(_memory_bind_source(dict(ref='msg:'+str(message['id']),field=binding['field'],excerpt=binding['excerpt'],
+                via_memory=str(binding['source_memory_id']) if binding['source_memory_id'] else None),material))
+        except (ValueError,TypeError,KeyError):
+            continue
+    return result
+
+
+def memory_profile_rows(conn, entry_id, *, as_of=None, usable_only=False):
+    from .memory_ops import _profile_manual
+    zone = _setting(conn,'timezone','Asia/Shanghai'); as_of = as_of or utc_now().isoformat()
+    owner = conn.execute('SELECT subject_id FROM entry_subjects WHERE entry_id=?',(entry_id,)).fetchone()
+    visibility = Visibility(conn); profiles=[]
+    rows = conn.execute('''SELECT m.*,p.category,p.manual_created FROM entry_profile_memories p
+        JOIN memories m ON m.id=p.memory_id WHERE p.entry_id=? AND m.purged_at IS NULL
+        ORDER BY p.manual_created DESC,CASE p.category WHEN 'rule' THEN 0 WHEN 'topic' THEN 1 WHEN 'saying' THEN 2 ELSE 3 END,m.id''',(entry_id,)).fetchall()
+    for row in rows:
+        manual = _profile_manual(conn,row)
+        sources = _profile_bound_sources(conn,row,zone,as_of)
+        admission=conn.execute('SELECT * FROM entry_profile_admissions WHERE memory_id=?',(row['id'],)).fetchone() if incremental_profile_enabled(conn) else None
+        if admission:
+            _,sources=_inc_candidate_sources(conn,row,admission,as_of)
+        body = row['content']; saying,_,meaning = body.partition('：') if row['category']=='saying' else ('','','')
+        supported = manual or bool(sources)
+        if not manual and row['category'] in ('topic','saying'):
+            originals = [s for s in sources if _memory_original(s,row['category'],saying)]
+            supported = any(_memory_independent(a,b,row['category'],[s['message'] for s in sources])
+                            for i,a in enumerate(originals) for b in originals[i+1:])
+        visible = visibility.memory_visible(row['id'],entry_id)
+        usable = row['lifecycle']=='active' and supported and visible and not row['merged_into']
+        if admission and not manual:
+            usable = usable and admission['state']=='accepted' and admission['body_revision']==row['revision']
+        if usable_only and not usable:
+            continue
+        profiles.append(dict(memory_id=row['id'],revision=row['revision'],kind=row['kind'],category=row['category'],
+            body=body,saying=saying,meaning=meaning,author='admin' if manual else 'model',speaker='self',stance=row['stance'],
+            about=[owner[0]],owner_entry_id=entry_id,lifecycle=row['lifecycle'],event_time=None,importance=row['importance'],
+            manual_protected=manual,manual_created=bool(row['manual_created']),sources=sources,
+            pending_sources=[x for x in _inc_all_sources(conn,row,as_of) if x.get('source_id') not in json.loads(admission['checked_sources_json'])] if admission else [],
+            confirmed_evidence=[r[0] for r in conn.execute('SELECT identity FROM entry_profile_evidence_receipts WHERE memory_id=? ORDER BY identity',(row['id'],))],
+            usable=usable,retention=row['retention'],pinned=bool(row['pinned']),
+            last_confirmed_at=row['last_confirmed_at'],
+            admission_state='manual' if manual else admission['state'] if admission else 'accepted',
+            independent_days=admission['independent_days'] if admission else 0,
+            independent_uses=admission['independent_uses'] if admission else 0,
+            admission_reason=admission['reason'] if admission else None))
+    return profiles
+
+
+def _projection_items(conn, entry_id):
+    if _entry(conn,entry_id)['kind'] not in ('group','live') or not _settings(conn,entry_id)['enabled'] or not _runtime(conn)['enabled']:
+        return [], []
+    items=[]; omitted=[]; tokens=0
+    for row in memory_profile_rows(conn,entry_id,usable_only=True):
+        label = ITEM_LABELS.get(row['category'],'管理员说明')
+        # Rendering is one line per memory; keep the stored manual body lossless.
+        item = dict(memory_id=row['memory_id'],text=label+'：'+whitespace(row['body']))
+        cost = estimate_tokens(item['text'])
+        # Protected hand-written rules are never removed by the display budget.
+        if row['manual_protected'] or len(items)<MAX_ITEMS and tokens+cost<=MAX_PROFILE_TOKENS:
+            items.append(item); tokens+=cost
+        else:
+            omitted.append(row['memory_id'])
+    return items, omitted
+
+
+def flush_memory_profile_projections(conn):
+    """Exactly one version increment per entry/transaction when rendered set changes."""
+    _refresh_incremental_admissions(conn)
+    for dirty in conn.execute('SELECT entry_id FROM entry_profile_projection_dirty ORDER BY entry_id').fetchall():
+        entry_id=dirty['entry_id']; state=_memory_state(conn,entry_id)
+        items,omitted=_projection_items(conn,entry_id)
+        encoded=dumps(items)
+        if encoded != state['projection_json']:
+            conn.execute('''UPDATE entry_profile_memory_state SET projection_json=?,version=version+1,generated_at=?
+                WHERE entry_id=?''',(encoded,utc_now().isoformat(),entry_id))
+        conn.execute('UPDATE entry_profile_memory_state SET diagnostics_json=? WHERE entry_id=?',
+                     (dumps({'omitted_memory_ids':omitted}),entry_id))
+        conn.execute('DELETE FROM entry_profile_projection_dirty WHERE entry_id=?',(entry_id,))
+
+
+def memory_profile_context(conn, entry_id, *, known_memory_ids=()):
+    state=_memory_state(conn,entry_id)
+    if conn.execute('SELECT 1 FROM entry_profile_projection_dirty WHERE entry_id=?',(entry_id,)).fetchone():
+        return None  # No stale cache if a non-Store writer left an unflushed dirty receipt.
+    items=[x for x in json.loads(state['projection_json']) if x['memory_id'] not in known_memory_ids]
+    if not items:
+        return None
+    pending=conn.execute('SELECT 1 FROM messages WHERE entry_id=? AND id>? LIMIT 1',(entry_id,state['cursor'])).fetchone()
+    return dict(text='\n'.join(x['text'] for x in items),memory_ids=[x['memory_id'] for x in items],
+        version=state['version'],generated_at=state['generated_at'],possibly_stale=bool(pending or state['rebuild_pending'] or (incremental_profile_enabled(conn) and
+            conn.execute("SELECT 1 FROM entry_profile_incremental_work WHERE entry_id=? AND state IN ('queued','running','deferred','failed') LIMIT 1",(entry_id,)).fetchone())))
+
+
+class SQLiteMemoryProfileRepository:
+    """Detached SQLite snapshots and ordinary memory writes with atomic cursor CAS."""
+    mode='sqlite'
+
+    def __init__(self, store, *, clock=utc_now, attempt_id=None):
+        self.store,self.clock,self.attempt_id=store,clock,attempt_id
+        self.prepared_snapshot = None
+
+    def assert_model_call_allowed(self):
+        if self.store._writer.in_transaction:
+            # Only the calling thread's transaction would be unsafe; unrelated
+            # concurrent writers are allowed. RLock ownership distinguishes it.
+            if self.store._lock._is_owned():
+                raise RuntimeError('model call in write transaction')
+
+    def record_model_progress(self, result):
+        if self.attempt_id is None:
+            return
+        # The admitted material already carries purge roots. Existing redaction
+        # triggers suppress late output after a concurrent clear.
+        with self.store.write() as conn:
+            conn.execute("""UPDATE entry_profile_attempts SET outputs_json=?,calls_json=?
+                WHERE id=? AND state='running'""",(dumps({'outputs':result['outputs']}),dumps(result['calls']),self.attempt_id))
+
+    def snapshot(self, entry_id, limits):
+        if self.prepared_snapshot is not None:
+            return copy.deepcopy(self.prepared_snapshot)
+        as_of=_instant(self.clock()).isoformat()
+        with self.store.read() as conn:
+            state=_memory_state(conn,entry_id); settings=_settings(conn,entry_id); entry=_entry(conn,entry_id)
+            rows=conn.execute('SELECT * FROM messages WHERE entry_id=? AND id>? ORDER BY id LIMIT ?',
+                              (entry_id,state['cursor'],limits.new_messages+1)).fetchall()
+            page=[]
+            for row in rows[:limits.new_messages]:
+                if _instant(row['occurred_at'])>_instant(as_of) or _instant(row['received_at'])>_instant(as_of):
+                    break
+                page.append(row)
+            through=page[-1]['id'] if page else state['cursor']
+            # Recent and retained original anchors are bounded; no evidence age cutoff.
+            prior=conn.execute('SELECT * FROM messages WHERE entry_id=? AND id<=? ORDER BY id DESC LIMIT ?',
+                               (entry_id,state['cursor'],limits.anchors+1)).fetchall()
+            anchors=list(reversed(prior[:limits.anchors]))
+            retained=json.loads(state['anchors_json'])
+            if retained:
+                anchor_map={r['id']:r for r in anchors}
+                for r in conn.execute('SELECT * FROM messages WHERE entry_id=? AND id IN (SELECT value FROM json_each(?)) ORDER BY id', (entry_id,dumps(retained))):
+                    anchor_map[r['id']]=r
+                anchors=sorted(anchor_map.values(),key=lambda r:r['id'])[:limits.anchors]
+            facts=[]
+            for row in conn.execute("""SELECT DISTINCT m.id FROM memories m JOIN sources s ON s.memory_id=m.id
+                JOIN messages x ON x.id=s.message_id WHERE m.kind!='入口画像' AND m.lifecycle='active'
+                AND x.entry_id=? ORDER BY m.updated_at DESC,m.id DESC LIMIT ?""",(entry_id,limits.memories)):
+                fact=_source_fact(conn,row['id'],entry_id,_setting(conn,'timezone','Asia/Shanghai'),as_of)
+                if fact:
+                    facts.append(fact)
+            return MemoryProfileSnapshot(entry_id,conn.execute('SELECT subject_id FROM entry_subjects WHERE entry_id=?',(entry_id,)).fetchone()[0],
+                entry['kind'],_setting(conn,'timezone','Asia/Shanghai'),as_of,settings['revision'],state['cursor'],through,len(rows)>len(page),
+                tuple(_db_observation(r) for r in page),tuple(_db_observation(r) for r in anchors),tuple(facts),
+                tuple(memory_profile_rows(conn,entry_id,as_of=as_of)),settings['enabled'] and _runtime(conn)['enabled'],len(prior)<=limits.anchors)
+
+    def commit(self, plan):
+        from .memory_ops import entry_profile_source, write_entry_profile_memory
+        with self.store.write() as conn:
+            replay=conn.execute('SELECT receipt_json FROM entry_profile_memory_plans WHERE entry_id=? AND plan_id=?',
+                                (plan.snapshot.entry_id,plan.plan_id)).fetchone()
+            if replay:
+                return {**json.loads(replay[0]),'replayed':True}
+            snapshot=plan.snapshot; entry_id=snapshot.entry_id
+            state=_memory_state(conn,entry_id); settings=_settings(conn,entry_id)
+            if state['cursor']!=snapshot.cursor or settings['revision']!=snapshot.settings_revision or not settings['enabled'] or not _runtime(conn)['enabled']:
+                raise EntryProfileConflict('cursor_or_settings_changed')
+            if _setting(conn,'timezone','Asia/Shanghai')!=snapshot.timezone:
+                raise EntryProfileConflict('timezone_changed')
+            if _entry(conn,entry_id)['kind']!=snapshot.entry_kind:
+                raise EntryProfileConflict('entry_kind_changed')
+            if memory_profile_rows(conn,entry_id,as_of=snapshot.as_of)!=list(snapshot.profiles):
+                raise EntryProfileConflict('targets_changed')
+            for message in plan.material['messages']:
+                row=conn.execute('SELECT * FROM messages WHERE id=?',(message['position'],)).fetchone()
+                if not row or _memory_message(_db_observation(row),snapshot)!=message:
+                    raise EntryProfileConflict('message_changed')
+            for fact in plan.material['memories']:
+                live=_source_fact(conn,int(fact['memory_id']),entry_id,snapshot.timezone,snapshot.as_of)
+                previous=next(m for m in snapshot.memories if m['memory_id']==fact['memory_id'])
+                if live!=previous:
+                    raise EntryProfileConflict('fact_changed')
+            if self.attempt_id is not None:
+                running=conn.execute('SELECT state FROM entry_profile_attempts WHERE id=?',(self.attempt_id,)).fetchone()
+                if not running or running['state']!='running':
+                    raise EntryProfileConflict('attempt_changed')
+            applied=[]
+            for op in plan.operations:
+                bindings=[]
+                for source in op['sources']:
+                    bindings.append(entry_profile_source(conn,source['message']['position'],excerpt=source['excerpt'],field=source['field'],
+                        source_memory_id=int(source['via_memory']) if source['via_memory'] else None,
+                        source_revision=source['memory']['revision'] if source['memory'] else None))
+                try:
+                    result=write_entry_profile_memory(self.store,entry_id,op=op['op'],content=op['body'],category=op['category'],
+                        importance=op['importance'],sources=bindings,memory_id=op['target_id'],expected_revision=op['expected_revision'],
+                        current=_instant(snapshot.as_of),_conn=conn)
+                except ValueError as error:
+                    raise EntryProfileConflict('memory_write_guard') from error
+                applied.append({'index':op['index'],**result})
+            # Keep only original message IDs, never model prose as future evidence.
+            anchors=[m['position'] for m in plan.material['messages'] if m['position']<=plan.cursor_after]
+            anchors=list(dict.fromkeys([*json.loads(state['anchors_json']),*anchors]))[-MemoryProfileLimits().anchors:]
+            conn.execute('UPDATE entry_profile_memory_state SET cursor=?,anchors_json=?,rebuild_pending=? WHERE entry_id=?',
+                         (plan.cursor_after,dumps(anchors),int(plan.material['has_more']),entry_id))
+            receipt=dict(applied=applied,cursor_before=snapshot.cursor,cursor_after=plan.cursor_after,replayed=False)
+            conn.execute('INSERT INTO entry_profile_memory_plans VALUES(?,?,?,?)',(entry_id,plan.plan_id,dumps(receipt),snapshot.as_of))
+            if self.attempt_id is not None:
+                flush_memory_profile_projections(conn)
+                conn.execute("UPDATE entry_profile_attempts SET state='published',version=?,finished_at=? WHERE id=?",
+                    (_memory_state(conn,entry_id)['version'],snapshot.as_of,self.attempt_id))
+            return receipt
+
+
+def require_legacy_write(store, entry_id):
+    with store.read() as conn:
+        _entry(conn,entry_id)
+        if memory_profile_enabled(conn):
+            raise EntryProfileRetired('entry_profile_legacy_write_retired')
+
+
+def _memory_expect(conn, entry_id, expected):
+    if type(expected) is not int or expected < 0:
+        raise ValueError('expected_version must be a nonnegative integer')
+    if _memory_state(conn,entry_id)['version'] != expected:
+        raise EntryProfileConflict('projection_version_changed')
+
+
+def _memory_due(conn, entry_id, current):
+    state=_memory_state(conn,entry_id); settings=_settings(conn,entry_id)
+    new=conn.execute('SELECT COUNT(*) FROM messages WHERE entry_id=? AND id>?',(entry_id,state['cursor'])).fetchone()[0]
+    reason=('entry_kind' if _entry(conn,entry_id)['kind'] not in ('group','live') else
+            'disabled' if not settings['enabled'] or not _runtime(conn)['enabled'] else 'no_new_evidence' if not new else None)
+    return dict(due=reason is None,reason=reason,new_messages=new,window_message_count=None,current_version=state['version'],
+                local_day=current.astimezone(ZoneInfo(_setting(conn,'timezone','Asia/Shanghai'))).date().isoformat(),
+                possibly_stale=bool(new or state['rebuild_pending']))
+
+
+def _attempt_material(material):
+    # The existing purge index requires numeric message_id / memory_id roots.
+    refs=[dict(message_id=m['position']) for m in material['messages']]
+    for fact in material['memories']:
+        refs.append(dict(memory_id=int(fact['memory_id']),revision=fact['revision']))
+        refs.extend(dict(message_id=m['position']) for m in fact['source_messages'])
+    refs.extend(dict(memory_id=p['memory_id'],revision=p['revision']) for p in material['profiles'])
+    return dict(format_version=2,memory_material=material,evidence_refs=refs)
+
+
+def _reserve_memory_task(engine, entry_id, expected, source, *, run_id, fail_if_running):
+    store=engine.store; current=_instant(engine.clock()); stamp=current.isoformat()
+    with store.write() as conn:
+        _memory_expect(conn,entry_id,expected)
+        _recover_interrupted(conn,store,entry_id,stamp)
+        if conn.execute("SELECT 1 FROM entry_profile_attempts WHERE entry_id=? AND state='running'",(entry_id,)).fetchone():
+            raise EntryProfileBusy('generation_in_progress')
+        if run_id is not None:
+            saved=conn.execute('SELECT * FROM entry_profile_attempts WHERE entry_id=? AND run_id=?',(entry_id,run_id)).fetchone()
+            if saved:
+                return dict(status=saved['state'],reason=saved['reason'],attempt_id=saved['id'],version=None)
+        _ensure(conn,entry_id,stamp)
+        due=_memory_due(conn,entry_id,current)
+    if not due['due']:
+        return engine._skip(entry_id,expected,source,due,due['reason'],run_id,stamp)
+    try:
+        gateway=engine._gateway()
+    except ModelError as error:
+        return engine._skip(entry_id,expected,source,due,error.reason or error.category,run_id,stamp)
+    repository=SQLiteMemoryProfileRepository(store,clock=engine.clock)
+    snapshot=repository.snapshot(entry_id,MemoryProfileLimits())
+    try:
+        material=select_memory_profile_material(snapshot)
+    except MemoryProfileUnavailable as error:
+        return engine._skip(entry_id,expected,source,due,str(error),run_id,stamp)
+    repository.prepared_snapshot=snapshot
+    with store.write() as conn:
+        _memory_expect(conn,entry_id,expected)
+        if _settings(conn,entry_id)['revision'] != snapshot.settings_revision or _memory_state(conn,entry_id)['cursor'] != snapshot.cursor:
+            raise EntryProfileConflict('snapshot_changed_before_admission')
+        if conn.execute("SELECT 1 FROM entry_profile_attempts WHERE entry_id=? AND state='running'",(entry_id,)).fetchone():
+            raise EntryProfileBusy('generation_in_progress')
+        attempt=conn.execute('''INSERT INTO entry_profile_attempts(entry_id,run_id,base_version,state,local_day,started_at,material_json)
+            VALUES(?,?,?,'running',?,?,?)''',(entry_id,run_id,expected,due['local_day'],stamp,dumps(_attempt_material(material)))).lastrowid
+        repository.attempt_id=attempt
+        _audit(conn,'generation_requested',entry_id,stamp,attempt_id=attempt,base_version=expected,source=source)
+        with _ACTIVE_LOCK:
+            _ACTIVE_ATTEMPTS.add((store.path,attempt))
+    return dict(status='running',attempt_id=attempt,context=dict(entry_id=entry_id,attempt=attempt,
+                gateway=gateway,memory_repository=repository,due=due))
+
+
+def _execute_memory_task(engine, entry_id, attempt, gateway, repository, due):
+    try:
+        result=EntryProfileMemoryTask(repository,gateway).run(entry_id)
+        status={'committed':'published','no_new_evidence':'skipped'}.get(result['status'],result['status'])
+        with engine.store.write() as conn:
+            # Add result memory roots before storing prose; purge guards also
+            # suppress any late output whose input was cleared in flight.
+            material=_attempt_material(result['material'])
+            material['evidence_refs'].extend(dict(memory_id=x['memory_id'],revision=x['revision'])
+                for x in (result.get('receipt') or {}).get('applied',[]))
+            conn.execute('UPDATE entry_profile_attempts SET material_json=? WHERE id=?',(dumps(material),attempt))
+            version=_memory_state(conn,entry_id)['version']
+            conn.execute('''UPDATE entry_profile_attempts SET state=?,reason=?,version=?,outputs_json=?,calls_json=?,finished_at=?
+                WHERE id=? AND state IN ('running','published') ''',(status,result.get('reason'),version,dumps(result),dumps(result['calls']),_instant(engine.clock()).isoformat(),attempt))
+        return dict(status=status,reason=result.get('reason'),version={'version':version},attempt_id=attempt,due=due,result=result)
+    except Exception:
+        engine._finish(attempt,'failed','unexpected_error',{},[])
+        raise
+    finally:
+        with _ACTIVE_LOCK:
+            _ACTIVE_ATTEMPTS.discard((engine.store.path,attempt))
+
+
+# EF-13: bounded observations and independent per-memory admission.
+@dataclass(frozen=True)
+class IncrementalProfileLimits:
+    messages: int = 48
+    message_tokens: int = 3000
+    profiles: int = 32
+    directory_tokens: int = 1500
+    observations: int = 8
+    evidence: int = 6
+    evidence_tokens: int = 2000
+    observe_request_tokens: int = 6000
+    admit_request_tokens: int = 4000
+    repair_request_tokens: int = 12000
+    timeout_seconds: int = 180
+
+    def __post_init__(self):
+        if any(type(v) is not int or v<1 for v in vars(self).values()) or self.timeout_seconds>180:
+            raise ValueError('invalid incremental limits')
+
+
+def incremental_profile_enabled(conn):
+    return bool(conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='entry_profile_admissions'").fetchone())
+
+
+def incremental_prompts():
+    from importlib.resources import files
+    import hashlib
+    result={}
+    for stage,name in (('observe','entry_profile_observe_v2'),('admit','entry_profile_admit_v2')):
+        value=files('iris').joinpath('prompts',name+'.md').read_text(encoding='utf-8')
+        result[stage]=dict(name=name,text=value,sha256=hashlib.sha256(value.encode()).hexdigest())
+    return result
+
+
+def _inc_public_message(message):
+    return {k:message[k] for k in ('message_id','speaker','content','occurred_at','date','quote','fragment') if k in message}
+
+
+def _inc_public_payload(payload):
+    result={k:v for k,v in payload.items() if not k.startswith('_')}
+    if 'messages' in result:
+        result['messages']=[_inc_public_message(m) for m in result['messages']]
+    return result
+
+
+def _inc_source_shape(value):
+    if (not isinstance(value,dict) or set(value)!={'message_id','field','excerpt'}
+            or type(value['message_id']) is not int or value['message_id']<1
+            or value['field'] not in ('content','quote') or not isinstance(value['excerpt'],str)
+            or not 1<=len(value['excerpt'].strip())<=300):
+        raise ValueError('invalid_source_shape')
+
+
+def validate_incremental_observations(value, limits=None):
+    limits=limits or IncrementalProfileLimits()
+    if not isinstance(value,dict) or set(value)!={'observations'} or not isinstance(value['observations'],list) or len(value['observations'])>limits.observations:
+        raise ValueError('invalid_observations')
+    for item in value['observations']:
+        if not isinstance(item,dict) or item.get('op') not in ('confirm','propose','change'):
+            raise ValueError('invalid_observation')
+        expected={'op','source_refs'}
+        if item['op']!='propose':
+            expected.add('memory_id')
+            if type(item.get('memory_id')) is not int or item['memory_id']<1:
+                raise ValueError('invalid_target_id')
+        if item['op']!='confirm':
+            expected|={'category','body','saying','meaning','definition_refs'}
+            if (not isinstance(item.get('category'),str) or item['category'] not in ITEM_LABELS or any(not isinstance(item.get(k),str) for k in ('body','saying','meaning'))
+                    or len(item['body'])>180 or len(item['saying'])>40
+                    or not isinstance(item.get('definition_refs'),list)
+                    or any(type(x) is not int or x<1 for x in item['definition_refs'])):
+                raise ValueError('invalid_candidate_fields')
+        if item['op']=='change':
+            expected.add('action')
+            if item.get('action') not in ('revise','retire'):
+                raise ValueError('invalid_change_action')
+        if set(item)!=expected or not isinstance(item['source_refs'],list) or not 1<=len(item['source_refs'])<=limits.evidence:
+            raise ValueError('invalid_observation_fields')
+        for source in item['source_refs']:
+            _inc_source_shape(source)
+    return value
+
+
+def validate_incremental_admission(value, payload, previous=None):
+    if (not isinstance(value,dict) or set(value)!={'decision','violations','reason','safe_sources'}
+            or value['decision'] not in ('accept','reject','insufficient')
+            or not isinstance(value['violations'],list) or any(v not in MEMORY_PROFILE_VIOLATIONS for v in value['violations'])
+            or value['violations']!=sorted(set(value['violations']),key=MEMORY_PROFILE_VIOLATIONS.index)
+            or not isinstance(value['reason'],str) or not value['reason'].strip() or len(value['reason'])>1000
+            or not isinstance(value['safe_sources'],list) or len(value['safe_sources'])>6):
+        raise ValueError('invalid_admission')
+    if value['decision']=='accept' and (value['violations'] or not value['safe_sources']):
+        raise ValueError('invalid_accepted_admission')
+    if value['decision']!='accept' and value['safe_sources']:
+        raise ValueError('rejected_sources')
+    for source in value['safe_sources']:
+        _inc_source_shape(source)
+    if previous and (previous.get('decision') in ('reject','insufficient') or previous.get('violations')) and value['decision']=='accept':
+        raise ValueError('repair_changed_semantic_rejection')
+    return value
+
+
+def _inc_bound(conn, entry_id, refs, messages, *, target=None, repairs=None):
+    from .memory_ops import entry_profile_source
+    pool={m['message_id']:m for m in messages}
+    result=[]
+    for raw in refs:
+        _inc_source_shape(raw)
+        message=pool.get(raw['message_id'])
+        if not message or message['entry_id']!=entry_id:
+            raise ValueError('unbound_source')
+        field=raw['field'];snippet=whitespace(raw['excerpt'])
+        quote=message.get('quote') or {}
+        fields={'content':message['content'],'quote':quote.get('content','')}
+        valid=[name for name,text in fields.items() if snippet and snippet in whitespace(text)
+               and (name=='content' or quote.get('speaker'))]
+        if field not in valid and len(valid)==1:
+            field=valid[0]
+            if repairs is not None: repairs.append(dict(message_id=raw['message_id'],before=raw['field'],after=field,reason='exact_source_field'))
+        binding=entry_profile_source(conn,raw['message_id'],field=field,excerpt=raw['excerpt'])
+        live=conn.execute('SELECT * FROM messages WHERE id=?',(raw['message_id'],)).fetchone()
+        if not live or _message_hash(dict(live))!=message['message_sha256']:
+            raise ValueError('source_changed')
+        result.append(binding)
+    return result
+
+
+def _inc_all_sources(conn, row, as_of):
+    sources=_profile_bound_sources(conn,row,_setting(conn,'timezone','Asia/Shanghai'),as_of)
+    for source in sources:
+        matches=conn.execute('''SELECT s.id,g.burst_id FROM sources s LEFT JOIN entry_profile_source_groups g ON g.source_id=s.id
+            WHERE s.memory_id=? AND s.message_id=? AND s.kind='message' ORDER BY s.id''',(row['id'],source['message']['position'])).fetchall()
+        for item in matches:
+            note=json.loads(conn.execute('SELECT note FROM sources WHERE id=?',(item['id'],)).fetchone()[0])
+            if note.get('field')==source['field'] and note.get('excerpt')==source['excerpt']:
+                source['source_id']=item['id'];source['burst_id']=item['burst_id'];break
+    return sources
+
+
+# Conservative grammatical normalization; no semantic synonym or corpus vocabulary table.
+_INC_PARTICLES = '呀啊吧呢吗嘛啦哦哟呀呗'
+_INC_CLASSIFIERS = '个盏张本道座次遍圈条份件段层块片台只支枚'
+_INC_ABSTRACT = frozenset('话题 事项 方面 原因 问题 方式 方法 情况 内容 事情 规则 群规 规范 说明 资料 要求 物品 设备 材料 工具 装备 作品 用途 人员 成员 差异 信息 关系 部分 状态 结构 效果 质量 过程 步骤 对象 定义 个人 大家'.split())
+_INC_ONCE = re.compile(r'今天|今晚|明天|昨[天晚]|这次|本次|此次|当天|这回|本周|下周|(?<!每)周[一二三四五六日天]|\d{1,2}月\d{1,2}[日号]|\d{1,2}[:：]\d{2}')
+_INC_PUBLIC_RULE = re.compile(r'群规|群公告|本群|本频道|本入口|本直播间|直播间.{0,5}(?:规矩|规定|禁止|不设)|(?:全体|所有)(?:群友|成员)|管理员.{0,6}(?:宣布|公告|规定)')
+_INC_PERSONAL_RULE = re.compile(r'(?:我|本人).{0,12}(?:个人|私事|安排|预约|检查|住址|电话)|(?:给我|替我|帮我)|(?:^|[，。！；])\s*你(?!们)|[\w\u4e00-\u9fff]{1,8}[，,]\s*你(?!们)|@\S+')
+_INC_EXTERNAL_RULE = re.compile(r'(?:公司|学校|协会|机构|单位|组织).{0,4}(?:规定|要求|制度)')
+_INC_CONSENT = re.compile(r'同意|赞成|支持这条|就按这个|照此执行')
+_INC_FOLLOWUP = re.compile(r'还有吗|怎么样了|有结果了吗|有消息了吗|后来呢|找到[了啦]|已经.{0,8}(?:寄|发|给)|之前问|上次问|前几天.{0,6}(?:问|求)|(?:进度|结果).{0,3}(?:怎样|如何)|接着上次|跟进|催办')
+_INC_REQUEST = re.compile(r'[?？]|求|谁有|能否|有没有|想找|帮忙|拜托')
+
+
+def _inc_saying_key(value):
+    from jieba import posseg
+    value=_memory_observation_text(value)
+    pieces=list(posseg.cut(value,HMM=False))
+    while pieces and pieces[-1].flag=='y' and all(c in _INC_PARTICLES for c in pieces[-1].word):
+        value=value[:-len(pieces.pop().word)]
+    # A narrow demonstrative-N + V question, not arbitrary bag-of-words reordering.
+    match=re.fullmatch(r'[这那](?:一)?['+_INC_CLASSIFIERS+r']?([\u4e00-\u9fff]{1,4})还([\u4e00-\u9fff])着?',value)
+    return match[2]+match[1] if match else value
+
+
+def _inc_saying_used(saying, excerpt):
+    key=_inc_saying_key(saying)
+    raw=unicodedata.normalize('NFKC',excerpt).casefold()
+    if not key: return False
+    if re.search(r'[a-z0-9]',key):
+        return bool(re.search(r'(?<![a-z0-9])'+re.escape(key)+r'(?![a-z0-9])',raw))
+    text=_memory_observation_text(raw)
+    from jieba import posseg
+    boundaries={0};offset=0
+    for token in posseg.cut(text,HMM=False):
+        offset+=len(token.word);boundaries.add(offset)
+    def matched(pattern,noun=''):
+        for m in re.finditer(pattern,text):
+            if m.start() not in boundaries or m.end() not in boundaries: continue
+            # A second segmentation from the noun prevents overlapping dictionary
+            # words from accepting a fragment of a longer, different object.
+            tail=text[m.end()-len(noun):] if noun else ''
+            if noun and any(posseg.dt.word_tag_tab.get(tail[:size],'').startswith('n')
+                    for size in range(len(noun)+1,min(len(tail),len(noun)+4)+1)): continue
+            return True
+        return False
+    if matched(re.escape(key),key[1:]): return True
+    # Keep every lexical character and its order. Only one grammatical insertion,
+    # single initial-verb reduplication, or a demonstrative question is allowed.
+    if not re.fullmatch(r'[\u4e00-\u9fff]{2,8}',key) or key[0] in '不没无非别未': return False
+    verb,noun=key[0],key[1:]
+    inflection=r'(?:[的了着过]|(?:[一两三]?['+_INC_CLASSIFIERS+r'])|'+re.escape(verb)+r'|一'+re.escape(verb)+r')?'
+    if matched(re.escape(verb)+inflection+re.escape(noun),noun): return True
+    return matched(r'[这那](?:一)?['+_INC_CLASSIFIERS+r']?'+re.escape(noun)+r'还'+re.escape(verb)+r'着?[吗呢]?')
+
+
+def _inc_entity_terms(body):
+    # Existing installed jieba dictionary only; never modify the retrieval tokenizer.
+    from jieba import posseg
+    terms=re.findall(r'《([^》]+)》|〈([^〉]+)〉',body)
+    result=[a or b for a,b in terms]
+    result+=re.findall(r'(?<![a-zA-Z0-9_.])\d+(?:\.\d+)?(?:%|％)?',body)
+    result+=re.findall(r'(?<![a-zA-Z0-9])[a-zA-Z][a-zA-Z0-9]*(?:[-_][a-zA-Z0-9]+)*(?![a-zA-Z0-9])',body)
+    for word,flag in posseg.cut(body,HMM=False):
+        if word in _INC_ABSTRACT: continue
+        if (flag.startswith(('nr','ns','nt','nz')) and len(word)>=2
+                or flag=='n' and len(word)>=2 or flag=='m' and re.fullmatch(r'[零〇一二两三四五六七八九十百千万]+',word)):
+            result.append(word)
+    return list(dict.fromkeys(result))
+
+
+def _inc_missing_entities(body, evidence):
+    texts=[unicodedata.normalize('NFKC',x).casefold() for x in evidence]
+    missing=[]
+    for term in _inc_entity_terms(body):
+        term=unicodedata.normalize('NFKC',term).casefold()
+        if re.fullmatch(r'\d+(?:\.\d+)?%?',term):
+            found=any(re.search(r'(?<![\d.])'+re.escape(term)+r'(?![\d.])',x) for x in texts)
+        elif re.search(r'[a-z]',term):
+            found=any(re.search(r'(?<![a-z0-9])'+re.escape(term)+r'(?![a-z0-9])',x) for x in texts)
+        else: found=any(term in x for x in texts)
+        if not found: missing.append(term)
+    return missing
+
+
+def _inc_rule_reason(sources):
+    # Always inspect full actual content, not just a conveniently shortened excerpt.
+    texts=[s['message']['content'] if s['field']=='content' else (s['message'].get('quote') or {}).get('content','') for s in sources]
+    eligible=[]
+    for source,text in zip(sources,texts):
+        timing=re.sub(r'(?:从|自)(?:今天|明天|\d{1,2}月\d{1,2}[日号])(?:起|开始)','',text)
+        if _INC_ONCE.search(timing) or _INC_PERSONAL_RULE.search(text): continue
+        if _INC_EXTERNAL_RULE.search(text) and not _INC_PUBLIC_RULE.search(text): continue
+        eligible.append((source,text))
+    if any(_INC_PUBLIC_RULE.search(text) for _,text in eligible): return None
+    speakers={s['speaker'] for s,t in eligible}
+    if len(speakers)>=2 and any(_INC_CONSENT.search(t) for _,t in eligible): return None
+    return 'rule_scope_not_established'
+
+
+def _inc_original(source, category, saying):
+    message=source['message']
+    if (source['field']!='content' or _MEMORY_REPORTED.search(message['content'])
+            or _MEMORY_REGISTRATION.search(message['content'])): return False
+    quote=message.get('quote') or {}
+    if quote and _memory_observation_text(source['excerpt']) in _memory_observation_text(quote.get('content','')):
+        return False
+    return category!='saying' or _inc_saying_used(saying,source['excerpt'])
+
+
+def _inc_same_discussion(left, right):
+    a,b=left['message'],right['message']
+    if _instant(a['occurred_at'])>_instant(b['occurred_at']): a,b=b,a
+    quote=b.get('quote') or {}
+    if quote and (quote.get('ref')==a['ref'] or
+            quote.get('speaker')==a['speaker'] and _memory_copies(quote.get('content',''),a['content'])):
+        return True
+    follow=_INC_FOLLOWUP.search(b['content'])
+    if not follow: return False
+    if re.fullmatch(r'\s*(?:还有吗|怎么样了|有结果了吗|有消息了吗|后来呢)[?？。！!\s]*',b['content']): return True
+    if not _INC_REQUEST.search(a['content']): return False
+    left_terms=set(_inc_entity_terms(a['content']))
+    right_terms=set(_inc_entity_terms(b['content']))
+    return bool(left_terms&right_terms or re.search(r'之前问|上次问|接着上次|前几天',b['content']))
+
+
+def _inc_body_reason(category,body,saying,sources):
+    if category=='rule':
+        reason=_inc_rule_reason(sources)
+        if reason: return reason
+    # Saying spelling itself is covered by variant-use validation, not named-entity inference.
+    prose=body.partition('：')[2] if category=='saying' else body
+    missing=_inc_missing_entities(prose,[s['excerpt'] for s in sources])
+    return 'unbound_entities:'+','.join(missing) if missing else None
+
+
+def _inc_source_key(source):
+    return (source['message']['position'],source['field'],source['excerpt'])
+
+
+def _inc_groups(sources, category, saying=''):
+    ordered=sorted(sources,key=lambda s:(s['message']['position'],s.get('source_id',0)))
+    messages=[s['message'] for s in ordered]
+    roots=list(range(len(ordered)))
+    def root(index):
+        while roots[index]!=index:
+            roots[index]=roots[roots[index]];index=roots[index]
+        return index
+    if category=='topic':
+        # Transitive reply/follow-up chains, including non-original quoted links.
+        for i,source in enumerate(ordered):
+            for j,prior in enumerate(ordered[:i]):
+                if (source['evidence_identity']==prior['evidence_identity'] or
+                        source.get('burst_id') and source.get('burst_id')==prior.get('burst_id') or
+                        not _memory_independent(source,prior,category,messages) or _inc_same_discussion(source,prior)):
+                    roots[root(i)]=root(j)
+    selected=[];selected_roots=set()
+    for i,source in enumerate(ordered):
+        if category in ('topic','saying') and not _inc_original(source,category,saying): continue
+        if category=='topic':
+            identity=root(i)
+            if identity in selected_roots: continue
+            selected_roots.add(identity)
+        elif any(source['evidence_identity']==prior['evidence_identity'] or
+                 source.get('burst_id') and source.get('burst_id')==prior.get('burst_id') or
+                 not _memory_independent(source,prior,category,messages) for prior in selected): continue
+        selected.append(source)
+    return selected
+
+
+def _inc_enough(sources, category, saying=''):
+    chosen=_inc_groups(sources,category,saying)
+    return bool(chosen) if category in ('rule',None) else len(chosen)>=2
+
+
+def _inc_candidate_sources(conn, row, admission, as_of):
+    all_sources=_inc_all_sources(conn,row,as_of)
+    approved=set(json.loads(admission['checked_sources_json'])) if admission else set()
+    return all_sources,[s for s in all_sources if s.get('source_id') in approved]
+
+
+def _refresh_incremental_admissions(conn):
+    """Write-transaction hook: withdrawals never reduce importance or edit prose."""
+    if not incremental_profile_enabled(conn):
+        return
+    from .memory_ops import _profile_manual
+    zone=_setting(conn,'timezone','Asia/Shanghai')
+    now=_instant(utc_now()).isoformat()
+    for row in conn.execute('''SELECT m.*,p.category FROM entry_profile_memories p JOIN memories m ON m.id=p.memory_id
+            JOIN entry_profile_projection_dirty d ON d.entry_id=p.entry_id WHERE m.purged_at IS NULL''').fetchall():
+        admission=conn.execute('SELECT * FROM entry_profile_admissions WHERE memory_id=?',(row['id'],)).fetchone()
+        if not admission:
+            continue
+        all_sources,approved=_inc_candidate_sources(conn,row,admission,now)
+        saying=row['content'].partition('：')[0] if row['category']=='saying' else ''
+        groups=_inc_groups(all_sources,row['category'],saying)
+        days=len({s['message']['date'] for s in groups})
+        valid=admission['body_revision']==row['revision'] and _inc_enough(approved,row['category'],saying)
+        state=admission['state']
+        if state=='accepted' and not _profile_manual(conn,row) and not valid:
+            state='candidate'
+        if (state,days,len(groups))!=(admission['state'],admission['independent_days'],admission['independent_uses']):
+            conn.execute('UPDATE entry_profile_admissions SET state=?,independent_days=?,independent_uses=?,reason=? WHERE memory_id=?',
+                (state,days,len(groups),'basis_changed' if state!=admission['state'] else admission['reason'],row['id']))
+
+
+def incremental_progress(conn, entry_id):
+    from .memory_ops import _profile_manual
+    waiting=conn.execute("""SELECT m.* FROM entry_profile_admissions a JOIN entry_profile_memories p ON p.memory_id=a.memory_id
+        JOIN memories m ON m.id=a.memory_id WHERE p.entry_id=? AND a.state!='accepted'
+        AND m.lifecycle='active' AND m.purged_at IS NULL""",(entry_id,)).fetchall()
+    state=_memory_state(conn,entry_id)
+    rows=conn.execute('''SELECT kind,state,COUNT(*) n FROM entry_profile_incremental_work WHERE entry_id=? GROUP BY kind,state''',(entry_id,)).fetchall()
+    counts={(r['kind'],r['state']):r['n'] for r in rows}
+    pending=sum(counts.get(('admit',s),0) for s in ('queued','running','deferred'))
+    return dict(scan_cursor=state['scan_cursor'],applied_cursor=state['cursor'],
+        observation_chunks=sum(n for (k,s),n in counts.items() if k=='observe'),
+        completed_chunks=counts.get(('observe','applied'),0),pending_checks=pending,
+        failed_checks=counts.get(('admit','failed'),0),rejected_checks=counts.get(('admit','rejected'),0),
+        observation_gaps=sum(counts.get(('observe',s),0) for s in ('queued','running','deferred','failed')),
+        unscanned_messages=conn.execute('SELECT COUNT(*) FROM messages WHERE entry_id=? AND id>?',(entry_id,state['scan_cursor'])).fetchone()[0],
+        waiting_candidates=sum(not _profile_manual(conn,memory) for memory in waiting),
+        oldest_pending_at=conn.execute("SELECT MIN(created_at) FROM entry_profile_incremental_work WHERE entry_id=? AND state IN ('queued','running','deferred','failed')",(entry_id,)).fetchone()[0])
+
+
+def _inc_directory(conn, entry_id, messages, limits):
+    from .search_text import segmented
+    rows=memory_profile_rows(conn,entry_id)
+    pool=[{k:r[k] for k in ('memory_id','revision','category','body','manual_protected','independent_days','independent_uses','last_confirmed_at')}
+          for r in rows if r['lifecycle']!='deleted']
+    terms=set(segmented(' '.join(m['content'] for m in messages)).split())
+    cursor=_memory_state(conn,entry_id)['scan_cursor']
+    # Stable lexical selection, confirmation recency, and rotation share the directory.
+    lexical=sorted(pool,key=lambda r:(-len(terms.intersection(segmented(r['body']).split())),r['memory_id']))
+    recent=sorted(pool,key=lambda r:(r['last_confirmed_at'] or '',-r['memory_id']),reverse=True)
+    rotated=sorted(pool,key=lambda r:r['memory_id'])
+    if rotated:
+        offset=cursor%len(rotated);rotated=rotated[offset:]+rotated[:offset]
+    result=[];seen=set();used=0
+    for triple in zip(lexical,recent,rotated):
+        for row in triple:
+            mid=row['memory_id'];cost=estimate_tokens(dumps(row))
+            if mid in seen or len(result)>=limits.profiles or used+cost>limits.directory_tokens:
+                continue
+            result.append(row);seen.add(mid);used+=cost
+    return result,len(pool)-len(result)
+
+
+def _inc_work_persist(conn, work_id, **values):
+    fields={'payload_json','outputs_json','calls_json','result_json','parsed_json','state','reason','retry_at','finished_at','attempt_id','attempts'}
+    if not set(values)<=fields:
+        raise ValueError('invalid work update')
+    conn.execute('UPDATE entry_profile_incremental_work SET '+','.join(k+'=?' for k in values)+" WHERE id=? AND state!='cancelled'",(*values.values(),work_id))
+
+
+class IncrementalProfileTask:
+    def __init__(self, store, gateway, *, clock=utc_now, limits=None, attempt_id=None, source='regenerate'):
+        self.store,self.gateway,self.clock=store,gateway,clock
+        self.limits=limits or IncrementalProfileLimits()
+        self.prompts=incremental_prompts();self.attempt_id=attempt_id;self.source=source
+        self.trace=[]
+
+    def _call(self, work, stage, payload):
+        prompt=self.prompts[stage];messages=[{'role':'system','content':prompt['text']},{'role':'user','content':dumps(payload)}]
+        budget=self.limits.observe_request_tokens if stage=='observe' else self.limits.admit_request_tokens
+        if sum(estimate_tokens(x['content']) for x in messages)>budget:
+            raise ModelError('invalid_output','request material limit',reason='request_budget_exceeded')
+        monotonic=getattr(self.gateway,'monotonic',time.monotonic);deadline=monotonic()+self.limits.timeout_seconds
+        outputs=json.loads(work['outputs_json']);calls=json.loads(work['calls_json']);previous=None
+        for repair in range(2):
+            if self.store._lock._is_owned() and self.store._writer.in_transaction:
+                raise RuntimeError('model call in write transaction')
+            if monotonic()>=deadline:
+                raise ModelError('retryable','deadline',reason='timeout')
+            health=getattr(self.gateway,'health',None)
+            if health: health.check('chat','learning')
+            purpose='consolidation_entry_profile_'+stage+('_repair' if repair else '')
+            call=dict(purpose=purpose,prompt_version=prompt['name'],prompt_sha256=prompt['sha256'],
+                      timeout_seconds=self.limits.timeout_seconds,result='success')
+            started=monotonic();reply=None;invalid=None;parsed=None
+            try:
+                reply=self.gateway.chat(messages,purpose,max_tokens=16000,_deadline=deadline)
+                if monotonic()>=deadline:
+                    raise ModelError('retryable','deadline',reason='timeout')
+                try:
+                    if reply.finish_reason!='stop': raise ValueError('incomplete_output')
+                    parsed=json_object(reply.content)
+                    if stage=='observe': validate_incremental_observations(parsed,self.limits)
+                    else: validate_incremental_admission(parsed,payload,previous)
+                except ValueError as error:
+                    invalid=str(error);call['validation_error']=invalid
+                if monotonic()>=deadline: raise ModelError('retryable','deadline',reason='timeout')
+                if invalid is None:
+                    return parsed
+                if repair:
+                    raise ModelError('invalid_output','invalid structured output',reason='invalid_output')
+            except ModelError as error:
+                if error.category=='retryable' and not error.reason and monotonic()>=deadline:
+                    error.reason='timeout'
+                call.update(result=error.category,reason=error.reason or error.category)
+                raise
+            finally:
+                if reply is not None:
+                    outputs[stage+('_repair' if repair else '')+('_attempt_'+str(work['attempts']) if work['attempts']>1 else '')]=reply.content
+                    call['finish_reason']=reply.finish_reason
+                calls.append({**call,'duration_ms':round((monotonic()-started)*1000),'usage':reply.usage if reply else {}})
+                with self.store.write() as conn:
+                    _inc_work_persist(conn,work['id'],outputs_json=dumps(outputs),calls_json=dumps(calls))
+            previous=parsed
+            messages += [{'role':'assistant','content':reply.content},{'role':'user','content':
+                '上次输出结构无效：'+invalid+'。仅修正JSON格式、必填字段和类型；不新增事实/来源，不把语义拒绝改成通过。输出完整JSON。'}]
+            if sum(estimate_tokens(x['content']) for x in messages)>self.limits.repair_request_tokens:
+                raise ModelError('invalid_output','repair material limit',reason='repair_budget_exceeded')
+
+    def _freeze_chunk(self, entry_id):
+        now=_instant(self.clock());stamp=now.isoformat();limit=self.limits
+        with self.store.write() as conn:
+            _ensure(conn,entry_id,stamp)
+            state=_memory_state(conn,entry_id);zone=_setting(conn,'timezone','Asia/Shanghai')
+            rows=conn.execute('SELECT * FROM messages WHERE entry_id=? AND id>? ORDER BY id LIMIT ?',
+                             (entry_id,state['scan_cursor'],limit.messages+1)).fetchall()
+            messages=[];positions=[];skipped=[];used=0;day=None;boundary=json.loads(state['boundary_json'])
+            for row in rows[:limit.messages]:
+                try:
+                    at=_instant(row['occurred_at']);received=_instant(row['received_at'])
+                except (ValueError,TypeError):
+                    positions.append(row['id']);skipped.append({'message_id':row['id'],'reason':'unparseable_time'});boundary={}
+                    continue
+                local=at.astimezone(ZoneInfo(zone)).date().isoformat()
+                if at>now or received>now or self.source=='periodic' and local>=now.astimezone(ZoneInfo(zone)).date().isoformat():
+                    break
+                if day is not None and local!=day: break
+                snapshot=MemoryProfileSnapshot(entry_id,'','group',zone,stamp,0,0,0,False)
+                normalized=_memory_message(_db_observation(row),snapshot)
+                # Every scanned turn contributes to the same-author burst boundary.
+                burst='message:'+str(row['id'])
+                if boundary.get('speaker')==row['sender_subject_id'] and boundary.get('at'):
+                    gap=(at-_instant(boundary['at'])).total_seconds()
+                    if 0<=gap<1800: burst=boundary['burst_id']
+                next_boundary=dict(speaker=row['sender_subject_id'],at=row['occurred_at'],burst_id=burst)
+                value={**normalized,'message_id':row['id'],'message_sha256':_message_hash(dict(row)),'burst_id':burst} if normalized else None
+                cost=estimate_tokens(dumps(_inc_public_message(value))) if value else 0
+                if used+cost>limit.message_tokens:
+                    if not positions:
+                        return self._freeze_fragments(conn,entry_id,state,value,next_boundary,local)
+                    break
+                positions.append(row['id']);day=local;boundary=next_boundary
+                if value: messages.append(value);used+=cost
+            if not positions: return None
+            directory,omitted=_inc_directory(conn,entry_id,messages,limit)
+            payload=dict(entry_id=entry_id,timezone=zone,as_of=stamp,messages=messages,profiles=directory,
+                _snapshot=dict(settings_revision=_settings(conn,entry_id)['revision'],cursor_before=state['scan_cursor'],
+                    cursor_after=positions[-1],positions=positions,omitted_profiles=omitted,skipped_messages=skipped))
+            key=_hash([entry_id,state['scan_cursor'],positions[-1],messages,zone])
+            wid=conn.execute('''INSERT OR IGNORE INTO entry_profile_incremental_work(entry_id,work_key,kind,cursor_before,cursor_after,
+                local_day,payload_json,attempt_id,created_at) VALUES(?,?,'observe',?,?,?,?,?,?)''',
+                (entry_id,key,state['scan_cursor'],positions[-1],day,dumps(payload),self.attempt_id,stamp)).lastrowid
+            conn.execute('UPDATE entry_profile_memory_state SET scan_cursor=?,boundary_json=? WHERE entry_id=?',
+                         (positions[-1],dumps(boundary),entry_id))
+            return wid
+
+    def _freeze_fragments(self, conn, entry_id, state, original, boundary, day):
+        """Lossless contiguous fields; all fragments reserve the same evidence identity."""
+        group=_hash([entry_id,original['message_id'],original['message_sha256']])
+        fragments=[]
+        for field,text in [('content',original['content']),('quote',(original.get('quote') or {}).get('content',''))]:
+            offset=0
+            while offset<len(text):
+                low,high=1,len(text)-offset
+                def piece(size):
+                    message=copy.deepcopy(original)
+                    message['content']=text[offset:offset+size] if field=='content' else ''
+                    if message.get('quote'):
+                        message['quote']['content']=text[offset:offset+size] if field=='quote' else ''
+                    message['fragment']=dict(field=field,start=offset,end=offset+size,total=len(text))
+                    return message
+                while low<high:
+                    middle=(low+high+1)//2
+                    if estimate_tokens(dumps(_inc_public_message(piece(middle))))<=self.limits.message_tokens: low=middle
+                    else: high=middle-1
+                part=piece(low)
+                if estimate_tokens(dumps(_inc_public_message(part)))>self.limits.message_tokens:
+                    raise MemoryProfileUnavailable('message_metadata_budget')
+                fragments.append(part);offset+=low
+        directory,omitted=_inc_directory(conn,entry_id,[original],self.limits)
+        first=None
+        for index,fragment in enumerate(fragments):
+            end=original['message_id'] if index==len(fragments)-1 else state['scan_cursor']
+            payload=dict(entry_id=entry_id,timezone=_setting(conn,'timezone','Asia/Shanghai'),as_of=_instant(self.clock()).isoformat(),
+                messages=[fragment],profiles=directory,_snapshot=dict(settings_revision=_settings(conn,entry_id)['revision'],
+                cursor_before=state['scan_cursor'],cursor_after=end,positions=[original['message_id']],
+                omitted_profiles=omitted,fragment_group=group,fragment_index=index,fragment_count=len(fragments)))
+            wid=conn.execute("""INSERT INTO entry_profile_incremental_work(entry_id,work_key,kind,cursor_before,cursor_after,
+                local_day,fragment_group,payload_json,attempt_id,created_at) VALUES(?,?,'observe',?,?,?,?,?,?,?)""",
+                (entry_id,_hash([group,index]),state['scan_cursor'],end,day,group,dumps(payload),self.attempt_id,_instant(self.clock()).isoformat())).lastrowid
+            first=first or wid
+        conn.execute('UPDATE entry_profile_memory_state SET scan_cursor=?,boundary_json=? WHERE entry_id=?',
+                     (original['message_id'],dumps(boundary),entry_id))
+        return first
+
+    def _resnapshot(self, entry_id):
+        with self.store.write() as conn:
+            zone=_setting(conn,'timezone','Asia/Shanghai');stamp=_instant(self.clock()).isoformat()
+            settings=_settings(conn,entry_id)
+            if not settings['enabled'] or not _runtime(conn)['enabled']: return
+            for work in conn.execute("""SELECT * FROM entry_profile_incremental_work WHERE entry_id=? AND kind='observe'
+                    AND state='failed' AND reason IN ('source_changed','settings_changed') AND attempts<3 ORDER BY id""",(entry_id,)).fetchall():
+                payload=json.loads(work['payload_json']);snap=payload['_snapshot']
+                if snap.get('fragment_group'): continue  # A changed long message requires full refragmentation; remains an explicit gap.
+                snapshot=MemoryProfileSnapshot(entry_id,'','group',zone,stamp,0,0,0,False)
+                messages=[]
+                for mid in snap['positions']:
+                    row=conn.execute('SELECT * FROM messages WHERE id=?',(mid,)).fetchone()
+                    if not row: continue
+                    normalized=_memory_message(_db_observation(row),snapshot)
+                    if normalized:
+                        old=next((m for m in payload['messages'] if m['message_id']==mid),{})
+                        messages.append({**normalized,'message_id':mid,'message_sha256':_message_hash(dict(row)),
+                                         'burst_id':old.get('burst_id','message:'+str(mid))})
+                if sum(estimate_tokens(dumps(_inc_public_message(m))) for m in messages)>self.limits.message_tokens: continue
+                directory,omitted=_inc_directory(conn,entry_id,messages,self.limits)
+                payload.update(messages=messages,profiles=directory,timezone=zone,as_of=stamp)
+                snap.update(settings_revision=settings['revision'],omitted_profiles=omitted)
+                _inc_work_persist(conn,work['id'],payload_json=dumps(payload),parsed_json=None,state='queued',reason='resnapshotted')
+
+    def _assert_snapshot(self, conn, payload):
+        entry_id=payload['entry_id'];snap=payload['_snapshot']
+        settings=_settings(conn,entry_id)
+        if (not settings['enabled'] or not _runtime(conn)['enabled'] or settings['revision']!=snap['settings_revision']
+                or _setting(conn,'timezone','Asia/Shanghai')!=payload['timezone'] or _entry(conn,entry_id)['kind'] not in ('group','live')):
+            raise EntryProfileConflict('settings_changed')
+        for message in payload.get('messages',[]):
+            live=conn.execute('SELECT * FROM messages WHERE id=?',(message['message_id'],)).fetchone()
+            if not live or _message_hash(dict(live))!=message['message_sha256']:
+                raise EntryProfileConflict('source_changed')
+
+    def _apply_observations(self, work, parsed):
+        from .memory_ops import entry_profile_source, write_entry_profile_memory, _profile_manual
+        payload=json.loads(work['payload_json']);entry_id=work['entry_id'];now=_instant(self.clock())
+        result=dict(generated=parsed['observations'],deterministic=[],removed=[],applied=[],normalizations=[])
+        with self.store.write() as conn:
+            self._assert_snapshot(conn,payload)
+            if conn.execute('SELECT state FROM entry_profile_incremental_work WHERE id=?',(work['id'],)).fetchone()[0]=='cancelled':
+                raise EntryProfileConflict('purged')
+            directory={m['memory_id']:m for m in payload['profiles']}
+            for index,raw in enumerate(parsed['observations'],1):
+                conn.execute('SAVEPOINT profile_observation')
+                try:
+                    op=raw['op'];target=None
+                    if op!='propose':
+                        declared=directory.get(raw['memory_id'])
+                        target=conn.execute('''SELECT m.*,p.category FROM memories m JOIN entry_profile_memories p ON p.memory_id=m.id
+                            WHERE m.id=? AND p.entry_id=? AND m.lifecycle!='deleted' AND m.purged_at IS NULL''',
+                            (raw['memory_id'],entry_id)).fetchone()
+                        if not declared or not target or target['revision']!=declared['revision']:
+                            raise ValueError('target_revision_changed')
+                    category=raw['category'] if op!='confirm' else target['category']
+                    body=whitespace(raw['body']) if op!='confirm' else target['content']
+                    saying=raw.get('saying','') if op!='confirm' else body.partition('：')[0] if category=='saying' else ''
+                    meaning=raw.get('meaning','') if op!='confirm' else body.partition('：')[2] if category=='saying' else ''
+                    if op!='confirm':
+                        if raw.get('action')=='retire':
+                            if body or saying or meaning or raw['definition_refs'] or category!=target['category']:
+                                raise ValueError('invalid_retirement')
+                        elif (not body or _MEMORY_GENDERED.search(body) or _ACCOUNT.search(body)):
+                            raise ValueError('invalid_or_gendered_body')
+                        elif category=='saying':
+                            expected=saying+('：'+meaning if meaning else '')
+                            if not saying or body.rstrip('。.!！?？')!=expected.rstrip('。.!！?？') or bool(meaning)!=bool(raw['definition_refs']):
+                                raise ValueError('unbound_meaning')
+                            if body!=expected:
+                                result['normalizations'].append(dict(index=index,reason='saying_terminal_punctuation'))
+                            body=expected
+                        elif saying or meaning or raw['definition_refs']:
+                            raise ValueError('unexpected_meaning')
+                    repairs=[]
+                    bindings=_inc_bound(conn,entry_id,raw['source_refs'],payload['messages'],repairs=repairs)
+                    result['normalizations'].extend(dict(index=index,**r) for r in repairs)
+                    if any(mid not in [b['message_id'] for b in bindings] for mid in raw.get('definition_refs',[])):
+                        raise ValueError('unbound_definition')
+                    canonical=[]
+                    for binding in bindings:
+                        msg=next(m for m in payload['messages'] if m['message_id']==binding['message_id'])
+                        bound=_memory_bind_source(dict(ref=msg['ref'],field=binding['field'],excerpt=binding['excerpt'],via_memory=None),
+                                                  dict(messages=payload['messages'],memories=[]))
+                        bound['burst_id']=msg.get('burst_id');canonical.append(bound)
+                    if category=='rule' and op=='propose' and _inc_rule_reason(canonical):
+                        raise ValueError('rule_scope_not_established')
+                    if op=='change':
+                        if _profile_manual(conn,target): raise ValueError('protected_manual_conflict')
+                        proposal={**raw,'body':body,'source_refs':[{k:b[k] for k in ('message_id','field','excerpt')} for b in bindings]}
+                        self._queue_admission(conn,dict(target),_inc_all_sources(conn,target,now.isoformat())+canonical,proposal=proposal)
+                        result['deterministic'].append({'index':index,**raw,'sources':canonical})
+                        continue
+                    if target is None:
+                        target=conn.execute('''SELECT m.*,p.category FROM memories m JOIN entry_profile_memories p ON p.memory_id=m.id
+                            WHERE p.entry_id=? AND p.category IS ? AND m.content=? AND m.purged_at IS NULL ORDER BY m.id LIMIT 1''',
+                            (entry_id,category,body)).fetchone()
+                    if target and target['lifecycle']=='deleted': raise ValueError('deleted_target')
+                    old_sources=_inc_all_sources(conn,target,now.isoformat()) if target else []
+                    chosen=_inc_groups(old_sources+canonical,category,saying)
+                    current_ids={b['message_id'] for b in bindings}
+                    group_keys=['message:'+str(s['message']['position']) for s in chosen if s['message']['position'] in current_ids]
+                    receipt=write_entry_profile_memory(self.store,entry_id,op='confirm' if target else 'new',content=body,
+                        category=category,importance=30,sources=bindings,memory_id=target['id'] if target else None,
+                        expected_revision=target['revision'] if target else None,confirmation_groups=group_keys,
+                        accumulate_only=bool(target and any(x['memory_id']==target['id'] and (x['confirmed'] or x['op']=='new') for x in result['applied'])),
+                        current=now,_conn=conn)
+                    mid=receipt['memory_id']
+                    for sid in receipt['source_ids']:
+                        source_row=conn.execute('SELECT message_id FROM sources WHERE id=?',(sid,)).fetchone()
+                        message=next(m for m in payload['messages'] if m['message_id']==source_row[0])
+                        conn.execute('INSERT OR IGNORE INTO entry_profile_source_groups VALUES(?,?,?)',(sid,mid,message['burst_id']))
+                    if receipt['source_ids']:
+                        conn.execute('UPDATE entry_profile_admissions SET evidence_revision=evidence_revision+1 WHERE memory_id=?',(mid,))
+                    if not target:
+                        conn.execute('UPDATE entry_profile_admissions SET definition_refs_json=? WHERE memory_id=?',
+                                     (dumps(raw.get('definition_refs',[])),mid))
+                    result['applied'].append({'index':index,**receipt})
+                    result['deterministic'].append({'index':index,'memory_id':mid,**raw,'effective_body':body,'sources':canonical})
+                except (ValueError,EntryProfileConflict) as error:
+                    conn.execute('ROLLBACK TO profile_observation')
+                    result['removed'].append(dict(index=index,reason=str(error)))
+                finally:
+                    conn.execute('RELEASE profile_observation')
+            _inc_work_persist(conn,work['id'],state='applied',result_json=dumps(result),finished_at=now.isoformat())
+            # Make the enclosing attempt depend on every created/confirmed target before a check can run.
+            if self.attempt_id is not None:
+                previous=json.loads(conn.execute('SELECT material_json FROM entry_profile_attempts WHERE id=?',(self.attempt_id,)).fetchone()[0])
+                previous.setdefault('evidence_refs',[]).extend({'memory_id':r['memory_id'],'revision':r['revision']} for r in result['applied'])
+                conn.execute('UPDATE entry_profile_attempts SET material_json=? WHERE id=?',(dumps(previous),self.attempt_id))
+            self._advance_cursor(conn,entry_id)
+        return result
+
+    def _advance_cursor(self, conn, entry_id):
+        cursor=_memory_state(conn,entry_id)['cursor']
+        for row in conn.execute("SELECT cursor_before,cursor_after,state,fragment_group FROM entry_profile_incremental_work WHERE entry_id=? AND kind='observe' AND cursor_after>? ORDER BY cursor_before,id",(entry_id,cursor)):
+            if row['cursor_before']!=cursor or row['state'] not in ('applied','cancelled'):
+                break
+            if row['fragment_group'] and conn.execute("SELECT 1 FROM entry_profile_incremental_work WHERE fragment_group=? AND state NOT IN ('applied','cancelled') LIMIT 1",(row['fragment_group'],)).fetchone():
+                break
+            cursor=row['cursor_after']
+        conn.execute('UPDATE entry_profile_memory_state SET cursor=?,rebuild_pending=? WHERE entry_id=?',
+            (cursor,int(bool(conn.execute('SELECT 1 FROM messages WHERE entry_id=? AND id>? LIMIT 1',(entry_id,cursor)).fetchone())),entry_id))
+
+    def _queue_admission(self, conn, row, sources, *, proposal=None):
+        from .memory_ops import _profile_manual
+        if _profile_manual(conn,row) or row['lifecycle']!='active': return None
+        meta=conn.execute('SELECT * FROM entry_profile_admissions WHERE memory_id=?',(row['id'],)).fetchone()
+        if not meta: return None
+        for source in sources:
+            incomplete=conn.execute("""SELECT 1 FROM entry_profile_incremental_work w JOIN purge_record_refs r
+                ON r.table_name='entry_profile_incremental_work' AND r.row_id=CAST(w.id AS TEXT)
+                WHERE r.ref_kind='message' AND r.ref_id=? AND w.fragment_group IS NOT NULL
+                AND w.state NOT IN ('applied','cancelled') LIMIT 1""",(str(source['message']['position']),)).fetchone()
+            if incomplete: return None
+        category=proposal['category'] if proposal else row['category']
+        body=proposal['body'] if proposal else row['content']
+        saying=proposal['saying'] if proposal else body.partition('：')[0] if category=='saying' else ''
+        retire=proposal and proposal['action']=='retire'
+        selected=_inc_groups(sources,category,saying)
+        if not _inc_enough(selected,category,saying) and not (retire and sources): return None
+        reason=None if retire else _inc_body_reason(category,body,saying,sources)
+        if reason:
+            conn.execute('UPDATE entry_profile_admissions SET reason=? WHERE memory_id=?',(reason,row['id']))
+            return None
+        definitions=proposal['definition_refs'] if proposal else json.loads(meta['definition_refs_json'])
+        witnesses=[];seen=set()
+        for source in sources:
+            key=_inc_source_key(source)
+            if key not in seen: witnesses.append(source);seen.add(key)
+        # Every input is reviewed. No relevance/sentiment-based omission of remainder.
+        # 32 is the unified writer's existing source limit, not a model context increase.
+        if len(witnesses)>32:
+            conn.execute("UPDATE entry_profile_admissions SET reason='evidence_budget_exceeded' WHERE memory_id=?",(row['id'],))
+            return None
+        core=[]
+        def include(source):
+            if _inc_source_key(source) not in {_inc_source_key(s) for s in core}: core.append(source)
+        for source in selected[:1 if category=='rule' else 2]: include(source)
+        for source in witnesses:
+            if source['message']['position'] in definitions: include(source)
+            if proposal and any(source['message']['position']==r['message_id'] and source['field']==r['field'] for r in proposal['source_refs']): include(source)
+        # Supply explicit announcement / consensus together in every page.
+        if category=='rule' and not retire and _inc_rule_reason(core):
+            for source in witnesses:
+                include(source)
+                if not _inc_rule_reason(core): break
+        prose=body.partition('：')[2] if category=='saying' else body
+        missing=_inc_missing_entities(prose,[s['excerpt'] for s in core]) if not retire else []
+        while missing:
+            best=max(witnesses,key=lambda s:sum(term in s['excerpt'] for term in missing))
+            include(best)
+            after=_inc_missing_entities(prose,[s['excerpt'] for s in core])
+            if after==missing: break
+            missing=after
+        def public_source(s):
+            return dict(message_id=s['message']['position'],field=s['field'],excerpt=s['excerpt'],speaker=s['speaker'],
+                date=s['message']['date'],occurred_at=s['message']['occurred_at'],context=s['message']['content'],message_speaker=s['message']['speaker'],
+                quote=s['message'].get('quote'),burst_id=s.get('burst_id'))
+        memory=dict(memory_id=row['id'],revision=row['revision'],category=category,body=body,saying=saying,
+            meaning=proposal['meaning'] if proposal else body.partition('：')[2] if category=='saying' else '',
+            definition_refs=definitions,sources=[])
+        if proposal: memory.update(action=proposal['action'],old_body=row['content'])
+        def fits(page):
+            return len(page)<=self.limits.evidence and estimate_tokens(dumps({**memory,'sources':[public_source(s) for s in page]}))<=self.limits.evidence_tokens
+        if not fits(core):
+            conn.execute("UPDATE entry_profile_admissions SET reason='evidence_budget_exceeded' WHERE memory_id=?",(row['id'],))
+            return None
+        remaining=[s for s in witnesses if _inc_source_key(s) not in {_inc_source_key(v) for v in core}]
+        pages=[];page=list(core)
+        for source in remaining:
+            if not fits([*page,source]):
+                pages.append(page);page=list(core)
+            if not fits([*page,source]):
+                conn.execute("UPDATE entry_profile_admissions SET reason='evidence_budget_exceeded' WHERE memory_id=?",(row['id'],))
+                return None
+            page.append(source)
+        pages.append(page)
+        if len(pages)>8:
+            conn.execute("UPDATE entry_profile_admissions SET reason='evidence_budget_exceeded' WHERE memory_id=?",(row['id'],))
+            return None
+        zone=_setting(conn,'timezone','Asia/Shanghai');stamp=_instant(self.clock()).isoformat()
+        snapshot=dict(settings_revision=_settings(conn,row['owner_entry_id'])['revision'],evidence_revision=meta['evidence_revision'],
+            source_fingerprints={str(s['message']['position']):s['message']['fingerprint'] for s in witnesses},proposal=proposal,
+            # Numeric roots are required by the existing recursive purge index, also
+            # on pages that do not contain a particular message as model evidence.
+            evidence_refs=[dict(message_id=s['message']['position']) for s in witnesses])
+        group=_hash([row['id'],row['revision'],meta['evidence_revision'],memory,[[public_source(s) for s in p] for p in pages],
+                     zone,snapshot['settings_revision'],self.prompts['admit']['sha256']])
+        first=None
+        for index,page in enumerate(pages):
+            key=_hash([group,index]);page_memory={**memory,'sources':[public_source(s) for s in page]}
+            payload=dict(entry_id=row['owner_entry_id'],as_of=stamp,timezone=zone,memory=page_memory,
+                _snapshot={**snapshot,'bundle':dict(key=group,index=index,count=len(pages))})
+            if conn.execute('SELECT 1 FROM entry_profile_incremental_work WHERE work_key=?',(key,)).fetchone(): continue
+            wid=conn.execute('''INSERT INTO entry_profile_incremental_work(entry_id,work_key,kind,memory_id,memory_revision,
+                payload_json,attempt_id,created_at) VALUES(?,?,'admit',?,?,?,?,?)''',
+                (row['owner_entry_id'],key,row['id'],row['revision'],dumps(payload),self.attempt_id,stamp)).lastrowid
+            first=first or wid
+        if first and meta['state']!='accepted': conn.execute("UPDATE entry_profile_admissions SET state='pending',reason=NULL WHERE memory_id=?",(row['id'],))
+        return first
+
+    def _queue_candidates(self, entry_id):
+        with self.store.write() as conn:
+            rows=conn.execute('''SELECT m.*,p.category FROM memories m JOIN entry_profile_memories p ON p.memory_id=m.id
+                JOIN entry_profile_admissions a ON a.memory_id=m.id WHERE p.entry_id=? AND a.state!='accepted'
+                AND m.lifecycle='active' AND m.purged_at IS NULL ORDER BY m.id''',(entry_id,)).fetchall()
+            for row in rows:
+                self._queue_admission(conn,row,_inc_all_sources(conn,row,_instant(self.clock()).isoformat()))
+
+    def _apply_admission(self, work, parsed):
+        from .memory_ops import write_entry_profile_memory, entry_profile_source, _profile_manual
+        payload=json.loads(work['payload_json']);memory=payload['memory'];snap=payload['_snapshot'];stamp=_instant(self.clock()).isoformat()
+        with self.store.write() as conn:
+            current=conn.execute('''SELECT m.*,p.category FROM memories m JOIN entry_profile_memories p ON p.memory_id=m.id
+                WHERE m.id=? AND m.purged_at IS NULL AND m.lifecycle='active' ''',(memory['memory_id'],)).fetchone()
+            if (not current or current['revision']!=memory['revision'] or _profile_manual(conn,current)
+                    or conn.execute('SELECT state FROM entry_profile_incremental_work WHERE id=?',(work['id'],)).fetchone()[0]=='cancelled'):
+                raise EntryProfileConflict('target_changed')
+            settings=_settings(conn,work['entry_id']);meta=conn.execute('SELECT * FROM entry_profile_admissions WHERE memory_id=?',(current['id'],)).fetchone()
+            if (not settings['enabled'] or not _runtime(conn)['enabled'] or settings['revision']!=snap['settings_revision']
+                    or _setting(conn,'timezone','Asia/Shanghai')!=payload['timezone'] or meta['evidence_revision']!=snap['evidence_revision']):
+                raise EntryProfileConflict('check_snapshot_changed')
+            all_sources=_inc_all_sources(conn,current,stamp)
+            if snap.get('proposal'):
+                snapshot=MemoryProfileSnapshot(work['entry_id'],'','group',payload['timezone'],stamp,0,0,0,False)
+                all_sources=[]
+                values=list(memory['sources'])
+                if snap.get('bundle'):
+                    for sibling in conn.execute("SELECT payload_json FROM entry_profile_incremental_work WHERE memory_id=? AND json_extract(payload_json,'$._snapshot.bundle.key')=?",(current['id'],snap['bundle']['key'])):
+                        values.extend(json.loads(sibling[0])['memory']['sources'])
+                for value in values:
+                    row=conn.execute('SELECT * FROM messages WHERE id=?',(value['message_id'],)).fetchone()
+                    if row:
+                        normalized=_memory_message(_db_observation(row),snapshot)
+                        if normalized:
+                            s=_memory_bind_source(dict(ref=normalized['ref'],field=value['field'],excerpt=value['excerpt'],via_memory=None),dict(messages=[normalized],memories=[]))
+                            s['burst_id']=value.get('burst_id');all_sources.append(s)
+            for mid,fingerprint in snap['source_fingerprints'].items():
+                if not any(s['message']['position']==int(mid) and s['message']['fingerprint']==fingerprint for s in all_sources):
+                    raise EntryProfileConflict('check_source_changed')
+            bundle=snap.get('bundle')
+            if parsed['decision']!='accept':
+                if bundle:
+                    conn.execute("UPDATE entry_profile_incremental_work SET state='cancelled',reason='bundle_rejected',finished_at=? WHERE memory_id=? AND id!=? AND json_extract(payload_json,'$._snapshot.bundle.key')=? AND state IN ('queued','deferred','failed')",
+                        (stamp,current['id'],work['id'],bundle['key']))
+                # A pending revision does not erase an independently valid old body.
+                if not snap.get('proposal') or meta['state']!='accepted':
+                    conn.execute("UPDATE entry_profile_admissions SET state=?,reason=? WHERE memory_id=?",('candidate' if meta['signature'] else 'rejected',parsed['decision'],current['id']))
+                _inc_work_persist(conn,work['id'],state='rejected',reason=parsed['decision'],result_json=dumps(parsed),finished_at=stamp)
+                return dict(memory_id=current['id'],decision=parsed['decision'])
+            safe=[];canonical=[]
+            for source in parsed['safe_sources']:
+                bound=next((s for s in all_sources if s['message']['position']==source['message_id'] and s['field']==source['field']
+                    and whitespace(source['excerpt']) in s['excerpt']),None)
+                expected=next((s for s in memory['sources'] if s['message_id']==source['message_id'] and s['field']==source['field']
+                    and whitespace(source['excerpt']) in s['excerpt']),None)
+                if not bound or not expected: raise ValueError('checker_unbound_excerpt')
+                canonical.append({**bound,'excerpt':whitespace(source['excerpt'])})
+                safe.append(entry_profile_source(conn,source['message_id'],excerpt=source['excerpt'],field=source['field'],
+                    source_memory_id=int(bound['via_memory']) if bound['via_memory'] else None,
+                    source_revision=bound['memory']['revision'] if bound['memory'] else None))
+            proposal=snap.get('proposal');retire=proposal and proposal['action']=='retire'
+            if not retire and (reason:=_inc_body_reason(memory['category'],memory['body'],memory['saying'],canonical)):
+                raise ValueError(reason)
+            if not retire and not _inc_enough(canonical,memory['category'],memory['saying']):
+                raise ValueError('safe_sources_insufficient')
+            if memory['meaning'] and not set(memory['definition_refs'])&{s['message_id'] for s in safe}:
+                raise ValueError('definition_removed')
+            if proposal and not any(s['message_id']==ref['message_id'] and s['field']==ref['field'] for s in safe for ref in proposal['source_refs']):
+                raise ValueError('change_basis_removed')
+            if bundle:
+                # A partial pass is not admission. Save it for restart without
+                # adding sources, changing retention, or exposing any new text.
+                _inc_work_persist(conn,work['id'],state='applied',result_json=dumps(dict(decision='accept',memory_id=current['id'],admission_complete=False)),finished_at=stamp)
+                siblings=conn.execute("SELECT * FROM entry_profile_incremental_work WHERE memory_id=? AND json_extract(payload_json,'$._snapshot.bundle.key')=? ORDER BY id",
+                    (current['id'],bundle['key'])).fetchall()
+                if len(siblings)!=bundle['count'] or any(s['state']!='applied' for s in siblings):
+                    return dict(memory_id=current['id'],decision='accept',admission_complete=False)
+                safe=[];canonical=[];seen=set()
+                for sibling in siblings:
+                    sibling_payload=json.loads(sibling['payload_json'])
+                    sibling_vote=json.loads(sibling['parsed_json'])
+                    if sibling_vote['decision']!='accept': raise ValueError('bundle_not_accepted')
+                    for source in sibling_vote['safe_sources']:
+                        key=(source['message_id'],source['field'],whitespace(source['excerpt']))
+                        if key in seen: continue
+                        seen.add(key)
+                        expected=next((v for v in sibling_payload['memory']['sources'] if v['message_id']==source['message_id'] and v['field']==source['field'] and whitespace(source['excerpt']) in v['excerpt']),None)
+                        bound=next((v for v in all_sources if v['message']['position']==source['message_id'] and v['field']==source['field'] and whitespace(source['excerpt']) in v['excerpt']),None)
+                        if not expected or not bound: raise ValueError('bundle_source_changed')
+                        canonical.append({**bound,'excerpt':whitespace(source['excerpt'])})
+                        safe.append(entry_profile_source(conn,source['message_id'],excerpt=source['excerpt'],field=source['field'],
+                            source_memory_id=int(bound['via_memory']) if bound['via_memory'] else None,
+                            source_revision=bound['memory']['revision'] if bound['memory'] else None))
+                if len(safe)>32: raise ValueError('bundle_source_limit')
+            if proposal:
+                receipt=write_entry_profile_memory(self.store,work['entry_id'],op='retire' if retire else 'revise',content=memory['body'],
+                    category=memory['category'],importance=current['importance'],sources=safe,memory_id=current['id'],
+                    expected_revision=current['revision'],_conn=conn,current=_instant(stamp))
+                revision=receipt['revision']
+                if retire:
+                    conn.execute("UPDATE entry_profile_admissions SET state='candidate',reason='retired' WHERE memory_id=?",(current['id'],))
+                    _inc_work_persist(conn,work['id'],state='applied',result_json=dumps(receipt),finished_at=stamp)
+                    return receipt
+            else: revision=current['revision']
+            receipt=write_entry_profile_memory(self.store,work['entry_id'],op='admit',sources=safe,memory_id=current['id'],
+                expected_revision=revision,_conn=conn,current=_instant(stamp))
+            conn.execute("""UPDATE entry_profile_admissions SET state='accepted',body_revision=?,checked_sources_json=?,
+                signature=?,reason=NULL,definition_refs_json=?,checked_at=? WHERE memory_id=?""",
+                (receipt['revision'],dumps(receipt['source_ids']),work['work_key'],dumps(memory['definition_refs']),stamp,current['id']))
+            _inc_work_persist(conn,work['id'],state='applied',result_json=dumps({'decision':'accept','admission_complete':True,**receipt}),finished_at=stamp)
+            conn.execute("UPDATE entry_profile_incremental_work SET state='cancelled',reason='superseded_check',finished_at=? WHERE memory_id=? AND kind='admit' AND id!=? AND state IN ('queued','deferred','failed')",
+                         (stamp,current['id'],work['id']))
+            return receipt
+
+    def _check_current(self, conn, work, payload):
+        """Cheap preflight in addition to post-call CAS; never spend on an already stale target."""
+        from .memory_ops import _profile_manual
+        memory=payload['memory'];snap=payload['_snapshot']
+        row=conn.execute('SELECT * FROM memories WHERE id=?',(memory['memory_id'],)).fetchone()
+        meta=conn.execute('SELECT * FROM entry_profile_admissions WHERE memory_id=?',(memory['memory_id'],)).fetchone()
+        if (not row or not meta or row['purged_at'] or row['lifecycle']!='active' or _profile_manual(conn,row)
+                or row['revision']!=memory['revision'] or meta['evidence_revision']!=snap['evidence_revision']
+                or row['owner_entry_id']!=work['entry_id'] or not Visibility(conn).memory_visible(row['id'],work['entry_id'])):
+            return False
+        settings=_settings(conn,work['entry_id'])
+        if (not settings['enabled'] or not _runtime(conn)['enabled'] or settings['revision']!=snap['settings_revision']
+                or _setting(conn,'timezone','Asia/Shanghai')!=payload['timezone']): return False
+        snapshot=MemoryProfileSnapshot(work['entry_id'],'','group',payload['timezone'],_instant(self.clock()).isoformat(),0,0,0,False)
+        for mid,fingerprint in snap['source_fingerprints'].items():
+            source=conn.execute('SELECT * FROM messages WHERE id=?',(int(mid),)).fetchone()
+            normalized=_memory_message(_db_observation(source),snapshot) if source else None
+            if not normalized or normalized['fingerprint']!=fingerprint: return False
+        return True
+
+    def _run_one(self, work):
+        stamp=_instant(self.clock()).isoformat()
+        with self.store.write() as conn:
+            live=conn.execute('SELECT * FROM entry_profile_incremental_work WHERE id=?',(work['id'],)).fetchone()
+            if not live or live['state'] in ('applied','rejected','cancelled'): return
+            _inc_work_persist(conn,work['id'],state='running',attempts=live['attempts']+1,attempt_id=self.attempt_id)
+            work=dict(conn.execute('SELECT * FROM entry_profile_incremental_work WHERE id=?',(work['id'],)).fetchone())
+            if work['state']=='cancelled': return
+            if self.attempt_id is not None:
+                material=json.loads(conn.execute('SELECT material_json FROM entry_profile_attempts WHERE id=?',(self.attempt_id,)).fetchone()[0])
+                payload=json.loads(work['payload_json']);refs=material.setdefault('evidence_refs',[])
+                refs.extend(dict(message_id=m['message_id']) for m in payload.get('messages',[]))
+                refs.extend(dict(memory_id=p['memory_id'],revision=p['revision']) for p in payload.get('profiles',[]))
+                if payload.get('memory'):
+                    refs.append(dict(memory_id=payload['memory']['memory_id'],revision=payload['memory']['revision']))
+                    refs.extend(dict(message_id=s['message_id']) for s in payload['memory']['sources'])
+                material['incremental']=True
+                conn.execute('UPDATE entry_profile_attempts SET material_json=? WHERE id=?',(dumps(material),self.attempt_id))
+        try:
+            payload=json.loads(work['payload_json'])
+            if any(m.get('oversized') for m in payload.get('messages',[])):
+                raise ModelError('invalid_output','single message exceeds budget',reason='oversized_message_pending')
+            with self.store.read() as conn:
+                if work['kind']=='observe': self._assert_snapshot(conn,payload)
+                stale=work['kind']=='admit' and not self._check_current(conn,work,payload)
+            if stale:
+                with self.store.write() as conn:
+                    _inc_work_persist(conn,work['id'],state='cancelled',reason='stale_check',finished_at=stamp)
+                    conn.execute("UPDATE entry_profile_admissions SET state=CASE WHEN state='accepted' THEN state ELSE 'candidate' END,reason='stale_check' WHERE memory_id=?",(work['memory_id'],))
+                return
+            public=_inc_public_payload(payload)
+            if work['parsed_json'] is None:
+                parsed={'observations':[]} if work['kind']=='observe' and not payload.get('messages') else self._call(work,work['kind'],public)
+                with self.store.write() as conn:
+                    _inc_work_persist(conn,work['id'],parsed_json=dumps(parsed))
+            else:
+                parsed=json.loads(work['parsed_json'])
+            if work['kind']=='observe': self._apply_observations(work,parsed)
+            else: self._apply_admission(work,parsed)
+        except (ModelError,EntryProfileConflict,ValueError) as error:
+            reason=(error.reason or error.category) if isinstance(error,ModelError) else str(error)
+            retry=isinstance(error,ModelError) and (error.category in ('retryable','paused','budget') or reason=='interrupted')
+            with self.store.write() as conn:
+                live=conn.execute('SELECT * FROM entry_profile_incremental_work WHERE id=?',(work['id'],)).fetchone()
+                deferred=retry and (live['attempts']<=2 or reason=='call_budget' or isinstance(error,ModelError) and error.category in ('paused','budget'))
+                _inc_work_persist(conn,work['id'],state='deferred' if deferred else 'failed',reason=reason,
+                    retry_at=(_instant(self.clock())+timedelta(minutes=5*(2**min(live['attempts'],4)))).isoformat() if deferred else None,
+                    finished_at=stamp)
+                if work['kind']=='admit' and live['state']!='cancelled':
+                    conn.execute("UPDATE entry_profile_admissions SET state=CASE WHEN state='accepted' THEN state ELSE 'candidate' END,reason=? WHERE memory_id=?",
+                                 (reason,work['memory_id']))
+            if reason in ('timeout','rate_limited'):
+                self.transport_error=reason
+            if reason in ('call_budget','interrupted') or isinstance(error,ModelError) and error.paused:
+                self.stop_reason=reason
+        finally:
+            with self.store.read() as conn:
+                self.trace.append(dict(conn.execute('SELECT * FROM entry_profile_incremental_work WHERE id=?',(work['id'],)).fetchone()))
+
+    def run(self, entry_id):
+        self.transport_error=None;self.stop_reason=None;seen=set()
+        with self.store.write() as conn:
+            _ensure(conn,entry_id,_instant(self.clock()).isoformat())
+        self._queue_candidates(entry_id)
+        while True:
+            progress=False
+            for kind in ('observe','admit'):
+                with self.store.read() as conn:
+                    work=conn.execute("""SELECT * FROM entry_profile_incremental_work WHERE entry_id=? AND kind=?
+                        AND (state='queued' OR state='deferred' AND retry_at<=?) ORDER BY id LIMIT 1""",
+                        (entry_id,kind,_instant(self.clock()).isoformat())).fetchone()
+                if kind=='observe' and not work:
+                    wid=self._freeze_chunk(entry_id)
+                    if wid:
+                        with self.store.read() as conn:
+                            work=conn.execute('SELECT * FROM entry_profile_incremental_work WHERE id=?',(wid,)).fetchone()
+                if work and work['id'] not in seen:
+                    seen.add(work['id']);self._run_one(dict(work));progress=True
+                    if kind=='observe': self._queue_candidates(entry_id)
+                if self.stop_reason or self.transport_error and getattr(self.gateway,'abort_on_model_transport_error',False):
+                    break
+            if getattr(self,'one_round',False) or not progress or self.stop_reason or self.transport_error and getattr(self.gateway,'abort_on_model_transport_error',False):
+                break
+        with self.store.read() as conn:
+            stats=incremental_progress(conn,entry_id)
+        calls=[c for w in self.trace for c in json.loads(w['calls_json'])]
+        return dict(status='committed' if any(w['state'] in ('applied','rejected') for w in self.trace) else 'failed' if self.trace else 'no_new_evidence',
+            reason=self.transport_error or self.stop_reason or next((w['reason'] for w in self.trace if w['state'] in ('failed','deferred')),None),
+            work=self.trace,progress=stats,calls=calls,prompt_versions=[p['name'] for p in self.prompts.values()],
+            prompt_sha256={p['name']:p['sha256'] for p in self.prompts.values()})
+
+
+def _reserve_incremental_task(engine, entry_id, expected, source, *, run_id=None, fail_if_running=False):
+    stamp=_instant(engine.clock()).isoformat();store=engine.store
+    with store.write() as conn:
+        _memory_expect(conn,entry_id,expected)
+        _recover_interrupted(conn,store,entry_id,stamp)
+        if conn.execute("SELECT 1 FROM entry_profile_attempts WHERE entry_id=? AND state='running'",(entry_id,)).fetchone():
+            raise EntryProfileBusy('generation_in_progress')
+        # Service/offline leases exclude a second owner; completed responses can resume without a call.
+        conn.execute("UPDATE entry_profile_incremental_work SET state='queued' WHERE entry_id=? AND state='running'",(entry_id,))
+        if run_id is not None:
+            previous=conn.execute('SELECT * FROM entry_profile_attempts WHERE entry_id=? AND run_id=?',(entry_id,run_id)).fetchone()
+        _ensure(conn,entry_id,stamp)
+        settings=_settings(conn,entry_id);entry=_entry(conn,entry_id)
+        reason='entry_kind' if entry['kind'] not in ('group','live') else 'disabled' if not settings['enabled'] or not _runtime(conn)['enabled'] else None
+        zone=_setting(conn,'timezone','Asia/Shanghai');today=_instant(engine.clock()).astimezone(ZoneInfo(zone)).date().isoformat()
+    due=dict(local_day=today,due=not reason,reason=reason,current_version=expected)
+    if reason: return engine._skip(entry_id,expected,source,due,reason,run_id,stamp)
+    try: gateway=engine._gateway()
+    except ModelError as error:
+        return engine._skip(entry_id,expected,source,due,error.reason or error.category,run_id,stamp)
+    task=IncrementalProfileTask(store,gateway,clock=engine.clock,source=source)
+    task.one_round=run_id is not None
+    task._resnapshot(entry_id)
+    task._queue_candidates(entry_id)
+    with store.read() as conn:
+        queued=conn.execute("SELECT 1 FROM entry_profile_incremental_work WHERE entry_id=? AND (state='queued' OR state='deferred' AND retry_at<=?) LIMIT 1",(entry_id,stamp)).fetchone()
+    if not queued and not task._freeze_chunk(entry_id):
+        return engine._skip(entry_id,expected,source,due,'no_new_evidence',run_id,stamp)
+    with store.write() as conn:
+        _memory_expect(conn,entry_id,expected)
+        if conn.execute("SELECT 1 FROM entry_profile_attempts WHERE entry_id=? AND state='running'",(entry_id,)).fetchone():
+            raise EntryProfileBusy('generation_in_progress')
+        if run_id is not None:
+            old=conn.execute('SELECT id FROM entry_profile_attempts WHERE entry_id=? AND run_id=?',(entry_id,run_id)).fetchone()
+        else: old=None
+        if old:
+            attempt=old[0]
+            conn.execute("UPDATE entry_profile_attempts SET state='running',reason=NULL,finished_at=NULL WHERE id=?",(attempt,))
+        else:
+            attempt=conn.execute('''INSERT INTO entry_profile_attempts(entry_id,run_id,base_version,state,local_day,started_at,material_json)
+                VALUES(?,?,?,'running',?,?,?)''',(entry_id,run_id,expected,today,stamp,dumps({'incremental':True,'evidence_refs':[]}))).lastrowid
+        task.attempt_id=attempt
+        _audit(conn,'generation_requested',entry_id,stamp,attempt_id=attempt,base_version=expected,source=source)
+        with _ACTIVE_LOCK: _ACTIVE_ATTEMPTS.add((store.path,attempt))
+    return dict(status='running',attempt_id=attempt,context=dict(entry_id=entry_id,attempt=attempt,incremental_task=task,due=due))
+
+
+def _execute_incremental_task(engine, entry_id, attempt, task, due):
+    try:
+        result=task.run(entry_id)
+        status={'committed':'published','no_new_evidence':'skipped'}.get(result['status'],result['status'])
+        with engine.store.write() as conn:
+            version=_memory_state(conn,entry_id)['version']
+            previous=json.loads(conn.execute('SELECT outputs_json FROM entry_profile_attempts WHERE id=?',(attempt,)).fetchone()[0])
+            persisted={**result,'work':previous.get('work',[])+result['work'],'calls':previous.get('calls',[])+result['calls']}
+            # Existing attempt redaction guards also cover linked incremental work.
+            conn.execute('''UPDATE entry_profile_attempts SET state=?,reason=?,version=?,outputs_json=?,calls_json=?,finished_at=?
+                WHERE id=? AND state='running' ''',(status,result.get('reason'),version,dumps(persisted),dumps(persisted['calls']),
+                _instant(engine.clock()).isoformat(),attempt))
+        return dict(status=status,reason=result.get('reason'),version={'version':version},attempt_id=attempt,due=due,result=result)
+    except Exception:
+        engine._finish(attempt,'failed','unexpected_error',{},[])
+        raise
+    finally:
+        with _ACTIVE_LOCK: _ACTIVE_ATTEMPTS.discard((engine.store.path,attempt))
+
+
+def _update_incremental_for_run(store, gateway, run, config, *, clock=utc_now, stop=None):
+    if not config.get('entry_profile_enabled',True): return True
+    with store.read() as conn:
+        if not _runtime(conn)['enabled']: return True
+        entries=[r[0] for r in conn.execute("SELECT id FROM entries WHERE kind IN ('group','live') ORDER BY id")]
+    remaining=entries
+    while remaining:
+        next_round=[]
+        for entry_id in remaining:
+            if stop and stop(): return False
+            with store.read() as conn: expected=_settings(conn,entry_id)['current_version']
+            try:
+                outcome=EntryProfileEngine(store,gateway,clock=clock).update(entry_id,expected_version=expected,run_id=run['id'])
+            except (EntryProfileConflict,EntryProfileBusy):
+                continue
+            result=outcome.get('result',{})
+            with store.write() as conn:
+                conn.execute("""INSERT INTO maintenance_items(run_id,phase,item_key,object_id,outcome,reason,details_json,created_at)
+                    VALUES(?,'consolidation',?,?,'entry_profile',?,?,?)
+                    ON CONFLICT(run_id,phase,item_key) DO UPDATE SET reason=excluded.reason,details_json=excluded.details_json""",
+                    (run['id'],'entry_profile:'+entry_id,outcome['attempt_id'],outcome.get('reason'),
+                     dumps({'entry_id':entry_id,'status':outcome['status'],'progress':incremental_progress(conn,entry_id)}),_instant(clock()).isoformat()))
+            if result.get('reason') in ('call_budget','interrupted'):
+                return result['reason']!='interrupted'
+            if result.get('work'): next_round.append(entry_id)
+        remaining=next_round
+    return True

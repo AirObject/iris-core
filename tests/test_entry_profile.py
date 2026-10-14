@@ -496,3 +496,7 @@ def test_check_input_keeps_admin_sentences_without_borrowing_evidence(store,cloc
     assert [s['text'] for s in payload['candidate']]==TEXTS
     assert all(s['author']=='admin' and s['evidence']=={'messages':[],'memories':[]} for s in payload['candidate'])
     assert result['version']['content']==first['content']
+
+
+# Historical document-path regression on the pre-switch schema.
+from profile_legacy import legacy_schema

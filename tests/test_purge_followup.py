@@ -303,3 +303,7 @@ def test_real_profile_run_preserves_second_entry_calls_after_first_entry_purge(s
     purge_memory(store, mid, 1, confirm=True)
     assert all(record(store, 'consolidation_calls', c['id'])['raw_output'] is None for c in calls[:2])
     assert all(record(store, 'consolidation_calls', c['id'])['raw_output'] == c['raw_output'] for c in calls[2:])
+
+
+# These regressions exercise the retained legacy projection/purge machinery.
+from profile_legacy import legacy_schema

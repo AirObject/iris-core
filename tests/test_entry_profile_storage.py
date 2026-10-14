@@ -267,7 +267,8 @@ def test_revise_binds_only_new_current_sources_and_retire_is_cas(store):
     with pytest.raises(ValueError,match='revision'):
         write(store,op='retire',memory_id=mid,expected_revision=1,sources=[source(store,c)])
     write(store,op='retire',memory_id=mid,expected_revision=2,sources=[source(store,c)])
-    assert row(store,mid)['lifecycle']=='deleted'
+    assert row(store,mid)['lifecycle']=='forgotten'
+    assert row(store,mid)['revision']==2
 
 
 def test_empty_entry_delete_preserves_existing_behavior(store):
