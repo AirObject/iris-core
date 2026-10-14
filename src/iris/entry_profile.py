@@ -1273,10 +1273,10 @@ def _memory_original(source, category, saying):
     return category != 'saying' or saying in source['excerpt']
 
 
-def _memory_independent(left, right, category, messages):
+def _memory_independent(left, right, category, messages, *, independent_short_use=False):
     a, b = left['message'], right['message']
     if (left['evidence_identity'] == right['evidence_identity']
-            or _memory_copies(a['content'], b['content'])):
+            or not (category=='saying' and independent_short_use) and _memory_copies(a['content'], b['content'])):
         return False
     ta, tb = _instant(a['occurred_at']), _instant(b['occurred_at'])
     gap = abs((ta - tb).total_seconds())
@@ -2098,7 +2098,7 @@ def incremental_prompts():
     from importlib.resources import files
     import hashlib
     result={}
-    for stage,name in (('observe','entry_profile_observe_v4'),('admit','entry_profile_admit_v4')):
+    for stage,name in (('observe','entry_profile_observe_v5'),('admit','entry_profile_admit_v5')):
         value=files('iris').joinpath('prompts',name+'.md').read_text(encoding='utf-8')
         result[stage]=dict(name=name,text=value,sha256=hashlib.sha256(value.encode()).hexdigest())
     return result
@@ -2227,7 +2227,33 @@ def _inc_saying_key(value):
         value=value[:-len(pieces.pop().word)]
     # A narrow demonstrative-N + V question, not arbitrary bag-of-words reordering.
     match=re.fullmatch(r'[这那](?:一)?['+_INC_CLASSIFIERS+r']?([\u4e00-\u9fff]{1,4})还([\u4e00-\u9fff])着?',value)
-    return match[2]+match[1] if match else value
+    if match: return match[2]+match[1]
+    # A closed grammar around an unchanged lexical core. One full doubled
+    # utterance remains one use. Negation and lexical characters are preserved.
+    doubled=re.fullmatch(r'([\u4e00-\u9fff]{2,8})\1',value)
+    if doubled: value=doubled[1]
+    is_verb=lambda text: bool(text) and posseg.dt.word_tag_tab.get(text[0],'').startswith('v')
+    if value.startswith('先') and len(value)>=3 and is_verb(value[1:]): value=value[1:]
+    if is_verb(value):
+        trailing=re.fullmatch(r'([\u4e00-\u9fff]{2,8})(?:一下下?|一会儿?)',value)
+        if trailing: value=trailing[1]
+        verb=value[0]
+        if posseg.dt.word_tag_tab.get(value[1:],'') in ('n','ng','nz','ns','nt'): return value
+        prefixes=[verb+'一下下',verb+'一下',verb+'一会儿',verb+'一会',verb+'一'+verb,verb+verb]
+        prefixes += [verb+c for c in _INC_CLASSIFIERS]
+        for prefix in prefixes:
+            rest=value[len(prefix):] if value.startswith(prefix) else ''
+            if re.fullmatch(r'[\u4e00-\u9fff]{1,7}',rest):
+                value=verb+rest
+                break
+    return value
+
+
+def _inc_short_saying_use(saying, text):
+    # A copied statement containing additional facts is not a bare saying.
+    # Quote/reported-speech exclusions run before this narrow copy exception.
+    key=_inc_saying_key(saying)
+    return bool(re.fullmatch(r'[\u4e00-\u9fff]{2,8}|[a-z0-9]{2,16}',key)) and _inc_saying_key(text)==key
 
 
 def _inc_saying_used(saying, excerpt):
@@ -2241,9 +2267,10 @@ def _inc_saying_used(saying, excerpt):
     boundaries={0};offset=0
     for token in posseg.cut(text,HMM=False):
         offset+=len(token.word);boundaries.add(offset)
-    def matched(pattern,noun=''):
+    def matched(pattern,noun='',inflected=False):
         for m in re.finditer(pattern,text):
             if m.start() not in boundaries or m.end() not in boundaries: continue
+            if inflected and posseg.dt.word_tag_tab.get(m.group()[1:],'') in ('n','ng','nz','ns','nt'): continue
             # A second segmentation from the noun prevents overlapping dictionary
             # words from accepting a fragment of a longer, different object.
             tail=text[m.end()-len(noun):] if noun else ''
@@ -2252,12 +2279,13 @@ def _inc_saying_used(saying, excerpt):
             return True
         return False
     if matched(re.escape(key),key[1:]): return True
-    # Keep every lexical character and its order. Only one grammatical insertion,
-    # single initial-verb reduplication, or a demonstrative question is allowed.
+    # Keep lexical characters and order. Light duration/aspect insertions
+    # require a dictionary verb; no unrestricted gaps or semantic synonyms.
     if not re.fullmatch(r'[\u4e00-\u9fff]{2,8}',key) or key[0] in '不没无非别未': return False
     verb,noun=key[0],key[1:]
-    inflection=r'(?:[的了着过]|(?:[一两三]?['+_INC_CLASSIFIERS+r'])|'+re.escape(verb)+r'|一'+re.escape(verb)+r')?'
-    if matched(re.escape(verb)+inflection+re.escape(noun),noun): return True
+    light=r'一下下?|一会儿?|' if posseg.dt.word_tag_tab.get(verb,'').startswith('v') else ''
+    inflection=r'(?:'+light+r'[的了着过]|(?:[一两三]?['+_INC_CLASSIFIERS+r'])|'+re.escape(verb)+r'|一'+re.escape(verb)+r')?'
+    if matched(re.escape(verb)+inflection+re.escape(noun),noun,inflected=True): return True
     return matched(r'[这那](?:一)?['+_INC_CLASSIFIERS+r']?'+re.escape(noun)+r'还'+re.escape(verb)+r'着?[吗呢]?')
 
 
@@ -2412,7 +2440,10 @@ def _inc_groups(sources, category, saying=''):
         if category=='saying' and not _inc_original(source,category,saying): continue
         if any(source['evidence_identity']==prior['evidence_identity'] or
                 source.get('burst_id') and source.get('burst_id')==prior.get('burst_id') or
-                not _memory_independent(source,prior,category,messages) for prior in selected): continue
+                not _memory_independent(source,prior,category,messages,
+                    independent_short_use=category=='saying' and
+                        _inc_short_saying_use(saying,source['message']['content']) and
+                        _inc_short_saying_use(saying,prior['message']['content'])) for prior in selected): continue
         selected.append(source)
     return selected
 

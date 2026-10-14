@@ -116,7 +116,7 @@ def test_cross_day_confirmation_checks_only_one_item_and_promotes_to_50(store):
     result = run(store, gateway)
     assert result['status'] == 'published', result
     row = profiles(store)[0]
-    assert row['importance'] == 50 and row['retention'] == 47
+    assert row['importance'] == 50 and row['retention'] == 50
     assert row['admission_state'] == 'accepted' and row['independent_days'] == 2
     assert projection(store)['memory_ids'] == [mid]
     check = gateway.calls[-1]['payload']
