@@ -482,7 +482,7 @@ def test_sentence_recovery_metrics_and_materials_remain_scoreable(tmp_path,again
     assert metrics['candidate_deletion_ratio']==int(again)
     assert metrics['proposed_sentences']==3
     assert metrics['deleted_sentence_ratio']==int(again)/3
-    assert report['prompt_versions']==['persona_check_v32','persona_degree_v1','persona_generate_v19']
+    assert report['prompt_versions']==['persona_check_v33','persona_degree_v1','persona_generate_v20']
     assert report['repair_policy']=='first_eligible_bound_memory_v2'
     assert 'persona_sentence_repair' not in report['timeouts_seconds']
     assert report['timeouts_seconds']['persona_check']==360

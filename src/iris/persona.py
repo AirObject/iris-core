@@ -39,8 +39,8 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v19', 'persona_check': 'persona_check_v32',
-                   'persona_recheck': 'persona_check_v32'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v20', 'persona_check': 'persona_check_v33',
+                   'persona_recheck': 'persona_check_v33'}
 DEGREE_PROMPT_VERSION = 'persona_degree_v1'
 CALL_TIMEOUTS = {'persona_generate': 360, 'persona_check': 360,
                  'persona_recheck': 360}
@@ -397,7 +397,9 @@ def _check_payload(material, sentences, *, full_content, proof_choices=True):
             evidence[memory['ref']] = _model_memory(memory, proof_choices=proof_choices)
         row = {k:v for k,v in sentence.items() if k not in ('_check_sentence','_check_focus')}
         row['scope_check_required'] = (sentence['origin'] == 'memory'
-            and not sentence.get('initial_setting') and not BOUNDED_SCENE.search(sentence['text']))
+            and not sentence.get('initial_setting')
+            and (not BOUNDED_SCENE.search(sentence['text'])
+                 or bool({'认同', '认可'} & set(words(sentence['text'])))))
         row.update(index=index, evidence_refs=refs,
                    clauses=sentence.get('_check_focus',_clause_parts(sentence['text'])),
                    full_clause_count=len(_clause_parts(sentence['text'])))
@@ -672,6 +674,46 @@ def _bounded_context_issues(text, sources):
             if missing else [])
 
 
+def _reported_event_context_issues(text, focus, sources):
+    """A bounded report about self needs its own speech-event anchor.
+
+    This narrow grammar gate does not infer who an unnamed speaker is or prove
+    the reported content. Direct named-speaker metadata or explicit local time
+    wording is only a necessary witness; semantic checks still own entailment.
+    """
+    opening = _clause_parts(text)[0]['text'] if text.strip() else ''
+    if not BOUNDED_SCENE.search(opening):
+        return []
+    report = re.match(r'^(?P<actor>[^，,。！？!?；;：:]{1,24}?)(?P<verb>'
+                      r'夸奖|称赞|赞扬|夸|评价|告诉|表示|提到|认为|觉得|说)(?:了|过)?我', focus.strip())
+    if report is None or '我' in report['actor']:
+        return []
+    actor, verb = report['actor'].strip(), report['verb']
+    for _, source in sources:
+        # The actual author's contemporaneous words can witness that author
+        # speaking. A self-authored retrospective cannot borrow its timestamp.
+        if source.get('speaker') == actor and source.get('speaker_subject_id') not in (None, 'self', 'scene'):
+            return []
+        for utterance in re.split(r'[。！？!?；;\n]', source.get('excerpt', '')):
+            for occurrence in re.finditer(re.escape(actor) + r'\s*' + re.escape(verb), utterance):
+                prefix = utterance[:occurrence.start()].strip()
+                # Do not borrow a date from an earlier action or a later
+                # recognition. Only the report's immediate framing can qualify.
+                if prefix.endswith(('，', ',')):
+                    prefix = prefix[:-1].strip()
+                if re.search(r'[，,]', prefix):
+                    continue
+                timed = BOUNDED_SCENE.search(prefix) or any(
+                    word in RELATIVE_TIMES for word in words(prefix))
+                date_only = bool(re.fullmatch(r'(?:在)?(?:\d{4}-\d{2}-\d{2}|'
+                    r'[0-9零〇一二三四五六七八九十廿]+(?:年|月|日|号))+', prefix))
+                deictic_only = bool(re.fullmatch(r'(?:在)?(?:这|那|当|某|本)(?:一)?(?:次|天|场|回)', prefix))
+                if timed and (date_only or deictic_only or prefix in RELATIVE_TIMES
+                              or prefix.endswith(('中', '里', '时', '后', '前', '期间'))):
+                    return []
+    return ['reported event needs its own time/scene anchor: 被转述言语行为不能借用转述或认同的日期／场景']
+
+
 def _resultative_non_result_scope(prefix):
     # Only an immediately governing grammatical frame exempts this predicate.
     # An ability, wish or negation inside an earlier modifier is not its scope.
@@ -725,6 +767,8 @@ def _bound_source_issues(sentence, tokens, memories):
     context_sources = [(memory, source) for memory in bound for source in
                        (memory.get('excerpts') or [{'excerpt': memory['content']}])]
     issues = _bounded_context_issues(sentence['text'], context_sources)
+    for focus in _clause_parts(sentence['text']):
+        issues.extend(_reported_event_context_issues(sentence['text'], focus['text'], context_sources))
     sources = []
     for memory in bound:
         originals = [e['excerpt'] for e in memory.get('excerpts', [])
@@ -835,8 +879,8 @@ def _validate_activity_scope(row, sentence, evidence):
     """Verify a retained scope anchor, leaving its semantic choice to the model.
 
     A scope quote can constrain a claim but never supplies an act or a date.
-    Bounded episodes use the existing event/clause checks instead of this
-    additional contract for general claims.
+    Bounded episodes keep event/clause checks; recognizing a personal quality
+    still requires its activity domain even when the recognition has a date.
     """
     if not sentence.get('scope_check_required'):
         return [], []
@@ -1025,6 +1069,8 @@ def _validate_clause_checks(output, payload):
             if part['supported'] and valid:
                 issues.extend(f'{label}: {issue}' for issue in
                               _bounded_context_issues(sentence['text'], context_sources))
+                issues.extend(f'{label}: {issue}' for issue in
+                              _reported_event_context_issues(sentence['text'], expected['text'], context_sources))
                 issues.extend(f'{label}: {issue}' for issue in
                               _action_aspect_issues(expected['text'],
                                   [source['excerpt'] for _, source in context_sources]))
