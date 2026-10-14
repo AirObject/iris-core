@@ -79,7 +79,7 @@ profile 顶层及 latest_attempt／attempt 详情兼容加 `progress`：scan_cur
 
 每个观察、每个单条检查分别有 180 秒预算，初次、HTTP 重试、一次 JSON 修正与解析共享截止。每次实际调用（包括修正）独立扣维护轮 max_calls；入口轮转，额度不足留队。生产超时／429 按条延期，其他已提交条目保留；同输入至多两次后续重试。格式修正仍失败为该工作项 invalid_output，不回滚此前观察，也不发布未经准入的候选。原始输出内部按 observe／observe_repair、admit／admit_repair 保存，重试追加 attempt 编号，仍接清除索引。
 
-旧文档已保存的 generate_timeout_seconds／check_timeout_seconds 保留且按原规则校验；新路径使用独立 IncrementalProfileLimits（180 秒），不改写旧设置。观察 48 条／3000 估算 token，目录 32 条／1500 token；检查最多 6 条证据／2000 token。超预算条目保留诊断，不截证据凑准入。
+旧文档已保存的 generate_timeout_seconds／check_timeout_seconds 保留且按原规则校验；新路径使用独立 IncrementalProfileLimits（180 秒），不改写旧设置。观察 48 条／3000 估算 token，目录 32 条／1500 token；检查最多 6 条证据／2000 token。必要核心证据本身超预算时保留诊断，不截证据凑准入。EF-14 的多页检查见下文。
 
 ## UX 过渡
 
@@ -92,3 +92,12 @@ profile 顶层及 latest_attempt／attempt 详情兼容加 `progress`：scan_cur
 ## EF-13 兼容性说明
 
 宿主四原字段及 memory_ids、人工逐条 CRUD／CAS、旧写接口 410、legacy 历史、last_confirmed_at 和多行管理员说明规则均保留。显式按画像 kind 搜索只返回已准入自动条目或有效人工条目；管理员仍可看到未准入候选。新字段均为兼容新增，UX 不需修改写请求格式。
+
+
+## EF-14 兼容新增与分页准入
+
+任务 `work[]` 兼容新增 `check_page: integer|null`、`check_pages: integer|null`：admit 为本组从 1 开始的页码和总页数，observe 为 null；旧的单页 admit 按 1/1 返回。不新增路由或写入字段。pending_checks／failed_checks／rejected_checks 按工作页计数，waiting_candidates 按记忆条目计数，不能相加当作条目数量。
+
+累计来源超过单次预算时，每页带共同的最小独立依据、释义／对象／群规范围依据，其余来源按稳定顺序分页；每页仍最多 6 条／2000 估算 token，不丢弃已知反证。最多 32 个唯一来源、8 页；必要核心本身放不下则 admission_reason=evidence_budget_exceeded。全部页通过且最终修订／来源／设置复核一致，才准入和提升 importance；部分页 applied 不等于已准入。通过页重启复用，后页拒绝取消未执行同组页，失败与超时保留诊断、不得部分发布。
+
+`admission_reason` 可新增 rule_scope_not_established、unbound_entities:<逗号分隔对象>；work.reason 可有 bundle_rejected／stale_check 等。每条独立日期／次数继续只用真实作者及独立讨论组计算，跨日后续不另算。宿主投影结构、人工保护、410、CAS、last_confirmed_at 均保持。

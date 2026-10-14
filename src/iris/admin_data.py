@@ -762,7 +762,9 @@ def _incremental_attempt(conn, row):
     if not incremental_profile_enabled(conn): return value
     value['progress']=incremental_progress(conn,row['entry_id'])
     value['work']=[dict(r) for r in conn.execute("""SELECT id,kind,state,local_day,memory_id,
-        cursor_before,cursor_after,attempts,reason,retry_at,created_at,finished_at
+        cursor_before,cursor_after,attempts,reason,retry_at,created_at,finished_at,
+        CASE WHEN kind='admit' THEN COALESCE(json_extract(payload_json,'$._snapshot.bundle.index'),0)+1 END check_page,
+        CASE WHEN kind='admit' THEN COALESCE(json_extract(payload_json,'$._snapshot.bundle.count'),1) END check_pages
         FROM entry_profile_incremental_work WHERE attempt_id=? ORDER BY id""",(row['id'],))]
     running=[w for w in value['work'] if w['state']=='running']
     if row['state']=='running' and running:

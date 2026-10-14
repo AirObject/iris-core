@@ -453,7 +453,7 @@ def score_draft(materials, judgments, *, judge_model):
 def _incremental_stages(work, manual):
     """Chronological snapshots; evidence from later days never backfills earlier versions."""
     stages={name:copy.deepcopy(manual) for name in STAGES}
-    accumulated={}
+    accumulated={};pending_checked={}
     for item in work:
         payload=json.loads(item['payload_json']); result=json.loads(item['result_json'])
         if item['kind']=='observe':
@@ -478,7 +478,13 @@ def _incremental_stages(work, manual):
                     except ValueError:
                         candidate['sources'].append({k:ref[k] for k in ('message_id','field','excerpt') if k in ref})
                 stages['generated'].append(candidate)
-                if index in applied: accumulated[key]=candidate['sources']
+                if index in applied:
+                    effective=next((r for r in result.get('deterministic',[]) if r['index']==index),None)
+                    previous=copy.deepcopy(accumulated.get(key,[]))
+                    if effective:
+                        previous.extend(_judge_source(v) for v in effective['sources'])
+                        accumulated[(mid,effective.get('effective_body',body))]=previous
+                    else: accumulated[key]=candidate['sources']
         else:
             memory=payload.get('memory')
             if not memory or memory.get('action')=='retire': continue
@@ -488,7 +494,7 @@ def _incremental_stages(work, manual):
                 value={k:source[k] for k in ('field','excerpt','speaker')}
                 value['ref']='msg:'+str(source['message_id'])
                 value['message']=dict(ref=value['ref'],entry_id=payload['entry_id'],kind='message',
-                    speaker=source['speaker'],content=source['context'],date=source['date'],occurred_at=source['occurred_at'])
+                    speaker=source.get('message_speaker',source['speaker']),content=source['context'],date=source['date'],occurred_at=source['occurred_at'])
                 if source.get('quote'): value['message']['quote']=_judge_message({'quote':source['quote']})['quote']
                 sources.append(value)
             candidate={k:memory[k] for k in ('memory_id','revision','category','body')}
@@ -500,7 +506,18 @@ def _incremental_stages(work, manual):
                 for safe in parsed['safe_sources']:
                     match=next(s for s in sources if s['ref']=='msg:'+str(safe['message_id']) and s['field']==safe['field'] and safe['excerpt'] in s['excerpt'])
                     checked['sources'].append({**match,'excerpt':safe['excerpt']})
-                stages['checked'].append(checked)
+                bundle=payload.get('_snapshot',{}).get('bundle')
+                if bundle:
+                    pending=pending_checked.setdefault(bundle['key'],[])
+                    pending.append(checked)
+                    if result.get('admission_complete'):
+                        merged=copy.deepcopy(checked);merged['sources']=[];seen=set()
+                        for page in pending:
+                            for source in page['sources']:
+                                key=(source['ref'],source['field'],source['excerpt'])
+                                if key not in seen: merged['sources'].append(source);seen.add(key)
+                        stages['checked'].append(merged)
+                else: stages['checked'].append(checked)
     return stages
 
 
