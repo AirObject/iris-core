@@ -39,8 +39,8 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v17', 'persona_check': 'persona_check_v29',
-                   'persona_sentence_repair': 'persona_repair_v16', 'persona_recheck': 'persona_check_v29'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v18', 'persona_check': 'persona_check_v30',
+                   'persona_sentence_repair': 'persona_repair_v17', 'persona_recheck': 'persona_check_v30'}
 CALL_TIMEOUTS = {'persona_generate': 360, 'persona_check': 360,
                  'persona_sentence_repair': 120, 'persona_recheck': 360}
 CALL_MAX_TOKENS = {'persona_generate':16000, 'persona_check':16000,
@@ -559,6 +559,89 @@ def _completion_witness(predicate, source):
     return False
 
 
+# Necessary aspect boundaries for finite surface forms, not an entailment parser.
+# The independent checker still owns actor, object, amount, date and semantics.
+_ACTION_COUNT = r'[零〇一二两三四五六七八九十百千万0-9]+(?:次|遍|回|趟|轮|段|张|页|件|份|个|封|首|章|组|条|幅|本|圈|步)'
+_NON_EVENT_PREFIX = re.compile(r'如果|假如|倘若|要是|希望|打算|计划|准备|想要|愿意|能够|可以|假装|装作')
+_NEGATIVE_RESULT = re.compile(r'没有|未曾|尚未|不曾|没能|未能|没|未')
+_NEGATIVE_INTENTION = re.compile(r'暂时不|暂且不|先不|暂不|打算不|计划不|准备不|不打算|不准备|不计划')
+
+
+def _aspect_clauses(text):
+    # A title is not an assertion about its words. Keep speech quotations for the
+    # independent attribution check; do not manufacture an action from a title.
+    text = re.sub(r'《[^》]*》', '', text)
+    return re.split(r'[。！？；，.!?;,\n]', text)
+
+
+def _counted_completion_witness(predicate, sources):
+    for source in sources:
+        for clause in _aspect_clauses(source):
+            for match in re.finditer(re.escape(predicate), clause):
+                prefix, suffix = clause[:match.start()], clause[match.end():]
+                if (_NON_EVENT_PREFIX.search(prefix) or _NEGATIVE_RESULT.search(prefix)
+                        or '不' in prefix):
+                    continue
+                # Keep the aspect attached to this predicate. A neighbouring
+                # action's 了 cannot supply a witness.
+                if re.match(r'(?:了|过)|' + _ACTION_COUNT + r'了', suffix):
+                    return True
+                if re.search(r'(?:已经|已然|早已|已|刚才|刚刚|刚)(?:(?:把|将).*?)?(?:重新|再次|再|又)?$', prefix):
+                    return True
+    return False
+
+
+def _negative_action_key(text):
+    # Only grammatical pronouns/coverbs and aspect particles are removed. No
+    # activity, corpus subject, date or answer vocabulary is encoded here.
+    grammar = {'我', '自己', '你', '您', '对方', '替', '为', '给', '帮',
+               '把', '将', '再', '又', '了', '过', '也', '先', '暂时'}
+    return ''.join(token for token in words(text)
+                   if token not in grammar and re.search(r'[\u3400-\u9fffA-Za-z0-9]', token))
+
+
+def _same_negative_action(left, right):
+    # This is only a necessary lexical link; suffix overlap does not establish
+    # who did it, whether it was entailed, or the event's time.
+    return len(left) >= 2 and len(right) >= 2 and (left.endswith(right) or right.endswith(left))
+
+
+def _action_aspect_issues(text, sources):
+    issues, counted = [], set()
+    source_clauses = [clause for source in sources for clause in _aspect_clauses(source)]
+    for clause in _aspect_clauses(text):
+        for match in re.finditer(r'[了过](?=' + _ACTION_COUNT + r')', clause):
+            prefix = clause[:match.start()]
+            if _NON_EVENT_PREFIX.search(prefix) or _NEGATIVE_RESULT.search(prefix):
+                continue
+            tokens = list(words(prefix))
+            if tokens:
+                counted.add(tokens[-1])
+        negative = _NEGATIVE_RESULT.search(clause)
+        if negative is None or _NON_EVENT_PREFIX.search(clause[:negative.start()]):
+            continue
+        action = _negative_action_key(clause[negative.end():])
+        intentions, outcomes = [], []
+        for source_clause in source_clauses:
+            intention = _NEGATIVE_INTENTION.search(source_clause)
+            if intention is not None:
+                intentions.append(_negative_action_key(source_clause[intention.end():]))
+            outcome = _NEGATIVE_RESULT.search(source_clause)
+            if (outcome is not None
+                    and not _NON_EVENT_PREFIX.search(source_clause[:outcome.start()])
+                    and not re.search(r'不|没有|没|未', source_clause[:outcome.start()])):
+                outcomes.append(_negative_action_key(source_clause[outcome.end():]))
+        if (any(_same_negative_action(action, key) for key in intentions)
+                and not any(_same_negative_action(action, key) for key in outcomes)):
+            issues.append('negative intention needs an actual result witness: '
+                          '先不／暂不／不打算只证明意图，不能由摘要补成实际没有做；须有同一动作的否定结果原话')
+    for predicate in sorted(counted):
+        if not _counted_completion_witness(predicate, sources):
+            issues.append('counted completion needs original source support: '
+                          f'“{predicate}了／过若干次”的结果断言须有同一动作的完成原话，不能借相邻动作或摘要的完成态')
+    return issues
+
+
 def _bounded_context_issues(text, sources):
     """Opening context words need anchors in the actual bound proof sources.
 
@@ -604,6 +687,7 @@ def _bound_source_issues(sentence, tokens, memories):
         # Existing self memories without message sources can use their own text;
         # when originals exist, a completed summary cannot override an intention.
         sources.extend(originals or [memory['content']])
+    issues.extend(_action_aspect_issues(sentence['text'], sources))
     # An entry is a context, not proof that all its events are fictional. Preserve
     # an explicitly sourced real-world qualification instead of inventing a game.
     real_scope = {'现实', '线下'} & set(tokens)
@@ -923,6 +1007,9 @@ def _validate_clause_checks(output, payload):
             if part['supported'] and valid:
                 issues.extend(f'{label}: {issue}' for issue in
                               _bounded_context_issues(sentence['text'], context_sources))
+                issues.extend(f'{label}: {issue}' for issue in
+                              _action_aspect_issues(expected['text'],
+                                  [source['excerpt'] for _, source in context_sources]))
             if part['supported'] and len(dates) < 2:
                 if not part['scene_qualified']:
                     issues.append(f'{label}: general claim needs at least two distinct dates of its own proof')
