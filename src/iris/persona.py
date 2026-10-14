@@ -39,8 +39,8 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v18', 'persona_check': 'persona_check_v30',
-                   'persona_sentence_repair': 'persona_repair_v17', 'persona_recheck': 'persona_check_v30'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v19', 'persona_check': 'persona_check_v31',
+                   'persona_sentence_repair': 'persona_repair_v18', 'persona_recheck': 'persona_check_v31'}
 CALL_TIMEOUTS = {'persona_generate': 360, 'persona_check': 360,
                  'persona_sentence_repair': 120, 'persona_recheck': 360}
 CALL_MAX_TOKENS = {'persona_generate':16000, 'persona_check':16000,
@@ -672,6 +672,51 @@ def _bounded_context_issues(text, sources):
             if missing else [])
 
 
+def _resultative_non_result_scope(prefix):
+    # Only an immediately governing grammatical frame exempts this predicate.
+    # An ability, wish or negation inside an earlier modifier is not its scope.
+    tokens = list(words(prefix))
+    scopes = {'能', '能够', '可以', '假装', '装作', '而非', '没有', '没能', '未能',
+              '尚未', '未曾', '不曾', '没', '未', '不', '打算', '计划', '想要', '希望',
+              '准备', '喜欢', '偏好', '倾向', '愿意', '不愿意'}
+    adverbs = {'先', '再', '也', '都', '一口气', '直接', '继续', '全部', '彻底'}
+    boundaries = {'的', '地', '得', '又', '再', '并', '并且', '然后', '随后', '接着',
+                  '就', '才', '后', '以后', '之后'}
+    for index in range(len(tokens)):
+        for width in (1, 2):
+            if ''.join(tokens[index:index+width]) not in scopes:
+                continue
+            tail = tokens[index+width:]
+            while tail and tail[0] in adverbs:
+                tail = tail[1:]
+            if not tail:
+                return True
+            if tail[0] in {'把', '将'} and len(tail) > 1 and not boundaries.intersection(tail[1:]):
+                return True
+    return False
+
+
+def _resultative_aspect_issues(text, sources):
+    predicates, issues = set(), []
+    for clause in _aspect_clauses(text):
+        offsets, position = {0}, 0
+        for token in words(clause):
+            position += len(token)
+            offsets.add(position)
+        for match in re.finditer(r'(?=((?:完成|[\u3400-\u9fff]完)(?:[了过])?))', clause):
+            # 完整/完全/完善 are lexical units, not resultative predicates.
+            resultative = match.group(1)
+            if match.start() + len(resultative) not in offsets:
+                continue
+            if not _resultative_non_result_scope(clause[:match.start()]):
+                predicates.add(resultative.rstrip('了过'))
+    for predicate in sorted(predicates):
+        if not any(_completion_witness(predicate, source) for source in sources):
+            issues.append('completion aspect needs original source support: '
+                          f'“{predicate}”的结果断言须在本焦点绑定原话中有同一动作的明确完成表述，动作目标不能补成结果')
+    return issues
+
+
 def _bound_source_issues(sentence, tokens, memories):
     if memories is None or sentence['initial_setting']:
         return []
@@ -696,34 +741,7 @@ def _bound_source_issues(sentence, tokens, memories):
             and not {'游戏', '联机'} & set(tokens) and not source_real_scope):
         issues.append('game-only evidence needs explicit scope: 自动句须明确游戏或联机场景；'
                       '现实／线下限定须来自本句绑定原话，不能仅按动作名称推定现实经历')
-    predicates = set()
-    for clause in re.split(r'[。！？；，.!?;,\n]', sentence['text']):
-        offsets, position = {0}, 0
-        for token in words(clause):
-            position += len(token)
-            offsets.add(position)
-        for match in re.finditer(r'(?=((?:完成|[\u3400-\u9fff]完)(?:[了过])?))', clause):
-            # 完整/完全/完善 are lexical units, not resultative predicates.
-            # The result suffix must end at a segmentation boundary.
-            resultative = match.group(1)
-            if match.start() + len(resultative) not in offsets:
-                continue
-            prefix = clause[:match.start()]
-            explicit_aspect = resultative.endswith(('了', '过'))
-            scope_tokens = words(prefix)
-            scope = set(scope_tokens) | {''.join(scope_tokens[i:i+2]) for i in range(len(scope_tokens)-1)}
-            if scope & {'能', '能够', '可以', '假装', '装作', '而非'}:
-                continue
-            # A bare result in an affirmative assertion also needs a result
-            # witness. Negation/intention/preference in a different clause cannot
-            # license it. This gate is deliberately only a necessary boundary.
-            non_result = re.search(r'没有|没能|未能|尚未|未曾|不曾|未|不|打算|计划|想要|希望|准备|喜欢|偏好|倾向|愿意', prefix)
-            if explicit_aspect or not non_result:
-                predicates.add(resultative.rstrip('了过'))
-    for predicate in sorted(predicates):
-        if not any(_completion_witness(predicate, source) for source in sources):
-            issues.append('completion aspect needs original source support: '
-                          f'“{predicate}”的结果断言须在本句绑定原话中有同一动作的明确完成表述，动作目标不能补成结果')
+    issues.extend(_resultative_aspect_issues(sentence['text'], sources))
     return issues
 
 
@@ -1009,6 +1027,9 @@ def _validate_clause_checks(output, payload):
                               _bounded_context_issues(sentence['text'], context_sources))
                 issues.extend(f'{label}: {issue}' for issue in
                               _action_aspect_issues(expected['text'],
+                                  [source['excerpt'] for _, source in context_sources]))
+                issues.extend(f'{label}: {issue}' for issue in
+                              _resultative_aspect_issues(expected['text'],
                                   [source['excerpt'] for _, source in context_sources]))
             if part['supported'] and len(dates) < 2:
                 if not part['scene_qualified']:

@@ -120,7 +120,9 @@ def test_bound_source_guard_runs_again_on_exact_repair(prepared):
     model = Permissive(prepared, mid, '我在那次共读时读完了这一页。', completed)
     result = PersonaEngine(prepared, model).regenerate(expected_version=1)
     checks = result['version']['checks']
-    assert checks['initial_model']['sentences'][-1]['supported']
+    assert all(row['supported'] for batch in checks['initial_model']['batches']
+               for row in batch['sentences'])
+    assert not checks['initial_model']['sentences'][-1]['supported']
     assert checks['recheck']['sentences'] == []
     assert checks['deleted_sentences'][0]['stage'] == 'repair_options'
     assert 'completion aspect' in ' '.join(checks['deleted_sentences'][0]['reasons'])
