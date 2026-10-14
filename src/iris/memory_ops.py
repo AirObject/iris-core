@@ -275,6 +275,11 @@ def message_references(conn, message_id):
         ("learning_request", "SELECT 1 FROM entries WHERE learn_requested_through=? LIMIT 1"),
     )
     reasons = [name for name, sql in checks if conn.execute(sql, (message_id,)).fetchone()]
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE name='entry_profile_incremental_work'").fetchone() and conn.execute(
+            """SELECT 1 FROM purge_record_refs r JOIN entry_profile_incremental_work w ON CAST(w.id AS TEXT)=r.row_id
+            WHERE r.table_name='entry_profile_incremental_work' AND r.ref_kind='message' AND r.ref_id=?
+            AND w.state IN ('queued','running','deferred','failed') LIMIT 1""",(str(message_id),)).fetchone():
+        reasons.append('entry_profile_work')
     return reasons
 
 
@@ -361,6 +366,8 @@ def _purge_message_plan(conn, memory_ids):
     deleted, retained = [], []
     for mid in messages:
         reasons = message_references(conn, mid)
+        # Queued observations protect retention cleanup, never an explicit purge.
+        if 'entry_profile_work' in reasons: reasons.remove('entry_profile_work')
         if 'memory_source' in reasons and not conn.execute('''SELECT 1 FROM sources WHERE message_id=?
                 AND memory_id NOT IN (SELECT value FROM json_each(?)) LIMIT 1''', (mid,dumps(memory_ids))).fetchone():
             reasons.remove('memory_source')
@@ -478,6 +485,7 @@ _PURGE_TOUCH = {
     'consolidation_annotations': ('CAST(id AS TEXT)', 'text'), 'persona_versions': ('CAST(id AS TEXT)', 'content'),
     'entry_profile_versions': ('CAST(id AS TEXT)', 'content'), 'persona_attempts': ('CAST(id AS TEXT)', 'material_json'),
     'entry_profile_attempts': ('CAST(id AS TEXT)', 'material_json'),
+    'entry_profile_incremental_work': ('CAST(id AS TEXT)', 'payload_json'),
     'maintenance_items': ('json_array(run_id,phase,item_key)', 'details_json'),
     'maintenance_persona': ('CAST(run_id AS TEXT)', 'details_json'), 'sources': ('CAST(id AS TEXT)', 'note'),
     'media_objects': ('id', 'understanding_text'), 'admin_operations': ('CAST(id AS TEXT)', 'details_json'),
@@ -1121,7 +1129,7 @@ def _profile_manual(conn, memory):
 
 def write_entry_profile_memory(store, entry_id, *, op, content=None, category=None, importance=50,
                                sources=(), memory_id=None, expected_revision=None, manual=False,
-                               current=None, _conn=None):
+                               current=None, _conn=None, confirmation_groups=None, accumulate_only=False):
     """Atomic typed writer after the producer's generation/check steps.
 
     Sources are detached bindings from entry_profile_source. This transaction
@@ -1131,8 +1139,12 @@ def write_entry_profile_memory(store, entry_id, *, op, content=None, category=No
     a memory revision. _conn lets the future task atomically commit its cursor.
     """
     from .profile_common import whitespace
-    if op not in ('new','confirm','revise','retire') or type(manual) is not bool:
+    if op not in ('new','confirm','revise','retire','admit') or type(manual) is not bool:
         raise ValueError('invalid profile operation')
+    if type(accumulate_only) is not bool or (confirmation_groups is not None and
+            (not isinstance(confirmation_groups,(list,tuple)) or len(confirmation_groups)>32
+             or any(not isinstance(x,str) or not x or len(x)>200 for x in confirmation_groups))):
+        raise ValueError('invalid profile confirmation groups')
     if manual and op != 'new':
         raise ValueError('manual edits use ordinary memory operations')
     if op in ('new','revise'):
@@ -1169,7 +1181,7 @@ def write_entry_profile_memory(store, entry_id, *, op, content=None, category=No
                 raise ValueError('profile target deleted')
             if target['revision'] != expected_revision:
                 raise ValueError('profile revision conflict')
-            if op in ('revise','retire') and _profile_manual(conn,target):
+            if op in ('revise','retire','admit') and _profile_manual(conn,target):
                 raise ValueError('protected manual profile conflict')
         bound = _profile_sources(conn,entry_id,sources,memory_id)
         if not manual and not bound:
@@ -1200,17 +1212,27 @@ def write_entry_profile_memory(store, entry_id, *, op, content=None, category=No
                 VALUES(?,?,?,?,?,'entry profile revised','entry_profile',?)''',
                 (memory_id,expected_revision,revision,dumps(before),dumps(after),stamp))
             conn.execute('UPDATE entry_profile_memories SET category=? WHERE memory_id=?',(category,memory_id))
+        elif op=='admit' and target['importance']<50:
+            before = {key:target[key] for key in ('content','kind','stance','belief','importance','event_time','lifecycle')}
+            revision = expected_revision+1
+            conn.execute('UPDATE memories SET importance=50,revision=?,updated_at=? WHERE id=? AND revision=?',
+                         (revision,stamp,memory_id,expected_revision))
+            conn.execute('''INSERT INTO memory_revisions(memory_id,revision_before,revision_after,before_json,after_json,reason,actor,created_at)
+                VALUES(?,?,?,?,?,'entry profile admitted','entry_profile',?)''',
+                (memory_id,expected_revision,revision,dumps(before),dumps({**before,'importance':50}),stamp))
         else:
             revision = expected_revision
         if op=='retire':
             manage_memory(store,memory_id,expected_revision,action='forget',_conn=conn,_record=False)
-        if fresh or op=='new':
+        written_sources=[]
+        if fresh or op in ('new','admit'):
             for value in bound:
                 note = dumps({key:value[key] for key in ('field','excerpt','message_sha256','source_memory_id','source_revision')})
                 existing = conn.execute("SELECT id FROM sources WHERE memory_id=? AND kind='message' AND message_id=? AND note=?",
                     (memory_id,value['message_id'],note)).fetchone()
                 source_id = existing[0] if existing else conn.execute("""INSERT INTO sources(memory_id,kind,message_id,note,created_at)
                     VALUES(?,'message',?,?,?)""",(memory_id,value['message_id'],note,stamp)).lastrowid
+                written_sources.append(source_id)
                 parent = value['source_memory_id']
                 if parent is not None and not conn.execute("SELECT 1 FROM sources WHERE memory_id=? AND kind='memory' AND source_memory_id=? AND source_revision=?",
                         (memory_id,parent,value['source_revision'])).fetchone():
@@ -1219,11 +1241,17 @@ def write_entry_profile_memory(store, entry_id, *, op, content=None, category=No
                 conn.execute('INSERT OR IGNORE INTO entry_profile_revision_sources VALUES(?,?,?)',(memory_id,revision,source_id))
                 conn.executemany('INSERT OR IGNORE INTO entry_profile_evidence_receipts VALUES(?,?,?,?)',
                     ((memory_id,identity,source_id,stamp) for identity in value['identities']))
-        confirmed = op=='confirm' and bool(fresh)
+        new_groups = []
+        if confirmation_groups is not None:
+            known_groups={r[0] for r in conn.execute('SELECT identity FROM entry_profile_confirmation_groups WHERE memory_id=?',(memory_id,))}
+            new_groups=[key for key in dict.fromkeys(confirmation_groups) if key not in known_groups]
+            conn.executemany('INSERT OR IGNORE INTO entry_profile_confirmation_groups VALUES(?,?,?)',
+                             ((memory_id,key,stamp) for key in new_groups))
+        confirmed = op=='confirm' and bool(fresh) and not accumulate_only and (confirmation_groups is None or bool(new_groups))
         if confirmed:
             confirm_retention(store,memory_id,_conn=conn,current=current)
         # Metadata-only audit; original model output stays with the producer's
         # indexed attempt record, which the ordinary purge machinery redacts.
         operation(conn,'entry_profile_'+op,'memory',memory_id,
             {'entry_id':entry_id,'revision':revision,'confirmed':confirmed,'new_evidence':len(fresh)},actor=actor,stamp=stamp)
-        return dict(memory_id=memory_id,revision=revision,op=op,confirmed=confirmed)
+        return dict(memory_id=memory_id,revision=revision,op=op,confirmed=confirmed,source_ids=written_sources)

@@ -50,6 +50,8 @@ class Store:
             (files("iris").joinpath("retrieval_defaults.json").read_text(encoding="utf-8"),))
         self._memory_profiles = bool(self._writer.execute(
             "SELECT 1 FROM sqlite_master WHERE name='entry_profile_memory_state' AND type='table'").fetchone())
+        self._incremental_profiles = bool(self._writer.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='entry_profile_admissions' AND type='table'").fetchone())
         if self._memory_profiles:
             # Deterministic legacy hand-written conversion before serving reads.
             # Model rebuilding remains asynchronous in the periodic entry task.

@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from evals.entry_profile_eval.memory_runner import (
-    run_simulation, score_draft, SCORING_STATUS, validate_vote, case_snapshot,
+    run_simulation, score_draft, SCORING_STATUS, validate_vote, case_snapshot, stage_items,
 )
 from test_entry_profile_memory_task import FakeGateway, new_topic, check
 
@@ -117,18 +117,26 @@ def test_rejected_model_source_context_is_rebound_not_trusted(tmp_path):
     corpus,case=corpus_file(tmp_path);op=new_topic()
     op['sources'][0]['message']={'content':'forged_context','supported':True,'reason':'product_vote'}
     root=tmp_path/'forged'
-    run_simulation(corpus,root,gateway_factory=lambda _,r:FakeGateway(r,[{'operations':[op]}]))
+    run_simulation(corpus,root,gateway_factory=lambda _,r:FakeGateway(r,[{'operations':[op]}]*2))
     payload=json.loads((root/'judging-materials/cases/0001.json').read_text())['input']
-    assert not payload['memories']
-    stage=payload['stages']['generated'][0]
+    assert not payload['memories'] and not payload['stages']['generated']
+    result=json.loads((root/'run.json').read_text())['cases'][0]['result']
+    assert result['reason']=='invalid_output' and len(result['calls'])==2
+    # Strict shape rejection precedes generated-stage acceptance. The exporter
+    # still distrusts model-provided context when rendering any raw candidate.
+    stage=stage_items([op],result['material'])[0]
     assert stage['sources'][0]['message']['content']==case['messages'][0]['text']
-    assert 'forged_context' not in json.dumps(payload) and 'product_vote' not in json.dumps(payload)
+    assert 'forged_context' not in json.dumps([payload,stage])
+    assert 'product_vote' not in json.dumps([payload,stage])
 
 
 def test_malformed_candidate_does_not_abort_case_export(tmp_path):
     corpus,_=corpus_file(tmp_path);root=tmp_path/'malformed'
     op={'op':'confirm','target_id':['invalid'],'body':{},'sources':[]}
-    manifest=run_simulation(corpus,root,gateway_factory=lambda _,r:FakeGateway(r,[{'operations':[op]}]))
+    manifest=run_simulation(corpus,root,gateway_factory=lambda _,r:FakeGateway(r,[{'operations':[op]}]*2))
     assert len(manifest['cases'])==1
     payload=json.loads((root/'judging-materials/cases/0001.json').read_text())['input']
-    assert not payload['memories'] and payload['stages']['generated'][0]['body']==''
+    assert not payload['memories'] and not payload['stages']['generated']
+    result=json.loads((root/'run.json').read_text())['cases'][0]['result']
+    assert result['reason']=='invalid_output' and len(result['calls'])==2
+    assert stage_items([op],result['material'])[0]['body']==''
