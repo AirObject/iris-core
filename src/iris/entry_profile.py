@@ -2233,7 +2233,8 @@ def _inc_saying_key(value):
     doubled=re.fullmatch(r'([\u4e00-\u9fff]{2,8})\1',value)
     if doubled: value=doubled[1]
     is_verb=lambda text: bool(text) and posseg.dt.word_tag_tab.get(text[0],'').startswith('v')
-    if value.startswith('先') and len(value)>=3 and is_verb(value[1:]): value=value[1:]
+    if (len(value)>=3 and len(pieces)>1 and pieces[0].word=='先' and pieces[0].flag=='d'
+            and pieces[1].flag.startswith('v') and is_verb(value[1:])): value=value[1:]
     if is_verb(value):
         trailing=re.fullmatch(r'([\u4e00-\u9fff]{2,8})(?:一下下?|一会儿?)',value)
         if trailing: value=trailing[1]

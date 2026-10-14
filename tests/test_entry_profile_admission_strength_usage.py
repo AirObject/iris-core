@@ -156,7 +156,7 @@ def test_light_saying_variants_preserve_the_same_lexical_core(saying,usage):
     ('搭桥','拆一下桥'), ('搭桥','搭一下桥墩'), ('留灯','留一下灯罩'),
     ('留灯','关一下灯'), ('不翻页','翻一下页'), ('盖章','盖一下章鱼缸'),
     ('留灯','留很多没有关系的字再去找灯'), ('网吧','网盘'),
-    ('先知','知'), ('小电梯','小一下电梯'),
+    ('先知','知'), ('先驱者','驱者'), ('先知者','知者'), ('小电梯','小一下电梯'),
     ('留灯','留台灯'), ('留台灯','留灯'), ('看看板','看板'),
 ])
 def test_lexical_changes_negation_and_other_nouns_do_not_merge(saying,usage):
