@@ -52,13 +52,13 @@ class Store:
     def recover_inflight(self, *, current=None) -> None:
         # A running batch had no committed result. Count the interrupted attempt once.
         with self.write() as conn:
-            for batch in conn.execute("SELECT id,entry_id,target_ids,attempt_count FROM batches WHERE state='running'").fetchall():
+            for batch in conn.execute("SELECT id,entry_id,target_ids,attempt_count,context_mode FROM batches WHERE state='running'").fetchall():
                 count = batch["attempt_count"] + 1
                 state = "abandoned" if count >= 4 else "waiting"
                 stamp = current().isoformat() if current else now()
                 number = conn.execute("SELECT COALESCE(MAX(number),0)+1 FROM batch_attempts WHERE batch_id=?", (batch["id"],)).fetchone()[0]
-                conn.execute("""INSERT INTO batch_attempts(batch_id,number,started_at,finished_at,parse_status,error,duration_ms)
-                    VALUES(?,?,?,?,'failed','interrupted by restart',0)""", (batch["id"], number, stamp, stamp))
+                conn.execute("""INSERT INTO batch_attempts(batch_id,number,started_at,finished_at,parse_status,error,duration_ms,context_mode)
+                    VALUES(?,?,?,?,'failed','interrupted by restart',0,?)""", (batch["id"], number, stamp, stamp, batch["context_mode"]))
                 conn.execute("UPDATE batches SET state=?,attempt_count=?,next_retry_at=?,last_error=?,finished_at=? WHERE id=?",
                              (state, count, stamp if state == "waiting" else None, "interrupted by restart",
                               stamp if state == "abandoned" else None, batch["id"]))
@@ -89,10 +89,32 @@ class Store:
         self._writer.execute("CREATE TABLE IF NOT EXISTS schema_migrations(version TEXT PRIMARY KEY, applied_at TEXT NOT NULL)")
         for script in pending:
             sql = script.read_text(encoding="utf-8")
-            self._writer.executescript(
-                "BEGIN IMMEDIATE;\n" + sql + "\nINSERT INTO schema_migrations(version,applied_at) VALUES(" +
-                "'" + script.name + "','" + now() + "');\nCOMMIT;"
-            )
+            rebuild_subjects = script.name == '031_entry_profile_memories.sql'
+            restore = []
+            legacy_alter = self._writer.execute('PRAGMA legacy_alter_table').fetchone()[0]
+            if rebuild_subjects:
+                # The supported SQLite table-rebuild procedure disables FKs
+                # outside BEGIN. Existing identity and summary triggers survive.
+                restore = [r[0] for r in self._writer.execute("""SELECT sql FROM sqlite_master
+                    WHERE tbl_name='subjects' AND type IN ('trigger','index') AND sql IS NOT NULL""")]
+                self._writer.execute('PRAGMA foreign_keys=OFF')
+                self._writer.execute('PRAGMA legacy_alter_table=ON')
+            try:
+                self._writer.executescript(
+                    "BEGIN IMMEDIATE;\n" + sql + "\n" + ";\n".join(restore) +
+                    (";\n" if restore else "") + "INSERT INTO schema_migrations(version,applied_at) VALUES(" +
+                    "'" + script.name + "','" + now() + "');"
+                )
+                if rebuild_subjects and self._writer.execute('PRAGMA foreign_key_check').fetchone():
+                    raise ValueError('entry subject migration failed foreign key validation')
+                self._writer.commit()
+            except BaseException:
+                self._writer.rollback()
+                raise
+            finally:
+                if rebuild_subjects:
+                    self._writer.execute(f'PRAGMA legacy_alter_table={legacy_alter}')
+                    self._writer.execute('PRAGMA foreign_keys=ON')
 
     @contextlib.contextmanager
     def write(self) -> Iterator[sqlite3.Connection]:

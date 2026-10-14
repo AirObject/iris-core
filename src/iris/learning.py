@@ -18,16 +18,17 @@ from .db import Store, dumps, now
 from .goals import write_learning_goal
 from .claim_sequences import normalize_claim as _normalize, same_claim_sequences as _same_claim_sequences
 from .people import canonical_subject
-from .memory_ops import Visibility, confirm_retention
+from .memory_ops import Visibility, confirm_retention, record_batch_memory_effect
 from .models import Gateway, ModelError, parse_json_object_with_status
 from .media import (material_content, message_media, native_learning_enabled,
                     plan_learning_images, prepare_media)
-from .queue import Batch, estimate_tokens, get_batch, truncate_material
+from .queue import (Batch, claim_batch, degrade_refused_context, estimate_tokens,
+                    learning_batch, split_refused_batch, truncate_material)
 from .retrieval import Retrieval
 from .persona import persona_context
 
 
-PROMPT_VERSION = "learning_v7"
+PROMPT_VERSION = "learning_v10"
 LEARNING_MAX_TOKENS = 16000
 PROMPT = files("iris").joinpath("prompts", PROMPT_VERSION + ".md").read_text(encoding="utf-8")
 MEMORY_TYPES = {"事件", "事实", "偏好", "关系", "观点", "计划", "自我", "其他"}
@@ -145,7 +146,13 @@ def _strip_memory_annotations(text: str) -> str:
 
 
 class LearningEngine:
-    def __init__(self, store: Store, gateway: Gateway, *, clock=None):
+    def __init__(self, store: Store, gateway: Gateway, *, clock=None,
+                 prompt_version: str = PROMPT_VERSION):
+        if prompt_version not in ("learning_v7", "learning_v8", "learning_v9", "learning_v10"):
+            raise ValueError("unsupported learning prompt version")
+        self.prompt_version = prompt_version
+        self.prompt = (PROMPT if prompt_version == PROMPT_VERSION else
+                       files("iris").joinpath("prompts", prompt_version + ".md").read_text(encoding="utf-8"))
         self.store = store
         self.gateway = gateway
         self.retrieval = Retrieval(store, gateway)
@@ -158,9 +165,9 @@ class LearningEngine:
             rows = conn.execute(f"""SELECT m.*,s.name AS sender_name,q.name AS quote_author_name
                 FROM messages m JOIN subjects s ON s.id=m.sender_subject_id
                 LEFT JOIN subjects q ON q.id=m.quote_author_subject_id WHERE m.id IN ({placeholders})""", ids).fetchall()
-            subjects = conn.execute("SELECT id,name,parent_id FROM subjects WHERE merged_into IS NULL").fetchall()
-            aliases = conn.execute("SELECT subject_id,alias FROM subject_aliases WHERE folded_into IS NULL ORDER BY subject_id,alias").fetchall()
-            identities = conn.execute("SELECT subject_id,platform,account_id FROM platform_identities").fetchall()
+            subjects = conn.execute("SELECT id,name,parent_id FROM subjects WHERE merged_into IS NULL AND kind IN ('person','self')").fetchall()
+            aliases = conn.execute("SELECT subject_id,alias FROM subject_aliases WHERE folded_into IS NULL AND subject_id IN (SELECT id FROM subjects WHERE kind IN ('person','self')) ORDER BY subject_id,alias").fetchall()
+            identities = conn.execute("SELECT subject_id,platform,account_id FROM platform_identities WHERE subject_id IN (SELECT id FROM subjects WHERE kind IN ('person','self'))").fetchall()
             persona = persona_context(conn)['content']
             messages = {r["id"]: _row_dict(r) for r in rows}
             for message_id, media in message_media(conn, ids).items():
@@ -687,6 +694,8 @@ class LearningEngine:
             def confirm_once(memory_id: int) -> None:
                 if memory_id in confirmed_once:
                     return
+                if not record_batch_memory_effect(conn, batch.id, memory_id, "confirmed"):
+                    return
                 if confirm_retention(self.store, memory_id, _conn=conn) is not None:
                     confirmed_once.add(memory_id)
                     confirmed.append(memory_id)
@@ -815,6 +824,7 @@ class LearningEngine:
                      self.gateway.configs["embedding"].model if item.get("_embedding") is not None else None,
                      stamp, stamp, stamp, stamp))
                 memory_id = int(result.lastrowid)
+                record_batch_memory_effect(conn, batch.id, memory_id, "created")
                 for sid in about_ids:
                     conn.execute("INSERT INTO memory_subjects(memory_id,subject_id) VALUES(?,?)", (memory_id, sid))
                 for tag in item["tags"]:
@@ -864,9 +874,13 @@ class LearningEngine:
     @staticmethod
     def _write_attempt(conn: Any, batch_id: int, attempt: dict[str, Any]) -> None:
         conn.execute("""INSERT INTO batch_attempts(batch_id,number,started_at,finished_at,raw_output,repair_output,
-            parse_status,error,duration_ms) VALUES(?,?,?,?,?,?,?,?,?)""",
+            parse_status,error,duration_ms,context_mode,sent_context_ids,prompt_version)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
             (batch_id, attempt["number"], attempt["started_at"], now(), attempt.get("raw_output"),
-             attempt.get("repair_output"), attempt["parse_status"], attempt.get("error"), attempt["duration_ms"]))
+             attempt.get("repair_output"), attempt["parse_status"], attempt.get("error"), attempt["duration_ms"],
+             attempt.get("context_mode"),
+             dumps(attempt["sent_context_ids"]) if "sent_context_ids" in attempt else None,
+             attempt.get("prompt_version")))
 
     def _embed_memory(self, memory_id: int) -> None:
         config = self.gateway.configs.get("embedding")
@@ -884,20 +898,34 @@ class LearningEngine:
             conn.execute("UPDATE memories SET embedding=?,embedding_model=? WHERE id=? AND revision=?",
                          (vector.tobytes(), config.model, memory_id, row["revision"]))
 
-    def _fail(self, batch: Batch, attempt: dict[str, Any], error: ModelError) -> str:
+    def _fail(self, batch: Batch, attempt: dict[str, Any], error: ModelError, *,
+              learning_refusal: bool = False) -> str:
         with self.store.write() as conn:
+            row = conn.execute("SELECT state,attempt_count FROM batches WHERE id=?", (batch.id,)).fetchone()
+            if not row or row["state"] != "running" or row["attempt_count"] != batch.attempt_count:
+                raise RuntimeError("batch state changed before failure commit")
+            attempt["error"] = error.summary
+            attempt["parse_status"] = "failed"
+            self._write_attempt(conn, batch.id, attempt)
+            # Only the learning request or its JSON repair can reject a learning
+            # unit. Media/retrieval/embedding errors must not split the queue.
+            refusal = learning_refusal and error.category == "content_rejection" and not error.paused
+            if refusal:
+                if len(batch.target_ids) > 1:
+                    split_refused_batch(conn, batch.id, prompt_version=self.prompt_version, error=error.summary)
+                    return "split"
+                if degrade_refused_context(conn, batch.id,
+                        sent_context_ids=attempt.get("sent_context_ids", []), error=error.summary):
+                    return "waiting"
             count = batch.attempt_count + (0 if error.paused else 1)
             if error.paused:
                 state, message_state, gap = "waiting", "batched", None
-            elif error.category == "content_rejection":
+            elif refusal:
                 state, message_state, gap = "refused", "refused", "content_rejection"
             elif count >= 4:
                 state, message_state, gap = "abandoned", "abandoned", "attempts_exhausted"
             else:
                 state, message_state, gap = "waiting", "batched", None
-            attempt["error"] = error.summary
-            attempt["parse_status"] = "failed"
-            self._write_attempt(conn, batch.id, attempt)
             next_at = (self.clock() + timedelta(seconds=RETRY_DELAYS[min(count - 1, 2)])).isoformat() if state == "waiting" and not error.paused else None
             conn.execute("UPDATE batches SET state=?,attempt_count=?,next_retry_at=?,last_error=?,finished_at=? WHERE id=?",
                          (state, count, next_at, error.summary, now() if state != "waiting" else None, batch.id))
@@ -912,26 +940,17 @@ class LearningEngine:
             return state
 
     def run_batch(self, batch_id: int, *, force: bool = False) -> dict[str, Any]:
-        batch = get_batch(self.store, batch_id)
-        if batch.state != "waiting":
-            raise ValueError(f"batch {batch_id} is {batch.state}")
-        with self.store.write() as conn:
-            row = conn.execute("SELECT state,next_retry_at,attempt_count FROM batches WHERE id=?", (batch_id,)).fetchone()
-            if row["state"] != "waiting":
-                raise ValueError("batch is already claimed")
-            if conn.execute("SELECT 1 FROM batches WHERE entry_id=? AND id<? AND state IN ('waiting','running')",
-                            (batch.entry_id, batch_id)).fetchone():
-                raise ValueError("earlier batch must finish first")
-            if row["attempt_count"] >= 4:
-                raise ValueError("batch has exhausted attempts")
-            if row["next_retry_at"] and not force and datetime.fromisoformat(row["next_retry_at"]) > self.clock():
-                raise ValueError("batch is waiting for retry time")
-            conn.execute("UPDATE batches SET state='running',next_retry_at=NULL WHERE id=?", (batch_id,))
+        # Reduce optional input before media preparation, participants, evidence
+        # numbering and retrieval snapshots; frozen audit segments stay intact.
+        batch = learning_batch(claim_batch(self.store, batch_id, force=force, current=self.clock()))
         started = time.monotonic()
         with self.store.read() as conn:
             attempt_number = conn.execute("SELECT COALESCE(MAX(number),0)+1 FROM batch_attempts WHERE batch_id=?", (batch_id,)).fetchone()[0]
         attempt = {"number": attempt_number, "started_at": now(), "raw_output": None,
-                   "repair_output": None, "parse_status": "failed", "duration_ms": 0}
+                   "repair_output": None, "parse_status": "failed", "duration_ms": 0,
+                   "context_mode": batch.context_mode, "sent_context_ids": [],
+                   "prompt_version": self.prompt_version}
+        learning_request = False
         try:
             use_originals = native_learning_enabled(self.store, self.gateway)
             if not use_originals:
@@ -952,8 +971,12 @@ class LearningEngine:
                     record = json.loads(conn.execute('SELECT result_json FROM batches WHERE id=?', (batch.id,)).fetchone()[0] or '{}')
                     record.setdefault('media_attempts', []).append({'attempt': attempt_number, 'images': media_paths})
                     conn.execute('UPDATE batches SET result_json=? WHERE id=?', (dumps(record), batch.id))
+            optional = set(batch.history_ids + batch.future_ids)
+            attempt["sent_context_ids"] = [mid for mid in numbers.values() if mid in optional]
+            learning_request = True
             output, raw, repair, parse_status, *details = self._learning_output(
-                [{"role": "system", "content": PROMPT}, {"role": "user", "content": material}], batch.id)
+                [{"role": "system", "content": self.prompt}, {"role": "user", "content": material}], batch.id)
+            learning_request = False
             attempt.update(raw_output=raw, repair_output=repair, parse_status=parse_status,
                            error=details[0] if details else None)
             output, snapshot["normalizations"] = self._normalize_output(output, refs)
@@ -973,7 +996,7 @@ class LearningEngine:
             if error.first_raw is not None:
                 attempt["repair_output"] = error.raw_output
             attempt["duration_ms"] = round((time.monotonic() - started) * 1000)
-            state = self._fail(batch, attempt, error)
+            state = self._fail(batch, attempt, error, learning_refusal=learning_request)
             return {"state": state, "error": error.summary}
 
 

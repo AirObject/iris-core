@@ -8,6 +8,17 @@ import { memoryFixture, response } from "./lifecycle-fixtures";
 
 let detail = structuredClone(memoryFixture);
 let conflict = false;
+const previewNotice = {
+  scheduled_backup_keep: 11,
+  upgrade_backup_keep: 3,
+  message: "定时备份最多保留 11 份，已有备份仍有副本（预览）。",
+};
+const resultNotice = {
+  scheduled_backup_keep: null,
+  upgrade_backup_keep: 3,
+  message:
+    "当前定时备份保留设置无效，无法确定保留份数；已有备份仍有副本（结果）。",
+};
 let writes: {
   url: string;
   body: Record<string, unknown>;
@@ -17,7 +28,10 @@ let reads: string[];
 const openMemory = vi.fn(),
   onChange = vi.fn();
 beforeEach(() => {
-  detail = structuredClone(memoryFixture);
+  detail = {
+    ...structuredClone(memoryFixture),
+    purge_preview: { backup_notice: previewNotice },
+  };
   conflict = false;
   writes = [];
   reads = [];
@@ -38,6 +52,7 @@ beforeEach(() => {
         if (url.endsWith("/purge"))
           return response({
             memory_id: 8,
+            backup_notice: resultNotice,
             deleted_message_ids: [11],
             retained_messages: [
               { message_id: 12, reasons: ["memory_source", "subject_alias"] },
@@ -184,7 +199,10 @@ test("彻底清除须二次确认，取消不请求，成功只展示删除和�
   detail.lifecycle = "deleted";
   await showDetail();
   await userEvent.click(screen.getByRole("button", { name: "彻底清除" }));
-  expect(screen.getByText(/不清除批次尝试中的模型原始输出/)).toBeVisible();
+  expect(screen.getByText(previewNotice.message)).toBeVisible();
+  expect(
+    screen.queryByText(/不清除批次尝试中的模型原始输出/),
+  ).not.toBeInTheDocument();
   expect(
     screen.getByRole("button", { name: "再次确认并彻底清除" }),
   ).toBeDisabled();
@@ -197,6 +215,8 @@ test("彻底清除须二次确认，取消不请求，成功只展示删除和�
   );
   expect(writes[0].body).toEqual({ expected_revision: 3, confirm: true });
   expect(await screen.findByText("已彻底清除记忆 #8")).toBeVisible();
+  expect(screen.getByText(resultNotice.message)).toBeVisible();
+  expect(screen.queryByText(previewNotice.message)).not.toBeInTheDocument();
   expect(screen.getByText(/消息 #11/)).toBeVisible();
   expect(screen.getByText(/消息 #12/)).toBeVisible();
   expect(screen.getByText(/其他记忆的来源/)).toBeVisible();

@@ -3296,3 +3296,105 @@ tr:last-child td {
 .person-summary .button-row { flex-wrap: wrap; }
 .person-summary .button-row label { min-width: 0; flex: 1 1 120px; }
 .person-summary .button-row input { width: 100%; }
+
+/* Learning trees keep root progress separate from per-node execution history. */
+.learning-batch-card {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.learning-batch-card > .batch-links,
+.learning-batch-tree {
+  margin: 0 22px 18px;
+}
+.split-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 14px 0;
+}
+.split-metrics span {
+  background: var(--purple-soft);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.split-progress p,
+.split-tree p {
+  font-size: 13px;
+  line-height: 1.8;
+  margin: 8px 0;
+}
+.split-complete {
+  color: #237556;
+  font-weight: 600;
+}
+.split-tree > button {
+  margin-top: 14px;
+}
+.batch-tree-nodes {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0;
+  display: grid;
+  gap: 12px;
+}
+.batch-tree-node {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-left: 3px solid #cbbce4;
+  border-radius: 8px;
+  padding: 16px;
+  margin-left: calc(var(--tree-depth) * 20px);
+  overflow-wrap: anywhere;
+}
+.batch-tree-node .section-title,
+.batch-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.batch-links,
+.batch-node-facts {
+  font-size: 13px;
+  margin: 12px 0;
+}
+.batch-node-facts {
+  color: var(--muted);
+}
+.batch-node-facts p {
+  margin: 4px 0;
+}
+.node-history {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding-top: 12px;
+  font-size: 13px;
+}
+.node-history summary {
+  cursor: pointer;
+}
+.tree-pagination {
+  flex-wrap: wrap;
+}
+@media (max-width: 580px) {
+  .split-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .learning-batch-tree,
+  .learning-batch-card > .batch-links {
+    margin-left: 16px;
+    margin-right: 16px;
+  }
+  .batch-tree-node {
+    margin-left: calc(var(--tree-depth) * 8px);
+    padding: 12px;
+  }
+  .batch-tree-node .badge {
+    white-space: normal;
+  }
+  .learning-pagination {
+    flex-wrap: wrap;
+  }
+}

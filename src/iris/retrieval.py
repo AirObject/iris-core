@@ -40,14 +40,14 @@ MEMORY_COLUMNS = """m.id,m.content,m.kind,m.speaker_subject_id,m.stance,m.belief
 def _people(conn, values: list[str], *, resolved=None) -> list[str]:
     result = []
     for value in values:
-        exact_id = conn.execute("SELECT id FROM subjects WHERE id=?", (value,)).fetchone()
+        exact_id = conn.execute("SELECT id FROM subjects WHERE id=? AND kind IN ('person','self')", (value,)).fetchone()
         if exact_id:
             result.append(canonical_subject(conn, value))
             if resolved is not None:
                 resolved[value] = (result[-1], True)
             continue
         rows = conn.execute("""SELECT DISTINCT s.id FROM subjects s LEFT JOIN subject_aliases a ON a.subject_id=s.id
-            AND a.folded_into IS NULL WHERE s.merged_into IS NULL AND (s.id=? OR s.name=? OR a.alias=?)""", (value, value, value)).fetchall()
+            AND a.folded_into IS NULL WHERE s.merged_into IS NULL AND s.kind IN ('person','self') AND (s.id=? OR s.name=? OR a.alias=?)""", (value, value, value)).fetchall()
         if len(rows) > 1:
             raise ValueError(f"ambiguous person: {value}; use subject ID")
         elif rows:
@@ -59,9 +59,14 @@ def _people(conn, values: list[str], *, resolved=None) -> list[str]:
     return list(dict.fromkeys(result))
 
 
-def _filters(conn, *, people=(), kinds=(), stances=(), time_from=None, time_to=None, include_forgotten=False):
+def _filters(conn, *, people=(), kinds=(), stances=(), time_from=None, time_to=None, include_forgotten=False, entry_id=None):
     clauses = ["m.lifecycle IN ('active','forgotten')" if include_forgotten else "m.lifecycle='active'"]
     args: list[Any] = []
+    if '入口画像' in kinds:
+        if entry_id is None:
+            raise ValueError('entry_id required for entry profile kind')
+    else:
+        clauses.append("m.kind!='入口画像'")
     if people:
         people = _people(conn, list(people))
         clauses.append("m.id IN (SELECT memory_id FROM memory_subjects WHERE subject_id IN (" + ",".join("?" for _ in people) + "))")
@@ -224,7 +229,7 @@ class Retrieval:
 
     def _rank(self, conn, text: str, vector, *, participants=(), highlights=False, entry_kind=None,
               anchor_text: str | None = None, limit=8, entry_id=None, **filters) -> list[dict]:
-        where, args = _filters(conn, **filters)
+        where, args = _filters(conn, entry_id=entry_id, **filters)
         visibility = Visibility(conn)
         where += " AND " + visibility.memory_sql(entry_id)
         scores: dict[int, float] = {}
@@ -349,6 +354,10 @@ class Retrieval:
             lexical_scores[mid] = scores[mid] = 1 / (RRF_K + rank)
         if vector is not None and self.index:
             vector_scores = self.index.scores(vector, include_forgotten=bool(filters.get("include_forgotten")))
+            # Profile exclusion precedes the vector cap and relative cutoff.
+            if '入口画像' not in filters.get('kinds', ()):
+                excluded = {r[0] for r in conn.execute("SELECT id FROM memories WHERE kind='入口画像'")}
+                vector_scores = {mid: v for mid,v in vector_scores.items() if mid not in excluded}
             # Apply structured filters before truncating vector ranks.
             if any(filters.get(k) for k in ("people", "kinds", "stances", "time_from", "time_to")):
                 allowed = {r[0] for r in conn.execute("SELECT m.id FROM memories m WHERE " + where, args)}
@@ -451,6 +460,8 @@ class Retrieval:
 
     def search(self, *, text: str = "", people=(), kinds=(), stances=(), time_from=None, time_to=None,
                include_forgotten=False, limit=8, include_goals=False, include_state=False, entry_id=None) -> dict:
+        if '入口画像' in kinds and entry_id is None:
+            raise ValueError('entry_id required for entry profile kind')
         vector, hints = self._query_vector(text, people)
         request = dict(text=text, people=list(people), kinds=list(kinds), stances=list(stances), time_from=time_from,
                        time_to=time_to, include_forgotten=include_forgotten, limit=limit)

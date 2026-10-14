@@ -34,7 +34,7 @@ def _subject(conn, subject_id, expected_revision=None):
         raise KeyError(subject_id)
     if row['merged_into'] is not None or expected_revision is not None and row['revision'] != expected_revision:
         raise PeopleConflict('人物已合并或资料已变化，请刷新后重试')
-    if subject_id in ('self', 'scene'):
+    if row['kind'] != 'person' or subject_id in ('self', 'scene'):
         raise ValueError('此操作只适用于人物主体')
     return row
 
@@ -269,7 +269,7 @@ def _memory_counts(conn, sid):
 def person_detail(store, subject_id):
     with store.read() as conn:
         row = conn.execute('SELECT * FROM subjects WHERE id=?', (subject_id,)).fetchone()
-        if row is None or subject_id in ('self', 'scene'):
+        if row is None or row['kind'] != 'person' or subject_id in ('self', 'scene'):
             raise KeyError(subject_id)
         result = dict(row)
         result['canonical_id'] = canonical_subject(conn, subject_id)
@@ -285,7 +285,7 @@ def person_detail(store, subject_id):
 
 
 def list_people(store, *, text='', pending_only=False, include_merged=False, limit=30, offset=0):
-    where, args = ["s.id NOT IN ('self','scene')"], []
+    where, args = ["s.kind='person'", "s.id NOT IN ('self','scene')"], []
     if not include_merged:
         where.append('s.merged_into IS NULL')
     if text.strip():

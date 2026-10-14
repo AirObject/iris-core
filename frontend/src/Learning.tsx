@@ -1,3 +1,15 @@
+import {
+  BatchLinks,
+  LeafPosition,
+  NodeFacts,
+  SplitProgress,
+  SplitTree,
+  callCount,
+  contextLabel,
+  isSplitParent,
+  learningStatus,
+  type LearningBatch,
+} from "./BatchTree";
 import { EntryProfileDialog } from "./EntryProfile";
 import { BulkMemoryDialog } from "./BulkMemory";
 import { MessageMedia } from "./Media";
@@ -8,7 +20,6 @@ import {
   Badge,
   Empty,
   Notice,
-  batchLabel,
   lifecycleLabel,
   messageState,
   seconds,
@@ -21,7 +32,6 @@ import {
   paceLabel,
 } from "./EntrySettings";
 import type {
-  Batch,
   Entry,
   Message,
   EntryFilters,
@@ -30,7 +40,7 @@ import type {
   EntryVisibility,
 } from "./types";
 
-type Summary = Batch & {
+type Summary = LearningBatch & {
   entry_id: string;
   entry_name?: string;
   created_at: string;
@@ -72,6 +82,7 @@ type Attempt = {
   raw_output?: string;
   repair_output?: string;
   calls: Call[];
+  context_mode?: "full" | "target_only";
 };
 type BatchMessage = Message & {
   missing?: boolean;
@@ -80,6 +91,7 @@ type BatchMessage = Message & {
   scene_identity?: string;
 };
 type Detail = Omit<Summary, "result"> & {
+  gap?: { batch_id: number } | null;
   entry: LearningEntry;
   entry_settings?: EntrySettings | null;
   segments: Record<"history" | "target" | "future", BatchMessage[]>;
@@ -253,6 +265,7 @@ export default function LearningPage({
           openMemory={openMemory}
           onBack={() => setSelected(null)}
           onRelearn={refresh}
+          onOpen={setSelected}
         />
       ) : tab === "entries" ? (
         <>
@@ -292,12 +305,16 @@ export default function LearningPage({
                     最近批次
                     {entry.latest_batch ? ` #${entry.latest_batch.id}` : ""}
                   </p>
-                  <p>{batchLabel(entry.latest_batch)}</p>
+                  <p>
+                    {entry.latest_batch
+                      ? learningStatus(entry.latest_batch)
+                      : "暂无批次"}
+                  </p>
                   {entry.current_batch &&
                     entry.current_batch.id !== entry.latest_batch?.id && (
                       <p>
                         当前处理 #{entry.current_batch.id} ·{" "}
-                        {batchLabel(entry.current_batch)}
+                        {learningStatus(entry.current_batch)}
                       </p>
                     )}
                   <button
@@ -435,28 +452,37 @@ export default function LearningPage({
                 <div className="learning-list">
                   {tab === "batches"
                     ? batches.data?.items.map((batch) => (
-                        <article key={batch.id} className="panel learning-row">
-                          <div>
-                            <strong>
-                              #{batch.id} · {batch.entry_name}
-                            </strong>
-                            <p>
-                              {batch.relearning
-                                ? "重新学习中"
-                                : batchLabel(batch)}
-                            </p>
-                            <small>
-                              {time(batch.created_at)} · 本轮已计{" "}
-                              {batch.attempt_count} 次尝试
-                            </small>
+                        <article
+                          key={batch.id}
+                          className="panel learning-batch-card"
+                        >
+                          <div className="learning-row">
+                            <div>
+                              <strong>
+                                #{batch.id} · {batch.entry_name}
+                              </strong>
+                              <p>{learningStatus(batch)}</p>
+                              <small>
+                                {time(batch.created_at)} ·{" "}
+                                {isSplitParent(batch) ? "拆分前" : "本轮"}已计{" "}
+                                {batch.attempt_count} 次尝试
+                              </small>
+                            </div>
+                            <button
+                              className="text-button"
+                              aria-label={`查看批次 #${batch.id}`}
+                              onClick={() => setSelected(batch.id)}
+                            >
+                              查看详情 →
+                            </button>
                           </div>
-                          <button
-                            className="text-button"
-                            aria-label={`查看批次 #${batch.id}`}
-                            onClick={() => setSelected(batch.id)}
-                          >
-                            查看详情 →
-                          </button>
+                          <BatchLinks batch={batch} onOpen={setSelected} />
+                          {isSplitParent(batch) && (
+                            <div className="learning-batch-tree">
+                              <SplitProgress batch={batch} />
+                              <SplitTree id={batch.id} onOpen={setSelected} />
+                            </div>
+                          )}
                         </article>
                       ))
                     : gaps.data?.items.map((gap) => (
@@ -486,7 +512,10 @@ export default function LearningPage({
                 </div>
               )}
               <div className="learning-pagination">
-                <span>共 {listing.data.total} 条</span>
+                <span>
+                  共 {listing.data.total}{" "}
+                  {tab === "batches" ? "个批次节点（含子批次）" : "处缺口"}
+                </span>
                 <button
                   disabled={offset === 0}
                   onClick={() => setOffset(Math.max(0, offset - 30))}
@@ -565,11 +594,13 @@ function BatchDetail({
   onBack,
   openMemory,
   onRelearn,
+  onOpen,
 }: {
   id: number;
   onBack: () => void;
   openMemory: (id: number) => void;
   onRelearn: () => void;
+  onOpen: (id: number) => void;
 }) {
   const snapshot = useData<Detail>(`/batches/${id}`, 3000);
   const [busy, setBusy] = useState(false),
@@ -577,7 +608,13 @@ function BatchDetail({
     [error, setError] = useState("");
   const batch = snapshot.data;
   async function relearn() {
-    if (busy) return;
+    if (
+      busy ||
+      !batch?.can_relearn ||
+      isSplitParent(batch) ||
+      !["abandoned", "refused"].includes(batch.state)
+    )
+      return;
     setBusy(true);
     setError("");
     setNotice("");
@@ -613,41 +650,66 @@ function BatchDetail({
                 批次 #{id} · {batch.entry.name}
               </h2>
               <Badge>
-                {batch.relearning ? "重新学习中" : batchLabel(batch)}
+                {learningStatus(batch, batch.segments.target.length)}
               </Badge>
             </div>
-            <p>{batchLabel(batch)}</p>
+            <BatchLinks batch={batch} onOpen={onOpen} />
             <p className="muted">
               组成于 {time(batch.created_at)}
               {batch.finished_at
                 ? ` · 结束于 ${time(batch.finished_at)}`
                 : ""}{" "}
-              · 本轮已计 {batch.attempt_count} / 4 次尝试
+              · {isSplitParent(batch) ? "拆分前" : "本轮"}已计{" "}
+              {batch.attempt_count} / 4 次尝试
             </p>
-            {batch.next_retry_at && (
-              <p>下次重试：{time(batch.next_retry_at)}</p>
+            {batch.parent_batch_id && <LeafPosition id={id} />}
+            <NodeFacts batch={batch} />
+            {isSplitParent(batch) && <SplitProgress batch={batch} />}
+            {!isSplitParent(batch) && batch.gap && (
+              <p>仍有记忆缺口；成功学习后才会消失。</p>
             )}
-            {batch.last_error && <p>最近错误：{batch.last_error}</p>}
-            {batch.can_relearn && (
-              <div className="relearn-action">
-                <button className="primary" disabled={busy} onClick={relearn}>
-                  {busy ? "正在提交…" : "重新学习"}
-                </button>
-                <p>
-                  保留原批次范围和历史记录，重新获得 4
-                  次尝试；成功前缺口持续存在。
-                </p>
-              </div>
+            {batch.last_error && (
+              <p>
+                {isSplitParent(batch) ? "子批次最近错误" : "最近错误"}：
+                {batch.last_error}
+              </p>
             )}
+            {batch.relearn_blocked_reason && !isSplitParent(batch) && (
+              <p>{batch.relearn_blocked_reason}</p>
+            )}
+            {batch.can_relearn &&
+              !isSplitParent(batch) &&
+              ["abandoned", "refused"].includes(batch.state) && (
+                <div className="relearn-action">
+                  <button className="primary" disabled={busy} onClick={relearn}>
+                    {busy ? "正在提交…" : "重新学习"}
+                  </button>
+                  <p>
+                    保留原批次范围和历史记录，重新获得 4
+                    次尝试；成功前缺口持续存在。
+                  </p>
+                </div>
+              )}
             {batch.state === "succeeded" && !batch.memories.length && (
               <p>本批已学习，形成或更新了 0 条记忆。这是正常的成功结果。</p>
             )}
-            {batch.state !== "succeeded" && (
+            {!isSplitParent(batch) && batch.state !== "succeeded" && (
               <p>尚未成功学习，不能把这些消息当作已经记住。</p>
             )}
           </div>
+          {isSplitParent(batch) && (
+            <section className="panel">
+              <h2>子批次结果</h2>
+              <p>
+                本节点的历史请求曾被拒绝，已拆分交给子批次。请进入失败子批次详情重新学习。
+              </p>
+              <SplitTree id={id} onOpen={onOpen} />
+            </section>
+          )}
           <section>
-            <h2>三段消息</h2>
+            <h2>
+              {isSplitParent(batch) ? "拆分前冻结的三段消息" : "三段消息"}
+            </h2>
             <details className="panel">
               <summary>组成批次时的入口设置</summary>
               {batch.entry_settings ? (
@@ -662,6 +724,11 @@ function BatchDetail({
             <p className="muted">
               三段范围已冻结；历史与后续只帮助理解，只有目标段可以形成记忆。这里保留消息原文。
             </p>
+            {batch.context_mode === "target_only" && (
+              <p className="notice">
+                当前仅目标模式：下方历史段与后续段保留供追溯，不会作为可选前后文发送；仍保留目标引用、附件及既有相关记忆等材料。
+              </p>
+            )}
             <div className="batch-segments">
               {(
                 [
@@ -725,7 +792,19 @@ function BatchDetail({
             </div>
           </section>
           <section>
-            <h2>每次尝试</h2>
+            <h2>
+              {isSplitParent(batch) ? "本节点历史尝试（拆分前）" : "每次尝试"}
+            </h2>
+            {isSplitParent(batch) && (
+              <p>
+                以下只记录本节点拆分前的请求；这些历史拒绝不等于子批次最终失败。
+              </p>
+            )}
+            <p>本节点实际模型调用 {callCount(batch)} 次</p>
+            <p className="muted">
+              含学习、JSON
+              修正和未归入尝试的调用；不包含子批次调用，不等于树节点数或尝试额度。
+            </p>
             <p className="muted">
               历次尝试持续编号；服务暂停时的失败记录不一定扣除尝试额度。模型返回正文不代表已经写入记忆。
             </p>
@@ -760,6 +839,7 @@ function BatchDetail({
                     failed: "失败",
                   }[attempt.parse_status] || attempt.parse_status}
                 </p>
+                <p>本次上下文模式：{contextLabel(attempt.context_mode)}</p>
                 {attempt.error && <p>诊断：{attempt.error}</p>}
                 <Calls calls={attempt.calls} />
                 <Body label="模型原始正文" value={attempt.raw_output} />
@@ -812,7 +892,10 @@ function BatchDetail({
             </section>
           </div>
           <section className="panel">
-            <h2>记忆结果 · {batch.memories.length} 条</h2>
+            <h2>
+              {isSplitParent(batch) ? "成功子批次的记忆结果" : "记忆结果"} ·{" "}
+              {batch.memories.length} 条
+            </h2>
             <p className="muted">
               下列正文为记忆当前版本；详情中可查看修订历史。
             </p>

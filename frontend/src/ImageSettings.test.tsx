@@ -1,4 +1,11 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import SettingsPage, { type Settings } from "./Settings";
@@ -38,6 +45,7 @@ beforeEach(() => {
     model_source: "local",
     daily_token_limit: null,
     learning_concurrency: 2,
+    native_image_learning: false,
     lifecycle: structuredClone(lifecycleFixture),
     recall_judge: { enabled: true, concurrency: 1, queue_limit: 8 },
     state: { stale_after_minutes: 30 },
@@ -57,6 +65,11 @@ beforeEach(() => {
         return response({ items: [], total: 0 });
       if (url.endsWith("/test"))
         return response({ ok: true, message: "连接成功", duration_ms: 24 });
+      if (url.endsWith("/settings/limits") && init?.method === "PATCH") {
+        if (fail)
+          return response({ error: { message: "学习设置保存失败" } }, 503);
+        settings = { ...settings, ...body };
+      }
       if (init?.method === "PUT") {
         if (fail)
           return response({ error: { message: "模型设置保存失败" } }, 503);
@@ -103,6 +116,8 @@ beforeEach(() => {
   );
 });
 afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
   setCSRF("");
   vi.unstubAllGlobals();
 });
@@ -388,7 +403,7 @@ test("vision 勾选随连接测试和保存发送，保存后图片理解继承�
   const chat = within(await screen.findByRole("region", { name: "对话模型" }));
   expect(
     chat.getByText(
-      "对话模型支持图片输入。开启后，图片理解未单独配置时沿用对话模型。学习时是否直接看原图另有开关（尚未提供）。",
+      "对话模型支持图片输入。开启后，图片理解未单独配置时沿用对话模型。学习时是否直接看原图，请在“用量与学习”中设置。",
     ),
   ).toBeVisible();
   expect(chat.queryByText(/开启后学习时直接看原图/)).not.toBeInTheDocument();
@@ -487,4 +502,140 @@ test("外部 vision 只读，状态页按 inherited 显示来源", async () => {
   expect(
     screen.getByText(/沿用对话模型 · 健康状态按图片理解用途独立记录/),
   ).toBeVisible();
+});
+
+test.each(["local", "external"] as const)(
+  "%s 模式保存原图学习开关并保留用量和并发，刷新后仍开启",
+  async (source) => {
+    settings.model_source = source;
+    settings.models.chat = { ...blank, enabled: true, vision: true };
+    settings.daily_token_limit = 12345;
+    settings.learning_concurrency = 3;
+    const { unmount } = render(<SettingsPage />);
+    const toggle = await screen.findByLabelText("学习时直接看原图");
+    expect(toggle).not.toBeChecked();
+    expect(toggle).toBeEnabled();
+    await userEvent.click(toggle);
+    await userEvent.click(
+      screen.getByRole("button", { name: "保存用量与学习" }),
+    );
+    expect(await screen.findByText("已保存")).toBeVisible();
+    const write = requests.find((r) => r.url.endsWith("/settings/limits"))!;
+    expect(write.init?.method).toBe("PATCH");
+    expect(write.init?.credentials).toBe("same-origin");
+    expect(write.init?.headers).toMatchObject({
+      "X-Iris-CSRF": "image-settings-test",
+      "Content-Type": "application/json; charset=utf-8",
+    });
+    expect(write.body).toEqual({
+      daily_token_limit: 12345,
+      learning_concurrency: 3,
+      native_image_learning: true,
+    });
+    expect(requests.filter((r) => r.init?.method)).toHaveLength(1);
+    unmount();
+    render(<SettingsPage />);
+    expect(await screen.findByLabelText("学习时直接看原图")).toBeChecked();
+    await userEvent.click(screen.getByLabelText("学习时直接看原图"));
+    await userEvent.click(
+      screen.getByRole("button", { name: "保存用量与学习" }),
+    );
+    expect(await screen.findByText("已保存")).toBeVisible();
+    expect(settings.native_image_learning).toBe(false);
+  },
+);
+
+test("原图开关以已保存的 vision 为准，保存失败不启用", async () => {
+  settings.models.chat = {
+    ...blank,
+    enabled: true,
+    vision: false,
+    base_url: "https://example.test/v1",
+    model: "chat",
+  };
+  render(<SettingsPage />);
+  const toggle = await screen.findByLabelText("学习时直接看原图");
+  expect(toggle).toBeDisabled();
+  expect(screen.getByText(/当前对话模型未启用图片输入/)).toBeVisible();
+  await userEvent.click(screen.getByLabelText(/支持图片输入/));
+  expect(toggle).toBeDisabled();
+  fail = true;
+  await userEvent.click(screen.getByRole("button", { name: "保存对话模型" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "模型设置保存失败",
+  );
+  expect(toggle).toBeDisabled();
+  fail = false;
+  await userEvent.click(screen.getByRole("button", { name: "保存对话模型" }));
+  expect(await screen.findByText("已保存")).toBeVisible();
+  expect(toggle).toBeEnabled();
+});
+
+test("vision 关闭保留已开启的运行设置，外部模式解释修改位置", async () => {
+  settings.model_source = "external";
+  settings.models.chat = { ...blank, enabled: true, vision: false };
+  settings.native_image_learning = true;
+  render(<SettingsPage />);
+  const toggle = await screen.findByLabelText("学习时直接看原图");
+  expect(toggle).toBeChecked();
+  expect(toggle).toBeDisabled();
+  expect(screen.getByText(/请在外部模型配置中启用/)).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "保存用量与学习" }));
+  expect(await screen.findByText("已保存")).toBeVisible();
+  expect(
+    requests.find((r) => r.url.endsWith("/settings/limits"))?.body
+      .native_image_learning,
+  ).toBe(true);
+});
+
+test("未启用对话模型时原图开关不可用", async () => {
+  settings.models.chat = { ...blank, enabled: false, vision: true };
+  render(<SettingsPage />);
+  expect(await screen.findByLabelText("学习时直接看原图")).toBeDisabled();
+  expect(screen.getByText(/当前对话模型未启用，无法直接看原图/)).toBeVisible();
+});
+
+test("原图学习保存失败保留草稿，可以重试", async () => {
+  settings.models.chat = { ...blank, enabled: true, vision: true };
+  render(<SettingsPage />);
+  await userEvent.click(await screen.findByLabelText("学习时直接看原图"));
+  fail = true;
+  await userEvent.click(screen.getByRole("button", { name: "保存用量与学习" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "学习设置保存失败",
+  );
+  expect(screen.getByLabelText("学习时直接看原图")).toBeChecked();
+  expect(settings.native_image_learning).toBe(false);
+  fail = false;
+  await userEvent.click(screen.getByRole("button", { name: "保存用量与学习" }));
+  expect(await screen.findByText("已保存")).toBeVisible();
+  expect(settings.native_image_learning).toBe(true);
+});
+
+test("轮询同步原图开关与 vision，不覆盖草稿；其他设置保存不丢草稿", async () => {
+  vi.useFakeTimers();
+  settings.models.chat = { ...blank, enabled: true, vision: true };
+  render(<SettingsPage />);
+  await act(async () => {});
+  const toggle = screen.getByLabelText("学习时直接看原图");
+  settings.native_image_learning = true;
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2000);
+  });
+  expect(toggle).toBeChecked();
+  fireEvent.click(toggle);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2000);
+  });
+  expect(toggle).not.toBeChecked();
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "保存角色" }));
+  });
+  expect(toggle).not.toBeChecked();
+  settings.models.chat.vision = false;
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2000);
+  });
+  expect(toggle).toBeDisabled();
+  expect(toggle).not.toBeChecked();
 });

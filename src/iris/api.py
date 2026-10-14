@@ -133,7 +133,7 @@ class Search(Input):
 
     text: str = Field(default="", max_length=8000)
     people: list[str] = Field(default_factory=list, max_length=100)
-    kinds: list[Literal["事件", "事实", "偏好", "关系", "观点", "计划", "自我", "其他"]] = Field(default_factory=list)
+    kinds: list[Literal["事件", "事实", "偏好", "关系", "观点", "计划", "自我", "其他", "入口画像"]] = Field(default_factory=list)
     stances: list[Literal["亲历", "转述", "观点", "推断", "设定"]] = Field(default_factory=list)
     time_from: str | None = None
     time_to: str | None = None
@@ -151,6 +151,8 @@ class Search(Input):
 
     @model_validator(mode="after")
     def time_order(self):
+        if '入口画像' in self.kinds and self.entry_id is None:
+            raise ValueError('entry_id required for entry profile kind')
         if self.time_from and self.time_to:
             from datetime import timezone
             a, b = datetime.fromisoformat(self.time_from), datetime.fromisoformat(self.time_to)

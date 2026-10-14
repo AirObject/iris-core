@@ -6,6 +6,7 @@ import json
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import secrets
+import sqlite3
 from weakref import WeakKeyDictionary
 from collections import OrderedDict
 from threading import RLock
@@ -118,6 +119,30 @@ def adjust_retention(store: Store, memory_id: int, delta: int = 0, *, value=None
         return dict(conn.execute("SELECT * FROM memories WHERE id=?", (memory_id,)).fetchone())
 
 
+def record_batch_memory_effect(conn, batch_id, memory_id, effect):
+    """Reserve a tree's creation/confirmation effect in the apply transaction.
+
+    Caller checks revisions/lifecycle before reserving, and applies the effect
+    before committing. False means another leaf already supplied that increment.
+    Ordinary (unsplit) batches retain their existing per-batch semantics.
+    """
+    if not conn.in_transaction:
+        raise ValueError("memory effects require a write transaction")
+    if effect not in ("created", "confirmed"):
+        raise ValueError("invalid batch memory effect")
+    row = conn.execute("SELECT root_batch_id,state FROM batches WHERE id=?", (batch_id,)).fetchone()
+    if row is None:
+        raise KeyError(batch_id)
+    if row["root_batch_id"] is None:
+        return True
+    if row["state"] != "running":
+        raise ValueError("memory effects require a running leaf")
+    return bool(conn.execute("""INSERT INTO batch_memory_effects
+        (root_batch_id,memory_id,effect,first_batch_id) VALUES(?,?,?,?)
+        ON CONFLICT(root_batch_id,memory_id) DO NOTHING""",
+        (row["root_batch_id"], memory_id, effect, batch_id)).rowcount)
+
+
 def confirm_retention(store, memory_id, *, _conn=None, current=None):
     """Learning-line entry point; caller still owns per-batch confirmation dedupe."""
     with (store.write() if _conn is None else nullcontext(_conn)) as conn:
@@ -170,7 +195,7 @@ def update_role(store, name, background, timezone_name, *, _conn=None):
         conn.execute("UPDATE persona_versions SET is_current=0,status='history' WHERE is_current=1")
         # Only initial-setting objects are replaced. Learned memories remain intact.
         if previous.get('background') != background:
-            rows = conn.execute("SELECT * FROM memories WHERE lifecycle!='deleted' AND id IN (SELECT memory_id FROM sources WHERE kind='initial_setting')").fetchall()
+            rows = conn.execute("SELECT * FROM memories WHERE lifecycle!='deleted' AND kind!='入口画像' AND id IN (SELECT memory_id FROM sources WHERE kind='initial_setting')").fetchall()
             for row in rows:
                 before = {k: row[k] for k in ('content', 'kind', 'stance', 'belief', 'importance', 'event_time', 'lifecycle')}
                 after = {**before, 'lifecycle': 'deleted'}
@@ -185,7 +210,7 @@ def update_role(store, name, background, timezone_name, *, _conn=None):
             sentences = [part.strip() for part in re.split(r"[\n。！？]+", background) if part.strip()]
             persona = f"我是{name}。" + ("初始设定："+"；".join(sentences)+"。" if sentences else "尚无预设经历，会在相处中逐渐认识自己。")
             from .persona import record_initial
-            memory_ids = [r[0] for r in conn.execute("SELECT DISTINCT m.id FROM memories m JOIN sources s ON s.memory_id=m.id WHERE s.kind='initial_setting' AND m.lifecycle!='deleted' ORDER BY m.id")]
+            memory_ids = [r[0] for r in conn.execute("SELECT DISTINCT m.id FROM memories m JOIN sources s ON s.memory_id=m.id WHERE s.kind='initial_setting' AND m.lifecycle!='deleted' AND m.kind!='入口画像' ORDER BY m.id")]
             version_id = conn.execute('SELECT id FROM persona_versions WHERE is_current=1').fetchone()[0]
             record_initial(conn, persona, memory_ids, name, background, now(), version_id=version_id)
             conn.execute("INSERT OR REPLACE INTO runtime_settings VALUES('background',?)", (dumps(background),))
@@ -211,6 +236,9 @@ def manage_memory(store, memory_id, expected_revision, *, action=None, pinned=No
         row = conn.execute("SELECT * FROM memories WHERE id=? AND lifecycle!='deleted'", (memory_id,)).fetchone()
         if row is None or row["revision"] != expected_revision:
             return False
+        if row['kind']=='入口画像' and importance is not None and importance>69 and conn.execute(
+                'SELECT 1 FROM entry_profile_memories WHERE memory_id=? AND manual_created=0',(memory_id,)).fetchone():
+            raise ValueError('automatic entry profile importance must be <=69')
         config, stamp = lifecycle_settings(conn), now()
         before = {k: row[k] for k in ("pinned", "importance", "retention", "lifecycle", "forgotten_at")}
         if importance is not None and importance != row["importance"]:
@@ -315,6 +343,10 @@ def _purge_records(conn, memory_ids, deleted_message_ids, affected):
         for table in sorted({table for table, _ in todo}):
             ids = [rid for name, rid in todo if name == table]
             records |= _purge_refs(conn, table, ids)
+            if table == 'batches':
+                records |= {('batches', str(r[0])) for r in conn.execute('''SELECT parent_batch_id
+                    FROM batches WHERE id IN (SELECT value FROM json_each(?))
+                    AND parent_batch_id IS NOT NULL''', (dumps(ids),))}
             if table == 'entry_profile_versions':
                 parents = [dumps([r[0],r[1]]) for r in conn.execute('''SELECT entry_id,version FROM entry_profile_versions
                     WHERE id IN (SELECT value FROM json_each(?))''', (dumps(ids),))]
@@ -356,8 +388,21 @@ def _purge_versions(conn, affected, deleted_messages, records):
     return result
 
 
+def _purge_profile_ids(conn, memory_ids):
+    # A surviving merge can contain the absorbed body's information too. Only
+    # profile descendants are erased; ordinary descendants retain prior policy.
+    return [r[0] for r in conn.execute("""WITH RECURSIVE descendants(id) AS (
+        SELECT value FROM json_each(?)
+        UNION SELECT s.memory_id FROM descendants d JOIN sources s ON s.source_memory_id=d.id WHERE s.kind='memory'
+        UNION SELECT m.merged_into FROM descendants d JOIN memories m ON m.id=d.id WHERE m.merged_into IS NOT NULL
+    ) SELECT id FROM memories WHERE kind='入口画像' AND purged_at IS NULL
+      AND id IN (SELECT id FROM descendants) ORDER BY id""",(dumps(list(memory_ids)),))]
+
+
 def purge_preview(conn, memory_ids):
     memory_ids = list(memory_ids)
+    derived = [mid for mid in _purge_profile_ids(conn,memory_ids) if mid not in memory_ids]
+    memory_ids = list(dict.fromkeys([*memory_ids,*derived]))
     deleted, _ = _purge_message_plan(conn, memory_ids)
     affected = _purge_descendants(conn,memory_ids)
     records = _purge_records(conn,memory_ids,deleted,affected)
@@ -373,7 +418,7 @@ def purge_preview(conn, memory_ids):
                 'sentences':sum(count for name,_,_,count in versions if name==table),
                 'retained_unbased_sentences':unbased}
     return {'persona':counts('persona_versions'), 'entry_profiles':counts('entry_profile_versions'),
-            'backup_notice':purge_backup_notice(conn)}
+            'derived_profile_ids':derived,'backup_notice':purge_backup_notice(conn)}
 
 
 def _purge_kept_material(row, sentences):
@@ -484,6 +529,8 @@ def _purge_memories(conn, expected):
     if len(rows)!=len(ids) or any(rows[mid]['revision']!=revision for mid,revision in expected.items()):
         return None
     stamp = now()
+    derived_profile_ids = [mid for mid in _purge_profile_ids(conn,ids) if mid not in expected]
+    ids = list(dict.fromkeys([*ids,*derived_profile_ids]))
     deleted,retained = _purge_message_plan(conn,ids)
     affected = _purge_descendants(conn,ids)
     records = _purge_records(conn,ids,deleted,affected)
@@ -506,7 +553,7 @@ def _purge_memories(conn, expected):
         decay_visits=0,purged_at=?,updated_at=? WHERE id IN (SELECT value FROM json_each(?))""",(stamp,stamp,dumps(ids)))
     if background_ids.intersection(ids):
         conn.execute("UPDATE runtime_settings SET value_json='\"\"' WHERE key='background'")
-    for table in ('memory_subjects','memory_tags','sources','memory_revisions'):
+    for table in ('entry_profile_evidence_receipts','entry_profile_revision_sources','entry_profile_memories','memory_subjects','memory_tags','sources','memory_revisions'):
         conn.execute(f'DELETE FROM {table} WHERE memory_id IN (SELECT value FROM json_each(?))',(dumps(ids),))
     published = _purge_publish_versions(conn,versions,stamp)
     conn.executemany('INSERT OR IGNORE INTO purge_message_tombstones VALUES(?,?)',((mid,stamp) for mid in deleted))
@@ -518,7 +565,7 @@ def _purge_memories(conn, expected):
     counts.update({'person_summary_'+table:count for table,count in summary_counts.items() if count})
     conn.executemany('DELETE FROM messages WHERE id=?',((mid,) for mid in deleted))
     return {'deleted_message_ids':deleted,'retained_messages':retained,'redaction_counts':counts,
-            'published_versions':published}
+            'published_versions':published,'derived_profile_ids':derived_profile_ids}
 
 
 def purge_memory(store, memory_id, expected_revision, *, confirm=False, _conn=None, _record=True):
@@ -555,14 +602,33 @@ def recreate_memory(store, memory_id, expected_revision, *, source_revision):
             values.update(json.loads(historical[0]))
         stamp = now()
         new_id = conn.execute("""INSERT INTO memories(content,kind,speaker_subject_id,stance,belief,importance,
-            retention,event_time,entry_id,world,created_at,updated_at,first_confirmed_at,last_confirmed_at)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (values["content"], values["kind"], values["speaker_subject_id"],
+            retention,event_time,entry_id,owner_entry_id,world,created_at,updated_at,first_confirmed_at,last_confirmed_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (values["content"], values["kind"], values["speaker_subject_id"],
             values["stance"], values["belief"], values["importance"], round(30 + values["importance"] * .4),
-            values["event_time"], values["entry_id"], values["world"], stamp, stamp, stamp, stamp)).lastrowid
+            values["event_time"], values["entry_id"], row["owner_entry_id"], values["world"], stamp, stamp, stamp, stamp)).lastrowid
+        conn.execute("INSERT OR IGNORE INTO memory_owner_scopes SELECT ?,entry_id FROM memory_owner_scopes WHERE memory_id=?", (new_id,memory_id))
+        if values['kind']=='入口画像':
+            profile = conn.execute('SELECT * FROM entry_profile_memories WHERE memory_id=?',(memory_id,)).fetchone()
+            conn.execute('INSERT INTO entry_profile_memories VALUES(?,?,?,1)',(new_id,profile['entry_id'],profile['category']))
+            conn.execute("INSERT INTO sources(memory_id,kind,note,created_at) VALUES(?,'initial_setting','manual recreate',?)",(new_id,stamp))
         conn.execute("INSERT INTO memory_subjects SELECT ?,subject_id FROM memory_subjects WHERE memory_id=?", (new_id, memory_id))
         conn.execute("INSERT INTO memory_tags SELECT ?,tag FROM memory_tags WHERE memory_id=?", (new_id, memory_id))
         conn.execute("""INSERT INTO sources(memory_id,kind,message_id,source_memory_id,source_revision,note,created_at)
             SELECT ?,kind,message_id,source_memory_id,source_revision,note,created_at FROM sources WHERE memory_id=?""", (new_id, memory_id))
+        if values['kind']=='入口画像':
+            # Match copied source rows without inventing evidence for historical
+            # prose. Receipts survive a deliberate new object as its baseline.
+            conn.execute("""INSERT OR IGNORE INTO entry_profile_evidence_receipts
+                SELECT ?,r.identity,n.id,? FROM entry_profile_evidence_receipts r
+                LEFT JOIN sources o ON o.id=r.source_id LEFT JOIN sources n ON n.memory_id=?
+                AND n.kind=o.kind AND n.message_id IS o.message_id AND n.source_memory_id IS o.source_memory_id
+                AND n.source_revision IS o.source_revision AND n.note IS o.note WHERE r.memory_id=?""",
+                (new_id,stamp,new_id,memory_id))
+            conn.execute("""INSERT OR IGNORE INTO entry_profile_revision_sources
+                SELECT ?,1,n.id FROM entry_profile_revision_sources r JOIN sources o ON o.id=r.source_id
+                JOIN sources n ON n.memory_id=? AND n.kind=o.kind AND n.message_id IS o.message_id
+                AND n.source_memory_id IS o.source_memory_id AND n.source_revision IS o.source_revision
+                AND n.note IS o.note WHERE r.memory_id=? AND r.revision=?""",(new_id,new_id,memory_id,source_revision))
         operation(conn, "memory_recreate", "memory", new_id,
                   {"source_memory_id": memory_id, "source_revision": source_revision, "memory_id": new_id})
         return new_id
@@ -572,6 +638,25 @@ def recreate_memory(store, memory_id, expected_revision, *, source_revision):
 # publication. Random transaction tokens prevent rollback/reused-path ABA bugs.
 _VISIBILITY_CACHE = OrderedDict()
 _VISIBILITY_LOCK = RLock()
+
+
+def hard_memory_scopes(conn, memory_ids=None):
+    """Read hard bounds; a pre-031 archive cannot contain this new scope type.
+
+    Upgrade fixtures/offline historical reads may precede migration 031. A
+    missing table after that migration is corruption, never global visibility.
+    """
+    sql, args = 'SELECT memory_id,entry_id FROM memory_owner_scopes', ()
+    if memory_ids is not None:
+        sql += ' WHERE memory_id IN (SELECT value FROM json_each(?))'
+        args = (dumps(list(memory_ids)),)
+    try:
+        return conn.execute(sql,args).fetchall()
+    except sqlite3.OperationalError as error:
+        if str(error) != 'no such table: memory_owner_scopes' or conn.execute(
+                "SELECT 1 FROM schema_migrations WHERE version>='031_entry_profile_memories.sql' LIMIT 1").fetchone():
+            raise
+        return []
 
 
 class Visibility:
@@ -633,6 +718,10 @@ class Visibility:
                     JOIN goals g ON g.id=gs.goal_id WHERE g.entry_id IS NOT NULL
                     AND x.entry_id IN (SELECT value FROM json_each(?))""", (roots,roots)):
                 goals[gid] = cls.intersect(goals.get(gid), entries[eid])
+        # Hard bounds are singleton owners even when the whole database has
+        # only one entry. They never collapse to globally visible None.
+        for mid,eid in hard_memory_scopes(conn):
+            memories[mid] = cls.intersect(memories.get(mid), frozenset({eid}))
         return entries, memories, goals
 
     def entry(self, entry_id):
@@ -859,6 +948,8 @@ def apply_bulk_memories(store, *, snapshot_token, action, confirm=False):
             last = start + len(chunk) >= len(ids)
             pending = deepcopy(result)
             next_expected = expected.copy()
+            next_ids = ids
+            processed = list(chunk)
             with store.write() as conn:
                 if lifecycle_settings(conn) != snapshot["settings"]:
                     raise BulkMemoryConflict()
@@ -867,9 +958,22 @@ def apply_bulk_memories(store, *, snapshot_token, action, confirm=False):
                 if current != wanted:
                     raise BulkMemoryConflict()
                 if action == 'purge':
+                    # The same atomic cascade may erase a profile selected for
+                    # a later chunk. Check its preview revision too, then retire
+                    # it from the remaining work instead of treating it as a race.
+                    cascade = _purge_profile_ids(conn,chunk)
+                    watched = {mid:expected[mid] for mid in cascade if mid in expected}
+                    if watched and bulk_memory_rows(conn,scope,include_pinned,list(watched)) != watched:
+                        raise BulkMemoryConflict()
                     ok = _purge_memories(conn, {mid:expected[mid]['revision'] for mid in chunk})
                     if ok is None:
                         raise BulkMemoryConflict()
+                    derived = ok['derived_profile_ids']
+                    if derived:
+                        pending['derived_profile_ids'] = sorted(set(pending.get('derived_profile_ids',[]) + derived))
+                        processed = list(dict.fromkeys([*chunk,*(mid for mid in derived if mid in expected)]))
+                        next_ids = ids[:start+len(chunk)] + [mid for mid in ids[start+len(chunk):] if mid not in derived]
+                        last = start+len(chunk) >= len(next_ids)
                     counts = pending.setdefault('redaction_counts', {})
                     for table,count in ok['redaction_counts'].items():
                         counts[table] = counts.get(table,0) + count
@@ -886,14 +990,14 @@ def apply_bulk_memories(store, *, snapshot_token, action, confirm=False):
                               if action=='forget' else delete_memory(store,mid,revision,_conn=conn))
                         if not ok:
                             raise BulkMemoryConflict()
-                for mid in chunk:
+                for mid in processed:
                     next_expected.pop(mid)
-                next_expected.update(bulk_memory_rows(conn, scope, include_pinned, chunk))
+                next_expected.update(bulk_memory_rows(conn, scope, include_pinned, processed))
                 # Catch new matches and changes to already processed/skipped
                 # objects. The current chunk rolls back on a late conflict.
                 if last and bulk_memory_rows(conn, scope, include_pinned) != next_expected:
                     raise BulkMemoryConflict()
-                pending["memory_ids"] += chunk
+                pending["memory_ids"] = sorted(set(pending["memory_ids"] + processed))
                 pending["count"] = len(pending["memory_ids"])
                 pending["status"] = "completed" if last else "running"
                 if audit_id is None:
@@ -901,7 +1005,7 @@ def apply_bulk_memories(store, *, snapshot_token, action, confirm=False):
                 else:
                     next_audit_id = audit_id
                     conn.execute("UPDATE admin_operations SET details_json=? WHERE id=?", (dumps(_bulk_audit_result(pending)), audit_id))
-            audit_id, expected, result = next_audit_id, next_expected, pending
+            audit_id, expected, result, ids = next_audit_id, next_expected, pending, next_ids
             with _BULK_LOCK:
                 snapshot["result"] = deepcopy(result)
             if last:
@@ -938,3 +1042,189 @@ def apply_bulk_memories(store, *, snapshot_token, action, confirm=False):
         if action == 'purge':
             raise BulkMemoryConflict('批量清除已中断；请根据已完成 ID 重新预览剩余范围。', result=result) from exc
         raise
+
+
+# Entry-profile storage is callable independently of the periodic producer.
+# PR A deliberately does not switch the existing document task or host projection.
+ENTRY_PROFILE_KIND = '入口画像'
+ENTRY_PROFILE_CATEGORIES = frozenset(('topic', 'saying', 'rule'))
+
+
+def entry_profile_source(conn, message_id, *, excerpt=None, field='content',
+                         source_memory_id=None, source_revision=None):
+    """Bind an exact excerpt to a message snapshot; this is not semantic approval."""
+    from .profile_common import evidence_hash, whitespace
+    if type(message_id) is not int or message_id < 1 or (source_memory_id is not None and (type(source_memory_id) is not int or source_memory_id < 1)):
+        raise ValueError('invalid profile source ID')
+    row = conn.execute('SELECT * FROM messages WHERE id=?', (message_id,)).fetchone()
+    if row is None or field not in ('content', 'quote'):
+        raise ValueError('invalid profile source')
+    text = row['content'] if field == 'content' else row['quote_content']
+    speaker = row['sender_subject_id'] if field == 'content' else row['quote_author_subject_id']
+    excerpt = whitespace(text or '') if excerpt is None else whitespace(excerpt)
+    if not speaker or not excerpt or len(excerpt)>300 or excerpt not in whitespace(text or ''):
+        raise ValueError('invalid profile source excerpt')
+    signature = evidence_hash({key: row[key] for key in ('id','entry_id','sender_subject_id','content',
+        'quote_author_subject_id','quote_content','occurred_at','dedupe_key','kind')})
+    return dict(message_id=message_id,field=field,excerpt=excerpt,message_sha256=signature,
+                source_memory_id=source_memory_id,source_revision=source_revision)
+
+
+def _profile_sources(conn, entry_id, values, target_id):
+    from .profile_common import evidence_hash, whitespace
+    if not isinstance(values, (list, tuple)) or len(values) > 32:
+        raise ValueError('invalid profile sources')
+    result = []
+    visibility = Visibility(conn)
+    for value in values:
+        if not isinstance(value, dict) or set(value) != {'message_id','field','excerpt','message_sha256','source_memory_id','source_revision'}:
+            raise ValueError('invalid profile source binding')
+        current = entry_profile_source(conn,value['message_id'],excerpt=value['excerpt'],field=value['field'],
+            source_memory_id=value['source_memory_id'],source_revision=value['source_revision'])
+        if current != value:
+            raise ValueError('profile source changed')
+        message = conn.execute('SELECT * FROM messages WHERE id=?',(value['message_id'],)).fetchone()
+        if message['entry_id'] != entry_id or not Visibility.allows(visibility.entry(message['entry_id']),entry_id):
+            raise ValueError('profile source entry mismatch')
+        parent = value['source_memory_id']
+        if parent is not None:
+            memory = conn.execute('SELECT * FROM memories WHERE id=?',(parent,)).fetchone()
+            if (parent == target_id or memory is None or memory['kind'] == ENTRY_PROFILE_KIND
+                    or memory['lifecycle'] != 'active' or memory['purged_at'] is not None
+                    or type(value['source_revision']) is not int or memory['revision'] != value['source_revision']
+                    or not visibility.memory_visible(parent,entry_id)):
+                raise ValueError('profile source memory changed or unavailable')
+            found = conn.execute("""WITH RECURSIVE parents(id) AS (
+                SELECT ? UNION SELECT s.source_memory_id FROM parents p JOIN sources s ON s.memory_id=p.id
+                WHERE s.kind='memory') SELECT 1 FROM parents p JOIN sources s ON s.memory_id=p.id
+                WHERE s.kind='message' AND s.message_id=? LIMIT 1""",(parent,value['message_id'])).fetchone()
+            if not found:
+                raise ValueError('profile source memory does not bind message')
+        elif value['source_revision'] is not None:
+            raise ValueError('unexpected source revision')
+        speaker = message['sender_subject_id'] if value['field']=='content' else message['quote_author_subject_id']
+        text = message['content'] if value['field']=='content' else message['quote_content']
+        # Both identities are reserved: same message re-read/edited, and an
+        # original copied or quoted elsewhere, cannot increase strength twice.
+        identities = ['message:'+str(message['id']), 'content:'+evidence_hash([speaker,whitespace(text)])]
+        result.append({**value,'identities':identities})
+    return result
+
+
+def _profile_manual(conn, memory):
+    meta = conn.execute('SELECT manual_created FROM entry_profile_memories WHERE memory_id=?',(memory['id'],)).fetchone()
+    last = conn.execute("""SELECT actor,reason FROM memory_revisions WHERE memory_id=?
+        AND json_extract(before_json,'$.content') IS NOT json_extract(after_json,'$.content')
+        ORDER BY id DESC LIMIT 1""",(memory['id'],)).fetchone()
+    return bool(meta and meta[0] or last and last['reason']=='manual edit' and last['actor']!='entry_profile')
+
+
+def write_entry_profile_memory(store, entry_id, *, op, content=None, category=None, importance=50,
+                               sources=(), memory_id=None, expected_revision=None, manual=False,
+                               current=None, _conn=None):
+    """Atomic typed writer after the producer's generation/check steps.
+
+    Sources are detached bindings from entry_profile_source. This transaction
+    revalidates scope, revisions and excerpts; no model call occurs here. New
+    independent-discussion/meaning/privacy judgments belong to the producer.
+    Receipts are evidence based (not run IDs), and confirmation never changes
+    a memory revision. _conn lets the future task atomically commit its cursor.
+    """
+    from .profile_common import whitespace
+    if op not in ('new','confirm','revise','retire') or type(manual) is not bool:
+        raise ValueError('invalid profile operation')
+    if manual and op != 'new':
+        raise ValueError('manual edits use ordinary memory operations')
+    if op in ('new','revise'):
+        if (not isinstance(content,str) or not 1 <= len(content.strip()) <= 1000
+                or (not (isinstance(category,str) and category in ENTRY_PROFILE_CATEGORIES) and not (manual and category is None))
+                or type(importance) is not int or not 0 <= importance <= 100):
+            raise ValueError('invalid profile body')
+        content = whitespace(content)
+        importance = importance if manual else min(importance,69)
+    if op != 'new' and (type(memory_id) is not int or type(expected_revision) is not int):
+        raise ValueError('expected revision required')
+    stamp = current.isoformat() if current is not None else now()
+    actor = 'admin' if manual else 'entry_profile'
+    with (store.write() if _conn is None else nullcontext(_conn)) as conn:
+        if not conn.in_transaction:
+            raise ValueError('profile writes require a transaction')
+        owner = conn.execute('SELECT subject_id FROM entry_subjects WHERE entry_id=?',(entry_id,)).fetchone()
+        if owner is None:
+            raise KeyError(entry_id)
+        target = None
+        if op == 'new' and not manual:
+            target = conn.execute('''SELECT m.* FROM memories m JOIN entry_profile_memories p ON p.memory_id=m.id
+                WHERE p.entry_id=? AND p.category IS ? AND m.content=? AND m.purged_at IS NULL
+                ORDER BY m.id LIMIT 1''',(entry_id,category,content)).fetchone()
+            if target is not None:
+                op, memory_id, expected_revision = 'confirm',target['id'],target['revision']
+        if op != 'new':
+            target = target or conn.execute('''SELECT m.* FROM memories m JOIN entry_profile_memories p ON p.memory_id=m.id
+                WHERE m.id=? AND m.kind=? AND p.entry_id=? AND m.owner_entry_id=?''',
+                (memory_id,ENTRY_PROFILE_KIND,entry_id,entry_id)).fetchone()
+            if target is None:
+                raise ValueError('profile target missing or wrong entry')
+            if target['lifecycle']=='deleted' or target['purged_at'] is not None:
+                raise ValueError('profile target deleted')
+            if target['revision'] != expected_revision:
+                raise ValueError('profile revision conflict')
+            if op in ('revise','retire') and _profile_manual(conn,target):
+                raise ValueError('protected manual profile conflict')
+        bound = _profile_sources(conn,entry_id,sources,memory_id)
+        if not manual and not bound:
+            raise ValueError('profile sources required')
+        known = {r[0] for r in conn.execute('SELECT identity FROM entry_profile_evidence_receipts WHERE memory_id=?',(memory_id,))} if memory_id else set()
+        fresh = [s for s in bound if not known.intersection(s['identities'])]
+        if op in ('revise','retire') and not fresh:
+            raise ValueError('no new profile evidence')
+        if op == 'new':
+            stance = '设定' if manual else '转述' if category=='rule' else '推断'
+            memory_id = conn.execute('''INSERT INTO memories(content,kind,speaker_subject_id,stance,belief,importance,
+                retention,entry_id,owner_entry_id,world,created_at,updated_at,first_confirmed_at,last_confirmed_at)
+                VALUES(?,?,'self',?,80,?,?,?,?,'real',?,?,?,?)''',
+                (content,ENTRY_PROFILE_KIND,stance,importance,round(30+importance*.4),entry_id,entry_id,stamp,stamp,stamp,stamp)).lastrowid
+            conn.execute('INSERT INTO entry_profile_memories VALUES(?,?,?,?)',(memory_id,entry_id,category,int(manual)))
+            conn.execute('INSERT INTO memory_subjects VALUES(?,?)',(memory_id,owner['subject_id']))
+            if manual:
+                conn.execute("INSERT INTO sources(memory_id,kind,note,created_at) VALUES(?,'initial_setting','manual entry profile',?)",(memory_id,stamp))
+            revision = 1
+        elif op == 'revise':
+            before = {key:target[key] for key in ('content','kind','stance','belief','importance','event_time','lifecycle')}
+            after = {**before,'content':content,'importance':importance,'stance':'转述' if category=='rule' else '推断'}
+            conn.execute('''UPDATE memories SET content=?,importance=?,stance=?,revision=revision+1,updated_at=?,
+                embedding=NULL,embedding_model=NULL WHERE id=? AND revision=?''',
+                (content,importance,after['stance'],stamp,memory_id,expected_revision))
+            revision = expected_revision+1
+            conn.execute('''INSERT INTO memory_revisions(memory_id,revision_before,revision_after,before_json,after_json,reason,actor,created_at)
+                VALUES(?,?,?,?,?,'entry profile revised','entry_profile',?)''',
+                (memory_id,expected_revision,revision,dumps(before),dumps(after),stamp))
+            conn.execute('UPDATE entry_profile_memories SET category=? WHERE memory_id=?',(category,memory_id))
+        else:
+            revision = expected_revision
+        if op=='retire':
+            delete_memory(store,memory_id,expected_revision,actor='entry_profile',_conn=conn,current=current)
+            revision += 1
+        if fresh or op=='new':
+            for value in bound:
+                note = dumps({key:value[key] for key in ('field','excerpt','message_sha256')})
+                existing = conn.execute("SELECT id FROM sources WHERE memory_id=? AND kind='message' AND message_id=? AND note=?",
+                    (memory_id,value['message_id'],note)).fetchone()
+                source_id = existing[0] if existing else conn.execute("""INSERT INTO sources(memory_id,kind,message_id,note,created_at)
+                    VALUES(?,'message',?,?,?)""",(memory_id,value['message_id'],note,stamp)).lastrowid
+                parent = value['source_memory_id']
+                if parent is not None and not conn.execute("SELECT 1 FROM sources WHERE memory_id=? AND kind='memory' AND source_memory_id=? AND source_revision=?",
+                        (memory_id,parent,value['source_revision'])).fetchone():
+                    conn.execute("""INSERT INTO sources(memory_id,kind,source_memory_id,source_revision,created_at)
+                        VALUES(?,'memory',?,?,?)""",(memory_id,parent,value['source_revision'],stamp))
+                conn.execute('INSERT OR IGNORE INTO entry_profile_revision_sources VALUES(?,?,?)',(memory_id,revision,source_id))
+                conn.executemany('INSERT OR IGNORE INTO entry_profile_evidence_receipts VALUES(?,?,?,?)',
+                    ((memory_id,identity,source_id,stamp) for identity in value['identities']))
+        confirmed = op=='confirm' and bool(fresh)
+        if confirmed:
+            confirm_retention(store,memory_id,_conn=conn,current=current)
+        # Metadata-only audit; original model output stays with the producer's
+        # indexed attempt record, which the ordinary purge machinery redacts.
+        operation(conn,'entry_profile_'+op,'memory',memory_id,
+            {'entry_id':entry_id,'revision':revision,'confirmed':confirmed,'new_evidence':len(fresh)},actor=actor,stamp=stamp)
+        return dict(memory_id=memory_id,revision=revision,op=op,confirmed=confirmed)

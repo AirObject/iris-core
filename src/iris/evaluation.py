@@ -25,7 +25,7 @@ from .memory_ops import setup_role
 from .media import (CONTENT_TYPES, DEFAULT_MAX_BYTES, _matches, message_media,
                     native_learning_enabled, prepare_media, save_media)
 from .models import LEARNING_TOTAL_TIMEOUT, JUDGE_TOTAL_TIMEOUT, Gateway, ModelConfig, ModelError
-from .queue import add_message, form_batch, get_batch
+from .queue import add_message, form_batch, get_batch, next_learning_batch
 from .retrieval import Retrieval
 from .vector_index import VectorIndex
 
@@ -667,11 +667,12 @@ def _run_case(configs: dict[str, ModelConfig], case: dict[str, Any], judge_runs:
                 if media_ids:
                     media_messages.append(mid)
             while True:
-                batch = form_batch(store, case["id"], PROMPT_VERSION)
+                with store.read() as conn:
+                    active = next_learning_batch(conn, case["id"])
+                batch = get_batch(store, active["id"]) if active else form_batch(store, case["id"], PROMPT_VERSION)
                 if batch is None:
                     break
-                while get_batch(store, batch.id).state == "waiting":
-                    engine.run_batch(batch.id, force=True)
+                engine.run_batch(batch.id, force=True)
             if media_messages and native_learning_enabled(store, gateway):
                 # Offline evaluation drains the same description operation only
                 # after learning, keeping it outside learning's measured latency.

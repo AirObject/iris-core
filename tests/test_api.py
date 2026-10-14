@@ -109,7 +109,7 @@ def test_prepare_recent_window_open_goals_and_entry_gap_hints(client, store):
     assert all(m["unlearned"] for m in reply["recent_messages"])
     assert len(reply["goals"]) == 10 and all(g["state"] == "open" for g in reply["goals"])
     gap = next(h for h in reply["hints"] if h["code"] == "memory_gaps")
-    assert len(gap["gaps"]) == 1
+    assert len(gap["gaps"]) == 2  # the refused root transfers its gap to both unfinished leaves
     assert not any(h["code"] == "model_service" for h in reply["hints"])
     status = client.get("/api/v1/status").json()
     assert status["models"][0]["result_category"] == "success"

@@ -243,3 +243,13 @@ PS009 是为满足“只有一个入口时的 entry_only”要求特设的例外
 | `uv run --locked --isolated --python 3.12 pytest` | 3.12.14 | 2572 passed，4 warnings，703.94 秒 |
 
 提交前确认 `test-models.toml` 被 `.gitignore` 忽略，逐段查看暂存差异并核查只含两份授权文件、没有密钥。完整检查记录和测试日志存放 `/Users/cassia/Local/Code/iris-eval-artifacts/person-summary-v1/`，不提交检查脚本或执行日志。冻结后语料与标注保持不变；真实标注错误须逐条说明并另行提出。
+
+## 2026-10-12：PS009 预期不生成字段补全（规划者批准）
+
+原冻结提交 `f4f13cda21eac562c8a70f38ca6136ffb4d9ce8e`（#93）早于运行器引入 `expect_none` 的提交 `4167a547a11eddaf2c4964e39cab479f23d52299`（#97）。PS009 原意即“只有一个 entry_only 入口，不应生成摘要”，原文也已明确全局有效记忆为零、`must_cover=[]`。经规划者批准，只为 PS009 补上 `"expect_none": true`；这是适配后来运行器字段的格式补全，不改变案例事实、来源、生命周期、要点或禁止项的语义，其余案例逐字不变。
+
+本修订与本节说明放在同一个独立提交。修订提交定位为 [PR #103 的提交列表](https://github.com/AirObject/iris-core/pull/103/commits) 中 `eval: 补全 PS009 预期不生成标记`，其父提交为 `e79a79e51490180d28daf988cd1ae1e361cc8af7`；完整新 SHA 随该 PR 的 head 和执行回复记录，避免在提交正文中填写无法预先确定的自身 SHA。
+
+语料文件 SHA-256 从 `3b6f90f833d520c2d4a1cd6f27ac4648dc7aa37128e5eb86cef8ccd35fc565dd` 更新为 `fc2792c05217c8dd5b6047dd3ca151daf8f64b39619d4311ad62315f5bcac4e1`。复核保留原始运行材料，仓库外另行导出修订后的计分材料；PS001—PS008 的模型结果和两轮独立判分逐字复用，PS009 按已有 expect_none 规则改为严格空判分任务，所有实际尝试、调用、版本与输出记录不变，新增模型调用为 0。
+
+原计分器整集重新计分通过：9 例，未完成 0；PS009 `due.global_memories=0`、`skipped / insufficient_memories`，预期不生成检查 1/1 通过、违规 0；有依据条目 40/40（100%），forbidden／其他禁止类别／受限泄漏／非 active 违规／材料截断均为 0，覆盖 26/30（86.67%），`meets_threshold=true`。原 EPQ 报告保留补全前的历史结果，本节记录批准修订后的结论。完整复核材料位于仓库外 `/Users/cassia/Local/Code/iris-eval-artifacts/EPQ-20261012/ps009-format-completion`，新计分材料 SHA-256 为 `25c7e2ea7d609f80fcf5b02dc6ae9d793e8b469a490b4d2a5eeacdef53057dd5`。

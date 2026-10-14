@@ -14,15 +14,14 @@ from functools import cache, cached_property
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from difflib import SequenceMatcher
-from importlib.resources import files
 from threading import Lock
 from zoneinfo import ZoneInfo
 
 from .db import dumps
-from .memory_ops import Visibility, operation
+from .memory_ops import Visibility, operation, hard_memory_scopes
 from .models import Gateway, ModelError
 from .persona import split_sentences
-from .profile_common import ChatHealthGate, evidence_hash, excerpt, json_object, setting, whitespace
+from .profile_common import ChatHealthGate, evidence_hash, excerpt, json_object, setting, whitespace, load_profile_prompts, profile_prompt_metadata
 from .query_analysis import SubjectNames
 from .queue import estimate_tokens
 from .search_text import match_query, query_terms
@@ -31,6 +30,8 @@ DEFAULTS = dict(enabled=True, publish_mode='check_auto', memory_tokens=3000,
                 min_memories=8, min_changed=5, update_days=14, max_subjects_per_run=10,
                 max_items=5, max_chars=200, max_tokens=250,
                 generate_timeout_seconds=120, check_timeout_seconds=120)
+DEFAULT_PROMPT_VERSION = 'v2'  # EF-02 public external double-judge gate passed.
+PROMPT_VERSIONS = ('v1', 'v2')
 KINDS = {'relationship':'与我的关系', 'fact':'稳定事实', 'preference':'偏好与习惯', 'recent':'近期重要事项'}
 PUBLISH_MODES = ('check_auto','all_manual')
 DEGREES = ('small','medium','large')
@@ -83,7 +84,7 @@ def _runtime(conn):
 
 def _subject(conn, subject_id, *, writable=False):
     row=conn.execute('SELECT id,kind,name,revision,created_at,merged_into,merged_at FROM subjects WHERE id=?',(subject_id,)).fetchone()
-    if row is None:
+    if row is None or row['kind'] == 'entry':
         raise KeyError(subject_id)
     if writable and (row['kind']!='person' or row['id'] in ('self','scene') or row['merged_into'] is not None):
         raise ValueError('subject_unavailable')
@@ -154,7 +155,7 @@ class _SummaryNames(SubjectNames):
     def __init__(self, conn):
         self.labels = {}; self.aliases = defaultdict(list)
         self.names = {r['id']:r['name'] for r in conn.execute(
-            "SELECT id,name FROM subjects WHERE id!='scene' AND merged_into IS NULL")}
+            "SELECT id,name FROM subjects WHERE id!='scene' AND kind IN ('person','self') AND merged_into IS NULL")}
         for sid, name in self.names.items():
             if sid != 'self':
                 self.add(name, sid)
@@ -162,7 +163,7 @@ class _SummaryNames(SubjectNames):
         for row in conn.execute("""SELECT a.subject_id,a.alias FROM subject_aliases a
             JOIN subjects s ON s.id=a.subject_id
             LEFT JOIN messages x ON x.id=a.source_message_id LEFT JOIN entries e ON e.id=x.entry_id
-            WHERE s.id!='scene' AND s.merged_into IS NULL AND a.folded_into IS NULL
+            WHERE s.id!='scene' AND s.kind IN ('person','self') AND s.merged_into IS NULL AND a.folded_into IS NULL
             AND (a.source_message_id IS NULL OR e.visibility='shared') ORDER BY a.alias"""):
             self.add(row['alias'], row['subject_id'])
             self.aliases[row['subject_id']].append(row['alias'])
@@ -233,6 +234,9 @@ def _scopes(conn, memory_ids):
                  else frozenset([row['id'],*json.loads(row['visible_in_json'])]) & universe)
         scope=None if allowed==universe else allowed
         effective[root]=Visibility.intersect(effective[root],scope)
+    for mid,eid in hard_memory_scopes(conn,ids):
+        declared.add(mid)
+        effective[mid]=Visibility.intersect(effective[mid],frozenset({eid}))
     return declared,effective
 
 
@@ -245,10 +249,10 @@ def _dependencies(conn, memory_ids):
 
 def _direct_ids(conn, subject_id, current, *, limit=None):
     sql="""SELECT m.id FROM memories m INDEXED BY memories_dedupe
-        WHERE m.speaker_subject_id=? AND m.lifecycle='active' AND m.purged_at IS NULL
+        WHERE m.speaker_subject_id=? AND m.lifecycle='active' AND m.kind!='入口画像' AND m.purged_at IS NULL
         AND julianday(m.created_at)<=julianday(?) UNION
         SELECT m.id FROM memory_subjects ms INDEXED BY memory_subjects_by_subject
-        JOIN memories m ON m.id=ms.memory_id WHERE ms.subject_id=? AND m.lifecycle='active'
+        JOIN memories m ON m.id=ms.memory_id WHERE ms.subject_id=? AND m.lifecycle='active' AND m.kind!='入口画像'
         AND m.purged_at IS NULL AND julianday(m.created_at)<=julianday(?)"""
     args=[subject_id,current.isoformat(),subject_id,current.isoformat()]
     if limit is not None:
@@ -265,7 +269,7 @@ def _named_ids(conn, subject_id, names):
             continue
         table='memory_fts_'+tokenizer
         found.update(r[0] for r in conn.execute(
-            f'SELECT rowid FROM {table} WHERE {table} MATCH ?', ('content : ('+match_query(tokens)+')',)))
+            f"SELECT f.rowid FROM {table} f JOIN memories m ON m.id=f.rowid WHERE {table} MATCH ? AND m.kind!='入口画像'", ('content : ('+match_query(tokens)+')',)))
     return found
 
 
@@ -284,7 +288,7 @@ def _eligible(conn, subject_id, current, *, names=None):
         return []
     restricted,scopes=_scopes(conn,ids); rows=[]
     for item in conn.execute(f"""SELECT {_MEMORY_SELECT} FROM memories m
-        WHERE m.id IN (SELECT value FROM json_each(?)) AND m.lifecycle='active' AND m.purged_at IS NULL
+        WHERE m.id IN (SELECT value FROM json_each(?)) AND m.lifecycle='active' AND m.kind!='入口画像' AND m.purged_at IS NULL
         AND julianday(m.created_at)<=julianday(?) ORDER BY m.importance DESC,m.retention DESC,
         MAX(julianday(m.updated_at),julianday(m.last_confirmed_at)) DESC,m.id""",(dumps(sorted(ids)),current.isoformat())):
         if item['id'] in restricted or scopes[item['id']] is not None:
@@ -513,6 +517,32 @@ def _length_errors(content, sentences, config):
             ['token_budget'] if estimate_tokens(content)>config['max_tokens'] else [])
 
 
+def _trim_to_capacity(sentences, config):
+    """Reserve manual items, then greedily fit whole resolved model items.
+
+    Priority is relationship, fact, preference, recent; ties use input order.
+    Kept items retain their original order and all metadata. A non-fitting item
+    is skipped so a later, shorter item can still fit. Limits include rendered
+    labels, time ranges and newlines, using the normal token estimate. Manual
+    overflow is left for the existing rejection path; manual text is never cut.
+    Diagnostic indices refer to this pre-trim resolved list, not raw generation.
+    """
+    priority = {kind: rank for rank, kind in enumerate(('relationship', 'fact', 'preference', 'recent'))}
+    selected = {index for index, sentence in enumerate(sentences) if sentence['author'] == 'admin'}
+    removed = []
+    for index in sorted((i for i in range(len(sentences)) if i not in selected),
+                        key=lambda i: (priority[sentences[i]['kind']], i)):
+        candidate = [s for i, s in enumerate(sentences) if i in selected or i == index]
+        errors = _length_errors(''.join(s['text'] for s in candidate), candidate, config)
+        if errors:
+            removed.append({'index': index + 1, 'sentence': sentences[index],
+                            'reason': errors[0], 'stage': 'capacity'})
+        else:
+            selected.add(index)
+    return ([s for i, s in enumerate(sentences) if i in selected],
+            sorted(removed, key=lambda item: item['index']))
+
+
 def _insert(conn, subject_id, *, previous, content, sentences, checks, degree, status, stamp,
             author, source, material, memory_state, settings_revision, subject_revision):
     version=conn.execute('SELECT COALESCE(MAX(version),0)+1 FROM person_summary_versions WHERE subject_id=?',(subject_id,)).fetchone()[0]
@@ -537,8 +567,10 @@ def _insert(conn, subject_id, *, previous, content, sentences, checks, degree, s
 
 def _edit_segments(content, previous):
     # Keep an unchanged structured line with its evidence even if its text has punctuation.
+    # Cleared items retain audit metadata, not text that can match an edit.
     import re
-    known=sorted({s['text'] for s in previous['sentences'] if s.get('kind') in KINDS} if previous else [],key=len,reverse=True)
+    known=sorted({s['text'] for s in previous['sentences'] if s['text'] and s.get('kind') in KINDS}
+                 if previous else [],key=len,reverse=True)
     if not known:
         return split_sentences(content)
     parts=[]; start=0
@@ -558,7 +590,8 @@ def admin_edit(store, subject_id, content, *, expected_version, clock=utc_now):
         selected=_select(conn,subject_id,_instant(stamp))
     old=defaultdict(list)
     for item in previous['sentences'] if previous else []:
-        old[item['text']].append(item)
+        if item['text']:
+            old[item['text']].append(item)
     sentences=[old[text].pop(0) if old[text] else {'text':text,'basis':[],'author':'admin'}
                for text in _edit_segments(content,previous)]
     if _length_errors(content,sentences,config):
@@ -639,7 +672,48 @@ def _render(item):
     return KINDS[item['kind']]+'：'+item['body'].rstrip('。')+scope+'。\n'
 
 
-def _resolve(generated, evidence, previous, current):
+_WISH = re.compile(r'希望|愿望|想要|想(?!法|象|像|起|到|念)')
+_PLAN = re.compile(r'计划|打算|决定|确定要|将要')
+_DATED = re.compile(r'\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}月\d{1,2}[日号]|'
+                    r'明天|后天|下(?:周|星期|个月)|本(?:周|月)|月底|年底')
+
+
+def _intent_rows(item, memories):
+    # Do not turn a preference's explanation ("likes originals because 想听")
+    # into a future plan. Other ambiguous semantics remain the checker's task.
+    rows = [m for m in memories if m.get('kind') == '计划' or m.get('stance') == '计划'
+            or _WISH.search(m['content']) or _PLAN.search(m['content'])]
+    return rows if (_WISH.search(item['text']) or _PLAN.search(item['text'])
+                    or any(m.get('kind') == '计划' or m.get('stance') == '计划' for m in rows)) else []
+
+
+def _intent_issue(item, memories, current):
+    # Bounded lexical guards, not a general parser of wishes or event deadlines.
+    intent_rows = _intent_rows(item, memories)
+    if not intent_rows:
+        return None
+    def dated(row):
+        if _DATED.search(row['content']):
+            return True
+        try:
+            return _instant(row.get('event_time')) > _instant(row['created_at'])
+        except (ValueError, TypeError):
+            return False
+    # A newer unrelated fact or confirmation cannot extend a stale wish. An
+    # invented valid_until cannot turn an undated wish into a dated plan either.
+    if any(not dated(m) and current >= _recent_deadline([m]) for m in intent_rows):
+        return 'expired_undated_intent'
+    if _PLAN.search(item['text']) and any(_WISH.search(m['content']) for m in intent_rows) and not any(
+            _PLAN.search(m['content']) for m in intent_rows):
+        return 'intent_strengthened'
+    if item['kind'] != 'recent':
+        return 'intent_requires_recent'
+    if any(dated(m) for m in intent_rows) and not item.get('valid_until'):
+        return 'dated_intent_requires_deadline'
+    return None
+
+
+def _resolve(generated, evidence, previous, current, *, quality_checks=False):
     if set(generated)!={'items'} or not isinstance(generated['items'],list):
         raise ValueError('invalid_output')
     protected=copy.deepcopy([s for s in previous['sentences'] if s['author']=='admin'] if previous else [])
@@ -671,12 +745,16 @@ def _resolve(generated, evidence, previous, current):
                     except (TypeError,ValueError):
                         reason='invalid_or_expired_time_range'
                 else:
-                    deadline=_recent_deadline([refs[ref] for ref in item['memory_refs']])
+                    cited=[refs[ref] for ref in item['memory_refs']]
+                    intents=_intent_rows(item,cited) if quality_checks else []
+                    deadline=(min(_recent_deadline([m]) for m in intents) if intents else _recent_deadline(cited))
                     valid['expires_at']=deadline.isoformat()
                     if current>=deadline:
                         reason='invalid_or_expired_time_range'
             elif 'time_range' in item or 'valid_until' in item:
                 reason='unexpected_time_range'
+            if quality_checks:
+                reason=_intent_issue(item,[refs[ref] for ref in item['memory_refs']],current) or reason
             if not reason:
                 valid['text']=_render(valid)
                 if valid['text'].strip() in manual or item['text'].strip() in manual:
@@ -754,8 +832,11 @@ def _check_run_admission(conn, subject_id, run_id):
 
 
 class PersonSummaryEngine:
-    def __init__(self, store, gateway, *, clock=utc_now):
+    def __init__(self, store, gateway, *, clock=utc_now, prompt_version=None):
         self.store,self.gateway,self.clock=store,gateway,clock
+        self.prompt_version=DEFAULT_PROMPT_VERSION if prompt_version is None else prompt_version
+        self.prompts=load_profile_prompts('person_summary',self.prompt_version,PROMPT_VERSIONS)
+        self.prompt_metadata=profile_prompt_metadata(self.prompts)
 
     def update(self, subject_id, *, expected_version, run_id=None):
         return self._run(subject_id,expected_version,'periodic',run_id=run_id)
@@ -779,17 +860,19 @@ class PersonSummaryEngine:
         if getattr(gateway,'health',None):
             gateway.health.check('chat','learning')
         purpose='consolidation_person_summary_'+kind
-        prompt=files('iris').joinpath(f'prompts/person_summary_{kind}_v1.md').read_text(encoding='utf-8')
+        loaded=self.prompts[kind]
+        provenance={key:loaded[key] for key in ('prompt_version','prompt_sha256')}
+        prompt=loaded['text']
         messages=[{'role':'system','content':prompt},{'role':'user','content':dumps(payload)}]
         monotonic=getattr(gateway,'monotonic',time.monotonic); started=monotonic()
         try:
             reply=gateway.chat(messages,purpose,max_tokens=16000,_deadline=started+config[kind+'_timeout_seconds'])
         except ModelError as error:
-            calls.append({'purpose':purpose,'result':error.category,'reason':error.reason or error.category,
+            calls.append({**provenance,'purpose':purpose,'result':error.category,'reason':error.reason or error.category,
                           'duration_ms':round((monotonic()-started)*1000),'usage':{}})
             raise
         outputs[purpose]=reply.content
-        calls.append({'purpose':purpose,'result':'success','duration_ms':round((monotonic()-started)*1000),
+        calls.append({**provenance,'purpose':purpose,'result':'success','duration_ms':round((monotonic()-started)*1000),
                       'usage':reply.usage,'finish_reason':reply.finish_reason})
         if reply.finish_reason!='stop':
             raise ValueError('incomplete_output')
@@ -901,10 +984,15 @@ class PersonSummaryEngine:
         try:
             try:
                 generated=self._call(gateway,'generate',material,outputs,calls,config)
-                sentences,deleted,count=_resolve(generated,evidence,{'sentences':material['admin_sentences']},_instant(stamp).astimezone(ZoneInfo(evidence['timezone'])))
-                checks.update(deleted_sentences=deleted,original_item_count=count,original_sentences=generated['items'])
+                sentences,deleted,count=_resolve(generated,evidence,{'sentences':material['admin_sentences']},_instant(stamp).astimezone(ZoneInfo(evidence['timezone'])),quality_checks=self.prompt_version=='v2')
+                sentences,trimmed=_trim_to_capacity(sentences,config)
+                # Capacity omissions are not quality failures and cannot dilute
+                # the existing more-than-half quality-deletion rejection rule.
+                quality_count=count-len(trimmed)
+                checks.update(deleted_sentences=deleted,original_item_count=count,original_sentences=generated['items'],
+                              trimmed_sentences=trimmed,quality_item_count=quality_count)
                 content=''.join(s['text'] for s in sentences)
-                if len(deleted)*2>count:
+                if len(deleted)*2>quality_count:
                     checks['errors'].append('too_many_deleted')
                 checks['errors']+=_length_errors(content,sentences,config)
                 if not checks['errors']:
@@ -917,14 +1005,15 @@ class PersonSummaryEngine:
                     sentences,removed,warnings,degree=_check(output,sentences)
                     checks['deleted_sentences']+=removed; checks['admin_warnings']=warnings
                     content=''.join(s['text'] for s in sentences)
-                    if len(checks['deleted_sentences'])*2>count:
+                    if len(checks['deleted_sentences'])*2>quality_count:
                         checks['errors'].append('too_many_deleted')
                     checks['errors']+=_length_errors(content,sentences,config)
                     if removed:
                         degree='large'
                 checks['passed']=not checks['errors']
                 checks['deterministic']={'passed':checks['passed'],'errors':list(checks['errors']),
-                    'characters':len(content),'tokens':estimate_tokens(content),'deleted_count':len(checks['deleted_sentences'])}
+                    'characters':len(content),'tokens':estimate_tokens(content),'deleted_count':len(checks['deleted_sentences']),
+                    'trimmed_count':len(checks['trimmed_sentences'])}
             except (ModelError,ValueError) as error:
                 if isinstance(error,PersonSummaryConflict):
                     raise
@@ -1128,14 +1217,14 @@ def people_context(conn, entry_id, *, participants=None, participant_names=None,
             # Reuse recall's unambiguous ID, not its unfiltered alias provenance.
             # This final snapshot checks only that subject's name/public aliases.
             if sid is None or not conn.execute("""SELECT 1 FROM subjects s
-                WHERE s.id=? AND s.merged_into IS NULL AND (s.name=? OR EXISTS (
+                WHERE s.id=? AND s.kind IN ('person','self') AND s.merged_into IS NULL AND (s.name=? OR EXISTS (
                     SELECT 1 FROM subject_aliases a LEFT JOIN messages m ON m.id=a.source_message_id
                     LEFT JOIN entries e ON e.id=m.entry_id WHERE a.subject_id=s.id AND a.alias=?
                     AND a.folded_into IS NULL AND (a.source_message_id IS NULL OR e.visibility='shared')))""",
                     (sid,ref,ref)).fetchone():
                 continue
         else:
-            exact=conn.execute('SELECT id FROM subjects WHERE id=?',(ref,)).fetchone()
+            exact=conn.execute("SELECT id FROM subjects WHERE id=? AND kind IN ('person','self')",(ref,)).fetchone()
             if exact:
                 sid=canonical_subject(conn,ref)
             else:
@@ -1144,7 +1233,7 @@ def people_context(conn, entry_id, *, participants=None, participant_names=None,
                 matches=conn.execute('''SELECT DISTINCT s.id FROM subjects s
                     LEFT JOIN subject_aliases a ON a.subject_id=s.id AND a.folded_into IS NULL
                     LEFT JOIN messages m ON m.id=a.source_message_id LEFT JOIN entries e ON e.id=m.entry_id
-                    WHERE s.merged_into IS NULL AND (s.name=? OR (a.alias=? AND
+                    WHERE s.merged_into IS NULL AND s.kind IN ('person','self') AND (s.name=? OR (a.alias=? AND
                         (a.source_message_id IS NULL OR e.visibility='shared')))''',(ref,ref)).fetchall()
                 if len(matches)!=1:
                     continue

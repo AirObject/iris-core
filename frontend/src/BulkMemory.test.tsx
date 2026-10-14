@@ -5,6 +5,16 @@ import { BulkMemoryDialog } from "./BulkMemory";
 import { setCSRF } from "./api";
 
 let requests: { url: string; body: any; headers: any }[];
+const previewNotice = {
+  scheduled_backup_keep: 13,
+  upgrade_backup_keep: 3,
+  message: "已有备份仍有副本；定时备份最多保留 13 份（预览）。",
+};
+const resultNotice = {
+  scheduled_backup_keep: 5,
+  upgrade_backup_keep: 3,
+  message: "已有备份仍有副本；定时备份最多保留 5 份（结果）。",
+};
 let conflict: boolean;
 let empty: boolean;
 const changed = vi.fn(),
@@ -25,6 +35,9 @@ beforeEach(() => {
         return new Response(
           JSON.stringify({
             scope: { subject_id: "A" },
+            ...(body.action === "purge"
+              ? { backup_notice: previewNotice }
+              : {}),
             action: body.action,
             include_pinned: body.include_pinned,
             counts: { active: empty ? 0 : 2, forgotten: 0, deleted: 0 },
@@ -50,6 +63,7 @@ beforeEach(() => {
         );
       const result = {
         status: conflict ? "conflict" : "completed",
+        ...(body.action === "purge" ? { backup_notice: resultNotice } : {}),
         count: conflict ? 1 : 2,
         memory_ids: conflict ? [7] : [7, 8],
         skipped_count: 0,
@@ -120,9 +134,10 @@ test("purge requires second confirmation and exposes retained-source reasons", a
     await screen.findByRole("button", { name: "确认批量彻底清除" }),
   );
   expect(requests).toHaveLength(1);
+  expect(screen.getByText(previewNotice.message)).toBeVisible();
   expect(
-    screen.getByText(/不清除批次尝试中的模型原始输出/),
-  ).toBeInTheDocument();
+    screen.queryByText(/不清除批次尝试中的模型原始输出/),
+  ).not.toBeInTheDocument();
   const final = screen.getByRole("button", { name: "再次确认并彻底清除" });
   expect(final).toBeDisabled();
   await user.click(screen.getByLabelText("我理解此操作不可撤销"));
@@ -131,6 +146,8 @@ test("purge requires second confirmation and exposes retained-source reasons", a
     await screen.findByText("已批量彻底清除 2 条记忆。"),
   ).toBeInTheDocument();
   expect(requests.at(-1)?.body.confirm).toBe(true);
+  expect(screen.getByText(resultNotice.message)).toBeVisible();
+  expect(screen.queryByText(previewNotice.message)).not.toBeInTheDocument();
   expect(screen.getByText(/仍是目标的来源/)).toBeInTheDocument();
 });
 test("409 shows committed portion and requires a fresh preview", async () => {
@@ -158,4 +175,24 @@ test("empty selection cannot execute, cancel never applies", async () => {
   await user.click(screen.getByRole("button", { name: "关闭详情" }));
   expect(closed).toHaveBeenCalledOnce();
   expect(requests).toHaveLength(1);
+});
+
+test("部分清除后仍显示结果中的备份提示，重新预览前不复用旧提示", async () => {
+  conflict = true;
+  const user = mount();
+  await user.selectOptions(screen.getByLabelText("目标操作"), "purge");
+  await user.click(screen.getByRole("button", { name: "预览范围" }));
+  await user.click(
+    await screen.findByRole("button", { name: "确认批量彻底清除" }),
+  );
+  await user.click(screen.getByLabelText("我理解此操作不可撤销"));
+  await user.click(screen.getByRole("button", { name: "再次确认并彻底清除" }));
+  expect(
+    await screen.findByText("操作未全部完成，已处理 1 条记忆。"),
+  ).toBeVisible();
+  expect(screen.getByText(resultNotice.message)).toBeVisible();
+  expect(screen.queryByText(previewNotice.message)).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "再次确认并彻底清除" }),
+  ).not.toBeInTheDocument();
 });
