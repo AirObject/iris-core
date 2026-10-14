@@ -601,3 +601,13 @@ def test_settings_change_reschedules_a_stale_candidate_check(store):
     assert not fresh.calls
     run(store,fresh)
     assert len(fresh.calls)==1 and profiles(store)[0]['usable']
+
+
+def test_progress_counts_only_live_automatic_waiting_candidates(store):
+    add(store,'轻量背包与结实背包各有什么取舍？')
+    run(store,Gateway(store))
+    write_entry_profile_memory(store,'group',op='new',manual=True,content='管理员说明。',category=None)
+    with store.read() as conn: assert ep.incremental_progress(conn,'group')['waiting_candidates']==1
+    row=next(r for r in profiles(store) if not r['manual_protected'])
+    assert manage_memory(store,row['memory_id'],row['revision'],action='forget')
+    with store.read() as conn: assert ep.incremental_progress(conn,'group')['waiting_candidates']==0

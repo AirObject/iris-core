@@ -2249,6 +2249,10 @@ def _refresh_incremental_admissions(conn):
 
 
 def incremental_progress(conn, entry_id):
+    from .memory_ops import _profile_manual
+    waiting=conn.execute("""SELECT m.* FROM entry_profile_admissions a JOIN entry_profile_memories p ON p.memory_id=a.memory_id
+        JOIN memories m ON m.id=a.memory_id WHERE p.entry_id=? AND a.state!='accepted'
+        AND m.lifecycle='active' AND m.purged_at IS NULL""",(entry_id,)).fetchall()
     state=_memory_state(conn,entry_id)
     rows=conn.execute('''SELECT kind,state,COUNT(*) n FROM entry_profile_incremental_work WHERE entry_id=? GROUP BY kind,state''',(entry_id,)).fetchall()
     counts={(r['kind'],r['state']):r['n'] for r in rows}
@@ -2259,7 +2263,7 @@ def incremental_progress(conn, entry_id):
         failed_checks=counts.get(('admit','failed'),0),rejected_checks=counts.get(('admit','rejected'),0),
         observation_gaps=sum(counts.get(('observe',s),0) for s in ('queued','running','deferred','failed')),
         unscanned_messages=conn.execute('SELECT COUNT(*) FROM messages WHERE entry_id=? AND id>?',(entry_id,state['scan_cursor'])).fetchone()[0],
-        waiting_candidates=conn.execute("SELECT COUNT(*) FROM entry_profile_admissions a JOIN entry_profile_memories p ON p.memory_id=a.memory_id WHERE p.entry_id=? AND a.state!='accepted'",(entry_id,)).fetchone()[0],
+        waiting_candidates=sum(not _profile_manual(conn,memory) for memory in waiting),
         oldest_pending_at=conn.execute("SELECT MIN(created_at) FROM entry_profile_incremental_work WHERE entry_id=? AND state IN ('queued','running','deferred','failed')",(entry_id,)).fetchone()[0])
 
 
