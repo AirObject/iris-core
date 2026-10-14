@@ -12,7 +12,7 @@
 
 四个原字段类型不变。新增 `memory_ids: list[int]`，按 text 的条目顺序一一对应；正文不拼入引用原话。EF-10将每条正文中的换行及连续空白合为一个空格后投影，因此多行“管理员说明”仍只占一条、一行和一个memory_id；管理返回的body与数据库原文保留换行，不丢失内容。`known_memory_ids` 同时排除画像分区中的对应条目，过滤不回填。version 是入口投影版本，与任何单条 memory.revision、旧文档 version 均不是同一标识。
 
-新增、正文修改、撤下、生命周期、依据或可见范围变化导致实际展示集合变化时，同一写事务将 version 加一；同一事务多次变化只加一次。确认强度变化而集合不变、分页查询和读取不加版本。generated_at 仅在投影变化时更新。存在未处理消息／待重建时 possibly_stale=true；依据失效的自动条目直接移出投影。禁用／私聊／无可展示条目返回 null。
+新增、正文修改、撤下、生命周期、依据或可见范围变化导致实际展示集合变化时，同一写事务将 version 加一；同一事务多次变化只加一次。确认强度变化而集合不变、分页查询和读取不加版本。generated_at 仅在投影变化时更新。存在未处理消息、观察缺口、排队／失败检查或待重建时 possibly_stale=true；仅缺第二次证据的候选不单独令它陈旧；依据失效的自动条目直接移出投影。禁用／私聊／无可展示条目返回 null。
 
 自动条目按 rule、topic、saying 及 ID 排序，复用 6 条／500 估算 token 的展示预算；人工条目优先，并不因预算被隐藏。未展示 ID 在管理 diagnostics.omitted_memory_ids 中列出。管理者主动遗忘／删除仍有效；“手写规则始终有效”限制的是自动任务不能改写或撤下。
 
@@ -56,9 +56,30 @@ migration 每行包含 entry_id、legacy_version、sentence_index、disposition�
 
 错误仍采用 `{"error":{"code":"...","message":"..."}}`：投影版本／设置冲突 409 entry_profile_conflict；已有任务 409 entry_profile_generation_in_progress；记忆修订冲突 409 revision_conflict；对象缺失 404 not_found；参数错误 400 invalid_request。认证／CSRF 错误沿用原接口。
 
-## 后台任务预算（EF-09）
+## 每日增量任务（EF-13，替代 EF-09／10 的整包任务描述）
 
-记忆形式任务的生成与检查各有 180 秒请求预算，首次、HTTP重试和一次JSON结构修正共用本阶段原截止时间。每阶段最多一次格式修正；修正仍失败为failed、reason=invalid_output，语义拒绝不会触发重试。到期状态为 failed、reason=timeout；保留调用诊断，不写回记忆、游标或投影。调用诊断保留 timeout_seconds，格式错误另记validation_error；原始与修正输出分别以generate／generate_repair、check／check_repair保存，同受清除保护。没有新增路由、请求参数或错误码。旧文档路径及其已保存的 generate_timeout_seconds／check_timeout_seconds 不改；记忆路径沿用独立 MemoryProfileLimits，不以这两个旧设置控制超时；旧字段仍按原运行配置规则校验。
+自动生成继续开启，没有 auto_generate 设置。enabled 仍控制整个画像功能。每日维护处理角色时区已经结束的日期；“立即运行”也处理当日尾块。请求与 HTTP 202／409 不变，不新增审批。
+
+候选本身是 kind=入口画像 的记忆，importance=30；来源够独立且逐条检查通过才准入、importance 提为 50，继续普通衰减。失去准入回到候选且停止投影，importance 不回降。人工条目不走自动准入。
+
+`profile.memories[]` 兼容新增：
+
+| 字段 | 类型／含义 |
+| --- | --- |
+| admission_state | manual／candidate／pending／accepted／rejected；pending 是模型检查排队，非管理员待确认 |
+| independent_days | integer，按角色时区及确定性独立性规则累计的本地日期数 |
+| independent_uses | integer，去掉转引、复述、接龙、刷屏等后的独立依据次数 |
+| admission_reason | string 或 null，例如 evidence_budget_exceeded、basis_changed、reject、invalid_output、timeout |
+| sources | 已审依据；自动候选可为空，不将未审引文作为已发布依据 |
+| pending_sources | 尚未准入检查的绑定依据，仅管理侧诊断；继续受硬范围和清除约束 |
+
+profile 顶层及 latest_attempt／attempt 详情兼容加 `progress`：scan_cursor（已持久排队位置）、applied_cursor（连续完成位置）、observation_chunks、completed_chunks、pending_checks、failed_checks、rejected_checks、observation_gaps、unscanned_messages、waiting_candidates、oldest_pending_at（string 或 null）。两类游标都是数据库消息 ID，不是发生时间。待审候选不等于失败；observation_gaps 非零时 applied_cursor 不越过缺口。
+
+任务详情兼容加 `work[]`，每项为 id、kind=observe／admit、state=queued／running／applied／failed／rejected／cancelled／deferred、local_day、memory_id、cursor_before／cursor_after、attempts、reason、retry_at、created_at／finished_at。返回进度元数据，不返回模型原始输出。顶层 stage 仍为 generating／checking／finished，可在一轮中多次切换；state=published 表示提交了部分观察或检查结果，不代表所有候选都已展示，细节以 work 和 progress 为准。
+
+每个观察、每个单条检查分别有 180 秒预算，初次、HTTP 重试、一次 JSON 修正与解析共享截止。每次实际调用（包括修正）独立扣维护轮 max_calls；入口轮转，额度不足留队。生产超时／429 按条延期，其他已提交条目保留；同输入至多两次后续重试。格式修正仍失败为该工作项 invalid_output，不回滚此前观察，也不发布未经准入的候选。原始输出内部按 observe／observe_repair、admit／admit_repair 保存，重试追加 attempt 编号，仍接清除索引。
+
+旧文档已保存的 generate_timeout_seconds／check_timeout_seconds 保留且按原规则校验；新路径使用独立 IncrementalProfileLimits（180 秒），不改写旧设置。观察 48 条／3000 估算 token，目录 32 条／1500 token；检查最多 6 条证据／2000 token。超预算条目保留诊断，不截证据凑准入。
 
 ## UX 过渡
 
@@ -67,3 +88,7 @@ migration 每行包含 entry_id、legacy_version、sentence_index、disposition�
 ## EF-10变更清单
 
 仅兼容新增profile.memories[].last_confirmed_at；多行管理员说明的宿主投影合为同一行，memory_ids对应关系不变。JSON修正新增内部purpose后缀_repair与诊断，不新增路由、请求参数或阶段枚举。生成原始输出保存后仍使用既有checking阶段（包含格式修正期间），最终失败reason区分invalid_output、timeout及call_budget。其余410／CAS／历史与UX过渡规则不变。
+
+## EF-13 兼容性说明
+
+宿主四原字段及 memory_ids、人工逐条 CRUD／CAS、旧写接口 410、legacy 历史、last_confirmed_at 和多行管理员说明规则均保留。显式按画像 kind 搜索只返回已准入自动条目或有效人工条目；管理员仍可看到未准入候选。新字段均为兼容新增，UX 不需修改写请求格式。

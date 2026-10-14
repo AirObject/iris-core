@@ -450,101 +450,193 @@ def score_draft(materials, judgments, *, judge_model):
         original_judgments=rounds, judgments=combined, disagreements=differences, coverage_losses=losses, metrics=metrics)
 
 
-def run_sqlite(corpus, out, *, gateway_factory=None, configs=None):
-    """Sequential production engine, actual SQLite writes and host projection.
+def _incremental_stages(work, manual):
+    """Chronological snapshots; evidence from later days never backfills earlier versions."""
+    stages={name:copy.deepcopy(manual) for name in STAGES}
+    accumulated={}
+    for item in work:
+        payload=json.loads(item['payload_json']); result=json.loads(item['result_json'])
+        if item['kind']=='observe':
+            values=result.get('generated',[])
+            directory={p['memory_id']:p for p in payload.get('profiles',[])}
+            applied={r['index']:r for r in result.get('applied',[])}
+            for index,raw in enumerate(values,1):
+                target=directory.get(raw.get('memory_id'),{})
+                mid=raw.get('memory_id',applied.get(index,{}).get('memory_id',f"{item['id']}:{index}"))
+                body=raw.get('body',target.get('body',''))
+                if raw.get('action')=='retire': continue
+                candidate=dict(memory_id=mid,body=body,category=raw.get('category',target.get('category')),
+                    author='admin' if target.get('manual_protected') else 'model',observed_at=payload['as_of'],
+                    work_id=item['id'],sources=[])
+                key=(mid,body)
+                candidate['sources']=copy.deepcopy(accumulated.get(key,[]))
+                for ref in raw.get('source_refs',[]):
+                    try:
+                        bound=_memory_bind_source(dict(ref='msg:'+str(ref['message_id']),field=ref['field'],
+                            excerpt=ref['excerpt'],via_memory=None),dict(messages=payload['messages'],memories=[]))
+                        candidate['sources'].append(_judge_source(bound))
+                    except ValueError:
+                        candidate['sources'].append({k:ref[k] for k in ('message_id','field','excerpt') if k in ref})
+                stages['generated'].append(candidate)
+                if index in applied: accumulated[key]=candidate['sources']
+        else:
+            memory=payload.get('memory')
+            if not memory or memory.get('action')=='retire': continue
+            sources=[]
+            for source in memory['sources']:
+                # Only frozen per-item evidence, without model verdict fields.
+                value={k:source[k] for k in ('field','excerpt','speaker')}
+                value['ref']='msg:'+str(source['message_id'])
+                value['message']=dict(ref=value['ref'],entry_id=payload['entry_id'],kind='message',
+                    speaker=source['speaker'],content=source['context'],date=source['date'],occurred_at=source['occurred_at'])
+                if source.get('quote'): value['message']['quote']=_judge_message({'quote':source['quote']})['quote']
+                sources.append(value)
+            candidate={k:memory[k] for k in ('memory_id','revision','category','body')}
+            candidate.update(author='model',sources=sources,observed_at=payload['as_of'],work_id=item['id'])
+            stages['deterministic'].append(candidate)
+            parsed=json.loads(item['parsed_json']) if item['parsed_json'] else {}
+            if item['state']=='applied' and parsed.get('decision')=='accept':
+                checked=copy.deepcopy(candidate);checked['sources']=[]
+                for safe in parsed['safe_sources']:
+                    match=next(s for s in sources if s['ref']=='msg:'+str(safe['message_id']) and s['field']==safe['field'] and safe['excerpt'] in s['excerpt'])
+                    checked['sources'].append({**match,'excerpt':safe['excerpt']})
+                stages['checked'].append(checked)
+    return stages
 
-    Factory injection is explicitly fake and cannot claim a quality gate. A
-    timeout/429 interrupts the run immediately; remaining cases are exported as
-    not-run, all preceding traces are retained, and gate_eligible becomes false.
-    """
+
+def _replay_arrivals(store, case, messages, remaining_memories, ids):
+    from iris.db import dumps
+    from iris.entry_profile import _instant
+    with store.write() as conn:
+        for message in messages:
+            sender=message.get('sender','speaker');stamp=message['at']
+            conn.execute('INSERT OR IGNORE INTO subjects(id,kind,name,created_at) VALUES(?,?,?,?)',
+                (sender,'self' if sender=='self' else 'person',sender,stamp))
+            quote=message.get('quote',{})
+            ids[message['id']]=conn.execute('''INSERT INTO messages(entry_id,kind,sender_subject_id,content,occurred_at,
+                received_at,dedupe_key,quote_author_subject_id,quote_content) VALUES(?,?,?,?,?,?,?,?,?)''',
+                (message.get('entry_id',case['entry']['id']),message.get('kind','message'),sender,message['text'],stamp,
+                 stamp,message['id'],quote.get('sender'),quote.get('text'))).lastrowid
+        for index,memory in list(remaining_memories.items()):
+            if not set(memory['sources'])<=ids.keys(): continue
+            stamps=[m['at'] for m in case['messages'] if m['id'] in memory['sources']]
+            stamp=max(stamps,key=_instant) if stamps else case['as_of']
+            mid=conn.execute('''INSERT INTO memories(content,kind,speaker_subject_id,stance,belief,importance,retention,
+                lifecycle,entry_id,created_at,updated_at,first_confirmed_at,last_confirmed_at)
+                VALUES(?,'事实','self',?,90,?,80,?,?,?,?,?,?)''',
+                (memory['content'],memory.get('stance','亲历'),memory.get('importance',50),memory.get('lifecycle','active'),
+                 case['entry']['id'],stamp,stamp,stamp,stamp)).lastrowid
+            for key in dict.fromkeys(memory['sources']):
+                conn.execute("INSERT INTO sources(memory_id,kind,message_id,created_at) VALUES(?,'message',?,?)",(mid,ids[key],stamp))
+            del remaining_memories[index]
+
+
+def run_sqlite(corpus, out, *, gateway_factory=None, configs=None):
+    """Pre-registered daily_plus_final_flush, through production SQLite admission."""
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
     from unittest.mock import patch
     from iris.db import Store, dumps
-    from iris.entry_profile import EntryProfileEngine, memory_profile_rows, profile_context, _instant
+    from iris.entry_profile import EntryProfileEngine, memory_profile_rows, profile_context, _instant, _memory_state, incremental_prompts
     from iris.memory_ops import write_entry_profile_memory
+    from iris.maintenance import Maintenance
     from iris.models import Gateway, ModelError
     from .runner import _load_case, _model_metadata, _redacted
     if (gateway_factory is None)==(configs is None):
         raise ValueError('provide exactly one real configuration or fake gateway factory')
-    root=Path(out); root.mkdir(parents=True,exist_ok=False)
-    materials=root/'judging-materials'; cases=load_corpus(corpus)
-    entries=[]; traces=[]; hashes={}; invalid=None
+    root=Path(out);root.mkdir(parents=True,exist_ok=False)
+    materials=root/'judging-materials';cases=load_corpus(corpus)
+    entries=[];traces=[];invalid=None
+    hashes={p['name']:p['sha256'] for p in incremental_prompts().values()}
 
     class EvaluationGateway(Gateway):
+        abort_on_model_transport_error=True
         def _record(self,*args,**kwargs):
             super()._record(*args,**kwargs)
             status=kwargs.get('status_code',args[7] if len(args)>7 else None)
             if status==429 or kwargs.get('timed_out'):
-                # Record the network outcome, but do not retry a tainted round.
                 raise ModelError('retryable','evaluation interrupted',reason='rate_limited' if status==429 else 'timeout')
 
     for index,case in enumerate(cases,1):
-        store=Store(root/'databases'/f'{index:04d}.db'); gateway=None
+        store=Store(root/'databases'/f'{index:04d}.db');gateway=None;results=[];checkpoints=[]
+        entry_id=case['entry']['id'];current=_instant(case['as_of'])
+        zone=ZoneInfo(case.get('timezone','Asia/Shanghai'));as_of=current.astimezone(zone)
         try:
-            _load_case(store,{**case,'initial_profile':''})
-            entry_id=case['entry']['id']; clock=lambda:_instant(case['as_of'])
+            _load_case(store,{**case,'messages':[],'memories':[],'initial_profile':''})
+            store.set_setting('consolidation',{'enabled':False})
+            store.set_setting('scheduled_backup',{'enabled':False})
+            clock=lambda:current
             if case.get('initial_profile'):
                 with patch('iris.entry_profile.utc_now',clock):
                     write_entry_profile_memory(store,entry_id,op='new',content=case['initial_profile'],category=None,
                         importance=80,manual=True,current=clock())
-            gateway=(gateway_factory(case['id'],store) if gateway_factory else EvaluationGateway(configs,store=store))
-            engine=EntryProfileEngine(store,gateway,clock=clock)
-            task=EntryProfileMemoryTask(None,gateway)
-            hashes.update({p['name']:p['sha256'] for p in task.prompts.values()})
-            results=[]
-            while not invalid:
-                with store.read() as conn:
-                    from iris.entry_profile import _memory_state
-                    expected=_memory_state(conn,entry_id)['version']
-                # Use the case's observation time in the transaction projection
-                # too. The public corpus may be later than the device clock.
-                with patch('iris.entry_profile.utc_now',clock):
-                    outcome=engine.regenerate(entry_id,expected_version=expected)
-                result=outcome.get('result')
-                if result is None:
-                    result=dict(status='no_new_evidence' if outcome.get('reason')=='no_new_evidence' else 'unavailable',
-                        reason=outcome.get('reason'),material={'profiles':[],'messages':[],'memories':[]},
-                        stages={s:[] for s in STAGES[:-1]},calls=[],outputs={},removed=[])
-                results.append(result)
-                if result.get('reason') in ('timeout','rate_limited') or any(c.get('reason') in ('timeout','rate_limited') for c in result['calls']):
-                    invalid=dict(case_id=case['id'],page=len(results),reason=result.get('reason'))
-                    break
-                if result['status']!='committed' or not result['material'].get('has_more'):
-                    break
-            if not results:
-                results=[dict(status='not_run',reason='earlier_timeout_or_429',material={'profiles':[],'messages':[],'memories':[]},
-                    stages={s:[] for s in STAGES[:-1]},calls=[],outputs={},removed=[])]
+            with store.read() as conn: manual=[_judge_memory(p) for p in memory_profile_rows(conn,entry_id) if p['author']=='admin']
+            arrivals=sorted(enumerate(case['messages']),key=lambda pair:(_instant(pair[1]['at']),pair[0]))
+            position=0;ids={};remaining=dict(enumerate(case.get('memories',[])))
+            if not invalid:
+                gateway=gateway_factory(case['id'],store) if gateway_factory else EvaluationGateway(configs,store=store)
+                gateway.abort_on_model_transport_error=True
+                engine=EntryProfileEngine(store,gateway,clock=clock)
+                start=min((_instant(m['at']).astimezone(zone) for m in case['messages']),default=as_of)
+                slot=start.replace(hour=3,minute=0,second=0,microsecond=0)+timedelta(days=1)
+                times=[]
+                while slot<=as_of:
+                    times.append((slot,'daily'));slot+=timedelta(days=1)
+                times.append((as_of,'final_flush'))
+                for current,mode in times:
+                    batch=[]
+                    while position<len(arrivals) and _instant(arrivals[position][1]['at'])<=current:
+                        batch.append(arrivals[position][1]);position+=1
+                    with patch('iris.entry_profile.utc_now',clock):
+                        _replay_arrivals(store,case,batch,remaining,ids)
+                        if mode=='daily':
+                            maintenance=Maintenance(store,clock=clock)
+                            maintenance.run(maintenance.request(trigger='scheduled',schedule_key=current.date().isoformat()))
+                        with store.read() as conn: expected=_memory_state(conn,entry_id)['version']
+                        outcome=(engine.update if mode=='daily' else engine.regenerate)(entry_id,expected_version=expected)
+                    result=outcome.get('result',dict(status='no_new_evidence',reason=outcome.get('reason'),work=[],calls=[]))
+                    results.append(dict(as_of=current.isoformat(),mode=mode,**result))
+                    with store.read() as conn:
+                        checkpoints.append(dict(as_of=current.isoformat(),mode=mode,profiles=memory_profile_rows(conn,entry_id,as_of=current.isoformat())))
+                    # Durable per-day results even if a later request interrupts the round.
+                    _write(root/f'case-{case["id"]}-progress.json',_redacted(dict(steps=results,checkpoints=checkpoints),configs or {}))
+                    if result.get('reason') in ('timeout','rate_limited') or any(c.get('reason') in ('timeout','rate_limited') for c in result.get('calls',[])):
+                        invalid=dict(case_id=case['id'],step=len(results),reason=result.get('reason'));break
+            current=as_of
             with store.read() as conn:
                 profiles=memory_profile_rows(conn,entry_id,as_of=case['as_of'],usable_only=True)
+                all_profiles=memory_profile_rows(conn,entry_id,as_of=case['as_of'])
                 projection=profile_context(conn,entry_id)
+                work=[dict(r) for r in conn.execute('SELECT * FROM entry_profile_incremental_work WHERE entry_id=? ORDER BY id',(entry_id,))]
                 calls=[dict(r) for r in conn.execute('''SELECT purpose,model,status_code,result_category,timed_out,finish_reason,
                     reasoning_effort,prompt_tokens,completion_tokens,duration_ms FROM model_calls ORDER BY id''')]
                 migration=[dict(r) for r in conn.execute('SELECT * FROM entry_profile_legacy_migration')]
-            payload=judging_input(case,results[-1],profiles)
-            payload['projection']=projection or dict(text='',memory_ids=[])
-            displayed=set(payload['projection']['memory_ids'])
-            payload['stages']['projected']=[m for m in payload['memories'] if m['memory_id'] in displayed]
+            memories=[_judge_memory(p) for p in profiles]
+            stages=_incremental_stages(work,manual)
+            displayed=set((projection or {}).get('memory_ids',[]))
+            stages['projected']=[m for m in memories if m['memory_id'] in displayed]
+            payload=dict(entry={k:case['entry'][k] for k in ('id','kind')},as_of=case['as_of'],timezone=case.get('timezone','Asia/Shanghai'),
+                memories=memories,projection=projection or dict(text='',memory_ids=[]),stages=stages,
+                must_cover=case.get('must_cover',[]),forbidden=case.get('forbidden',[]))
             document=dict(format_version=2,evaluation='entry_profile_memory',case_id=case['id'],input=payload)
             relative=f'cases/{index:04d}.json';_write(materials/relative,document)
-            traces.append(dict(case_id=case['id'],pages=results,model_calls=calls,migration=migration))
-            diagnostics=dict(pages=len(results),
-                quote_total=sum(r.get('quote_validation',{}).get('total',0) for r in results),
-                quote_matched=sum(r.get('quote_validation',{}).get('matched',0) for r in results),
-                omitted_anchors=sum(r['material'].get('diagnostics',{}).get('omitted_anchors',0) for r in results),
-                omitted_memories=sum(r['material'].get('diagnostics',{}).get('omitted_memories',0) for r in results),
-                truncated_messages=sum(r['material'].get('diagnostics',{}).get('truncated_messages',0) for r in results),
-                failed_calls=sum(c.get('result')!='success' for r in results for c in r['calls']))
-            entries.append(dict(case_id=case['id'],file=relative,sha256=evidence_hash(document),
-                judgment_file=f'{index:04d}.json',execution_status=results[-1]['status'],diagnostics=diagnostics))
-            # Durable progress after each case; never lose earlier successful traces.
+            status='committed' if any(w['state']=='applied' for w in work) else 'failed' if results and any(r.get('work') for r in results) else 'no_new_evidence' if results else 'not_run'
+            if invalid and invalid['case_id']==case['id']: status='interrupted'
+            diagnostics=dict(pages=len(results),observation_chunks=sum(w['kind']=='observe' for w in work),
+                admission_checks=sum(w['kind']=='admit' for w in work),
+                quote_total=sum(len(m['sources']) for m in memories),quote_matched=sum(len(m['sources']) for m in memories),
+                omitted_anchors=0,omitted_memories=sum(json.loads(w['payload_json']).get('_snapshot',{}).get('omitted_profiles',0) for w in work),
+                truncated_messages=0,failed_calls=sum(c.get('result')!='success' for r in results for c in r.get('calls',[])))
+            traces.append(dict(case_id=case['id'],steps=results,checkpoints=checkpoints,work=work,candidates=all_profiles,model_calls=calls,migration=migration))
+            entries.append(dict(case_id=case['id'],file=relative,sha256=evidence_hash(document),judgment_file=f'{index:04d}.json',execution_status=status,diagnostics=diagnostics))
             _write(root/'progress.json',_redacted(dict(cases=traces,invalidated=invalid),configs or {}))
         finally:
-            if gateway is not None and callable(getattr(gateway,'close',None)):
-                gateway.close()
+            if gateway is not None and callable(getattr(gateway,'close',None)): gateway.close()
             store.close()
     scoring=(HERE/'scoring_v3.md').read_text(encoding='utf-8')
     metadata=dict(format_version=2,evaluation='entry_profile_memory',scoring_version='entry_profile_scoring_v3',
         scoring_status=SCORING_STATUS,gate_eligible=configs is not None and invalid is None,repository_mode='sqlite',
-        execution_kind='real' if configs is not None else 'fake',invalidated=invalid,
+        execution_kind='real' if configs is not None else 'fake',invalidated=invalid,replay_mode='daily_plus_final_flush',
         corpus_sha256=hashlib.sha256(Path(corpus).read_bytes()).hexdigest(),source_sha256=_source_hash(),
         scoring_sha256=hashlib.sha256(scoring.encode()).hexdigest(),prompt_versions=list(hashes),prompt_sha256=hashes,
         models=_model_metadata(configs or {}))

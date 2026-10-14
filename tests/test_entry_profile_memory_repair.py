@@ -195,11 +195,12 @@ def test_corrected_output_rechecks_sqlite_sources_and_retains_purgeable_raw(stor
     with store.read() as conn:
         trace = json.loads(conn.execute('SELECT outputs_json FROM entry_profile_attempts').fetchone()[0])
         memory_id = conn.execute('SELECT id FROM memories').fetchone()[0]
-    assert trace['outputs']['generate'] == '{' and 'generate_repair' in trace['outputs']
-    assert purge_memory(store, memory_id, 1, confirm=True)
+    outputs=json.loads(trace['work'][0]['outputs_json'])
+    assert outputs['observe'] == '{' and 'observe_repair' in outputs
+    assert purge_memory(store, memory_id, 2, confirm=True)
     with store.read() as conn:
         outputs = conn.execute('SELECT outputs_json FROM entry_profile_attempts').fetchone()[0]
-    assert '本群长期禁止广告' not in outputs and 'generate_repair' not in outputs
+    assert '本群长期禁止广告' not in outputs and 'observe_repair' not in outputs
 
 
 def test_repair_still_respects_maintenance_call_admission(store):
@@ -219,8 +220,8 @@ def test_repair_still_respects_maintenance_call_admission(store):
     maintenance = Maintenance(store, gateway=gateway, clock=CLOCK)
     run = maintenance.request()
     maintenance.run(run)
-    assert gateway.calls == 1  # A repair must still reserve a later check call.
+    assert gateway.calls == 2  # Each small request/repair consumes one actual call; no bulk-check reservation.
     with store.read() as conn:
         row = conn.execute('SELECT state,reason FROM entry_profile_attempts').fetchone()
-        assert tuple(row) == ('failed', 'call_budget')
+        assert tuple(row) == ('failed', 'invalid_output')
         assert conn.execute('SELECT COUNT(*) FROM memories').fetchone()[0] == 0

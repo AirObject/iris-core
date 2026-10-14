@@ -56,4 +56,4 @@ def test_case_clock_also_controls_transaction_projection(tmp_path):
     payload=json.loads((root/'judging-materials/cases/0001.json').read_text())['input']
     assert payload['memories']
     assert payload['projection']['memory_ids']==[m['memory_id'] for m in payload['memories']]
-    assert payload['projection']['generated_at']==case['as_of']
+    assert payload['projection']['generated_at']=='2040-12-02T03:00:00+08:00'  # First daily admission, not final read.

@@ -726,12 +726,16 @@ class EntryProfileEngine:
     def __init__(self, store, gateway, *, clock=utc_now, prompt_version=None):
         self.store,self.gateway,self.clock=store,gateway,clock
         self.memory_mode = getattr(store,'_memory_profiles',False)
+        self.incremental_mode = self.memory_mode and getattr(store,'_incremental_profiles',False)
         if self.memory_mode and prompt_version is not None:
             raise EntryProfileRetired('entry_profile_legacy_write_retired')
         self.prompt_version=MEMORY_PROMPT_VERSION if self.memory_mode else DEFAULT_PROMPT_VERSION if prompt_version is None else prompt_version
         self.prompts=load_profile_prompts('entry_profile_memory' if self.memory_mode else 'entry_profile',
             self.prompt_version,('v1','v2') if self.memory_mode else PROMPT_VERSIONS)
         self.prompt_metadata=profile_prompt_metadata(self.prompts)
+        if self.incremental_mode:
+            loaded=incremental_prompts()
+            self.prompt_metadata=dict(prompt_versions=[p['name'] for p in loaded.values()],prompt_sha256={p['name']:p['sha256'] for p in loaded.values()})
 
     def update(self, entry_id, *, expected_version, run_id=None):
         return self._run(entry_id,expected_version,'periodic',run_id=run_id)
@@ -798,6 +802,8 @@ class EntryProfileEngine:
         return self._execute(**reservation['context']) if 'context' in reservation else reservation
 
     def _reserve(self, entry_id, expected, source, *, run_id=None, fail_if_running=False):
+        if self.incremental_mode:
+            return _reserve_incremental_task(self,entry_id,expected,source,run_id=run_id,fail_if_running=fail_if_running)
         if self.memory_mode:
             return _reserve_memory_task(self,entry_id,expected,source,run_id=run_id,fail_if_running=fail_if_running)
         """Persist admission and take an evidence snapshot; never call a model here."""
@@ -852,7 +858,9 @@ class EntryProfileEngine:
             gateway=gateway,evidence=evidence,material=material,attempt=attempt)}
 
     def _execute(self, *, entry_id, expected=None, source=None, stamp=None, previous=None, due=None, config=None, settings=None,
-                 gateway=None, evidence=None, material=None, attempt=None, memory_repository=None):
+                 gateway=None, evidence=None, material=None, attempt=None, memory_repository=None, incremental_task=None):
+        if incremental_task is not None:
+            return _execute_incremental_task(self,entry_id,attempt,incremental_task,due)
         if memory_repository is not None:
             return _execute_memory_task(self,entry_id,attempt,gateway,memory_repository,due)
         outputs={}; calls=[]; sentences=None
@@ -985,6 +993,8 @@ class EntryProfileJobs:
 
 def update_profiles_for_run(store, gateway, run, config, *, clock=utc_now, stop=None):
     """One durable consolidation step. The supplied gateway owns max_calls admission."""
+    if getattr(store,'_incremental_profiles',False):
+        return _update_incremental_for_run(store,gateway,run,config,clock=clock,stop=stop)
     if not config.get('entry_profile_enabled',True):
         return True
     with store.read() as conn:
@@ -1765,6 +1775,9 @@ def memory_profile_rows(conn, entry_id, *, as_of=None, usable_only=False):
     for row in rows:
         manual = _profile_manual(conn,row)
         sources = _profile_bound_sources(conn,row,zone,as_of)
+        admission=conn.execute('SELECT * FROM entry_profile_admissions WHERE memory_id=?',(row['id'],)).fetchone() if incremental_profile_enabled(conn) else None
+        if admission and not manual:
+            _,sources=_inc_candidate_sources(conn,row,admission,as_of)
         body = row['content']; saying,_,meaning = body.partition('：') if row['category']=='saying' else ('','','')
         supported = manual or bool(sources)
         if not manual and row['category'] in ('topic','saying'):
@@ -1773,15 +1786,22 @@ def memory_profile_rows(conn, entry_id, *, as_of=None, usable_only=False):
                             for i,a in enumerate(originals) for b in originals[i+1:])
         visible = visibility.memory_visible(row['id'],entry_id)
         usable = row['lifecycle']=='active' and supported and visible and not row['merged_into']
+        if admission and not manual:
+            usable = usable and admission['state']=='accepted' and admission['body_revision']==row['revision']
         if usable_only and not usable:
             continue
         profiles.append(dict(memory_id=row['id'],revision=row['revision'],kind=row['kind'],category=row['category'],
             body=body,saying=saying,meaning=meaning,author='admin' if manual else 'model',speaker='self',stance=row['stance'],
             about=[owner[0]],owner_entry_id=entry_id,lifecycle=row['lifecycle'],event_time=None,importance=row['importance'],
             manual_protected=manual,manual_created=bool(row['manual_created']),sources=sources,
+            pending_sources=[x for x in _inc_all_sources(conn,row,as_of) if x.get('source_id') not in json.loads(admission['checked_sources_json'])] if admission and not manual else [],
             confirmed_evidence=[r[0] for r in conn.execute('SELECT identity FROM entry_profile_evidence_receipts WHERE memory_id=? ORDER BY identity',(row['id'],))],
             usable=usable,retention=row['retention'],pinned=bool(row['pinned']),
-            last_confirmed_at=row['last_confirmed_at']))
+            last_confirmed_at=row['last_confirmed_at'],
+            admission_state='manual' if manual else admission['state'] if admission else 'accepted',
+            independent_days=admission['independent_days'] if admission else 0,
+            independent_uses=admission['independent_uses'] if admission else 0,
+            admission_reason=admission['reason'] if admission else None))
     return profiles
 
 
@@ -1804,6 +1824,7 @@ def _projection_items(conn, entry_id):
 
 def flush_memory_profile_projections(conn):
     """Exactly one version increment per entry/transaction when rendered set changes."""
+    _refresh_incremental_admissions(conn)
     for dirty in conn.execute('SELECT entry_id FROM entry_profile_projection_dirty ORDER BY entry_id').fetchall():
         entry_id=dirty['entry_id']; state=_memory_state(conn,entry_id)
         items,omitted=_projection_items(conn,entry_id)
@@ -1825,7 +1846,8 @@ def memory_profile_context(conn, entry_id, *, known_memory_ids=()):
         return None
     pending=conn.execute('SELECT 1 FROM messages WHERE entry_id=? AND id>? LIMIT 1',(entry_id,state['cursor'])).fetchone()
     return dict(text='\n'.join(x['text'] for x in items),memory_ids=[x['memory_id'] for x in items],
-        version=state['version'],generated_at=state['generated_at'],possibly_stale=bool(pending or state['rebuild_pending']))
+        version=state['version'],generated_at=state['generated_at'],possibly_stale=bool(pending or state['rebuild_pending'] or (incremental_profile_enabled(conn) and
+            conn.execute("SELECT 1 FROM entry_profile_incremental_work WHERE entry_id=? AND state IN ('queued','running','deferred','failed') LIMIT 1",(entry_id,)).fetchone())))
 
 
 class SQLiteMemoryProfileRepository:
@@ -2043,3 +2065,850 @@ def _execute_memory_task(engine, entry_id, attempt, gateway, repository, due):
     finally:
         with _ACTIVE_LOCK:
             _ACTIVE_ATTEMPTS.discard((engine.store.path,attempt))
+
+
+# EF-13: bounded observations and independent per-memory admission.
+@dataclass(frozen=True)
+class IncrementalProfileLimits:
+    messages: int = 48
+    message_tokens: int = 3000
+    profiles: int = 32
+    directory_tokens: int = 1500
+    observations: int = 8
+    evidence: int = 6
+    evidence_tokens: int = 2000
+    observe_request_tokens: int = 6000
+    admit_request_tokens: int = 4000
+    repair_request_tokens: int = 12000
+    timeout_seconds: int = 180
+
+    def __post_init__(self):
+        if any(type(v) is not int or v<1 for v in vars(self).values()) or self.timeout_seconds>180:
+            raise ValueError('invalid incremental limits')
+
+
+def incremental_profile_enabled(conn):
+    return bool(conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='entry_profile_admissions'").fetchone())
+
+
+def incremental_prompts():
+    from importlib.resources import files
+    import hashlib
+    result={}
+    for stage,name in (('observe','entry_profile_observe_v1'),('admit','entry_profile_admit_v1')):
+        value=files('iris').joinpath('prompts',name+'.md').read_text(encoding='utf-8')
+        result[stage]=dict(name=name,text=value,sha256=hashlib.sha256(value.encode()).hexdigest())
+    return result
+
+
+def _inc_public_message(message):
+    return {k:message[k] for k in ('message_id','speaker','content','occurred_at','date','quote','fragment') if k in message}
+
+
+def _inc_public_payload(payload):
+    result={k:v for k,v in payload.items() if not k.startswith('_')}
+    if 'messages' in result:
+        result['messages']=[_inc_public_message(m) for m in result['messages']]
+    return result
+
+
+def _inc_source_shape(value):
+    if (not isinstance(value,dict) or set(value)!={'message_id','field','excerpt'}
+            or type(value['message_id']) is not int or value['message_id']<1
+            or value['field'] not in ('content','quote') or not isinstance(value['excerpt'],str)
+            or not 1<=len(value['excerpt'].strip())<=300):
+        raise ValueError('invalid_source_shape')
+
+
+def validate_incremental_observations(value, limits=None):
+    limits=limits or IncrementalProfileLimits()
+    if not isinstance(value,dict) or set(value)!={'observations'} or not isinstance(value['observations'],list) or len(value['observations'])>limits.observations:
+        raise ValueError('invalid_observations')
+    for item in value['observations']:
+        if not isinstance(item,dict) or item.get('op') not in ('confirm','propose','change'):
+            raise ValueError('invalid_observation')
+        expected={'op','source_refs'}
+        if item['op']!='propose':
+            expected.add('memory_id')
+            if type(item.get('memory_id')) is not int or item['memory_id']<1:
+                raise ValueError('invalid_target_id')
+        if item['op']!='confirm':
+            expected|={'category','body','saying','meaning','definition_refs'}
+            if (not isinstance(item.get('category'),str) or item['category'] not in ITEM_LABELS or any(not isinstance(item.get(k),str) for k in ('body','saying','meaning'))
+                    or len(item['body'])>180 or len(item['saying'])>40
+                    or not isinstance(item.get('definition_refs'),list)
+                    or any(type(x) is not int or x<1 for x in item['definition_refs'])):
+                raise ValueError('invalid_candidate_fields')
+        if item['op']=='change':
+            expected.add('action')
+            if item.get('action') not in ('revise','retire'):
+                raise ValueError('invalid_change_action')
+        if set(item)!=expected or not isinstance(item['source_refs'],list) or not 1<=len(item['source_refs'])<=limits.evidence:
+            raise ValueError('invalid_observation_fields')
+        for source in item['source_refs']:
+            _inc_source_shape(source)
+    return value
+
+
+def validate_incremental_admission(value, payload, previous=None):
+    if (not isinstance(value,dict) or set(value)!={'decision','violations','reason','safe_sources'}
+            or value['decision'] not in ('accept','reject','insufficient')
+            or not isinstance(value['violations'],list) or any(v not in MEMORY_PROFILE_VIOLATIONS for v in value['violations'])
+            or value['violations']!=sorted(set(value['violations']),key=MEMORY_PROFILE_VIOLATIONS.index)
+            or not isinstance(value['reason'],str) or not value['reason'].strip() or len(value['reason'])>1000
+            or not isinstance(value['safe_sources'],list) or len(value['safe_sources'])>6):
+        raise ValueError('invalid_admission')
+    if value['decision']=='accept' and (value['violations'] or not value['safe_sources']):
+        raise ValueError('invalid_accepted_admission')
+    if value['decision']!='accept' and value['safe_sources']:
+        raise ValueError('rejected_sources')
+    for source in value['safe_sources']:
+        _inc_source_shape(source)
+    if previous and (previous.get('decision') in ('reject','insufficient') or previous.get('violations')) and value['decision']=='accept':
+        raise ValueError('repair_changed_semantic_rejection')
+    return value
+
+
+def _inc_bound(conn, entry_id, refs, messages, *, target=None):
+    from .memory_ops import entry_profile_source
+    pool={m['message_id']:m for m in messages}
+    result=[]
+    for raw in refs:
+        _inc_source_shape(raw)
+        message=pool.get(raw['message_id'])
+        if not message or message['entry_id']!=entry_id:
+            raise ValueError('unbound_source')
+        binding=entry_profile_source(conn,raw['message_id'],field=raw['field'],excerpt=raw['excerpt'])
+        live=conn.execute('SELECT * FROM messages WHERE id=?',(raw['message_id'],)).fetchone()
+        if not live or _message_hash(dict(live))!=message['message_sha256']:
+            raise ValueError('source_changed')
+        result.append(binding)
+    return result
+
+
+def _inc_all_sources(conn, row, as_of):
+    sources=_profile_bound_sources(conn,row,_setting(conn,'timezone','Asia/Shanghai'),as_of)
+    for source in sources:
+        matches=conn.execute('''SELECT s.id,g.burst_id FROM sources s LEFT JOIN entry_profile_source_groups g ON g.source_id=s.id
+            WHERE s.memory_id=? AND s.message_id=? AND s.kind='message' ORDER BY s.id''',(row['id'],source['message']['position'])).fetchall()
+        for item in matches:
+            note=json.loads(conn.execute('SELECT note FROM sources WHERE id=?',(item['id'],)).fetchone()[0])
+            if note.get('field')==source['field'] and note.get('excerpt')==source['excerpt']:
+                source['source_id']=item['id'];source['burst_id']=item['burst_id'];break
+    return sources
+
+
+def _inc_groups(sources, category, saying=''):
+    selected=[]
+    messages=[s['message'] for s in sources]
+    for source in sorted(sources,key=lambda s:(s['message']['position'],s.get('source_id',0))):
+        if category in ('topic','saying') and not _memory_original(source,category,saying):
+            continue
+        if any(source['evidence_identity']==prior['evidence_identity'] or
+               source.get('burst_id') and source.get('burst_id')==prior.get('burst_id') or
+               not _memory_independent(source,prior,category,messages) for prior in selected):
+            continue
+        selected.append(source)
+    return selected
+
+
+def _inc_enough(sources, category, saying=''):
+    chosen=_inc_groups(sources,category,saying)
+    return bool(chosen) if category in ('rule',None) else len(chosen)>=2
+
+
+def _inc_candidate_sources(conn, row, admission, as_of):
+    all_sources=_inc_all_sources(conn,row,as_of)
+    approved=set(json.loads(admission['checked_sources_json'])) if admission else set()
+    return all_sources,[s for s in all_sources if s.get('source_id') in approved]
+
+
+def _refresh_incremental_admissions(conn):
+    """Write-transaction hook: withdrawals never reduce importance or edit prose."""
+    if not incremental_profile_enabled(conn):
+        return
+    from .memory_ops import _profile_manual
+    zone=_setting(conn,'timezone','Asia/Shanghai')
+    now=_instant(utc_now()).isoformat()
+    for row in conn.execute('''SELECT m.*,p.category FROM entry_profile_memories p JOIN memories m ON m.id=p.memory_id
+            JOIN entry_profile_projection_dirty d ON d.entry_id=p.entry_id WHERE m.purged_at IS NULL''').fetchall():
+        admission=conn.execute('SELECT * FROM entry_profile_admissions WHERE memory_id=?',(row['id'],)).fetchone()
+        if not admission:
+            continue
+        all_sources,approved=_inc_candidate_sources(conn,row,admission,now)
+        saying=row['content'].partition('：')[0] if row['category']=='saying' else ''
+        groups=_inc_groups(all_sources,row['category'],saying)
+        days=len({s['message']['date'] for s in groups})
+        valid=admission['body_revision']==row['revision'] and _inc_enough(approved,row['category'],saying)
+        state=admission['state']
+        if state=='accepted' and not _profile_manual(conn,row) and not valid:
+            state='candidate'
+        if (state,days,len(groups))!=(admission['state'],admission['independent_days'],admission['independent_uses']):
+            conn.execute('UPDATE entry_profile_admissions SET state=?,independent_days=?,independent_uses=?,reason=? WHERE memory_id=?',
+                (state,days,len(groups),'basis_changed' if state!=admission['state'] else admission['reason'],row['id']))
+
+
+def incremental_progress(conn, entry_id):
+    state=_memory_state(conn,entry_id)
+    rows=conn.execute('''SELECT kind,state,COUNT(*) n FROM entry_profile_incremental_work WHERE entry_id=? GROUP BY kind,state''',(entry_id,)).fetchall()
+    counts={(r['kind'],r['state']):r['n'] for r in rows}
+    pending=sum(counts.get(('admit',s),0) for s in ('queued','running','deferred'))
+    return dict(scan_cursor=state['scan_cursor'],applied_cursor=state['cursor'],
+        observation_chunks=sum(n for (k,s),n in counts.items() if k=='observe'),
+        completed_chunks=counts.get(('observe','applied'),0),pending_checks=pending,
+        failed_checks=counts.get(('admit','failed'),0),rejected_checks=counts.get(('admit','rejected'),0),
+        observation_gaps=sum(counts.get(('observe',s),0) for s in ('queued','running','deferred','failed')),
+        unscanned_messages=conn.execute('SELECT COUNT(*) FROM messages WHERE entry_id=? AND id>?',(entry_id,state['scan_cursor'])).fetchone()[0],
+        waiting_candidates=conn.execute("SELECT COUNT(*) FROM entry_profile_admissions a JOIN entry_profile_memories p ON p.memory_id=a.memory_id WHERE p.entry_id=? AND a.state!='accepted'",(entry_id,)).fetchone()[0],
+        oldest_pending_at=conn.execute("SELECT MIN(created_at) FROM entry_profile_incremental_work WHERE entry_id=? AND state IN ('queued','running','deferred','failed')",(entry_id,)).fetchone()[0])
+
+
+def _inc_directory(conn, entry_id, messages, limits):
+    from .search_text import segmented
+    rows=memory_profile_rows(conn,entry_id)
+    pool=[{k:r[k] for k in ('memory_id','revision','category','body','manual_protected','independent_days','independent_uses','last_confirmed_at')}
+          for r in rows if r['lifecycle']!='deleted']
+    terms=set(segmented(' '.join(m['content'] for m in messages)).split())
+    cursor=_memory_state(conn,entry_id)['scan_cursor']
+    # Stable lexical selection, confirmation recency, and rotation share the directory.
+    lexical=sorted(pool,key=lambda r:(-len(terms.intersection(segmented(r['body']).split())),r['memory_id']))
+    recent=sorted(pool,key=lambda r:(r['last_confirmed_at'] or '',-r['memory_id']),reverse=True)
+    rotated=sorted(pool,key=lambda r:r['memory_id'])
+    if rotated:
+        offset=cursor%len(rotated);rotated=rotated[offset:]+rotated[:offset]
+    result=[];seen=set();used=0
+    for triple in zip(lexical,recent,rotated):
+        for row in triple:
+            mid=row['memory_id'];cost=estimate_tokens(dumps(row))
+            if mid in seen or len(result)>=limits.profiles or used+cost>limits.directory_tokens:
+                continue
+            result.append(row);seen.add(mid);used+=cost
+    return result,len(pool)-len(result)
+
+
+def _inc_work_persist(conn, work_id, **values):
+    fields={'payload_json','outputs_json','calls_json','result_json','parsed_json','state','reason','retry_at','finished_at','attempt_id','attempts'}
+    if not set(values)<=fields:
+        raise ValueError('invalid work update')
+    conn.execute('UPDATE entry_profile_incremental_work SET '+','.join(k+'=?' for k in values)+" WHERE id=? AND state!='cancelled'",(*values.values(),work_id))
+
+
+class IncrementalProfileTask:
+    def __init__(self, store, gateway, *, clock=utc_now, limits=None, attempt_id=None, source='regenerate'):
+        self.store,self.gateway,self.clock=store,gateway,clock
+        self.limits=limits or IncrementalProfileLimits()
+        self.prompts=incremental_prompts();self.attempt_id=attempt_id;self.source=source
+        self.trace=[]
+
+    def _call(self, work, stage, payload):
+        prompt=self.prompts[stage];messages=[{'role':'system','content':prompt['text']},{'role':'user','content':dumps(payload)}]
+        budget=self.limits.observe_request_tokens if stage=='observe' else self.limits.admit_request_tokens
+        if sum(estimate_tokens(x['content']) for x in messages)>budget:
+            raise ModelError('invalid_output','request material limit',reason='request_budget_exceeded')
+        monotonic=getattr(self.gateway,'monotonic',time.monotonic);deadline=monotonic()+self.limits.timeout_seconds
+        outputs=json.loads(work['outputs_json']);calls=json.loads(work['calls_json']);previous=None
+        for repair in range(2):
+            if self.store._lock._is_owned() and self.store._writer.in_transaction:
+                raise RuntimeError('model call in write transaction')
+            if monotonic()>=deadline:
+                raise ModelError('retryable','deadline',reason='timeout')
+            health=getattr(self.gateway,'health',None)
+            if health: health.check('chat','learning')
+            purpose='consolidation_entry_profile_'+stage+('_repair' if repair else '')
+            call=dict(purpose=purpose,prompt_version=prompt['name'],prompt_sha256=prompt['sha256'],
+                      timeout_seconds=self.limits.timeout_seconds,result='success')
+            started=monotonic();reply=None;invalid=None;parsed=None
+            try:
+                reply=self.gateway.chat(messages,purpose,max_tokens=16000,_deadline=deadline)
+                if monotonic()>=deadline:
+                    raise ModelError('retryable','deadline',reason='timeout')
+                try:
+                    if reply.finish_reason!='stop': raise ValueError('incomplete_output')
+                    parsed=json_object(reply.content)
+                    if stage=='observe': validate_incremental_observations(parsed,self.limits)
+                    else: validate_incremental_admission(parsed,payload,previous)
+                except ValueError as error:
+                    invalid=str(error);call['validation_error']=invalid
+                if monotonic()>=deadline: raise ModelError('retryable','deadline',reason='timeout')
+                if invalid is None:
+                    return parsed
+                if repair:
+                    raise ModelError('invalid_output','invalid structured output',reason='invalid_output')
+            except ModelError as error:
+                if error.category=='retryable' and not error.reason and monotonic()>=deadline:
+                    error.reason='timeout'
+                call.update(result=error.category,reason=error.reason or error.category)
+                raise
+            finally:
+                if reply is not None:
+                    outputs[stage+('_repair' if repair else '')+('_attempt_'+str(work['attempts']) if work['attempts']>1 else '')]=reply.content
+                    call['finish_reason']=reply.finish_reason
+                calls.append({**call,'duration_ms':round((monotonic()-started)*1000),'usage':reply.usage if reply else {}})
+                with self.store.write() as conn:
+                    _inc_work_persist(conn,work['id'],outputs_json=dumps(outputs),calls_json=dumps(calls))
+            previous=parsed
+            messages += [{'role':'assistant','content':reply.content},{'role':'user','content':
+                '上次输出结构无效：'+invalid+'。仅修正JSON格式、必填字段和类型；不新增事实/来源，不把语义拒绝改成通过。输出完整JSON。'}]
+            if sum(estimate_tokens(x['content']) for x in messages)>self.limits.repair_request_tokens:
+                raise ModelError('invalid_output','repair material limit',reason='repair_budget_exceeded')
+
+    def _freeze_chunk(self, entry_id):
+        now=_instant(self.clock());stamp=now.isoformat();limit=self.limits
+        with self.store.write() as conn:
+            _ensure(conn,entry_id,stamp)
+            state=_memory_state(conn,entry_id);zone=_setting(conn,'timezone','Asia/Shanghai')
+            rows=conn.execute('SELECT * FROM messages WHERE entry_id=? AND id>? ORDER BY id LIMIT ?',
+                             (entry_id,state['scan_cursor'],limit.messages+1)).fetchall()
+            messages=[];positions=[];skipped=[];used=0;day=None;boundary=json.loads(state['boundary_json'])
+            for row in rows[:limit.messages]:
+                try:
+                    at=_instant(row['occurred_at']);received=_instant(row['received_at'])
+                except (ValueError,TypeError):
+                    positions.append(row['id']);skipped.append({'message_id':row['id'],'reason':'unparseable_time'});boundary={}
+                    continue
+                local=at.astimezone(ZoneInfo(zone)).date().isoformat()
+                if at>now or received>now or self.source=='periodic' and local>=now.astimezone(ZoneInfo(zone)).date().isoformat():
+                    break
+                if day is not None and local!=day: break
+                snapshot=MemoryProfileSnapshot(entry_id,'','group',zone,stamp,0,0,0,False)
+                normalized=_memory_message(_db_observation(row),snapshot)
+                # Every scanned turn contributes to the same-author burst boundary.
+                burst='message:'+str(row['id'])
+                if boundary.get('speaker')==row['sender_subject_id'] and boundary.get('at'):
+                    gap=(at-_instant(boundary['at'])).total_seconds()
+                    if 0<=gap<1800: burst=boundary['burst_id']
+                next_boundary=dict(speaker=row['sender_subject_id'],at=row['occurred_at'],burst_id=burst)
+                value={**normalized,'message_id':row['id'],'message_sha256':_message_hash(dict(row)),'burst_id':burst} if normalized else None
+                cost=estimate_tokens(dumps(_inc_public_message(value))) if value else 0
+                if used+cost>limit.message_tokens:
+                    if not positions:
+                        return self._freeze_fragments(conn,entry_id,state,value,next_boundary,local)
+                    break
+                positions.append(row['id']);day=local;boundary=next_boundary
+                if value: messages.append(value);used+=cost
+            if not positions: return None
+            directory,omitted=_inc_directory(conn,entry_id,messages,limit)
+            payload=dict(entry_id=entry_id,timezone=zone,as_of=stamp,messages=messages,profiles=directory,
+                _snapshot=dict(settings_revision=_settings(conn,entry_id)['revision'],cursor_before=state['scan_cursor'],
+                    cursor_after=positions[-1],positions=positions,omitted_profiles=omitted,skipped_messages=skipped))
+            key=_hash([entry_id,state['scan_cursor'],positions[-1],messages,zone])
+            wid=conn.execute('''INSERT OR IGNORE INTO entry_profile_incremental_work(entry_id,work_key,kind,cursor_before,cursor_after,
+                local_day,payload_json,attempt_id,created_at) VALUES(?,?,'observe',?,?,?,?,?,?)''',
+                (entry_id,key,state['scan_cursor'],positions[-1],day,dumps(payload),self.attempt_id,stamp)).lastrowid
+            conn.execute('UPDATE entry_profile_memory_state SET scan_cursor=?,boundary_json=? WHERE entry_id=?',
+                         (positions[-1],dumps(boundary),entry_id))
+            return wid
+
+    def _freeze_fragments(self, conn, entry_id, state, original, boundary, day):
+        """Lossless contiguous fields; all fragments reserve the same evidence identity."""
+        group=_hash([entry_id,original['message_id'],original['message_sha256']])
+        fragments=[]
+        for field,text in [('content',original['content']),('quote',(original.get('quote') or {}).get('content',''))]:
+            offset=0
+            while offset<len(text):
+                low,high=1,len(text)-offset
+                def piece(size):
+                    message=copy.deepcopy(original)
+                    message['content']=text[offset:offset+size] if field=='content' else ''
+                    if message.get('quote'):
+                        message['quote']['content']=text[offset:offset+size] if field=='quote' else ''
+                    message['fragment']=dict(field=field,start=offset,end=offset+size,total=len(text))
+                    return message
+                while low<high:
+                    middle=(low+high+1)//2
+                    if estimate_tokens(dumps(_inc_public_message(piece(middle))))<=self.limits.message_tokens: low=middle
+                    else: high=middle-1
+                part=piece(low)
+                if estimate_tokens(dumps(_inc_public_message(part)))>self.limits.message_tokens:
+                    raise MemoryProfileUnavailable('message_metadata_budget')
+                fragments.append(part);offset+=low
+        directory,omitted=_inc_directory(conn,entry_id,[original],self.limits)
+        first=None
+        for index,fragment in enumerate(fragments):
+            end=original['message_id'] if index==len(fragments)-1 else state['scan_cursor']
+            payload=dict(entry_id=entry_id,timezone=_setting(conn,'timezone','Asia/Shanghai'),as_of=_instant(self.clock()).isoformat(),
+                messages=[fragment],profiles=directory,_snapshot=dict(settings_revision=_settings(conn,entry_id)['revision'],
+                cursor_before=state['scan_cursor'],cursor_after=end,positions=[original['message_id']],
+                omitted_profiles=omitted,fragment_group=group,fragment_index=index,fragment_count=len(fragments)))
+            wid=conn.execute("""INSERT INTO entry_profile_incremental_work(entry_id,work_key,kind,cursor_before,cursor_after,
+                local_day,fragment_group,payload_json,attempt_id,created_at) VALUES(?,?,'observe',?,?,?,?,?,?,?)""",
+                (entry_id,_hash([group,index]),state['scan_cursor'],end,day,group,dumps(payload),self.attempt_id,_instant(self.clock()).isoformat())).lastrowid
+            first=first or wid
+        conn.execute('UPDATE entry_profile_memory_state SET scan_cursor=?,boundary_json=? WHERE entry_id=?',
+                     (original['message_id'],dumps(boundary),entry_id))
+        return first
+
+    def _resnapshot(self, entry_id):
+        with self.store.write() as conn:
+            zone=_setting(conn,'timezone','Asia/Shanghai');stamp=_instant(self.clock()).isoformat()
+            settings=_settings(conn,entry_id)
+            if not settings['enabled'] or not _runtime(conn)['enabled']: return
+            for work in conn.execute("""SELECT * FROM entry_profile_incremental_work WHERE entry_id=? AND kind='observe'
+                    AND state='failed' AND reason IN ('source_changed','settings_changed') AND attempts<3 ORDER BY id""",(entry_id,)).fetchall():
+                payload=json.loads(work['payload_json']);snap=payload['_snapshot']
+                if snap.get('fragment_group'): continue  # A changed long message requires full refragmentation; remains an explicit gap.
+                snapshot=MemoryProfileSnapshot(entry_id,'','group',zone,stamp,0,0,0,False)
+                messages=[]
+                for mid in snap['positions']:
+                    row=conn.execute('SELECT * FROM messages WHERE id=?',(mid,)).fetchone()
+                    if not row: continue
+                    normalized=_memory_message(_db_observation(row),snapshot)
+                    if normalized:
+                        old=next((m for m in payload['messages'] if m['message_id']==mid),{})
+                        messages.append({**normalized,'message_id':mid,'message_sha256':_message_hash(dict(row)),
+                                         'burst_id':old.get('burst_id','message:'+str(mid))})
+                if sum(estimate_tokens(dumps(_inc_public_message(m))) for m in messages)>self.limits.message_tokens: continue
+                directory,omitted=_inc_directory(conn,entry_id,messages,self.limits)
+                payload.update(messages=messages,profiles=directory,timezone=zone,as_of=stamp)
+                snap.update(settings_revision=settings['revision'],omitted_profiles=omitted)
+                _inc_work_persist(conn,work['id'],payload_json=dumps(payload),parsed_json=None,state='queued',reason='resnapshotted')
+
+    def _assert_snapshot(self, conn, payload):
+        entry_id=payload['entry_id'];snap=payload['_snapshot']
+        settings=_settings(conn,entry_id)
+        if (not settings['enabled'] or not _runtime(conn)['enabled'] or settings['revision']!=snap['settings_revision']
+                or _setting(conn,'timezone','Asia/Shanghai')!=payload['timezone'] or _entry(conn,entry_id)['kind'] not in ('group','live')):
+            raise EntryProfileConflict('settings_changed')
+        for message in payload.get('messages',[]):
+            live=conn.execute('SELECT * FROM messages WHERE id=?',(message['message_id'],)).fetchone()
+            if not live or _message_hash(dict(live))!=message['message_sha256']:
+                raise EntryProfileConflict('source_changed')
+
+    def _apply_observations(self, work, parsed):
+        from .memory_ops import entry_profile_source, write_entry_profile_memory, _profile_manual
+        payload=json.loads(work['payload_json']);entry_id=work['entry_id'];now=_instant(self.clock())
+        result=dict(generated=parsed['observations'],deterministic=[],removed=[],applied=[])
+        with self.store.write() as conn:
+            self._assert_snapshot(conn,payload)
+            if conn.execute('SELECT state FROM entry_profile_incremental_work WHERE id=?',(work['id'],)).fetchone()[0]=='cancelled':
+                raise EntryProfileConflict('purged')
+            directory={m['memory_id']:m for m in payload['profiles']}
+            for index,raw in enumerate(parsed['observations'],1):
+                conn.execute('SAVEPOINT profile_observation')
+                try:
+                    op=raw['op'];target=None
+                    if op!='propose':
+                        declared=directory.get(raw['memory_id'])
+                        target=conn.execute('''SELECT m.*,p.category FROM memories m JOIN entry_profile_memories p ON p.memory_id=m.id
+                            WHERE m.id=? AND p.entry_id=? AND m.lifecycle!='deleted' AND m.purged_at IS NULL''',
+                            (raw['memory_id'],entry_id)).fetchone()
+                        if not declared or not target or target['revision']!=declared['revision']:
+                            raise ValueError('target_revision_changed')
+                    category=raw['category'] if op!='confirm' else target['category']
+                    body=whitespace(raw['body']) if op!='confirm' else target['content']
+                    saying=raw.get('saying','') if op!='confirm' else body.partition('：')[0] if category=='saying' else ''
+                    meaning=raw.get('meaning','') if op!='confirm' else body.partition('：')[2] if category=='saying' else ''
+                    if op!='confirm':
+                        if raw.get('action')=='retire':
+                            if body or saying or meaning or raw['definition_refs'] or category!=target['category']:
+                                raise ValueError('invalid_retirement')
+                        elif (not body or _MEMORY_GENDERED.search(body) or _ACCOUNT.search(body)):
+                            raise ValueError('invalid_or_gendered_body')
+                        elif category=='saying':
+                            if not saying or body!=saying+('：'+meaning if meaning else '') or bool(meaning)!=bool(raw['definition_refs']):
+                                raise ValueError('unbound_meaning')
+                        elif saying or meaning or raw['definition_refs']:
+                            raise ValueError('unexpected_meaning')
+                    bindings=_inc_bound(conn,entry_id,raw['source_refs'],payload['messages'])
+                    if any(mid not in [b['message_id'] for b in bindings] for mid in raw.get('definition_refs',[])):
+                        raise ValueError('unbound_definition')
+                    canonical=[]
+                    for binding in bindings:
+                        msg=next(m for m in payload['messages'] if m['message_id']==binding['message_id'])
+                        bound=_memory_bind_source(dict(ref=msg['ref'],field=binding['field'],excerpt=binding['excerpt'],via_memory=None),
+                                                  dict(messages=payload['messages'],memories=[]))
+                        bound['burst_id']=msg.get('burst_id');canonical.append(bound)
+                    if op=='change':
+                        if _profile_manual(conn,target): raise ValueError('protected_manual_conflict')
+                        self._queue_admission(conn,dict(target),_inc_all_sources(conn,target,now.isoformat())+canonical,proposal=raw)
+                        result['deterministic'].append({'index':index,**raw,'sources':canonical})
+                        continue
+                    if target is None:
+                        target=conn.execute('''SELECT m.*,p.category FROM memories m JOIN entry_profile_memories p ON p.memory_id=m.id
+                            WHERE p.entry_id=? AND p.category IS ? AND m.content=? AND m.purged_at IS NULL ORDER BY m.id LIMIT 1''',
+                            (entry_id,category,body)).fetchone()
+                    if target and target['lifecycle']=='deleted': raise ValueError('deleted_target')
+                    old_sources=_inc_all_sources(conn,target,now.isoformat()) if target else []
+                    chosen=_inc_groups(old_sources+canonical,category,saying)
+                    current_ids={b['message_id'] for b in bindings}
+                    group_keys=['message:'+str(s['message']['position']) for s in chosen if s['message']['position'] in current_ids]
+                    receipt=write_entry_profile_memory(self.store,entry_id,op='confirm' if target else 'new',content=body,
+                        category=category,importance=30,sources=bindings,memory_id=target['id'] if target else None,
+                        expected_revision=target['revision'] if target else None,confirmation_groups=group_keys,
+                        accumulate_only=bool(target and any(x['memory_id']==target['id'] and (x['confirmed'] or x['op']=='new') for x in result['applied'])),
+                        current=now,_conn=conn)
+                    mid=receipt['memory_id']
+                    for sid in receipt['source_ids']:
+                        source_row=conn.execute('SELECT message_id FROM sources WHERE id=?',(sid,)).fetchone()
+                        message=next(m for m in payload['messages'] if m['message_id']==source_row[0])
+                        conn.execute('INSERT OR IGNORE INTO entry_profile_source_groups VALUES(?,?,?)',(sid,mid,message['burst_id']))
+                    if receipt['source_ids']:
+                        conn.execute('UPDATE entry_profile_admissions SET evidence_revision=evidence_revision+1 WHERE memory_id=?',(mid,))
+                    if not target:
+                        conn.execute('UPDATE entry_profile_admissions SET definition_refs_json=? WHERE memory_id=?',
+                                     (dumps(raw.get('definition_refs',[])),mid))
+                    result['applied'].append({'index':index,**receipt})
+                    result['deterministic'].append({'index':index,'memory_id':mid,**raw,'sources':canonical})
+                except (ValueError,EntryProfileConflict) as error:
+                    conn.execute('ROLLBACK TO profile_observation')
+                    result['removed'].append(dict(index=index,reason=str(error)))
+                finally:
+                    conn.execute('RELEASE profile_observation')
+            _inc_work_persist(conn,work['id'],state='applied',result_json=dumps(result),finished_at=now.isoformat())
+            # Make the enclosing attempt depend on every created/confirmed target before a check can run.
+            if self.attempt_id is not None:
+                previous=json.loads(conn.execute('SELECT material_json FROM entry_profile_attempts WHERE id=?',(self.attempt_id,)).fetchone()[0])
+                previous.setdefault('evidence_refs',[]).extend({'memory_id':r['memory_id'],'revision':r['revision']} for r in result['applied'])
+                conn.execute('UPDATE entry_profile_attempts SET material_json=? WHERE id=?',(dumps(previous),self.attempt_id))
+            self._advance_cursor(conn,entry_id)
+        return result
+
+    def _advance_cursor(self, conn, entry_id):
+        cursor=_memory_state(conn,entry_id)['cursor']
+        for row in conn.execute("SELECT cursor_before,cursor_after,state,fragment_group FROM entry_profile_incremental_work WHERE entry_id=? AND kind='observe' AND cursor_after>? ORDER BY cursor_before,id",(entry_id,cursor)):
+            if row['cursor_before']!=cursor or row['state'] not in ('applied','cancelled'):
+                break
+            if row['fragment_group'] and conn.execute("SELECT 1 FROM entry_profile_incremental_work WHERE fragment_group=? AND state NOT IN ('applied','cancelled') LIMIT 1",(row['fragment_group'],)).fetchone():
+                break
+            cursor=row['cursor_after']
+        conn.execute('UPDATE entry_profile_memory_state SET cursor=?,rebuild_pending=? WHERE entry_id=?',
+            (cursor,int(bool(conn.execute('SELECT 1 FROM messages WHERE entry_id=? AND id>? LIMIT 1',(entry_id,cursor)).fetchone())),entry_id))
+
+    def _queue_admission(self, conn, row, sources, *, proposal=None):
+        from .memory_ops import _profile_manual
+        if _profile_manual(conn,row) or row['lifecycle']!='active': return None
+        meta=conn.execute('SELECT * FROM entry_profile_admissions WHERE memory_id=?',(row['id'],)).fetchone()
+        if not meta: return None
+        for source in sources:
+            incomplete=conn.execute("""SELECT 1 FROM entry_profile_incremental_work w JOIN purge_record_refs r
+                ON r.table_name='entry_profile_incremental_work' AND r.row_id=CAST(w.id AS TEXT)
+                WHERE r.ref_kind='message' AND r.ref_id=? AND w.fragment_group IS NOT NULL
+                AND w.state NOT IN ('applied','cancelled') LIMIT 1""",(str(source['message']['position']),)).fetchone()
+            if incomplete: return None
+        category=proposal['category'] if proposal else row['category']
+        body=proposal['body'] if proposal else row['content']
+        saying=proposal['saying'] if proposal else body.partition('：')[0] if category=='saying' else ''
+        selected=_inc_groups(sources,category,saying)
+        if not _inc_enough(selected,category,saying) and not (proposal and proposal['action']=='retire' and sources):
+            return None
+        definitions=proposal['definition_refs'] if proposal else json.loads(meta['definition_refs_json'])
+        # Independent witnesses, explicit definitions, then remaining current evidence.
+        witnesses=[];seen=set()
+        for s in [*selected,*[s for s in sources if s['message']['position'] in definitions],*sources]:
+            key=(s['message']['position'],s['field'],s['excerpt'])
+            if key in seen: continue
+            seen.add(key);witnesses.append(s)
+        if len(witnesses)>self.limits.evidence:
+            # Do not hide a known counterexample by cherry-picking a short subset.
+            conn.execute("UPDATE entry_profile_admissions SET reason='evidence_budget_exceeded' WHERE memory_id=?",(row['id'],))
+            return None
+        source_rows=[]
+        for s in witnesses:
+            source_rows.append(dict(message_id=s['message']['position'],field=s['field'],excerpt=s['excerpt'],
+                speaker=s['speaker'],date=s['message']['date'],occurred_at=s['message']['occurred_at'],
+                context=s['message']['content'],quote=s['message'].get('quote'),burst_id=s.get('burst_id')))
+        memory=dict(memory_id=row['id'],revision=row['revision'],category=category,body=body,saying=saying,
+                    meaning=proposal['meaning'] if proposal else body.partition('：')[2] if category=='saying' else '',
+                    definition_refs=definitions,sources=source_rows)
+        if proposal: memory.update(action=proposal['action'],old_body=row['content'])
+        zone=_setting(conn,'timezone','Asia/Shanghai');stamp=_instant(self.clock()).isoformat()
+        payload=dict(entry_id=row['owner_entry_id'],as_of=stamp,timezone=zone,memory=memory,
+            _snapshot=dict(settings_revision=_settings(conn,row['owner_entry_id'])['revision'],evidence_revision=meta['evidence_revision'],
+                source_fingerprints={str(s['message']['position']):s['message']['fingerprint'] for s in witnesses},
+                proposal=proposal))
+        # Signature deliberately excludes call time, attempts and maintenance run IDs.
+        key=_hash([row['id'],row['revision'],meta['evidence_revision'],memory,zone,
+                   payload['_snapshot']['settings_revision'],self.prompts['admit']['sha256']])
+        if conn.execute('SELECT 1 FROM entry_profile_incremental_work WHERE work_key=?',(key,)).fetchone(): return None
+        if estimate_tokens(dumps(memory))>self.limits.evidence_tokens:
+            conn.execute("UPDATE entry_profile_admissions SET reason='evidence_budget_exceeded' WHERE memory_id=?",(row['id'],))
+            return None
+        wid=conn.execute('''INSERT INTO entry_profile_incremental_work(entry_id,work_key,kind,memory_id,memory_revision,
+            payload_json,attempt_id,created_at) VALUES(?,?,'admit',?,?,?,?,?)''',
+            (row['owner_entry_id'],key,row['id'],row['revision'],dumps(payload),self.attempt_id,stamp)).lastrowid
+        if meta['state']!='accepted': conn.execute("UPDATE entry_profile_admissions SET state='pending',reason=NULL WHERE memory_id=?",(row['id'],))
+        return wid
+
+    def _queue_candidates(self, entry_id):
+        with self.store.write() as conn:
+            rows=conn.execute('''SELECT m.*,p.category FROM memories m JOIN entry_profile_memories p ON p.memory_id=m.id
+                JOIN entry_profile_admissions a ON a.memory_id=m.id WHERE p.entry_id=? AND a.state!='accepted'
+                AND m.lifecycle='active' AND m.purged_at IS NULL ORDER BY m.id''',(entry_id,)).fetchall()
+            for row in rows:
+                self._queue_admission(conn,row,_inc_all_sources(conn,row,_instant(self.clock()).isoformat()))
+
+    def _apply_admission(self, work, parsed):
+        from .memory_ops import write_entry_profile_memory, entry_profile_source, _profile_manual
+        payload=json.loads(work['payload_json']);memory=payload['memory'];snap=payload['_snapshot'];stamp=_instant(self.clock()).isoformat()
+        with self.store.write() as conn:
+            current=conn.execute('''SELECT m.*,p.category FROM memories m JOIN entry_profile_memories p ON p.memory_id=m.id
+                WHERE m.id=? AND m.purged_at IS NULL AND m.lifecycle='active' ''',(memory['memory_id'],)).fetchone()
+            if (not current or current['revision']!=memory['revision'] or _profile_manual(conn,current)
+                    or conn.execute('SELECT state FROM entry_profile_incremental_work WHERE id=?',(work['id'],)).fetchone()[0]=='cancelled'):
+                raise EntryProfileConflict('target_changed')
+            settings=_settings(conn,work['entry_id']);meta=conn.execute('SELECT * FROM entry_profile_admissions WHERE memory_id=?',(current['id'],)).fetchone()
+            if (not settings['enabled'] or not _runtime(conn)['enabled'] or settings['revision']!=snap['settings_revision']
+                    or _setting(conn,'timezone','Asia/Shanghai')!=payload['timezone'] or meta['evidence_revision']!=snap['evidence_revision']):
+                raise EntryProfileConflict('check_snapshot_changed')
+            all_sources=_inc_all_sources(conn,current,stamp)
+            if snap.get('proposal'):
+                snapshot=MemoryProfileSnapshot(work['entry_id'],'','group',payload['timezone'],stamp,0,0,0,False)
+                all_sources=[]
+                for value in memory['sources']:
+                    row=conn.execute('SELECT * FROM messages WHERE id=?',(value['message_id'],)).fetchone()
+                    if row:
+                        normalized=_memory_message(_db_observation(row),snapshot)
+                        if normalized:
+                            s=_memory_bind_source(dict(ref=normalized['ref'],field=value['field'],excerpt=value['excerpt'],via_memory=None),dict(messages=[normalized],memories=[]))
+                            s['burst_id']=value.get('burst_id');all_sources.append(s)
+            for mid,fingerprint in snap['source_fingerprints'].items():
+                if not any(s['message']['position']==int(mid) and s['message']['fingerprint']==fingerprint for s in all_sources):
+                    raise EntryProfileConflict('check_source_changed')
+            if parsed['decision']!='accept':
+                # A pending revision does not erase an independently valid old body.
+                if not snap.get('proposal') or meta['state']!='accepted':
+                    conn.execute("UPDATE entry_profile_admissions SET state=?,reason=? WHERE memory_id=?",('candidate' if meta['signature'] else 'rejected',parsed['decision'],current['id']))
+                _inc_work_persist(conn,work['id'],state='rejected',reason=parsed['decision'],result_json=dumps(parsed),finished_at=stamp)
+                return dict(memory_id=current['id'],decision=parsed['decision'])
+            safe=[];canonical=[]
+            for source in parsed['safe_sources']:
+                bound=next((s for s in all_sources if s['message']['position']==source['message_id'] and s['field']==source['field']
+                    and whitespace(source['excerpt']) in s['excerpt']),None)
+                expected=next((s for s in memory['sources'] if s['message_id']==source['message_id'] and s['field']==source['field']
+                    and whitespace(source['excerpt']) in s['excerpt']),None)
+                if not bound or not expected: raise ValueError('checker_unbound_excerpt')
+                canonical.append({**bound,'excerpt':whitespace(source['excerpt'])})
+                safe.append(entry_profile_source(conn,source['message_id'],excerpt=source['excerpt'],field=source['field'],
+                    source_memory_id=int(bound['via_memory']) if bound['via_memory'] else None,
+                    source_revision=bound['memory']['revision'] if bound['memory'] else None))
+            proposal=snap.get('proposal');retire=proposal and proposal['action']=='retire'
+            if not retire and not _inc_enough(canonical,memory['category'],memory['saying']):
+                raise ValueError('safe_sources_insufficient')
+            if memory['meaning'] and not set(memory['definition_refs'])&{s['message_id'] for s in safe}:
+                raise ValueError('definition_removed')
+            if proposal and not any(s['message_id']==ref['message_id'] and s['field']==ref['field'] for s in safe for ref in proposal['source_refs']):
+                raise ValueError('change_basis_removed')
+            if proposal:
+                receipt=write_entry_profile_memory(self.store,work['entry_id'],op='retire' if retire else 'revise',content=memory['body'],
+                    category=memory['category'],importance=current['importance'],sources=safe,memory_id=current['id'],
+                    expected_revision=current['revision'],_conn=conn,current=_instant(stamp))
+                revision=receipt['revision']
+                if retire:
+                    conn.execute("UPDATE entry_profile_admissions SET state='candidate',reason='retired' WHERE memory_id=?",(current['id'],))
+                    _inc_work_persist(conn,work['id'],state='applied',result_json=dumps(receipt),finished_at=stamp)
+                    return receipt
+            else: revision=current['revision']
+            receipt=write_entry_profile_memory(self.store,work['entry_id'],op='admit',sources=safe,memory_id=current['id'],
+                expected_revision=revision,_conn=conn,current=_instant(stamp))
+            conn.execute("""UPDATE entry_profile_admissions SET state='accepted',body_revision=?,checked_sources_json=?,
+                signature=?,reason=NULL,definition_refs_json=?,checked_at=? WHERE memory_id=?""",
+                (receipt['revision'],dumps(receipt['source_ids']),work['work_key'],dumps(memory['definition_refs']),stamp,current['id']))
+            _inc_work_persist(conn,work['id'],state='applied',result_json=dumps({'decision':'accept',**receipt}),finished_at=stamp)
+            conn.execute("UPDATE entry_profile_incremental_work SET state='cancelled',reason='superseded_check',finished_at=? WHERE memory_id=? AND kind='admit' AND id!=? AND state IN ('queued','deferred','failed')",
+                         (stamp,current['id'],work['id']))
+            return receipt
+
+    def _check_current(self, conn, work, payload):
+        """Cheap preflight in addition to post-call CAS; never spend on an already stale target."""
+        from .memory_ops import _profile_manual
+        memory=payload['memory'];snap=payload['_snapshot']
+        row=conn.execute('SELECT * FROM memories WHERE id=?',(memory['memory_id'],)).fetchone()
+        meta=conn.execute('SELECT * FROM entry_profile_admissions WHERE memory_id=?',(memory['memory_id'],)).fetchone()
+        if (not row or not meta or row['purged_at'] or row['lifecycle']!='active' or _profile_manual(conn,row)
+                or row['revision']!=memory['revision'] or meta['evidence_revision']!=snap['evidence_revision']
+                or row['owner_entry_id']!=work['entry_id'] or not Visibility(conn).memory_visible(row['id'],work['entry_id'])):
+            return False
+        settings=_settings(conn,work['entry_id'])
+        if (not settings['enabled'] or not _runtime(conn)['enabled'] or settings['revision']!=snap['settings_revision']
+                or _setting(conn,'timezone','Asia/Shanghai')!=payload['timezone']): return False
+        snapshot=MemoryProfileSnapshot(work['entry_id'],'','group',payload['timezone'],_instant(self.clock()).isoformat(),0,0,0,False)
+        for mid,fingerprint in snap['source_fingerprints'].items():
+            source=conn.execute('SELECT * FROM messages WHERE id=?',(int(mid),)).fetchone()
+            normalized=_memory_message(_db_observation(source),snapshot) if source else None
+            if not normalized or normalized['fingerprint']!=fingerprint: return False
+        return True
+
+    def _run_one(self, work):
+        stamp=_instant(self.clock()).isoformat()
+        with self.store.write() as conn:
+            live=conn.execute('SELECT * FROM entry_profile_incremental_work WHERE id=?',(work['id'],)).fetchone()
+            if not live or live['state'] in ('applied','rejected','cancelled'): return
+            _inc_work_persist(conn,work['id'],state='running',attempts=live['attempts']+1,attempt_id=self.attempt_id)
+            work=dict(conn.execute('SELECT * FROM entry_profile_incremental_work WHERE id=?',(work['id'],)).fetchone())
+            if work['state']=='cancelled': return
+            if self.attempt_id is not None:
+                material=json.loads(conn.execute('SELECT material_json FROM entry_profile_attempts WHERE id=?',(self.attempt_id,)).fetchone()[0])
+                payload=json.loads(work['payload_json']);refs=material.setdefault('evidence_refs',[])
+                refs.extend(dict(message_id=m['message_id']) for m in payload.get('messages',[]))
+                refs.extend(dict(memory_id=p['memory_id'],revision=p['revision']) for p in payload.get('profiles',[]))
+                if payload.get('memory'):
+                    refs.append(dict(memory_id=payload['memory']['memory_id'],revision=payload['memory']['revision']))
+                    refs.extend(dict(message_id=s['message_id']) for s in payload['memory']['sources'])
+                material['incremental']=True
+                conn.execute('UPDATE entry_profile_attempts SET material_json=? WHERE id=?',(dumps(material),self.attempt_id))
+        try:
+            payload=json.loads(work['payload_json'])
+            if any(m.get('oversized') for m in payload.get('messages',[])):
+                raise ModelError('invalid_output','single message exceeds budget',reason='oversized_message_pending')
+            with self.store.read() as conn:
+                if work['kind']=='observe': self._assert_snapshot(conn,payload)
+                stale=work['kind']=='admit' and not self._check_current(conn,work,payload)
+            if stale:
+                with self.store.write() as conn:
+                    _inc_work_persist(conn,work['id'],state='cancelled',reason='stale_check',finished_at=stamp)
+                    conn.execute("UPDATE entry_profile_admissions SET state=CASE WHEN state='accepted' THEN state ELSE 'candidate' END,reason='stale_check' WHERE memory_id=?",(work['memory_id'],))
+                return
+            public=_inc_public_payload(payload)
+            if work['parsed_json'] is None:
+                parsed={'observations':[]} if work['kind']=='observe' and not payload.get('messages') else self._call(work,work['kind'],public)
+                with self.store.write() as conn:
+                    _inc_work_persist(conn,work['id'],parsed_json=dumps(parsed))
+            else:
+                parsed=json.loads(work['parsed_json'])
+            if work['kind']=='observe': self._apply_observations(work,parsed)
+            else: self._apply_admission(work,parsed)
+        except (ModelError,EntryProfileConflict,ValueError) as error:
+            reason=(error.reason or error.category) if isinstance(error,ModelError) else str(error)
+            retry=isinstance(error,ModelError) and (error.category in ('retryable','paused','budget') or reason=='interrupted')
+            with self.store.write() as conn:
+                live=conn.execute('SELECT * FROM entry_profile_incremental_work WHERE id=?',(work['id'],)).fetchone()
+                deferred=retry and (live['attempts']<=2 or reason=='call_budget' or isinstance(error,ModelError) and error.category in ('paused','budget'))
+                _inc_work_persist(conn,work['id'],state='deferred' if deferred else 'failed',reason=reason,
+                    retry_at=(_instant(self.clock())+timedelta(minutes=5*(2**min(live['attempts'],4)))).isoformat() if deferred else None,
+                    finished_at=stamp)
+                if work['kind']=='admit' and live['state']!='cancelled':
+                    conn.execute("UPDATE entry_profile_admissions SET state=CASE WHEN state='accepted' THEN state ELSE 'candidate' END,reason=? WHERE memory_id=?",
+                                 (reason,work['memory_id']))
+            if reason in ('timeout','rate_limited'):
+                self.transport_error=reason
+            if reason in ('call_budget','interrupted') or isinstance(error,ModelError) and error.paused:
+                self.stop_reason=reason
+        finally:
+            with self.store.read() as conn:
+                self.trace.append(dict(conn.execute('SELECT * FROM entry_profile_incremental_work WHERE id=?',(work['id'],)).fetchone()))
+
+    def run(self, entry_id):
+        self.transport_error=None;self.stop_reason=None;seen=set()
+        self._queue_candidates(entry_id)
+        while True:
+            progress=False
+            for kind in ('observe','admit'):
+                with self.store.read() as conn:
+                    work=conn.execute("""SELECT * FROM entry_profile_incremental_work WHERE entry_id=? AND kind=?
+                        AND (state='queued' OR state='deferred' AND retry_at<=?) ORDER BY id LIMIT 1""",
+                        (entry_id,kind,_instant(self.clock()).isoformat())).fetchone()
+                if kind=='observe' and not work:
+                    wid=self._freeze_chunk(entry_id)
+                    if wid:
+                        with self.store.read() as conn:
+                            work=conn.execute('SELECT * FROM entry_profile_incremental_work WHERE id=?',(wid,)).fetchone()
+                if work and work['id'] not in seen:
+                    seen.add(work['id']);self._run_one(dict(work));progress=True
+                    if kind=='observe': self._queue_candidates(entry_id)
+                if self.stop_reason or self.transport_error and getattr(self.gateway,'abort_on_model_transport_error',False):
+                    break
+            if getattr(self,'one_round',False) or not progress or self.stop_reason or self.transport_error and getattr(self.gateway,'abort_on_model_transport_error',False):
+                break
+        with self.store.read() as conn:
+            stats=incremental_progress(conn,entry_id)
+        calls=[c for w in self.trace for c in json.loads(w['calls_json'])]
+        return dict(status='committed' if any(w['state'] in ('applied','rejected') for w in self.trace) else 'failed' if self.trace else 'no_new_evidence',
+            reason=self.transport_error or self.stop_reason or next((w['reason'] for w in self.trace if w['state'] in ('failed','deferred')),None),
+            work=self.trace,progress=stats,calls=calls,prompt_versions=[p['name'] for p in self.prompts.values()],
+            prompt_sha256={p['name']:p['sha256'] for p in self.prompts.values()})
+
+
+def _reserve_incremental_task(engine, entry_id, expected, source, *, run_id=None, fail_if_running=False):
+    stamp=_instant(engine.clock()).isoformat();store=engine.store
+    with store.write() as conn:
+        _memory_expect(conn,entry_id,expected)
+        _recover_interrupted(conn,store,entry_id,stamp)
+        if conn.execute("SELECT 1 FROM entry_profile_attempts WHERE entry_id=? AND state='running'",(entry_id,)).fetchone():
+            raise EntryProfileBusy('generation_in_progress')
+        # Service/offline leases exclude a second owner; completed responses can resume without a call.
+        conn.execute("UPDATE entry_profile_incremental_work SET state='queued' WHERE entry_id=? AND state='running'",(entry_id,))
+        if run_id is not None:
+            previous=conn.execute('SELECT * FROM entry_profile_attempts WHERE entry_id=? AND run_id=?',(entry_id,run_id)).fetchone()
+        _ensure(conn,entry_id,stamp)
+        settings=_settings(conn,entry_id);entry=_entry(conn,entry_id)
+        reason='entry_kind' if entry['kind'] not in ('group','live') else 'disabled' if not settings['enabled'] or not _runtime(conn)['enabled'] else None
+        zone=_setting(conn,'timezone','Asia/Shanghai');today=_instant(engine.clock()).astimezone(ZoneInfo(zone)).date().isoformat()
+    due=dict(local_day=today,due=not reason,reason=reason,current_version=expected)
+    if reason: return engine._skip(entry_id,expected,source,due,reason,run_id,stamp)
+    try: gateway=engine._gateway()
+    except ModelError as error:
+        return engine._skip(entry_id,expected,source,due,error.reason or error.category,run_id,stamp)
+    task=IncrementalProfileTask(store,gateway,clock=engine.clock,source=source)
+    task.one_round=run_id is not None
+    task._resnapshot(entry_id)
+    task._queue_candidates(entry_id)
+    with store.read() as conn:
+        queued=conn.execute("SELECT 1 FROM entry_profile_incremental_work WHERE entry_id=? AND (state='queued' OR state='deferred' AND retry_at<=?) LIMIT 1",(entry_id,stamp)).fetchone()
+    if not queued and not task._freeze_chunk(entry_id):
+        return engine._skip(entry_id,expected,source,due,'no_new_evidence',run_id,stamp)
+    with store.write() as conn:
+        _memory_expect(conn,entry_id,expected)
+        if conn.execute("SELECT 1 FROM entry_profile_attempts WHERE entry_id=? AND state='running'",(entry_id,)).fetchone():
+            raise EntryProfileBusy('generation_in_progress')
+        if run_id is not None:
+            old=conn.execute('SELECT id FROM entry_profile_attempts WHERE entry_id=? AND run_id=?',(entry_id,run_id)).fetchone()
+        else: old=None
+        if old:
+            attempt=old[0]
+            conn.execute("UPDATE entry_profile_attempts SET state='running',reason=NULL,finished_at=NULL WHERE id=?",(attempt,))
+        else:
+            attempt=conn.execute('''INSERT INTO entry_profile_attempts(entry_id,run_id,base_version,state,local_day,started_at,material_json)
+                VALUES(?,?,?,'running',?,?,?)''',(entry_id,run_id,expected,today,stamp,dumps({'incremental':True,'evidence_refs':[]}))).lastrowid
+        task.attempt_id=attempt
+        _audit(conn,'generation_requested',entry_id,stamp,attempt_id=attempt,base_version=expected,source=source)
+        with _ACTIVE_LOCK: _ACTIVE_ATTEMPTS.add((store.path,attempt))
+    return dict(status='running',attempt_id=attempt,context=dict(entry_id=entry_id,attempt=attempt,incremental_task=task,due=due))
+
+
+def _execute_incremental_task(engine, entry_id, attempt, task, due):
+    try:
+        result=task.run(entry_id)
+        status={'committed':'published','no_new_evidence':'skipped'}.get(result['status'],result['status'])
+        with engine.store.write() as conn:
+            version=_memory_state(conn,entry_id)['version']
+            previous=json.loads(conn.execute('SELECT outputs_json FROM entry_profile_attempts WHERE id=?',(attempt,)).fetchone()[0])
+            persisted={**result,'work':previous.get('work',[])+result['work'],'calls':previous.get('calls',[])+result['calls']}
+            # Existing attempt redaction guards also cover linked incremental work.
+            conn.execute('''UPDATE entry_profile_attempts SET state=?,reason=?,version=?,outputs_json=?,calls_json=?,finished_at=?
+                WHERE id=? AND state='running' ''',(status,result.get('reason'),version,dumps(persisted),dumps(persisted['calls']),
+                _instant(engine.clock()).isoformat(),attempt))
+        return dict(status=status,reason=result.get('reason'),version={'version':version},attempt_id=attempt,due=due,result=result)
+    except Exception:
+        engine._finish(attempt,'failed','unexpected_error',{},[])
+        raise
+    finally:
+        with _ACTIVE_LOCK: _ACTIVE_ATTEMPTS.discard((engine.store.path,attempt))
+
+
+def _update_incremental_for_run(store, gateway, run, config, *, clock=utc_now, stop=None):
+    if not config.get('entry_profile_enabled',True): return True
+    with store.read() as conn:
+        if not _runtime(conn)['enabled']: return True
+        entries=[r[0] for r in conn.execute("SELECT id FROM entries WHERE kind IN ('group','live') ORDER BY id")]
+    remaining=entries
+    while remaining:
+        next_round=[]
+        for entry_id in remaining:
+            if stop and stop(): return False
+            with store.read() as conn: expected=_settings(conn,entry_id)['current_version']
+            try:
+                outcome=EntryProfileEngine(store,gateway,clock=clock).update(entry_id,expected_version=expected,run_id=run['id'])
+            except (EntryProfileConflict,EntryProfileBusy):
+                continue
+            result=outcome.get('result',{})
+            with store.write() as conn:
+                conn.execute("""INSERT INTO maintenance_items(run_id,phase,item_key,object_id,outcome,reason,details_json,created_at)
+                    VALUES(?,'consolidation',?,?,'entry_profile',?,?,?)
+                    ON CONFLICT(run_id,phase,item_key) DO UPDATE SET reason=excluded.reason,details_json=excluded.details_json""",
+                    (run['id'],'entry_profile:'+entry_id,outcome['attempt_id'],outcome.get('reason'),
+                     dumps({'entry_id':entry_id,'status':outcome['status'],'progress':incremental_progress(conn,entry_id)}),_instant(clock()).isoformat()))
+            if result.get('reason') in ('call_budget','interrupted'):
+                return result['reason']!='interrupted'
+            if result.get('work'): next_round.append(entry_id)
+        remaining=next_round
+    return True

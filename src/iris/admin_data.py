@@ -741,6 +741,7 @@ ENTRY_PROFILE_ATTEMPT_COLUMNS = '''id,entry_id,base_version,state,reason,version
     (SELECT status FROM entry_profile_versions v WHERE v.entry_id=entry_profile_attempts.entry_id
         AND v.version=entry_profile_attempts.version
         AND json_type(entry_profile_attempts.material_json,'$.memory_material') IS NULL
+        AND json_type(entry_profile_attempts.material_json,'$.incremental') IS NULL
         AND NOT EXISTS(SELECT 1 FROM purge_redactions r WHERE r.table_name='entry_profile_attempts'
             AND r.row_id=CAST(entry_profile_attempts.id AS TEXT))) AS version_status,
     CASE WHEN state!='running' THEN 'finished'
@@ -752,6 +753,21 @@ def _entry_profile_summary(row, current, conn):
     from .entry_profile import memory_profile_enabled
     legacy=memory_profile_enabled(conn)
     return _redaction(conn,'entry_profile_versions',row) | {'legacy':legacy,'is_current':not legacy and row['version']==current,'needs_regeneration':bool(row['needs_regeneration'])}
+
+
+def _incremental_attempt(conn, row):
+    from .entry_profile import incremental_profile_enabled, incremental_progress
+    if row is None: return None
+    value=_redaction(conn,'entry_profile_attempts',row)
+    if not incremental_profile_enabled(conn): return value
+    value['progress']=incremental_progress(conn,row['entry_id'])
+    value['work']=[dict(r) for r in conn.execute("""SELECT id,kind,state,local_day,memory_id,
+        cursor_before,cursor_after,attempts,reason,retry_at,created_at,finished_at
+        FROM entry_profile_incremental_work WHERE attempt_id=? ORDER BY id""",(row['id'],))]
+    running=[w for w in value['work'] if w['state']=='running']
+    if row['state']=='running' and running:
+        value['stage']='checking' if running[0]['kind']=='admit' else 'generating'
+    return value
 
 
 def entry_profile_snapshot(store, entry_id):
@@ -768,10 +784,11 @@ def entry_profile_snapshot(store, entry_id):
                 current=projection,pending=None,pending_count=0,legacy_write_status=410,
                 memories=profiles.memory_profile_rows(conn,entry_id),
                 diagnostics=json.loads(state['diagnostics_json']),
+                progress=profiles.incremental_progress(conn,entry_id) if profiles.incremental_profile_enabled(conn) else None,
                 migration=[dict(r) for r in conn.execute('SELECT * FROM entry_profile_legacy_migration WHERE entry_id=? ORDER BY legacy_version,sentence_index',(entry_id,))],
                 cursor=state['cursor'],rebuild_pending=bool(state['rebuild_pending']),
                 possibly_stale=bool(projection and projection['possibly_stale']),stale_basis=[],
-                latest_attempt=_redaction(conn,'entry_profile_attempts',latest) if latest else None)
+                latest_attempt=_incremental_attempt(conn,latest))
         current = conn.execute(f'SELECT {ENTRY_PROFILE_COLUMNS} FROM entry_profile_versions WHERE entry_id=? AND version=?',
                                (entry_id, settings['current_version'])).fetchone()
         pending = conn.execute(f"SELECT {ENTRY_PROFILE_COLUMNS} FROM entry_profile_versions WHERE entry_id=? AND status='candidate' ORDER BY version DESC",
@@ -842,7 +859,7 @@ def entry_profile_attempt(store, entry_id, attempt_id):
                            (entry_id, attempt_id)).fetchone()
         if row is None:
             raise KeyError(attempt_id)
-        return _redaction(conn,'entry_profile_attempts',row)
+        return _incremental_attempt(conn,row)
 
 
 def maintenance_redactions(store, report):

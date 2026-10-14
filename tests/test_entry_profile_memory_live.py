@@ -83,7 +83,16 @@ class RuleGateway:
         assert not self.store._writer.in_transaction
         payload = json.loads(messages[-1]['content'])
         self.calls.append((purpose, payload))
-        if purpose.endswith('_generate'):
+        if purpose.endswith('_observe'):
+            source=payload['messages'][0]
+            output={'observations':[{'op':'propose','category':'rule','body':'禁止广告。',
+                'saying':'','meaning':'','definition_refs':[],
+                'source_refs':[{'message_id':source['message_id'],'field':'content','excerpt':source['content']}]}]}
+        elif purpose.endswith('_admit'):
+            output={'decision':'accept','violations':[],'reason':'明确的长期群规',
+                'safe_sources':[{k:s[k] for k in ('message_id','field','excerpt')} for s in payload['memory']['sources']]}
+            if self.hook: self.hook()
+        elif purpose.endswith('_generate'):
             source = payload['messages'][0]
             output = {'operations': [{'op':'new', 'category':'rule', 'body':'禁止广告。',
                 'saying':'', 'meaning':'', 'importance':69, 'sources':[
@@ -109,7 +118,7 @@ def test_default_engine_uses_memory_writer_and_durable_cursor(store):
     with store.read() as conn:
         assert conn.execute('SELECT COUNT(*) FROM entry_profile_versions').fetchone()[0] == 0
         row = conn.execute('SELECT * FROM memories WHERE id=?', (profile['memory_ids'][0],)).fetchone()
-        assert row['importance'] == 69 and not row['pinned']
+        assert row['importance'] == 50 and not row['pinned']
         assert conn.execute('SELECT cursor FROM entry_profile_memory_state').fetchone()[0] > 0
     again = engine.regenerate('group', expected_version=profile['version'])
     assert again['status'] == 'skipped'
@@ -117,16 +126,17 @@ def test_default_engine_uses_memory_writer_and_durable_cursor(store):
     assert Retrieval(store).prepare('group', text='', judge=False)['entry_profile'] == profile
 
 
-def test_mutated_source_rolls_back_operations_and_cursor(store):
+def test_mutated_source_blocks_admission_but_preserves_observation_commit(store):
     message(store)
     def mutate():
         with store.write() as conn:
             conn.execute("UPDATE messages SET content='本条已被编辑。' WHERE entry_id='group'")
     result = ep.EntryProfileEngine(store, RuleGateway(store, mutate), clock=CLOCK).regenerate('group', expected_version=0)
-    assert result['status'] == 'conflict', result
+    assert result['status'] == 'published' and result['reason']=='check_source_changed', result
+    assert context(store) is None
     with store.read() as conn:
-        assert conn.execute('SELECT cursor FROM entry_profile_memory_state').fetchone()[0] == 0
-        assert conn.execute("SELECT COUNT(*) FROM memories WHERE kind='入口画像'").fetchone()[0] == 0
+        assert conn.execute('SELECT cursor FROM entry_profile_memory_state').fetchone()[0] > 0
+        assert conn.execute("SELECT importance FROM memories WHERE kind='入口画像'").fetchone()[0] == 30
 
 
 def test_legacy_write_functions_are_retired(store):
@@ -192,7 +202,7 @@ def test_real_attempt_and_projection_are_redacted_by_purge(store):
     message(store)
     result=ep.EntryProfileEngine(store,RuleGateway(store),clock=CLOCK).regenerate('group',expected_version=0)
     mid=context(store)['memory_ids'][0]
-    purge_memory(store,mid,1,confirm=True)
+    purge_memory(store,mid,2,confirm=True)
     assert context(store) is None
     with store.read() as conn:
         attempt=conn.execute('SELECT * FROM entry_profile_attempts WHERE id=?',(result['attempt_id'],)).fetchone()
@@ -226,7 +236,7 @@ def test_timezone_change_during_check_invalidates_date_based_snapshot(store):
     message(store)
     gateway=RuleGateway(store,lambda:store.set_setting('timezone','UTC'))
     result=ep.EntryProfileEngine(store,gateway,clock=CLOCK).regenerate('group',expected_version=0)
-    assert result['status']=='conflict'
+    assert result['status']=='published' and result['reason']=='check_snapshot_changed'
     assert context(store) is None
 
 
@@ -239,6 +249,7 @@ def test_indirect_topic_sources_remain_normalized_in_persisted_projection(store)
     with store.read() as conn:
         sources=[entry_profile_source(conn,x,source_memory_id=fact,source_revision=1) for x in (a,b)]
     result=write_entry_profile_memory(store,'group',op='new',category='topic',content='常聊徒步装备。',sources=sources)
+    admit_existing(store)
     assert context(store)['memory_ids']==[result['memory_id']]
     with store.read() as conn:
         rows=ep.memory_profile_rows(conn,'group',as_of=CLOCK().isoformat())
@@ -249,7 +260,7 @@ def test_indirect_topic_sources_remain_normalized_in_persisted_projection(store)
 
 def test_default_engine_reports_actual_memory_prompts_and_refuses_legacy_override(store):
     engine=ep.EntryProfileEngine(store,None)
-    assert engine.prompt_metadata['prompt_versions']==['entry_profile_memory_generate_v2','entry_profile_memory_check_v2']
+    assert engine.prompt_metadata['prompt_versions']==['entry_profile_observe_v1','entry_profile_admit_v1']
     with pytest.raises(ep.EntryProfileRetired):
         ep.EntryProfileEngine(store,None,prompt_version='v2')
 
@@ -261,6 +272,7 @@ def test_timezone_change_rechecks_cross_day_sources_in_same_write(store):
     with store.read() as conn:
         sources=[entry_profile_source(conn,x) for x in (a,b)]
     write_entry_profile_memory(store,'group',op='new',category='topic',content='常聊徒步装备。',sources=sources)
+    admit_existing(store)
     before=context(store)
     assert before is not None
     store.set_setting('timezone','UTC')
@@ -279,3 +291,12 @@ def test_attempt_persists_generation_before_the_check_call(store):
         assert latest['stage']=='checking'
     result=ep.EntryProfileEngine(store,RuleGateway(store,during_check),clock=CLOCK).regenerate('group',expected_version=0)
     assert result['status']=='published' and observed==['checking']
+
+
+def admit_existing(store):
+    class AdmissionGateway(RuleGateway):
+        def chat(self,messages,purpose,**kwargs):
+            if purpose.endswith('_observe'):
+                return SimpleNamespace(content='{"observations":[]}',finish_reason='stop',usage={})
+            return super().chat(messages,purpose,**kwargs)
+    ep.EntryProfileEngine(store,AdmissionGateway(store),clock=CLOCK).regenerate('group',expected_version=0)

@@ -33,13 +33,12 @@ def scripted_gateway(store, steps):
             return httpx.Response(answer, json={'error': {'code': 'InternalServerError'}})
         payload = json.loads(request.content)
         if answer in ('generate', 'check', 'missing_violations'):
-            stage = 'check' if answer == 'missing_violations' else answer
+            stage = 'admit' if answer in ('check','missing_violations') else 'observe'
             reply = fake.chat(payload['messages'][:2], 'consolidation_entry_profile_' + stage)
             content = reply.content
             if answer == 'missing_violations':
                 output = json.loads(content)
-                for row in output['operations']:
-                    row.pop('violations')
+                output.pop('violations')
                 content = json.dumps(output, ensure_ascii=False)
         else:
             content = answer
@@ -61,13 +60,16 @@ def execute(store, gateway):
 
 
 def assert_no_writeback(store, result):
-    assert result['status'] == 'failed', result
+    # Observation and admission are separate commits. A late check cannot publish
+    # or promote, but must preserve an already committed candidate/cursor.
+    assert result['status'] in ('failed','published'), result
     assert context(store) is None
     with store.read() as conn:
-        state = conn.execute('SELECT cursor,version FROM entry_profile_memory_state').fetchone()
-        assert tuple(state) == (0, 0)
-        for table in ('memories', 'entry_profile_memory_plans'):
-            assert conn.execute('SELECT COUNT(*) FROM ' + table).fetchone()[0] == 0
+        assert conn.execute('SELECT version FROM entry_profile_memory_state').fetchone()[0]==0
+        assert not conn.execute("SELECT 1 FROM memories WHERE importance!=30").fetchone()
+        assert not conn.execute("SELECT 1 FROM entry_profile_admissions WHERE state='accepted'").fetchone()
+        if not conn.execute('SELECT 1 FROM memories').fetchone():
+            assert conn.execute('SELECT cursor FROM entry_profile_memory_state').fetchone()[0]==0
 
 
 def test_generate_and_check_each_allow_180_seconds(store):
@@ -118,20 +120,21 @@ def test_late_success_from_custom_gateway_is_rejected_and_retained(store, stage,
 
         def chat(self, messages, purpose, **kwargs):
             reply = super().chat(messages, purpose, **kwargs)
-            self.now = kwargs['_deadline'] + overrun if purpose.endswith('_' + stage) else self.now + 1
+            self.now = kwargs['_deadline'] + overrun if purpose.endswith('_' + ('observe' if stage=='generate' else 'admit')) else self.now + 1
             return reply
 
     result = execute(store, LateGateway(store))
     assert result['reason'] == 'timeout'
     assert_no_writeback(store, result)
     trace = result['result']
-    assert stage in trace['outputs']
+    actual='observe' if stage=='generate' else 'admit'
+    assert actual in json.loads(trace['work'][-1]['outputs_json'])
     assert trace['calls'][-1]['reason'] == 'timeout'
     assert len(trace['calls']) == (1 if stage == 'generate' else 2)
     with store.read() as conn:
         attempt = conn.execute('SELECT state,reason,outputs_json FROM entry_profile_attempts').fetchone()
-        assert tuple(attempt)[:2] == ('failed', 'timeout')
-        assert stage in json.loads(attempt['outputs_json'])['outputs']
+        assert tuple(attempt)[:2] == (result['status'], 'timeout')
+        assert actual in json.loads(json.loads(attempt['outputs_json'])['work'][-1]['outputs_json'])
 
 
 def test_local_json_processing_cannot_extend_the_deadline(store, monkeypatch):
