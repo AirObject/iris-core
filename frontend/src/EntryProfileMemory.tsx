@@ -2,7 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError, errorText, useData } from "./api";
 import { Badge, Notice, fullTime, lifecycleLabel } from "./ui";
 import { RevisionView, SourceView } from "./Memory";
-import type { ProfileCategory, ProfileMemory } from "./entry-profile-types";
+import { admissionLabel, incrementalReason } from "./entry-profile-labels";
+import type {
+  ProfileCategory,
+  ProfileMemory,
+  ProfileSource,
+} from "./entry-profile-types";
 import type { MemoryDetail } from "./types";
 import type { ProfileWrite } from "./EntryProfile";
 
@@ -110,8 +115,10 @@ function ProfileMemoryEvidence({
   message,
   openMemory,
   speakerNames,
+  pendingSources,
 }: {
   id: number;
+  pendingSources: ProfileSource[];
   speakerNames: Record<string, string>;
   revision: number;
   message: number | null;
@@ -157,6 +164,11 @@ function ProfileMemoryEvidence({
               }
             >
               {source.message_id && <h5>消息 #{source.message_id}</h5>}
+              {pendingSources.some(
+                (p) => p.message.position === source.message_id,
+              ) && (
+                <Notice>该消息含待审引文，请以上方已审／待审分区为准</Notice>
+              )}
               <SourceView
                 key={`${source.id}:${source.message_id === message}`}
                 source={source}
@@ -254,6 +266,7 @@ export function ProfileMemoryCard({
       <div className="detail-badges">
         <Badge tone="purple">{categoryLabel(memory.category)}</Badge>
         <Badge>{memory.author === "admin" ? "人工" : "模型"}</Badge>
+        <Badge>{admissionLabel(memory.admission_state)}</Badge>
         {memory.manual_protected && <Badge>人工保护</Badge>}
         <Badge tone={deleted ? "danger" : ""}>
           {lifecycleLabel(memory.lifecycle)}
@@ -263,6 +276,32 @@ export function ProfileMemoryCard({
         </span>
       </div>
       <p className="entry-profile-content">{memory.body}</p>
+      {memory.admission_state === "candidate" && (
+        <Notice>还在等待更多独立讨论，暂不给宿主看</Notice>
+      )}
+      {memory.admission_state === "pending" && (
+        <Notice>正在排队或自动检查，全部检查页通过前暂不给宿主看。</Notice>
+      )}
+      {memory.admission_state === "rejected" && (
+        <Notice>
+          自动检查未通过，暂不给宿主看；后续由系统继续处理新依据。
+        </Notice>
+      )}
+      {memory.admission_reason && (
+        <div>
+          <p>{incrementalReason(memory.admission_reason)}</p>
+          {memory.admission_state === "manual" && (
+            <p className="fine-print">
+              这是自动依据检查记录，不影响人工正文的使用。
+            </p>
+          )}
+          {memory.admission_state === "accepted" && (
+            <p className="fine-print">
+              后续检查记录不代表已准入正文被撤下，是否展示请看宿主投影。
+            </p>
+          )}
+        </div>
+      )}
       <dl className="profile-memory-metadata">
         <div>
           <dt>保留强度</dt>
@@ -274,12 +313,18 @@ export function ProfileMemoryCard({
         <div>
           <dt>最近确认时间</dt>
           <dd>
-            {memory.last_confirmed_at === undefined
-              ? "接口未提供"
-              : memory.last_confirmed_at === null
-                ? "暂无确认记录"
-                : fullTime(memory.last_confirmed_at)}
+            {memory.last_confirmed_at
+              ? fullTime(memory.last_confirmed_at)
+              : "暂无确认记录"}
           </dd>
+        </div>
+        <div>
+          <dt>独立日期</dt>
+          <dd>{memory.independent_days} 天</dd>
+        </div>
+        <div>
+          <dt>独立依据</dt>
+          <dd>{memory.independent_uses} 次</dd>
         </div>
         <div>
           <dt>宿主投影</dt>
@@ -292,7 +337,11 @@ export function ProfileMemoryCard({
           </dd>
         </div>
       </dl>
+      <p className="fine-print">
+        独立日期按角色时区统计；独立依据已排除转引、复述等重复讨论，不等于消息总数。
+      </p>
       <div aria-label="依据原话">
+        <h4>已审依据 · {memory.sources.length} 条</h4>
         {memory.sources.map((source, i) => (
           <blockquote key={`${source.ref}:${i}`}>
             <p>{source.excerpt}</p>
@@ -321,6 +370,37 @@ export function ProfileMemoryCard({
           </p>
         )}
       </div>
+      {!!memory.pending_sources.length && (
+        <section aria-label="待审来源" className="profile-pending-sources">
+          <h4>待审来源 · {memory.pending_sources.length} 条</h4>
+          <p className="fine-print">
+            这些引文尚未完成自动准入检查，不作为已审依据。
+            {memory.admission_state === "manual"
+              ? "人工正文照常可用，无需等待这些引文。"
+              : "通过检查后才可能成为可展示画像的依据。"}
+          </p>
+          {memory.pending_sources.map((source, i) => (
+            <blockquote key={`${source.ref}:${i}`}>
+              <p>{source.excerpt}</p>
+              <footer>
+                {source.field === "quote" ? "转引原话" : "消息正文"} · 原作者：
+                {speakerNames[source.speaker] || source.speaker} ·{" "}
+                {fullTime(source.message.occurred_at)}
+              </footer>
+              <button
+                className="text-button"
+                disabled={busy}
+                onClick={() => {
+                  setMessage(source.message.position);
+                  setDetails(true);
+                }}
+              >
+                跳转来源消息 #{source.message.position}
+              </button>
+            </blockquote>
+          ))}
+        </section>
+      )}
       {error && (
         <Notice error>
           {error}
@@ -532,6 +612,7 @@ export function ProfileMemoryCard({
           id={memory.memory_id}
           speakerNames={speakerNames}
           revision={memory.revision}
+          pendingSources={memory.pending_sources}
           message={message}
           openMemory={openMemory}
         />

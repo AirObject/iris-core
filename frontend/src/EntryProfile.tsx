@@ -3,8 +3,13 @@ import { ApiError, api, errorText, json, useData } from "./api";
 import { Badge, Dialog, Notice, fullTime } from "./ui";
 import { EntryProfileHistory } from "./EntryProfileHistory";
 import { ProfileMemoryCard, ProfileMemoryCreate } from "./EntryProfileMemory";
-import { reason, status } from "./entry-profile-labels";
-import type { ProfileAttempt, ProfileSnapshot } from "./entry-profile-types";
+import { ProfileProgressView, ProfileWorkList } from "./EntryProfileProgress";
+import { incrementalReason, status } from "./entry-profile-labels";
+import type {
+  ProfileAttempt,
+  ProfileProgress,
+  ProfileSnapshot,
+} from "./entry-profile-types";
 
 export type ProfileWrite = (
   path: string,
@@ -16,9 +21,11 @@ function ProfileTask({
   base,
   initial,
   settled,
+  progress,
 }: {
   base: string;
   initial: ProfileAttempt;
+  progress?: ProfileProgress | null;
   settled: (value: ProfileAttempt) => void;
 }) {
   const [polling, setPolling] = useState(initial.state === "running");
@@ -34,7 +41,7 @@ function ProfileTask({
       settled(task.data);
     }
   }, [task.data, settled]);
-  const value = task.data || initial;
+  const value = polling ? task.data || initial : initial;
   return (
     <section className="entry-profile-task" aria-label="画像更新任务">
       <h3>更新任务 #{value.id}</h3>
@@ -48,24 +55,18 @@ function ProfileTask({
         {value.state === "running"
           ? value.stage === "checking"
             ? "正在检查画像条目…"
-            : "正在生成画像条目…"
+            : "正在观察消息分块…"
           : value.state === "published"
-            ? "画像更新已完成"
+            ? "本轮已提交处理结果，仍以逐条准入状态为准。"
             : status(value.state)}
       </p>
-      {value.reason && (
-        <p>
-          {value.reason === "no_new_evidence"
-            ? "没有新依据，本次跳过；不会重复增加保留强度。"
-            : value.reason === "snapshot_changed"
-              ? "依据或画像已变化，本次结果未写入。"
-              : reason(value.reason)}
-        </p>
-      )}
+      {value.reason && <p>{incrementalReason(value.reason)}</p>}
       <p className="fine-print">
         开始：{fullTime(value.started_at)}
         {value.finished_at && ` · 结束：${fullTime(value.finished_at)}`}
       </p>
+      <ProfileProgressView progress={value.progress || progress} />
+      <ProfileWorkList work={value.work} />
       {value.version != null && (
         <p>任务完成时的宿主投影版本：v{value.version}</p>
       )}
@@ -134,7 +135,11 @@ export function EntryProfileDialog({
   const value = snapshot.data;
   const task =
     value?.latest_attempt &&
-    (!accepted || value.latest_attempt.id > accepted.id)
+    (!accepted ||
+      value.latest_attempt.id > accepted.id ||
+      (value.latest_attempt.id === accepted.id &&
+        (accepted.state === "running" ||
+          value.latest_attempt.state !== "running")))
       ? value.latest_attempt
       : accepted || value?.latest_attempt;
   const blocked = busy || snapshot.loading || !!snapshot.error;
@@ -322,7 +327,9 @@ export function EntryProfileDialog({
                     ))}
                   </div>
                   {value.projection.possibly_stale && (
-                    <Notice>投影可能过时：有新消息或待重建的画像。</Notice>
+                    <Notice>
+                      投影可能过时：还有未处理消息、观察缺口、待检查或待重建的内容。
+                    </Notice>
                   )}
                 </>
               ) : (
@@ -353,6 +360,15 @@ export function EntryProfileDialog({
               {value.rebuild_pending && (
                 <Notice>画像正在等待新任务重建或继续处理消息。</Notice>
               )}
+            </section>
+            <section
+              className="entry-profile-section"
+              aria-label="每日增量进度"
+            >
+              <h3>每日增量进度</h3>
+              <p className="muted">
+                自动任务按角色时区处理已结束日期；立即运行也处理当日尾块。准入由系统自动检查，无需审批。
+              </p>
               <button
                 disabled={
                   blocked ||
@@ -362,15 +378,19 @@ export function EntryProfileDialog({
                 }
                 onClick={() => void regenerate()}
               >
-                重新生成
+                立即运行
               </button>
-              <p className="fine-print">只处理新依据；没有新依据时跳过。</p>
+              <p className="fine-print">
+                继续处理新消息和排队的检查；没有新依据时不会重复确认。
+              </p>
+              {!task && <ProfileProgressView progress={value.progress} />}
               {task && (
                 <ProfileTask
                   key={task.id}
                   base={base}
                   initial={task}
                   settled={settled}
+                  progress={value.progress}
                 />
               )}
             </section>

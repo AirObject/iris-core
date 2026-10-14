@@ -84,6 +84,42 @@ export type ProfileDetail = ProfileVersion & {
     rollback_from?: number;
   };
 };
+export type ProfileProgress = {
+  scan_cursor: number;
+  applied_cursor: number;
+  observation_chunks: number;
+  completed_chunks: number;
+  pending_checks: number;
+  failed_checks: number;
+  rejected_checks: number;
+  observation_gaps: number;
+  unscanned_messages: number;
+  waiting_candidates: number;
+  oldest_pending_at: string | null;
+};
+export type ProfileWork = {
+  id: number;
+  kind: "observe" | "admit";
+  state:
+    | "queued"
+    | "running"
+    | "applied"
+    | "failed"
+    | "rejected"
+    | "cancelled"
+    | "deferred";
+  local_day: string | null;
+  memory_id: number | null;
+  cursor_before: number;
+  cursor_after: number;
+  attempts: number;
+  reason: string | null;
+  retry_at: string | null;
+  created_at: string;
+  finished_at: string | null;
+  check_page: number | null;
+  check_pages: number | null;
+};
 export type ProfileAttempt = {
   id: number;
   state: string;
@@ -93,6 +129,8 @@ export type ProfileAttempt = {
   version_status?: string | null;
   started_at?: string;
   finished_at?: string | null;
+  progress?: ProfileProgress | null;
+  work?: ProfileWork[];
 };
 export type ProfileCategory = "topic" | "saying" | "rule" | null;
 export type ProfileMemory = {
@@ -108,19 +146,25 @@ export type ProfileMemory = {
   usable: boolean;
   retention: number;
   pinned: boolean;
-  last_confirmed_at?: string | null;
-  sources: {
-    ref: string;
-    field: "content" | "quote";
-    excerpt: string;
-    speaker: string;
-    message: {
-      position: number;
-      content: string;
-      occurred_at: string;
-      entry_id: string;
-    };
-  }[];
+  last_confirmed_at: string | null;
+  admission_state: "manual" | "candidate" | "pending" | "accepted" | "rejected";
+  independent_days: number;
+  independent_uses: number;
+  admission_reason: string | null;
+  sources: ProfileSource[];
+  pending_sources: ProfileSource[];
+};
+export type ProfileSource = {
+  ref: string;
+  field: "content" | "quote";
+  excerpt: string;
+  speaker: string;
+  message: {
+    position: number;
+    content: string;
+    occurred_at: string;
+    entry_id: string;
+  };
 };
 export type ProfileSnapshot = {
   mode: "memory";
@@ -144,6 +188,7 @@ export type ProfileSnapshot = {
   }[];
   rebuild_pending: boolean;
   latest_attempt: ProfileAttempt | null;
+  progress?: ProfileProgress | null;
 };
 export type ProfileDiff = {
   changed: boolean;

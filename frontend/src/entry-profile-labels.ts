@@ -71,3 +71,34 @@ export const basisName = (basis: ProfileBasis) =>
   basis.memory_id
     ? `记忆 #${basis.memory_id} · 修订 ${basis.revision}`
     : `消息 #${basis.message_id}`;
+
+const incrementalReasons: Record<string, string> = {
+  evidence_budget_exceeded: "必要依据超出单次检查预算，暂不能完成这次检查",
+  basis_changed: "依据已变化，需要重新检查",
+  reject: "本次自动检查未通过",
+  invalid_output: "模型返回的检查结果格式无效，未据此准入",
+  timeout: "本次模型调用超时，已保留此前处理结果",
+  rule_scope_not_established: "尚未建立这条群规的适用范围依据",
+  bundle_rejected: "同组检查已有页面未通过，后续页已取消",
+  stale_check: "检查所用的正文或依据已变化，需要重新检查",
+  call_budget: "本轮调用额度已用完，剩余工作留待后续处理",
+  purged: "相关内容已彻底清除，本项停止处理",
+  merged_basis: "合并后的依据需要重新检查",
+  no_new_evidence: "没有新依据，本次跳过；不会重复增加保留强度。",
+  snapshot_changed: "依据或画像已变化，本次结果未写入。",
+};
+export const incrementalReason = (value: string) =>
+  value.startsWith("unbound_entities:")
+    ? `相关对象缺少绑定依据：${value.slice("unbound_entities:".length).split(",").join("、")}`
+    : incrementalReasons[value] || reason(value);
+
+export const admissionLabel = (value: string) =>
+  (
+    ({
+      manual: "人工条目",
+      candidate: "候选",
+      pending: "等待自动检查",
+      accepted: "已准入",
+      rejected: "检查未通过",
+    }) as Record<string, string>
+  )[value] || value;

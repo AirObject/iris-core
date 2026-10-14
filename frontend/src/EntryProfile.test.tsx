@@ -26,6 +26,12 @@ const profile: ProfileMemory = {
   usable: true,
   retention: 72,
   pinned: false,
+  last_confirmed_at: null,
+  admission_state: "accepted",
+  admission_reason: null,
+  independent_days: 2,
+  independent_uses: 2,
+  pending_sources: [],
   sources: [
     {
       ref: "msg:9",
@@ -248,7 +254,7 @@ test("按条展示类别、作者、生命周期与保留强度；预览使用�
   expect(card().getByText("模型")).toBeVisible();
   expect(card(44).getByText("人工保护")).toBeVisible();
   expect(card().getByText("72")).toBeVisible();
-  expect(card().getByText("接口未提供")).toBeVisible();
+  expect(card().getByText("暂无确认记录")).toBeVisible();
   expect(card(45).queryByText("接口未提供")).not.toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: /确认发布|拒绝候选|回滚/ }),
@@ -413,10 +419,10 @@ test("任务 202 后只 GET 轮询，终态停止任务轮询，不把投影号�
   vi.useFakeTimers();
   panel();
   await act(async () => {});
-  fireEvent.click(screen.getByRole("button", { name: "重新生成" }));
+  fireEvent.click(screen.getByRole("button", { name: "立即运行" }));
   await act(async () => {});
   expect(screen.getByText("正在检查画像条目…")).toBeVisible();
-  expect(screen.getByRole("button", { name: "重新生成" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "立即运行" })).toBeDisabled();
   taskState = "skipped";
   await act(async () => {
     await vi.advanceTimersByTimeAsync(1600);
@@ -444,7 +450,7 @@ test("预算遗漏、过时与重建提示可见；关闭和私聊不能生成",
   await screen.findByText(/受展示预算限制/);
   expect(screen.getByText(/投影可能过时/)).toBeVisible();
   expect(screen.getByText(/画像正在等待新任务重建/)).toBeVisible();
-  expect(screen.getByRole("button", { name: "重新生成" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "立即运行" })).toBeDisabled();
   view.unmount();
   snapshot.supported = false;
   panel();

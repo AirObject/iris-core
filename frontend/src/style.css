@@ -3417,3 +3417,14 @@ tr:last-child td {
   .profile-memory-metadata div { display: flex; flex-wrap: wrap; gap: 6px 12px; }
   .profile-memory-metadata dd { margin: 0; }
 }
+
+.profile-progress-grid, .profile-work-metadata { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; font-size: 13px; }
+.profile-progress-grid dt, .profile-work-metadata dt { color: var(--muted); }
+.profile-progress-grid dd, .profile-work-metadata dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+.profile-work-card { border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-top: 12px; min-width: 0; }
+.profile-pending-sources { border-top: 1px dashed var(--line); margin-top: 12px; }
+@media (max-width: 600px) {
+  .profile-progress-grid, .profile-work-metadata { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .profile-progress-grid div, .profile-work-metadata div { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+  .profile-progress-grid dd, .profile-work-metadata dd { margin: 0; }
+}
