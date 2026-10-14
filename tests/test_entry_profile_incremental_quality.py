@@ -82,12 +82,17 @@ def check_seed(store,gateway=None,*,one_round=False):
     '望远镜支架找到了，已经寄出给你。',
     '怎么样了？',
 ])
-def test_cross_day_followup_of_one_request_is_not_an_independent_topic(store,followup):
+def test_unlinked_followup_is_rejected_by_semantic_admission(store,followup):
     seed(store,[(1,'甲','求一份望远镜支架的图纸，谁还有？'),(4,'乙',followup)])
-    g=check_seed(store)
+    # EF-15: without a reply link or the same initiator and object, code must
+    # not invent the event link. The semantic check still rejects this history.
+    def reject_same_request(payload):
+        return {'decision':'insufficient','violations':['无依据'],
+                'reason':'同一请求的跟进，不是独立讨论。','safe_sources':[]}
+    g=check_seed(store,Gateway(store,checks=reject_same_request))
     assert not projection(store)
-    assert profiles(store)[0]['independent_uses']==1
-    assert not g.calls
+    assert profiles(store)[0]['independent_uses']==2
+    assert len(g.calls)==1
 
 
 def test_new_discussion_of_same_object_can_be_independent(store):
@@ -135,11 +140,21 @@ def test_distinct_sayings_or_unbounded_gaps_are_not_normalized(saying,usage):
 @pytest.mark.parametrize('body,evidence,missing', [
     ('讨论《深海航线》的叙述。',['讨论叙述顺序。'],'深海航线'),
     ('苏州的纸灯塔制作。',['在杭州制作纸桥。'],'苏州'),
-    ('纸灯塔制作的折痕。',['折痕压反了，需要重折。'],'灯塔'),
     ('比较35毫米与50毫米镜头。',['比较35毫米镜头。'],'50'),
 ])
 def test_specific_object_cannot_be_borrowed_from_unbound_context(body,evidence,missing):
     assert any(missing in x for x in ep._inc_missing_entities(body,evidence))
+
+
+def test_common_object_mismatch_is_still_rejected_by_semantic_check(store):
+    seed(store,[(1,'甲','纸桥的折痕压反了，需要重折。'),
+                (4,'乙','比较纸桥的宽度和插接位置。')],body='纸灯塔制作的折痕。')
+    def reject_mismatch(payload):
+        assert payload['memory']['body']=='纸灯塔制作的折痕。'
+        return {'decision':'reject','violations':['无依据'],
+                'reason':'依据讨论纸桥，不能写成纸灯塔。','safe_sources':[]}
+    g=check_seed(store,Gateway(store,checks=reject_mismatch))
+    assert len(g.calls)==1 and not projection(store)
 
 
 def test_objects_must_survive_checker_source_shortening(store):
