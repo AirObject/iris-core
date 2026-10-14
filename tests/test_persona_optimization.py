@@ -85,7 +85,7 @@ def test_template_is_byte_exact_and_never_sent_to_generator_as_editable_evidence
 
 def test_problem_repaired_once_with_only_its_own_evidence_and_rechecked(prepared):
     result, model = run(prepared)
-    assert [c[0] for c in model.calls] == ['persona_generate','persona_check','persona_check','persona_sentence_repair','persona_recheck']
+    assert [c[0] for c in model.calls] == ['persona_generate','persona_check','persona_sentence_repair','persona_recheck']
     request = next(r for purpose,r,*_ in model.calls if purpose=='persona_sentence_repair')
     assert len(request['problems']) == 1
     assert 'previous' not in request and 'candidate' not in request and 'locked_sentences' not in request
@@ -98,7 +98,7 @@ def test_problem_repaired_once_with_only_its_own_evidence_and_rechecked(prepared
     assert len(checks['repaired_sentences']) == 1 and not checks['deleted_sentences']
     assert checks['initial_model_errors'] and not checks['model_errors']
     assert len(checks['model']['sentences']) == len(result['version']['sentences'])
-    assert [c[2] for c in model.calls] == [360,360,360,120,360]
+    assert [c[2] for c in model.calls] == [360,360,120,360]
 
 
 @pytest.mark.parametrize('options', [{'again':True}, {'repair':None}, {'repair':'第一句。第二句。'}, {'repair':'我照着M1做。'}, {'malformed':True}])
@@ -183,17 +183,24 @@ def test_each_semantic_failure_can_be_removed_without_rejecting_supported_senten
     class SpecificFailure(Model):
         def chat(self,messages,purpose,**kwargs):
             reply=super().chat(messages,purpose,**kwargs)
+            if purpose=='persona_generate':
+                value=json.loads(reply.content)
+                value['sentences'][-1]['text']='在十月一日的直播中，我偏爱浅灰底。'
+                reply.content=dumps(value)
             if purpose=='persona_check':
                 value=json.loads(reply.content)
                 request=json.loads(messages[-1]['content'])
                 for row,candidate in zip(value['sentences'],request['candidate'],strict=True):
-                    if '一向' in candidate['text']:
+                    if '偏爱' in candidate['text']:
                         row.update(supported=False,violations=[failure],reason=failure)
                 reply.content=dumps(value)
             return reply
     model=SpecificFailure(prepared,repair=None)
     result=PersonaEngine(prepared,model).regenerate(expected_version=1)
     checks=result['version']['checks']
+    assert not checks['precheck_rejections']
+    assert any('偏爱' in row['text'] for purpose,payload,_ in model.calls
+               if purpose=='persona_check' for row in payload['candidate'])
     assert checks['passed'] and failure in checks['deleted_sentences'][0]['reasons']
     repair=next(r for purpose,r,*_ in model.calls if purpose=='persona_sentence_repair')
     assert failure in repair['problems'][0]['problems']

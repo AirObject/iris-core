@@ -44,4 +44,6 @@ def test_positive_model_verdict_cannot_retain_cross_sentence_scene_link(store):
     assert text not in result['version']['content']
     deleted=result['version']['checks']['deleted_sentences']
     assert any('cross-sentence scene reference' in ' '.join(d['reasons']) for d in deleted)
-    assert any(s['text']==text for _,request in model.calls if request.get('candidate') for s in request['candidate'])
+    assert not any(s['text']==text for _,request in model.calls if request.get('candidate') for s in request['candidate'])
+    assert any('cross-sentence scene reference' in ' '.join(item['reasons'])
+               for item in result['version']['checks']['precheck_rejections'])

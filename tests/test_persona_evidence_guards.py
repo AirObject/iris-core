@@ -122,7 +122,9 @@ def test_bound_source_guard_runs_again_on_exact_repair(prepared):
     checks = result['version']['checks']
     assert all(row['supported'] for batch in checks['initial_model']['batches']
                for row in batch['sentences'])
-    assert not checks['initial_model']['sentences'][-1]['supported']
+    assert checks['initial_model_sentence_indices'] == [1, 2]
+    assert checks['precheck_rejections'][0]['index'] == 3
+    assert 'completion aspect' in ' '.join(checks['precheck_rejections'][0]['reasons'])
     assert checks['recheck']['sentences'] == []
     assert checks['deleted_sentences'][0]['stage'] == 'repair_options'
     assert 'completion aspect' in ' '.join(checks['deleted_sentences'][0]['reasons'])
@@ -138,7 +140,10 @@ def test_game_scope_guard_overrides_permissive_initial_check(prepared):
     model = Permissive(prepared, mid, text, None)
     result = PersonaEngine(prepared, model).regenerate(expected_version=1)
     checks = result['version']['checks']
-    assert checks['initial_model']['sentences'][-1]['supported']
+    assert checks['initial_model_sentence_indices'] == [1, 2]
+    assert checks['precheck_rejections'][0]['index'] == 3
+    assert all(row['text'] != text for purpose,payload,_ in model.calls
+               if purpose == 'persona_check' for row in payload['candidate'])
     assert checks['deleted_sentences'] and text not in result['version']['content']
     assert 'game-only evidence' in ' '.join(checks['initial_model_errors'])
     assert '解释了规则' in result['version']['content']

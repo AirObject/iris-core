@@ -2073,14 +2073,40 @@ class PersonaEngine:
             if deterministic['passed']:
                 with self.store.write() as conn:
                     conn.execute('UPDATE persona_attempts SET outputs_json=? WHERE id=?', (dumps(outputs),attempt))
-                model = self._check_all('persona_check', material, sentences, full_content=content, outputs=outputs)
-                degree, structural, problems = _check_verdicts(model, sentences, material=material)
-                _, initial_errors = _model_check(model,sentences,material=material)
+                # Reject only already-known wording/evidence failures before an
+                # expensive semantic request. Keep these decisions separate from
+                # actual model votes; no unchecked fact receives a fabricated vote.
+                problems = {}
+                for index, sentence in enumerate(sentences, 1):
+                    issues = _surface_issues(sentence, memories=material['evidence']['memories'])
+                    if issues:
+                        problems[index] = issues
+                precheck = [{'index':index, 'reasons':reasons} for index,reasons in problems.items()]
+                outputs['persona_precheck_rejections'] = precheck
+                positions = [i for i in range(1,len(sentences)+1) if i not in problems]
+                eligible = [sentences[i-1] for i in positions]
+                checks.update(precheck_rejections=precheck, initial_model_sentence_indices=positions)
+                structural, semantic_problems = [], {}
+                if eligible:
+                    # Its comparison draft must also exclude prechecked failures.
+                    # Recovery reassesses the final assembled text after any edit.
+                    model = self._check_all('persona_check', material, eligible,
+                        full_content=''.join(sentence['text'] for sentence in eligible), outputs=outputs)
+                    degree, structural, semantic_problems = _check_verdicts(model, eligible, material=material)
+                problems.update({positions[i-1]:reasons for i,reasons in semantic_problems.items()})
+                initial_errors = structural + [f'sentence {i}: {reason}'
+                    for i,reasons in sorted(problems.items()) for reason in reasons]
                 checks.update(initial_model=model, initial_model_errors=initial_errors)
                 model_errors = initial_errors
                 if not structural and problems:
+                    # Recovery indexes the original proposal. None marks an
+                    # unrequested sentence and is never retained or serialized as
+                    # a model opinion; every unaffected sentence has a real vote.
+                    aligned = [None] * len(sentences)
+                    for index,row in zip(positions, model['sentences'] if model else []):
+                        aligned[index-1] = {**row, 'index':index}
                     sentences, model, degree, model_errors = self._recover_sentences(
-                        sentences, model, problems, material, previous, checks, outputs)
+                        sentences, {'sentences':aligned}, problems, material, previous, checks, outputs)
                     content, deterministic = _final_deterministic(sentences, material, previous)
             manual_removed = _admin_removed(previous, sentences)
             if manual_removed:

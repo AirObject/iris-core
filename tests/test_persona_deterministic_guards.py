@@ -151,7 +151,10 @@ def test_single_date_condition_is_removed_even_when_model_approves_everything(pr
     result = PersonaEngine(prepared, model).regenerate(expected_version=1)
     checks = result['version']['checks']
     assert all(row['supported'] for batch in checks['initial_model']['batches'] for row in batch['sentences'])
-    assert not checks['initial_model']['sentences'][-1]['supported']
+    assert checks['initial_model_sentence_indices'] == [1, 2]
+    assert checks['precheck_rejections'][0]['index'] == 3
+    assert all('遇到' not in row['text'] for purpose,payload,_ in model.calls
+               if purpose == 'persona_check' for row in payload['candidate'])
     assert checks['passed'] and len(checks['deleted_sentences']) == 1
     assert '遇到' not in result['version']['content']
     assert any('single-date' in e for e in checks['initial_model_errors'])
