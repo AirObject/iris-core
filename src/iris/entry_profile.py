@@ -2098,7 +2098,7 @@ def incremental_prompts():
     from importlib.resources import files
     import hashlib
     result={}
-    for stage,name in (('observe','entry_profile_observe_v5'),('admit','entry_profile_admit_v5')):
+    for stage,name in (('observe','entry_profile_observe_v4'),('admit','entry_profile_admit_v4')):
         value=files('iris').joinpath('prompts',name+'.md').read_text(encoding='utf-8')
         result[stage]=dict(name=name,text=value,sha256=hashlib.sha256(value.encode()).hexdigest())
     return result
