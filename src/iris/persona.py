@@ -1608,11 +1608,21 @@ class PersonaEngine:
                         outputs[label + '_normalizations'] = ['unwrap_single_answer']
                         result = result['answer']
                     return result
-                except ValueError:
+                except ValueError as error:
+                    diagnostic = {'kind':type(error).__name__}
+                    if isinstance(error, json.JSONDecodeError):
+                        diagnostic.update(message=error.msg, line=error.lineno,
+                                          column=error.colno, offset=error.pos)
+                        hint = f'解析候选 JSON 第 {error.lineno} 行、第 {error.colno} 列：{error.msg}。'
+                    else:
+                        hint = '没有可解析的根 JSON 对象。'
+                    outputs[label + '_json_error'] = diagnostic
                     if repair:
                         raise ModelError('invalid_output', 'JSON parse failed after repair')
                     messages += [{'role':'assistant','content':reply.content},
-                        {'role':'user','content':'上次不是完整的 JSON 对象。只输出修正后的完整 JSON，不要解释。'}]
+                        {'role':'user','content':hint + '只修正 JSON 语法，保留所有字段、值和逐句判定；'
+                         '检查对象／数组闭合、逗号和字符串转义，不重新判断事实或变化程度。'
+                         '不要原样重复错误文本，只输出修正后的完整根 JSON 对象，不要解释。'}]
         except ModelError as error:
             # The gateway's late-response path records timed_out but may omit the
             # reason. Keep the attempt diagnostic consistent with that call record.
