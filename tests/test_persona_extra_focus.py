@@ -84,9 +84,9 @@ def test_partial_extra_failure_rejects_the_whole_sentence_and_preserves_unchecke
 
 
 @pytest.mark.parametrize('indices', [
-    [1, 3, 4], [2, 1, 3], [1, 2, 1], [1, 2, 99], [1, 2, True], [1, 2, '3'],
+    [1, 3, 4], [2, 1, 3], [1, 2, 99], [1, 2, True], [1, 2, '3'],
 ])
-def test_extra_checks_cannot_cover_missing_reordered_duplicate_or_invalid_indices(store, indices):
+def test_extra_checks_cannot_cover_missing_reordered_or_invalid_indices(store, indices):
     result, _, _, _ = check(store, ExtraModel(indices))
     assert result['incomplete_checks'] and not result['sentences'][0]['supported']
     assert not result['normalizations']

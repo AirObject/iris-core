@@ -811,25 +811,27 @@ def _validate_clause_checks(output, payload):
         if isinstance(row, dict):
             row.pop('unchecked_clause_indices', None)  # Computed here, never trusted from the model.
             row.pop('additional_clause_checks', None)
+            row.pop('repeated_clause_checks', None)
         if sentence['origin'] != 'memory' or sentence.get('initial_setting'):
             continue
         parts = row.get('clauses') if isinstance(row, dict) else None
         requested = sentence['clauses']
         full = _clause_parts(sentence['text'])
         # A model may also check other spans from the full sentence context.
-        # Explicit, unique IDs identify them without guessing. Every requested
-        # span must still appear once, in request order; validate every extra
-        # too, so a negative or malformed extra cannot disappear in projection.
+        # Explicit IDs identify them without guessing. Every requested span
+        # must appear, with first appearances in request order. Repeated verdicts
+        # are separate proof obligations: validate each, never pool evidence or
+        # discard an adverse verdict when projecting to the requested spans.
         full_by_index = {part['index']: part for part in full}
         requested_indices = [part['index'] for part in requested]
         part_indices = ([part['index'] for part in parts]
             if isinstance(parts, list) and all(isinstance(part, dict)
                 and type(part.get('index')) is int for part in parts) else [])
-        extra_response = (len(part_indices) > len(requested_indices)
-            and len(set(part_indices)) == len(part_indices)
+        expanded_response = (len(part_indices) > len(requested_indices)
             and all(index in full_by_index for index in part_indices)
-            and [index for index in part_indices if index in requested_indices] == requested_indices)
-        focus = [full_by_index[index] for index in part_indices] if extra_response else requested
+            and list(dict.fromkeys(index for index in part_indices
+                                   if index in requested_indices)) == requested_indices)
+        focus = [full_by_index[index] for index in part_indices] if expanded_response else requested
         row_errors_before = len(errors)
         # One explicit negative proves the whole conjunction false. This is a
         # rejection-only protocol: a retained sentence still needs every focus.
@@ -908,10 +910,19 @@ def _validate_clause_checks(output, payload):
                     issues.append(f'{label}: single-date claim needs an explicit bounded scene in this sentence')
         if stopped and len(parts) < len(focus) and len(errors) == errors_before:
             row['unchecked_clause_indices'] = [part['index'] for part in focus[len(parts):]]
-        if extra_response and len(errors) == row_errors_before:
-            requested_indices = {part['index'] for part in requested}
-            row['additional_clause_checks'] = [part for part in parts if part['index'] not in requested_indices]
-            row['clauses'] = [part for part in parts if part['index'] in requested_indices]
+        if expanded_response and len(errors) == row_errors_before:
+            primary, repeated, additional = {}, [], []
+            for part in parts:
+                if part['index'] not in requested_indices:
+                    additional.append(part)
+                elif part['index'] in primary:
+                    repeated.append(part)
+                else:
+                    primary[part['index']] = part
+            row['clauses'] = [primary[index] for index in requested_indices]
+            row['additional_clause_checks'] = additional
+            if repeated:
+                row['repeated_clause_checks'] = repeated
         if issues:
             problems[index] = issues
     return errors, problems
@@ -1330,16 +1341,17 @@ class PersonaEngine:
                 audit['errors'] = errors
                 continue
             completion = completion_rows[0]
-            # Both responses were checked independently. Keep prefix spans
-            # absent from this response, and every returned extra (including
-            # adverse repeats of that prefix). Order the merged explicit IDs;
-            # no proof or verdict is synthesized for an omitted span.
-            proof_by_index = {part['index']: part for part in parts}
-            proof_by_index.update({part['index']: part for part in completion['clauses']})
-            proof_parts = [proof_by_index[index] for index in sorted(proof_by_index)]
-            extra_checks = checked['sentences'][0].get('additional_clause_checks')
+            # Both responses were checked independently. Keep every original
+            # and returned verdict, even repeated IDs, so a later positive can
+            # never replace an adverse proof. Projection validates each again.
+            proof_parts = sorted(parts + completion['clauses'], key=lambda part: part['index'])
+            checked_row = checked['sentences'][0]
+            extra_checks = checked_row.get('additional_clause_checks')
             if extra_checks:
                 audit['additional_clause_indices'] = [part['index'] for part in extra_checks]
+            repeated_checks = checked_row.get('repeated_clause_checks')
+            if repeated_checks:
+                audit['repeated_clause_indices'] = [part['index'] for part in repeated_checks]
             combined = {**copy.deepcopy(row), 'clauses': copy.deepcopy(proof_parts),
                 'supported': row['supported'] and completion['supported'] and not problems,
                 'fabricated': row['fabricated'] or completion['fabricated'],
@@ -1446,6 +1458,12 @@ class PersonaEngine:
                             'additional_clause_indices':[part['index'] for part in row['additional_clause_checks']]})
                     elif malformed:
                         row.pop('additional_clause_checks', None)
+                        row.pop('repeated_clause_checks', None)
+                    if not malformed and row.get('repeated_clause_checks'):
+                        normalizations.append({'batch':batch_index+1, 'sentence_index':sentence['_check_sentence'],
+                            'operation':'repeated_focus_checks',
+                            'requested_clause_indices':[part['index'] for part in row['clauses']],
+                            'repeated_clause_indices':[part['index'] for part in row['repeated_clause_checks']]})
                     if malformed:
                         incomplete.append(f'batch {batch_index+1}, sentence {local}: ' + '; '.join(malformed))
                     elif row.get('unchecked_clause_indices'):
@@ -1500,6 +1518,8 @@ class PersonaEngine:
                         'clauses':previous['clauses']+part['clauses'],
                         'additional_clause_checks':previous.get('additional_clause_checks',[])
                             + part.get('additional_clause_checks',[]),
+                        'repeated_clause_checks':previous.get('repeated_clause_checks',[])
+                            + part.get('repeated_clause_checks',[]),
                         'unchecked_clause_indices':previous.get('unchecked_clause_indices',[])
                             + part.get('unchecked_clause_indices',[]),
                         'clause_errors':previous['clause_errors']+part['clause_errors']}

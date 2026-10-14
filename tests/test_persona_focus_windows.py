@@ -169,7 +169,7 @@ def test_extra_focus_fallback_never_accepts_incomplete_or_malformed_results(stor
         elif malformation == 'unknown':
             parts[-1]['index'] = 99
         elif malformation == 'duplicate':
-            parts[-1]['index'] = 3
+            parts[1]['index'] = 1  # Duplicating 1 cannot cover requested focus 2.
         elif malformation == 'reordered':
             parts.reverse()
         elif malformation == 'bool_index':
