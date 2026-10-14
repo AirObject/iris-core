@@ -2468,6 +2468,78 @@ def _inc_topic_details(body, witnesses, page=None):
     return result
 
 
+def _inc_select_evidence(witnesses, category, body, saying, definitions, proposal, fits):
+    """Shrink sources, never the body's evidentiary obligations.
+
+    Links are computed on the complete pool before deletion. Literal support is
+    a necessary condition only: the checker must still ground every semantic
+    clause in the selected excerpts. Omitted sources remain unreviewed.
+    """
+    ordered=sorted(witnesses,key=lambda s:(_instant(s['message']['occurred_at']),*_inc_source_key(s)))
+    roots=_inc_topic_roots(ordered) if category=='topic' else None
+    retire=bool(proposal and proposal['action']=='retire')
+    terms=[] if retire else _inc_entity_terms(body.partition('：')[2] if category=='saying' else body)
+    terms=list(dict.fromkeys(terms))
+    keys=[_inc_source_key(s) for s in ordered]
+    term_keys=[{key for key,s in zip(keys,ordered) if _inc_term_present(term,s['excerpt'])} for term in terms]
+    original_keys={_inc_source_key(s) for s in _inc_groups(ordered,category,saying)}
+    definition_keys={key for key,s in zip(keys,ordered) if s['message']['position'] in definitions}
+    change_keys=[{key for key,s in zip(keys,ordered) if s['message']['position']==ref['message_id']
+                 and s['field']==ref['field'] and whitespace(ref['excerpt']) in s['excerpt']}
+                 for ref in proposal['source_refs']] if proposal else []
+    def counts(page):
+        chosen={_inc_source_key(s) for s in page}
+        # Rule consensus may need two speakers; a lone announcement stays one.
+        base=(len(_inc_topic_witnesses(ordered,roots,chosen)) if roots is not None
+              else len(chosen & original_keys))
+        result=[min(2,base)]
+        for eligible in term_keys:
+            result.append(int(bool(chosen & eligible)))
+            if category=='topic':
+                result.append(min(2,len(_inc_topic_witnesses(ordered,roots,chosen & eligible))))
+        if definitions: result.append(int(bool(chosen & definition_keys)))
+        result.extend(int(bool(chosen & eligible)) for eligible in change_keys)
+        if category=='rule' and not retire: result.append(int(_inc_rule_reason(page) is None))
+        return result
+    target=counts(ordered)
+    # Earliest plus the latest different speaker, then remaining recent sources.
+    # This is a stable preference, not a semantic relevance or sentiment rank.
+    earliest=ordered[:1]
+    different=[s for s in reversed(ordered) if earliest and s['speaker']!=earliest[0]['speaker']]
+    priority=[]
+    for source in [*earliest,*different[:1],*reversed(ordered)]:
+        if _inc_source_key(source) not in {_inc_source_key(s) for s in priority}: priority.append(source)
+    rank={_inc_source_key(s):i for i,s in enumerate(priority)}
+    def shrink(removal_order):
+        page=list(ordered)
+        for source in removal_order:
+            smaller=[s for s in page if _inc_source_key(s)!=_inc_source_key(source)]
+            if counts(smaller)==target: page=smaller
+        return page
+    preferred=shrink(list(reversed(priority)))
+    if fits(preferred): return preferred
+    # If preferred contexts are too large, try compact witnesses with exactly
+    # the same support requirements. Never truncate a context or a quotation.
+    compact=shrink(sorted(ordered,key=lambda s:(estimate_tokens(dumps(s['message'])),rank[_inc_source_key(s)]),reverse=True))
+    if fits(compact): return compact
+    # Overlapping details can leave a larger irreducible set after deletion.
+    # A second, deterministic gain-first cover removes that ordering bias.
+    page=[];remaining=list(ordered)
+    while counts(page)!=target and remaining:
+        before=counts(page)
+        def gain(source):
+            after=counts([*page,source])
+            return sum(max(0,b-a) for a,b in zip(before,after))
+        best=max(remaining,key=lambda s:(gain(s),-estimate_tokens(dumps(s['message'])),-rank[_inc_source_key(s)]))
+        if not gain(best): break
+        page.append(best);remaining.remove(best)
+    if counts(page)==target:
+        # Stable output order is independent of the order in which callers bind sources.
+        page.sort(key=lambda s:(_instant(s['message']['occurred_at']),*_inc_source_key(s)))
+        if fits(page): return page
+    return None
+
+
 def _inc_enough(sources, category, saying=''):
     chosen=_inc_groups(sources,category,saying)
     return bool(chosen) if category in ('rule',None) else len(chosen)>=2
@@ -2883,39 +2955,6 @@ class IncrementalProfileTask:
         for source in sources:
             key=_inc_source_key(source)
             if key not in seen: witnesses.append(source);seen.add(key)
-        # Every input is reviewed. No relevance/sentiment-based omission of remainder.
-        # 32 is the unified writer's existing source limit, not a model context increase.
-        if len(witnesses)>32:
-            conn.execute("UPDATE entry_profile_admissions SET reason='evidence_budget_exceeded' WHERE memory_id=?",(row['id'],))
-            return None
-        core=[]
-        def include(source):
-            if _inc_source_key(source) not in {_inc_source_key(s) for s in core}: core.append(source)
-        for source in selected[:1 if category=='rule' else 2]: include(source)
-        if category=='topic' and not retire:
-            # Every page must carry the two actual witnesses to a named detail
-            # when they exist; a whole-bundle count cannot prove a page's body.
-            ordered=sorted(witnesses,key=lambda s:(s['message']['position'],s.get('source_id',0)))
-            roots=_inc_topic_roots(ordered)
-            for term in _inc_entity_terms(body):
-                eligible={_inc_source_key(s) for s in ordered if _inc_term_present(term,s['excerpt'])}
-                for source in _inc_topic_witnesses(ordered,roots,eligible)[:2]: include(source)
-        for source in witnesses:
-            if source['message']['position'] in definitions: include(source)
-            if proposal and any(source['message']['position']==r['message_id'] and source['field']==r['field'] for r in proposal['source_refs']): include(source)
-        # Supply explicit announcement / consensus together in every page.
-        if category=='rule' and not retire and _inc_rule_reason(core):
-            for source in witnesses:
-                include(source)
-                if not _inc_rule_reason(core): break
-        prose=body.partition('：')[2] if category=='saying' else body
-        missing=_inc_missing_entities(prose,[s['excerpt'] for s in core]) if not retire else []
-        while missing:
-            best=max(witnesses,key=lambda s:sum(term in s['excerpt'] for term in missing))
-            include(best)
-            after=_inc_missing_entities(prose,[s['excerpt'] for s in core])
-            if after==missing: break
-            missing=after
         def public_source(s):
             return dict(message_id=s['message']['position'],field=s['field'],excerpt=s['excerpt'],speaker=s['speaker'],
                 date=s['message']['date'],occurred_at=s['message']['occurred_at'],context=s['message']['content'],message_speaker=s['message']['speaker'],
@@ -2931,25 +2970,15 @@ class IncrementalProfileTask:
             return value
         def fits(page):
             return len(page)<=self.limits.evidence and estimate_tokens(dumps(page_memory(page)))<=self.limits.evidence_tokens
-        if not fits(core):
+        core=_inc_select_evidence(witnesses,category,body,saying,definitions,proposal,fits)
+        if core is None:
             conn.execute("UPDATE entry_profile_admissions SET reason='evidence_budget_exceeded' WHERE memory_id=?",(row['id'],))
             return None
-        remaining=[s for s in witnesses if _inc_source_key(s) not in {_inc_source_key(v) for v in core}]
-        pages=[];page=list(core)
-        for source in remaining:
-            if not fits([*page,source]):
-                pages.append(page);page=list(core)
-            if not fits([*page,source]):
-                conn.execute("UPDATE entry_profile_admissions SET reason='evidence_budget_exceeded' WHERE memory_id=?",(row['id'],))
-                return None
-            page.append(source)
-        pages.append(page)
-        if len(pages)>8:
-            conn.execute("UPDATE entry_profile_admissions SET reason='evidence_budget_exceeded' WHERE memory_id=?",(row['id'],))
-            return None
+        pages=[core]
         zone=_setting(conn,'timezone','Asia/Shanghai');stamp=_instant(self.clock()).isoformat()
         snapshot=dict(settings_revision=_settings(conn,row['owner_entry_id'])['revision'],evidence_revision=meta['evidence_revision'],
             source_fingerprints={str(s['message']['position']):s['message']['fingerprint'] for s in witnesses},proposal=proposal,
+            evidence_selection=dict(strategy='necessary_v1',available=len(witnesses),selected=len(core),omitted=len(witnesses)-len(core)),
             # Numeric roots are required by the existing recursive purge index, also
             # on pages that do not contain a particular message as model evidence.
             evidence_refs=[dict(message_id=s['message']['position']) for s in witnesses])
@@ -2992,7 +3021,7 @@ class IncrementalProfileTask:
             all_sources=_inc_all_sources(conn,current,stamp)
             if snap.get('proposal'):
                 snapshot=MemoryProfileSnapshot(work['entry_id'],'','group',payload['timezone'],stamp,0,0,0,False)
-                all_sources=[]
+                # Keep omitted old bindings for full-pool snapshot validation.
                 values=list(memory['sources'])
                 if snap.get('bundle'):
                     for sibling in conn.execute("SELECT payload_json FROM entry_profile_incremental_work WHERE memory_id=? AND json_extract(payload_json,'$._snapshot.bundle.key')=?",(current['id'],snap['bundle']['key'])):

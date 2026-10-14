@@ -210,8 +210,32 @@ EVIDENCE=[
 ]
 
 
-def test_over_six_sources_are_checked_in_bounded_pages_before_admission(store):
+def seed_legacy_pages(store):
+    """A pre-EF-18 frozen two-page bundle must still finish atomically."""
     mid,ids=seed(store,EVIDENCE)
+    task=ep.IncrementalProfileTask(store,Gateway(store),clock=lambda:NOW)
+    with store.write() as c:
+        ep._ensure(c,'group',NOW.isoformat())
+        row=dict(c.execute('SELECT m.*,p.category FROM memories m JOIN entry_profile_memories p ON p.memory_id=m.id WHERE m.id=?',(mid,)).fetchone())
+        sources=ep._inc_all_sources(c,row,NOW.isoformat())
+        wid=task._queue_admission(c,row,sources)
+        work=dict(c.execute('SELECT * FROM entry_profile_incremental_work WHERE id=?',(wid,)).fetchone())
+        payload=json.loads(work['payload_json'])
+        for i,page in enumerate((sources[:6],[*sources[:2],*sources[6:]])):
+            payload['memory']['sources']=[dict(message_id=s['message']['position'],field=s['field'],excerpt=s['excerpt'],
+                speaker=s['speaker'],date=s['message']['date'],occurred_at=s['message']['occurred_at'],
+                context=s['message']['content'],message_speaker=s['message']['speaker'],quote=s['message'].get('quote'),burst_id=s.get('burst_id')) for s in page]
+            payload['_snapshot'].pop('evidence_selection',None)
+            payload['_snapshot']['bundle']=dict(key='legacy-'+str(mid),index=i,count=2)
+            if i==0:
+                c.execute('UPDATE entry_profile_incremental_work SET payload_json=? WHERE id=?',(dumps(payload),wid))
+            else:
+                c.execute("INSERT INTO entry_profile_incremental_work(entry_id,work_key,kind,memory_id,memory_revision,payload_json,created_at) VALUES(?,?,'admit',?,?,?,?)",('group','legacy-page-2-'+str(mid),mid,row['revision'],dumps(payload),NOW.isoformat()))
+    return mid,ids
+
+
+def test_legacy_over_six_sources_are_checked_in_bounded_pages_before_admission(store):
+    mid,ids=seed_legacy_pages(store)
     g=Gateway(store)
     check_seed(store,g,one_round=True)
     assert len(g.calls)==1
@@ -229,7 +253,7 @@ def test_over_six_sources_are_checked_in_bounded_pages_before_admission(store):
 
 
 def test_later_page_rejection_does_not_publish_a_partially_approved_memory(store):
-    seed(store,EVIDENCE)
+    seed_legacy_pages(store)
     def check(p):
         if any('软垫' in x['excerpt'] for x in p['memory']['sources']):
             return {'decision':'reject','violations':['无依据'],'reason':'后续依据改变限定。','safe_sources':[]}
@@ -242,7 +266,7 @@ def test_later_page_rejection_does_not_publish_a_partially_approved_memory(store
 
 
 def test_restart_reuses_accepted_pages_and_cas_still_protects_the_bundle(store):
-    mid,ids=seed(store,EVIDENCE)
+    mid,ids=seed_legacy_pages(store)
     g=Gateway(store)
     check_seed(store,g,one_round=True)
     with store.write() as c:
@@ -255,7 +279,7 @@ def test_restart_reuses_accepted_pages_and_cas_still_protects_the_bundle(store):
 
 
 def test_clear_between_pages_erases_every_page_and_never_calls_again(store):
-    mid,_=seed(store,EVIDENCE)
+    mid,_=seed_legacy_pages(store)
     g=Gateway(store)
     check_seed(store,g,one_round=True)
     assert len(g.calls)==1
@@ -281,7 +305,7 @@ def test_effective_date_of_permanent_rule_is_not_a_one_day_arrangement(store):
 
 
 def test_later_page_timeout_cannot_promote_partial_acceptance(store):
-    seed(store,EVIDENCE)
+    seed_legacy_pages(store)
     g=Gateway(store)
     check_seed(store,g,one_round=True)
     def late(g,purpose,payload): g.tick+=181
@@ -292,7 +316,7 @@ def test_later_page_timeout_cannot_promote_partial_acceptance(store):
 
 
 def test_passed_page_is_not_recalled_after_restart(store):
-    seed(store,EVIDENCE)
+    seed_legacy_pages(store)
     g=Gateway(store)
     check_seed(store,g,one_round=True)
     first=dumps(g.calls[0]['payload']['memory']['sources'])
@@ -317,7 +341,7 @@ def test_eval_checked_stage_never_reports_a_partial_page_as_admitted(store):
     from pathlib import Path
     sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
     from evals.entry_profile_eval.memory_runner import _incremental_stages
-    seed(store,EVIDENCE)
+    seed_legacy_pages(store)
     check_seed(store,one_round=True)
     with store.read() as c:
         work=[dict(r) for r in c.execute('SELECT * FROM entry_profile_incremental_work ORDER BY id')]
@@ -339,7 +363,7 @@ def test_saying_does_not_match_a_fragment_of_a_different_noun(saying,excerpt):
 
 def test_admin_progress_identifies_bounded_check_pages(store):
     from iris.admin_data import entry_profile_snapshot
-    seed(store,EVIDENCE)
+    seed_legacy_pages(store)
     run(store,Gateway(store,lambda p:{'observations':[]}))
     work=entry_profile_snapshot(store,'group')['latest_attempt']['work']
     checks=[w for w in work if w['kind']=='admit']
