@@ -45,8 +45,10 @@ def test_persona_publishes_only_complete_checked_candidates_and_reports(store, d
     before = current_persona(store)['id']
     report = complete(engine)
     assert report['persona']['status'] == status
-    assert [p for p, _ in model.calls] == ['persona_generate','persona_check']
-    assert report['summary']['model_calls']['count'] == 2
+    tasks = ['check_facts_and_rules', 'degree_only'] if supported else ['check_facts_and_rules']
+    assert [p for p, _ in model.calls] == ['persona_generate'] + ['persona_check'] * len(tasks)
+    assert [payload['task'] for purpose, payload in model.calls if purpose == 'persona_check'] == tasks
+    assert report['summary']['model_calls']['count'] == 1 + len(tasks)
     assert (current_persona(store)['id'] != before) == (status == 'published')
     assert report['persona']['version_id']
     if status == 'rejected':
@@ -63,9 +65,27 @@ def test_persona_insufficient_budget_does_not_start_and_next_run_can_update(stor
     assert report['persona']['reason'] == 'call_budget'
     with store.read() as conn:
         assert conn.execute('SELECT COUNT(*) FROM persona_attempts').fetchone()[0] == 0
-    store.set_setting('consolidation', {**store.setting('consolidation'), 'max_calls':2})
+    store.set_setting('consolidation', {**store.setting('consolidation'), 'max_calls':3})
     assert complete(engine)['persona']['status'] == 'published'
-    assert len(model.calls) == 2
+    assert len(model.calls) == 3
+
+
+def test_persona_degree_cannot_publish_after_shared_budget_is_exhausted(store):
+    engine, model, _ = persona_case(store, budget=2)
+    before = current_persona(store)['id']
+    report = complete(engine)
+    assert report['persona']['status'] == 'failed'
+    assert report['persona']['reason'] == 'call_budget'
+    assert current_persona(store)['id'] == before
+    assert len(model.calls) == report['summary']['model_calls']['count'] == 2
+    assert model.calls[-1][1]['task'] == 'check_facts_and_rules'
+    with store.read() as conn:
+        assert not conn.execute("SELECT 1 FROM persona_versions WHERE status='pending'").fetchone()
+    store.set_setting('consolidation', {**store.setting('consolidation'), 'max_calls':3})
+    retry = complete(engine)
+    assert retry['persona']['status'] == 'published'
+    assert retry['summary']['model_calls']['count'] == 3
+    assert len(model.calls) == 5 and model.calls[-1][1]['task'] == 'degree_only'
 
 
 def test_not_due_does_not_create_unchanged_item_or_attempt(store):
@@ -152,10 +172,12 @@ def test_persona_completed_attempt_is_recovered_without_regeneration(store, monk
     with pytest.raises(KeyboardInterrupt):
         engine.run(rid)
     monkeypatch.setattr(PersonaEngine,'_run',original)
+    completed_calls = list(model.calls)
+    assert len(completed_calls) == 3
     Maintenance(store, gateway=model, clock=engine.clock).run(rid)
-    assert len(model.calls)==2
+    assert model.calls == completed_calls
     assert engine.report(rid)['persona']['status']=='published'
-    assert engine.report(rid)['summary']['model_calls']['count']==2
+    assert engine.report(rid)['summary']['model_calls']['count']==3
 
 
 def test_persona_incomplete_attempt_never_publishes_or_repeats_on_resume(store):
@@ -280,8 +302,8 @@ def test_stop_between_persona_generation_and_check_never_publishes(store):
 
 
 @pytest.mark.parametrize('budget,first_response,expected_calls,status', [
-    (2,'repair',1,'failed'), (3,'repair',3,'published'), (3,'retry',3,'published'),
-    (2,'retry',1,'failed'),
+    (2,'repair',1,'failed'), (3,'repair',3,'failed'), (4,'repair',4,'published'),
+    (2,'retry',1,'failed'), (3,'retry',3,'failed'), (4,'retry',4,'published'),
 ])
 def test_persona_http_retries_and_json_repairs_use_shared_budget(store,budget,first_response,expected_calls,status):
     import httpx
@@ -300,9 +322,12 @@ def test_persona_http_retries_and_json_repairs_use_shared_budget(store,budget,fi
             value=model.generated
         else:
             payload=json.loads(hits[-1]['messages'][-1]['content'])
-            value={'sentences':[{'index':i+1,'supported':True,'fabricated':False,'scene_qualified':True,
-                                  'violations':[],'reason':'依据支持'} for i,_ in enumerate(payload['candidate'])],'change_degree':'small','reason':'措辞'}
-            value = add_clause_proofs(value, payload)
+            if payload['task'] == 'degree_only':
+                value = {'change_degree':'small', 'reason':'措辞'}
+            else:
+                value={'sentences':[{'index':i+1,'supported':True,'fabricated':False,'scene_qualified':True,
+                                      'violations':[],'reason':'依据支持'} for i,_ in enumerate(payload['candidate'])],'change_degree':'small','reason':'措辞'}
+                value = add_clause_proofs(value, payload)
         return httpx.Response(200,json=completion(dumps(value)))
     with httpx.Client(transport=httpx.MockTransport(respond)) as client:
         gateway=Gateway({'chat':ModelConfig('https://example.invalid','', 'fake',reasoning_effort='high')},store,
@@ -314,6 +339,12 @@ def test_persona_http_retries_and_json_repairs_use_shared_budget(store,budget,fi
             gateway.close()
     assert report['persona']['status']==status
     assert len(hits)==expected_calls==report['summary']['model_calls']['count']
+    assert expected_calls <= budget
+    if status == 'published':
+        assert json.loads(hits[-1]['messages'][-1]['content'])['task'] == 'degree_only'
+    else:
+        assert report['persona']['reason'] == 'call_budget'
+        assert current_persona(store)['id'] == 1
     with store.read() as conn:
         calls=[dict(r) for r in conn.execute('SELECT * FROM consolidation_calls')]
         assert all(c['reasoning_effort']=='high' and c['duration_ms']>=0 for c in calls)
@@ -424,7 +455,8 @@ def test_complete_phase_order_merges_before_persona_then_reviews_goals(store):
             return ModelReply(dumps(value),'stop',{'prompt_tokens':20,'completion_tokens':10})
     engine.gateway=Combined()
     report=complete(engine)
-    assert order[-2:]==['persona_generate','persona_check']
+    assert order[-3:]==['persona_generate','persona_check','persona_check']
+    assert persona.calls[-1][1]['task'] == 'degree_only'
     assert report['summary']['model_calls']['count']==len(order)
     assert report['summary']['merged']['count']==1
     assert report['summary']['goals_reviewed']['object_ids']==[gid]
@@ -519,11 +551,12 @@ def test_persona_dream_step_uses_manual_product_default(store, degree):
         row = conn.execute("SELECT material_json,checks_json FROM persona_versions WHERE status='pending'").fetchone()
         assert json.loads(row['material_json'])['settings']['publish_mode'] == 'all_manual'
         assert json.loads(row['checks_json'])['passed']
-    assert len(model.calls) == 2
+    assert len(model.calls) == 3
+    assert model.calls[-1][1]['task'] == 'degree_only'
 
 
-@pytest.mark.parametrize('budget,status',[(2,'failed'),(3,'failed'),(4,'failed'),(5,'published')])
-def test_sentence_recovery_consumes_existing_dream_call_budget(store,budget,status):
+@pytest.mark.parametrize('budget,expected_calls,status',[(2,2,'failed'),(3,3,'failed'),(4,4,'published'),(5,4,'published')])
+def test_sentence_recovery_consumes_existing_dream_call_budget(store,budget,expected_calls,status):
     from test_persona_optimization import Model
     engine,_,_=persona_case(store,budget=budget)
     # The repair fixture itself must retain an explicit single-event scope.
@@ -532,8 +565,11 @@ def test_sentence_recovery_consumes_existing_dream_call_budget(store,budget,stat
     engine.gateway=model
     report=complete(engine)
     assert report['persona']['status']==status
-    assert len(model.calls)==budget
-    assert report['summary']['model_calls']['count']==budget
+    assert len(model.calls)==expected_calls<=budget
+    assert report['summary']['model_calls']['count']==expected_calls
+    assert not any(purpose=='persona_sentence_repair' for purpose,*_ in model.calls)
+    if status=='published':
+        assert model.calls[-1][1]['task']=='degree_only'
     if status=='failed':
         assert report['persona']['reason']=='call_budget'
         assert current_persona(store)['id']==1
