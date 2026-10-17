@@ -52,6 +52,8 @@ EXCLUDED_KINDS = {'state': 'current state is not persona', 'task': 'pending acti
 CHECK_BATCH_SIZE = 4
 CHECK_BATCH_CLAUSES = 2
 MAX_CHECK_STAGE_SECONDS = 900
+MAX_CHECK_REQUEST_BYTES = 32768
+CHECK_TIMEOUT_RETRIES = 1
 REPAIR_POLICY = 'first_eligible_bound_memory_v2'
 BOUNDED_SCENE = re.compile(r'(?:这|那|当|某|本|同)(?:一)?(?:次|场|回|天)|\d{4}-\d{2}-\d{2}|[0-9零〇一二三四五六七八九十廿三]+(?:年|月|日|号)')
 CROSS_SCENE_LINK = re.compile(r'^(?:(?:也|又|还|同样)(?:也)?(?:是)?在(?:这|那)(?:一)?(?:次|场|天|回)|'
@@ -286,6 +288,7 @@ def _generation_material(conn, settings, previous, stamp):
     return {'evidence':evidence, 'settings':settings, 'as_of':stamp,
         'prompt_versions':PROMPT_VERSIONS, 'degree_prompt_version':DEGREE_PROMPT_VERSION, 'timeouts_seconds':CALL_TIMEOUTS, 'output_token_limits':CALL_MAX_TOKENS, 'check_batch_size':CHECK_BATCH_SIZE,
         'max_check_stage_seconds':MAX_CHECK_STAGE_SECONDS, 'check_batch_clauses':CHECK_BATCH_CLAUSES,
+        'max_check_request_bytes':MAX_CHECK_REQUEST_BYTES, 'check_timeout_retries':CHECK_TIMEOUT_RETRIES,
         'repair_policy':REPAIR_POLICY,
         'role_name':_setting(conn, 'role_name', 'Iris'), 'locked_sentences':retained,
         'omitted_template_sentences':omitted, 'previous':previous['content'],
@@ -334,7 +337,7 @@ def _clause_parts(text):
 
 
 
-def _check_batches(sentences):
+def _check_batches(sentences, *, material=None, purpose='persona_check'):
     """Bound proof work while each window retains its entire sentence context."""
     views = []
     for index,sentence in enumerate(sentences,1):
@@ -355,7 +358,26 @@ def _check_batches(sentences):
         work += cost
     if batch or not batches:
         batches.append(batch)
-    return batches
+    if material is None:
+        return batches
+    bounded = []
+    def split(batch):
+        size = _check_request_bytes(purpose, _fact_payload(material, batch))
+        if size <= MAX_CHECK_REQUEST_BYTES:
+            bounded.append(batch)
+        elif len(batch) > 1:
+            middle = len(batch) // 2
+            split(batch[:middle])
+            split(batch[middle:])
+        elif len(batch[0].get('_check_focus', [])) > 1:
+            # Keep the full sentence and all its bound sources in every window.
+            for focus in batch[0]['_check_focus']:
+                split([{**batch[0], '_check_focus': [focus]}])
+        else:
+            bounded.append(batch)  # Explicit abstention in _check_all; never truncate evidence.
+    for batch in batches:
+        split(batch)
+    return bounded
 
 
 def _model_memory(memory, *, proof_choices=False):
@@ -414,6 +436,57 @@ def _check_payload(material, sentences, *, full_content, proof_choices=True):
             'role_name':material['role_name'], 'as_of':material['as_of'], 'evidence_by_ref':evidence,
             'candidate':rows, 'previous':material['previous'], 'candidate_text':full_content}
 
+
+
+def _fact_payload(material, sentences):
+    payload = _check_payload(material, sentences, full_content='')
+    payload['task'] = 'check_facts_and_rules'
+    payload.pop('previous')
+    payload.pop('candidate_text')
+    return payload
+
+
+def _request_messages(purpose, payload):
+    version = (DEGREE_PROMPT_VERSION if purpose in ('persona_check', 'persona_recheck')
+               and payload.get('task') == 'degree_only' else PROMPT_VERSIONS[purpose])
+    prompt = files('iris').joinpath(f'prompts/{version}.md').read_text(encoding='utf-8')
+    return [{'role': 'system', 'content': prompt}, {'role': 'user', 'content': dumps(payload)}]
+
+
+def _check_request_bytes(purpose, payload):
+    return len(dumps(_request_messages(purpose, payload)).encode('utf-8'))
+
+
+def _conservative_check_row(index, reason, original=None):
+    """A controller rejection, explicitly distinguished from a model opinion."""
+    original = original if isinstance(original, dict) else {}
+    violations = original.get('violations')
+    return {'index': index, 'supported': False, 'fabricated': original.get('fabricated') is True,
+            'scene_qualified': False, 'violations': [v for v in violations if isinstance(v, str) and v.strip()]
+                if isinstance(violations, list) else [],
+            'reason': reason, 'clauses': [], 'verdict_origin': 'conservative_rejection'}
+
+
+def _adverse_field_verdicts(row):
+    """Keep already supplied negative flags even if another field is malformed."""
+    reasons = []
+    if row.get('supported') is False: reasons.append('original sentence verdict rejected')
+    if row.get('fabricated') is True: reasons.append('original sentence marked fabricated')
+    if isinstance(row.get('violations'), list) and row['violations']:
+        reasons.append('original sentence has violations')
+    if isinstance(row.get('persona_kind'), str) and row['persona_kind'] in EXCLUDED_KINDS:
+        reasons.append(EXCLUDED_KINDS[row['persona_kind']])
+    parts = row.get('clauses') if isinstance(row.get('clauses'), list) else []
+    for part in [row] + [p for p in parts if isinstance(p, dict)]:
+        if part is not row and part.get('supported') is False:
+            reasons.append('original clause verdict rejected')
+        scope = part.get('scope_check')
+        if isinstance(scope, dict):
+            if scope.get('preserved') is False: reasons.append('original activity scope rejected')
+            proofs = scope.get('source_scopes')
+            if isinstance(proofs, list) and any(isinstance(p, dict) and p.get('preserved') is False for p in proofs):
+                reasons.append('original bound activity scope rejected')
+    return reasons
 
 
 def _decode(conn, row):
@@ -1623,10 +1696,7 @@ class PersonaEngine:
                 # budget/recording subclass. Never close its shared pools.
                 gateway = copy.copy(gateway)
                 gateway.gateway = streamed
-        prompt_version = (DEGREE_PROMPT_VERSION if purpose in ('persona_check','persona_recheck')
-                          and payload.get('task')=='degree_only' else PROMPT_VERSIONS[purpose])
-        prompt = files('iris').joinpath(f'prompts/{prompt_version}.md').read_text(encoding='utf-8')
-        messages = [{'role':'system','content':prompt}, {'role':'user','content':dumps(payload)}]
+        messages = _request_messages(purpose, payload)
         try:
             for repair in (False, True):
                 if monotonic() >= deadline:
@@ -1639,6 +1709,12 @@ class PersonaEngine:
                 label = purpose + ('_repair' if repair else '')
                 if stream is not None:
                     stream.purpose = label
+                request_bytes = len(dumps(messages).encode('utf-8'))
+                if purpose in ('persona_check', 'persona_recheck'):
+                    outputs.setdefault(purpose + '_request_bytes', []).append(request_bytes)
+                    if request_bytes > MAX_CHECK_REQUEST_BYTES:
+                        raise ModelError('invalid_output', 'check request material exceeds byte limit',
+                                         reason='check_request_limit')
                 reply = gateway.chat(messages, label, max_tokens=CALL_MAX_TOKENS[purpose], _deadline=deadline)
                 outputs[label] = reply.content
                 outputs[label + '_finish_reason'] = reply.finish_reason
@@ -1684,12 +1760,96 @@ class PersonaEngine:
             if owned:
                 gateway.close()
 
-    def _complete_positive_focus(self, purpose, payload, batch, outputs, *, deadline):
+    def _check_call(self, purpose, payload, outputs, *, deadline, retry_state):
+        """One timeout retry per logical batch; never renew the stage deadline."""
+        import time
+        monotonic = getattr(self.gateway, 'monotonic', time.monotonic)
+        try:
+            return self._call(purpose, payload, outputs, deadline=deadline)
+        except ModelError as error:
+            if (error.reason != 'timeout' or error.paused
+                    or retry_state['timeouts'] >= CHECK_TIMEOUT_RETRIES or monotonic() >= deadline):
+                raise
+            retry_state['timeouts'] += 1
+            retry = {'error_reason': 'timeout', 'stage_deadline': deadline,
+                     'remaining_seconds': max(0, deadline - monotonic()), 'outputs': {}}
+            outputs.setdefault(purpose + '_timeout_retries', []).append(retry)
+            try:
+                answer = self._call(purpose, payload, retry['outputs'], deadline=deadline)
+            except ModelError as repeated:
+                retry.update(status='failed', retry_error=repeated.reason or repeated.category)
+                raise
+            retry['status'] = 'complete'
+            return answer
+
+    def _correct_sentence_fields(self, purpose, payload, row, errors, issues, outputs,
+                                 *, deadline, retry_state, original_index):
+        """Reask only an identified row once, preserving all prior adverse evidence."""
+        import time
+        local = row['index']
+        sentence = payload['candidate'][local - 1]
+        audit = {'sentence_index': original_index, 'local_index': local,
+                 'errors': list(errors), 'status': 'conservative_rejection', 'outputs': {}}
+        outputs.setdefault(purpose + '_field_corrections', []).append(audit)
+        adverse = list(issues.get(local, [])) + _adverse_field_verdicts(row)
+        for completion in outputs.get(purpose + '_focus_completions', []):
+            if completion['sentence_index'] == local:
+                adverse.extend(completion.get('adverse_reasons', []))
+        request = {**payload, 'candidate': [{**sentence, 'index': 1}],
+                   'evidence_by_ref': {ref: payload['evidence_by_ref'][ref] for ref in sentence['evidence_refs']},
+                   'format_retry': {'errors': errors,
+                       'instruction': '上次本句判定字段不符合格式。仅重新检查这一句，严格返回原定字段和类型；'
+                                      '事实、活动范围和监管规则不变，存疑判不支持。'}}
+        monotonic = getattr(self.gateway, 'monotonic', time.monotonic)
+        correction_errors = []
+        corrected, corrected_issues = None, {}
+        if monotonic() >= deadline:
+            correction_errors = ['no stage budget for field correction']
+        elif _check_request_bytes(purpose, request) > MAX_CHECK_REQUEST_BYTES:
+            correction_errors = ['field correction exceeds material byte limit']
+        else:
+            try:
+                answer = self._check_call(purpose, request, audit['outputs'],
+                                          deadline=deadline, retry_state=retry_state)
+            except ModelError as error:
+                if error.category != 'invalid_output' or error.reason == 'output_limit':
+                    raise
+                correction_errors = ['invalid field correction: ' + (error.reason or error.summary)]
+            else:
+                returned = answer.get('sentences')
+                if (not isinstance(returned, list) or len(returned) != 1
+                        or not _valid_sentence_verdict(returned[0], 1, require_kind=True)
+                        or answer.get('change_degree') not in DEGREES
+                        or not isinstance(answer.get('reason'), str) or not answer['reason'].strip()):
+                    correction_errors = ['invalid sentence correction verdict']
+                else:
+                    corrected = copy.deepcopy(returned[0])
+                    corrected['index'] = local
+                    correction_errors, corrected_issues = _validate_clause_checks(
+                        {'sentences': [corrected]}, {**payload, 'candidate': [sentence]})
+        if correction_errors:
+            audit['correction_errors'] = correction_errors
+            reason = 'invalid sentence check after correction: ' + '; '.join(errors + correction_errors)
+            return _conservative_check_row(local, reason, row), {local: errors + correction_errors + adverse}, audit
+        audit['status'] = 'corrected'
+        if adverse:
+            corrected['supported'] = False
+            corrected['fabricated'] = corrected['fabricated'] or row.get('fabricated') is True
+            old_violations = row.get('violations')
+            if isinstance(old_violations, list):
+                corrected['violations'] = list(dict.fromkeys(corrected['violations'] +
+                    [v for v in old_violations if isinstance(v, str) and v.strip()]))
+            corrected_issues.setdefault(local, []).extend(adverse)
+            audit['preserved_adverse_reasons'] = adverse
+        return corrected, corrected_issues, audit
+
+    def _complete_positive_focus(self, purpose, payload, batch, outputs, *, deadline, retry_state):
         """Check an omitted positive suffix once, without replacing prior judgments.
 
         This is additional proof work, not acceptance of a partial response. Both
-        calls share the original window deadline. Malformed/negative prefixes
-        cannot use this path, and a failed completion remains incomplete.
+        calls share the fixed stage deadline and timeout retry allowance.
+        Malformed/negative prefixes cannot use this path. A malformed completion
+        goes through the same local field correction and conservative rejection.
         """
         rows = batch.get('sentences')
         candidates = payload['candidate']
@@ -1725,8 +1885,16 @@ class PersonaEngine:
                 'missing_clause_indices': [part['index'] for part in tail],
                 'completed': False, 'outputs': {}}
             outputs.setdefault(purpose + '_focus_completions', []).append(audit)
-            answer = self._call(purpose, request, audit['outputs'], deadline=deadline)
+            answer = self._check_call(purpose, request, audit['outputs'], deadline=deadline, retry_state=retry_state)
             completion_rows = answer.get('sentences')
+            if (isinstance(completion_rows, list) and len(completion_rows) == 1
+                    and isinstance(completion_rows[0], dict) and type(completion_rows[0].get('index')) is int
+                    and completion_rows[0]['index'] == 1):
+                # A bad field must not erase a genuine negative in this response
+                # when the outer sentence later takes the field-correction path.
+                audit['adverse_reasons'] = _adverse_field_verdicts(completion_rows[0])
+                _, adverse_proofs = _validate_clause_checks(copy.deepcopy(answer), request)
+                audit['adverse_reasons'].extend(adverse_proofs.get(1, []))
             if (not isinstance(completion_rows, list) or len(completion_rows) != 1
                     or not _valid_sentence_verdict(completion_rows[0], 1, require_kind=True)
                     or answer.get('change_degree') not in ('small', 'medium', 'large')
@@ -1769,12 +1937,15 @@ class PersonaEngine:
     def _check_all(self, purpose, material, sentences, *, full_content, outputs, assess_degree=True):
         """Check small focus windows, then AND facts and union failures per sentence."""
         import time
-        subsets = _check_batches(sentences) if sentences else []
-        # Preserve the old stage allowance: comparison shares it, never adds a window budget.
-        stage_seconds = min(MAX_CHECK_STAGE_SECONDS, CALL_TIMEOUTS[purpose] * max(1,len(subsets)))
+        subsets = _check_batches(sentences, material=material, purpose=purpose) if sentences else []
+        # One fixed stage ceiling includes size splitting, field correction, timeout
+        # retry and degree. Even one fact window can retry within this same ceiling.
+        stage_seconds = MAX_CHECK_STAGE_SECONDS
         deadline = getattr(self.gateway, 'monotonic', time.monotonic)() + stage_seconds
         raw_batches = outputs.setdefault(purpose + '_batches', [])
-        rows, batches, incomplete, short_circuits = {}, [], [], []
+        rows, batches, short_circuits = {}, [], []
+        invalid_fields, material_rejections = [], []
+        outputs[purpose + '_material_rejections'] = material_rejections
         rejected, skipped, normalizations = set(), [], []
         outputs[purpose + '_skipped_windows'] = skipped
         window_map = outputs.setdefault(purpose + '_windows', [])
@@ -1798,23 +1969,32 @@ class PersonaEngine:
                     subset.append(sentence)
             if planned and not subset:
                 continue  # A failed sentence can never become retained in a later window.
+            payload = _fact_payload(material, subset)
+            request_bytes = _check_request_bytes(purpose, payload)
+            if request_bytes > MAX_CHECK_REQUEST_BYTES:
+                # The planner reduced this to one indivisible focus. Dropping
+                # source text could erase qualifiers: abstain on the whole sentence.
+                sentence = subset[0]
+                original = sentence['_check_sentence']
+                reason = 'complete check material exceeds byte limit'
+                rows[original] = _conservative_check_row(original, reason)
+                rows[original]['clause_errors'] = [reason]
+                rejected.add(original)
+                material_rejections.append({'sentence_index': original, 'request_bytes': request_bytes,
+                    'limit_bytes': MAX_CHECK_REQUEST_BYTES, 'reason': reason})
+                continue
             batch_index = len(batches)
             window_map.append([{'sentence_index':s['_check_sentence'],
                                 'clause_indices':[p['index'] for p in s.get('_check_focus',[])]}
                                for s in subset])
-            payload = _check_payload(material, subset, full_content=full_content)
-            payload['task'] = 'check_facts_and_rules'
-            payload.pop('previous')
-            payload.pop('candidate_text')
             raw = {purpose+'_task':'check_facts_and_rules',
                    purpose+'_prompt_version':PROMPT_VERSIONS[purpose]}
             raw_batches.append(raw)
-            window_deadline = min(deadline, getattr(self.gateway, 'monotonic', time.monotonic)()
-                                  + CALL_TIMEOUTS[purpose])
+            retry_state = {'timeouts': 0}
             try:
-                batch = self._call(purpose, payload, raw, deadline=window_deadline)
-                original_batch = batch
-                batch = self._complete_positive_focus(purpose, payload, batch, raw, deadline=window_deadline)
+                batch = self._check_call(purpose, payload, raw, deadline=deadline, retry_state=retry_state)
+                original_batch = copy.deepcopy(batch)
+                batch = self._complete_positive_focus(purpose, payload, batch, raw, deadline=deadline, retry_state=retry_state)
             except ModelError as error:
                 if error.reason != 'output_limit':
                     raise
@@ -1834,7 +2014,7 @@ class PersonaEngine:
             mapped = (isinstance(returned, list) and len(returned) == len(subset)
                 and all(isinstance(row, dict) and type(row.get('index')) is int and row['index'] == i
                         for i,row in enumerate(returned,1)))
-            proof_errors, problems = [], {}
+            problems = {}
             if mapped:
                 normalized = []
                 for local,(sentence,row) in enumerate(zip(subset,returned),1):
@@ -1843,29 +2023,30 @@ class PersonaEngine:
                         {**payload, 'candidate':[payload['candidate'][local-1]]})
                     malformed = ([] if _valid_sentence_verdict(row,local,require_kind=True)
                                  else [f'sentence {local}: invalid model verdict']) + errors
-                    if not malformed and row.get('additional_clause_checks'):
-                        full_sequence = [part['index'] for part in returned[local-1]['clauses']] == [
+                    if malformed:
+                        row, issues, audit = self._correct_sentence_fields(
+                            purpose, payload, row, malformed, issues, raw, deadline=deadline,
+                            retry_state=retry_state, original_index=sentence['_check_sentence'])
+                        invalid_fields.append({'batch': batch_index + 1,
+                            **{key: value for key, value in audit.items() if key != 'outputs'}})
+                    if row.get('additional_clause_checks'):
+                        full_sequence = sorted({part['index'] for part in row['clauses'] + row['additional_clause_checks']}) == [
                             part['index'] for part in _clause_parts(sentence['text'])]
                         normalizations.append({'batch':batch_index+1, 'sentence_index':sentence['_check_sentence'],
                             'operation':('full_sentence_focus_checks' if full_sequence else 'additional_focus_checks'),
                             'requested_clause_indices':[part['index'] for part in row['clauses']],
                             'additional_clause_indices':[part['index'] for part in row['additional_clause_checks']]})
-                    elif malformed:
-                        row.pop('additional_clause_checks', None)
-                        row.pop('repeated_clause_checks', None)
-                    if not malformed and row.get('repeated_clause_checks'):
+                    if row.get('repeated_clause_checks'):
                         normalizations.append({'batch':batch_index+1, 'sentence_index':sentence['_check_sentence'],
                             'operation':'repeated_focus_checks',
                             'requested_clause_indices':[part['index'] for part in row['clauses']],
                             'repeated_clause_indices':[part['index'] for part in row['repeated_clause_checks']]})
-                    if not malformed and row.get('unchecked_scope_check'):
+                    if row.get('unchecked_scope_check'):
                         normalizations.append({'batch':batch_index+1,
                             'sentence_index':sentence['_check_sentence'],
                             'operation':'scope_omitted_after_evidence_rejection',
                             'checked_clause_indices':[part['index'] for part in row['clauses']]})
-                    if malformed:
-                        incomplete.append(f'batch {batch_index+1}, sentence {local}: ' + '; '.join(malformed))
-                    elif row.get('unchecked_clause_indices'):
+                    if row.get('unchecked_clause_indices'):
                         if row.get('guard_rejected_prefix'):
                             normalizations.append({'batch':batch_index+1,
                                 'sentence_index':sentence['_check_sentence'],
@@ -1883,16 +2064,7 @@ class PersonaEngine:
                             'unchecked_clause_indices':list(row['unchecked_clause_indices'])})
                     if isinstance(row.get('persona_kind'), str) and row['persona_kind'] in EXCLUDED_KINDS:
                         issues.setdefault(local, []).append(EXCLUDED_KINDS[row['persona_kind']])
-                    if malformed and sentence['origin'] == 'memory' and not sentence.get('initial_setting'):
-                        # Exact sentence mapping is known, but this fact has no valid
-                        # verdict. Never accept it: send only this sentence to recovery.
-                        row = {**row, 'supported':False, 'fabricated':False,
-                               'scene_qualified':False, 'violations':[],
-                               'reason':'invalid sentence check: ' + '; '.join(malformed)}
-                        problems[local] = malformed + issues.get(local,[])
-                    else:
-                        proof_errors.extend(malformed)
-                        problems.update(issues)
+                    problems.update(issues)
                     # A false/invalid proof cannot be overridden by a true row flag.
                     if _valid_sentence_verdict(row,local) and problems.get(local):
                         row['supported'] = False
@@ -1900,9 +2072,9 @@ class PersonaEngine:
                 checked_batch['sentences'] = normalized
             degree, structural, window_problems = _check_verdicts(checked_batch, subset, material=material)
             batches.append(original_batch)  # Preserve even an omitted empty degree-only list.
-            if structural or proof_errors:
+            if structural:
                 return {'sentences': [], 'change_degree': 'large', 'reason': 'invalid check batch',
-                        'validation_errors': [f'batch {len(batches)}: {e}' for e in structural + proof_errors],
+                        'validation_errors': [f'batch {len(batches)}: {e}' for e in structural],
                         'batches': batches, 'window_map':window_map}
             for local,(sentence,row) in enumerate(zip(subset,checked_batch['sentences']),1):
                 original = sentence['_check_sentence']
@@ -1936,7 +2108,7 @@ class PersonaEngine:
                 row['unchecked_clause_indices'] = [i for i in row['unchecked_clause_indices'] if i not in extra_checked]
         degree, reason, degree_errors = 'large', 'degree deferred to recovery', []
         assessment = {'status':'deferred_to_recovery'}
-        if rejected or incomplete:
+        if rejected:
             assessment = {'status':'deferred_after_rejection'}
             reason = 'degree not assessed after factual rejection'
         elif assess_degree:
@@ -1947,7 +2119,7 @@ class PersonaEngine:
             raw_batches.append(raw)
             window_map.append([])
             try:
-                comparison = self._call(purpose, payload, raw, deadline=deadline)
+                comparison = self._check_call(purpose, payload, raw, deadline=deadline, retry_state={'timeouts': 0})
             except ModelError as error:
                 if error.reason != 'output_limit':
                     raise
@@ -1979,7 +2151,8 @@ class PersonaEngine:
         return {'sentences':[rows[i] for i in sorted(rows)], 'change_degree':degree,
                 'reason':reason, 'batches':batches, 'window_map':window_map,
                 'degree_assessment':assessment, 'validation_errors':degree_errors,
-                'incomplete_checks':incomplete, 'short_circuits':short_circuits,
+                'incomplete_checks':[], 'short_circuits':short_circuits,
+                'invalid_sentence_checks':invalid_fields, 'material_rejections':material_rejections,
                 'skipped_windows':skipped, 'normalizations':normalizations}
 
     def _recover_sentences(self, original, initial_model, problems, material, previous, checks, outputs):

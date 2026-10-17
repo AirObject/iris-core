@@ -307,7 +307,7 @@ def test_json_correction_does_not_reset_check_budget(prepared):
             gateway.close()
     assert limits==[360,110]
     assert set(outputs)=={'persona_check','persona_check_repair',
-        'persona_check_finish_reason','persona_check_repair_finish_reason','persona_check_json_error'}
+        'persona_check_finish_reason','persona_check_repair_finish_reason','persona_check_json_error','persona_check_request_bytes'}
     assert outputs['persona_check_finish_reason']==outputs['persona_check_repair_finish_reason']=='stop'
 
 

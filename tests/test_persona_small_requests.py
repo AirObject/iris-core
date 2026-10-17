@@ -110,7 +110,7 @@ def test_mapped_automatic_sentence_with_malformed_check_is_repaired(prepared,bad
     assert result['version']['checks']['deleted_sentences']
 
 
-def test_malformed_protected_template_check_still_rejects_whole_candidate(prepared):
+def test_malformed_protected_template_is_deleted_after_failed_field_correction(prepared):
     class Malformed(Model):
         def chat(self,messages,purpose,**kwargs):
             reply = super().chat(messages,purpose,**kwargs)
@@ -120,8 +120,11 @@ def test_malformed_protected_template_check_still_rejects_whole_candidate(prepar
                 reply.content = dumps(value)
             return reply
     result=PersonaEngine(prepared,Malformed(prepared)).regenerate(expected_version=1)
-    assert result['status']=='rejected'
-    assert current_persona(prepared)['id']==1
+    checks=result['version']['checks']
+    assert not checks['initial_model']['incomplete_checks']
+    assert checks['initial_model']['invalid_sentence_checks']
+    assert any(item['sentence']['origin']=='initial_template' for item in checks['deleted_sentences'])
+    assert '我来自云城' not in result['version']['content']
 
 
 def test_unknown_sentence_mapping_cannot_inject_diagnostic_fields(store):

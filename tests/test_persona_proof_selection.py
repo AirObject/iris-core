@@ -67,7 +67,7 @@ def test_excluded_content_is_not_allowed_by_true_supported_and_empty_violations(
     assert _check_verdicts(output, [sentence])[2]
 
 
-def test_missing_content_classification_has_no_valid_check_even_when_recovered(store):
+def test_missing_content_classification_is_rejected_after_one_correction(store):
     class Missing(FocusModel):
         def chat(self, *args, **kwargs):
             reply = super().chat(*args, **kwargs); value = json.loads(reply.content)
@@ -76,7 +76,7 @@ def test_missing_content_classification_has_no_valid_check_even_when_recovered(s
             reply.content = dumps(value); return reply
     material, sentence = material_and_sentence(2)
     result = run(store, Missing(), material, [sentence])
-    assert result['incomplete_checks'] and not result['sentences'][0]['supported']
+    assert not result['incomplete_checks'] and result['invalid_sentence_checks'] and not result['sentences'][0]['supported']
 
 
 @pytest.mark.parametrize('kind', [None, [], {}, True, 1, 'unrecognized'])
@@ -88,4 +88,4 @@ def test_invalid_classification_is_recorded_without_crashing(store, kind):
             reply.content = dumps(value); return reply
     material, sentence = material_and_sentence(2)
     result = run(store, BadKind(), material, [sentence])
-    assert result['incomplete_checks'] and not result['sentences'][0]['supported']
+    assert not result['incomplete_checks'] and result['invalid_sentence_checks'] and not result['sentences'][0]['supported']

@@ -251,7 +251,7 @@ def test_persona_writeback_rechecks_version_and_evidence(store, change):
 
 
 def test_memory_budget_does_not_defer_persona_with_its_own_limit(store):
-    engine, persona, _ = persona_case(store, budget=2, max_calls=1, merge_enabled=True, conflict_enabled=True)
+    engine, persona, _ = persona_case(store, budget=3, max_calls=1, merge_enabled=True, conflict_enabled=True)
     pair(store)
     # Keep persona's self evidence from forming irrelevant candidate pairs.
     co = Model(store,merge_answer)
@@ -262,8 +262,8 @@ def test_memory_budget_does_not_defer_persona_with_its_own_limit(store):
     engine.gateway = Combined()
     report = complete(engine)
     assert report['summary']['merged']['count']==1
-    assert report['summary']['model_calls']['count']==3
-    assert report['persona']['status']=='published' and len(persona.calls)==2
+    assert report['summary']['model_calls']['count']==4
+    assert report['persona']['status']=='published' and len(persona.calls)==3
 
 
 def test_D01_prepare_and_goal_operations_while_persona_is_running(store):

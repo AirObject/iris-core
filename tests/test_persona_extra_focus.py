@@ -19,7 +19,7 @@ class ExtraModel(FocusModel):
     def chat(self, *args, **kwargs):
         reply = super().chat(*args, **kwargs)
         value = json.loads(reply.content)
-        if len(self.calls) == self.on_call:
+        if len(self.calls) == self.on_call or self.calls[-1][0].get('format_retry'):
             row = value['sentences'][0]
             prototype = row['clauses'][0]
             row['clauses'] = [{**copy.deepcopy(prototype), 'index': i} for i in self.indices]
@@ -88,7 +88,7 @@ def test_partial_extra_failure_rejects_the_whole_sentence_and_preserves_unchecke
 ])
 def test_extra_checks_cannot_cover_missing_reordered_or_invalid_indices(store, indices):
     result, _, _, _ = check(store, ExtraModel(indices))
-    assert result['incomplete_checks'] and not result['sentences'][0]['supported']
+    assert not result['incomplete_checks'] and result['invalid_sentence_checks'] and not result['sentences'][0]['supported']
     assert not result['normalizations']
 
 
@@ -96,7 +96,7 @@ def test_malformed_extra_is_not_dropped_even_when_all_requested_checks_are_prese
     def mutate(row):
         row['clauses'][-1]['supported'] = 'true'
     result, _, _, _ = check(store, ExtraModel([1, 2, 3], mutation=mutate))
-    assert result['incomplete_checks'] and not result['sentences'][0]['supported']
+    assert not result['incomplete_checks'] and result['invalid_sentence_checks'] and not result['sentences'][0]['supported']
     assert not result['normalizations']
 
 

@@ -191,6 +191,8 @@ def test_other_purposes_and_models_keep_existing_nonstream_transport(prepared, p
     with engine_for(prepared, respond, model=model) as (engine, now, requests, client):
         outputs = {}
         assert engine._call(purpose, {}, outputs) == {}
+    if purpose in ('persona_check', 'persona_recheck'):
+        assert outputs.pop(purpose + '_request_bytes')[0] <= 32768
     assert outputs == {purpose: '{}', purpose + '_finish_reason': 'stop'}
 
 

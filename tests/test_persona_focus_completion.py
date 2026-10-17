@@ -21,7 +21,14 @@ class PrefixModel(FocusModel):
         reply = super().chat(*args, **kwargs)
         value = json.loads(reply.content)
         memory_rows = [r for r in value['sentences'] if r['clauses']]
-        if len(self.calls) == 1:
+        if self.calls[-1][0].get('format_retry'):
+            if self.first:
+                row = memory_rows[0]
+                row['clauses'] = row['clauses'][:1]
+                self.first(row)
+            elif self.completion:
+                self.completion(value)
+        elif len(self.calls) == 1:
             row = memory_rows[0]
             row['clauses'] = row['clauses'][:1]
             value['change_degree'] = 'medium'
@@ -47,7 +54,7 @@ def test_positive_prefix_requires_a_real_check_of_only_the_missing_focus(store, 
     result, material, sentences = check(store, model, purpose=purpose, outputs=outputs)
     assert len(model.calls) == 3
     assert [[p['index'] for p in r['candidate'][0]['clauses']] for r, _ in model.calls] == [[1, 2], [2], [3, 4]]
-    assert [d for _, d in model.calls] == [360, 360, 362]
+    assert [d for _, d in model.calls] == [360, 361, 362]
     assert model.calls[1][0]['task'] == 'check_facts_and_rules'
     assert all(r['candidate'][0]['text'] == sentences[0]['text'] for r, _ in model.calls)
     assert all(r['candidate'][0]['evidence_refs'] == ['M1'] for r, _ in model.calls)
@@ -91,7 +98,7 @@ def test_valid_adverse_completion_rejects_the_sentence_without_rechecking_good_p
 
 
 @pytest.mark.parametrize('bad', ['missing', 'wrong_index', 'bool_type', 'missing_reason', 'bad_degree'])
-def test_bad_completion_is_still_incomplete_and_never_loops(store, bad):
+def test_bad_completion_has_one_field_correction_then_conservative_rejection(store, bad):
     def mutate(value):
         row = value['sentences'][0]
         if bad == 'missing': row['clauses'] = []
@@ -101,8 +108,8 @@ def test_bad_completion_is_still_incomplete_and_never_loops(store, bad):
         else: value['change_degree'] = 'unknown'
     model = PrefixModel(completion=mutate); outputs = {}
     result, _, _ = check(store, model, outputs=outputs)
-    assert len(model.calls) == 2
-    assert result['incomplete_checks'] and not result['sentences'][0]['supported']
+    assert len(model.calls) == 3
+    assert not result['incomplete_checks'] and result['invalid_sentence_checks'] and not result['sentences'][0]['supported']
     assert not outputs['persona_check_batches'][0]['persona_check_focus_completions'][0]['completed']
 
 
@@ -118,12 +125,13 @@ def test_only_a_valid_unambiguously_positive_prefix_is_eligible_for_completion(s
         else: row['persona_kind'] = 'task'
     model = PrefixModel(first=mutate)
     result, _, _ = check(store, model)
-    assert len(model.calls) == 1
+    assert len(model.calls) == (1 if bad == 'no_proof' else 2)
     if bad == 'no_proof':
         assert not result['incomplete_checks'] and not result['sentences'][0]['supported']
         assert result['sentences'][0]['guard_rejected_prefix']
     else:
-        assert result['incomplete_checks']
+        assert not result['incomplete_checks'] and result['invalid_sentence_checks']
+        assert not result['sentences'][0]['supported']
 
 
 def test_full_sentence_completion_cannot_hide_an_adverse_extra_focus(store):
@@ -139,12 +147,12 @@ def test_full_sentence_completion_cannot_hide_an_adverse_extra_focus(store):
     assert [p['index'] for p in result['sentences'][0]['additional_clause_checks']] == [3, 4]
 
 
-def test_completion_shares_original_window_deadline_and_keeps_both_raw_outputs_on_timeout(store):
+def test_completion_shares_fixed_stage_deadline_and_keeps_both_raw_outputs(store):
     model = PrefixModel(durations=[359, 2]); outputs = {}
-    with pytest.raises(ModelError) as error:
-        check(store, model, outputs=outputs)
-    assert error.value.reason == 'timeout'
-    assert [deadline for _, deadline in model.calls] == [360, 360]
+    result, _, _ = check(store, model, outputs=outputs)
+    assert not result['incomplete_checks'] and result['sentences'][0]['supported']
+    assert [deadline for _, deadline in model.calls] == [360, 719, 721]
+    assert all(deadline <= 900 for _, deadline in model.calls)
     raw = outputs['persona_check_batches'][0]
     assert raw['persona_check'] and raw['persona_check_focus_completions'][0]['outputs']['persona_check']
 

@@ -38,12 +38,12 @@ class FakeGateway:
             evidence = payload['evidence']['memories'][0]
             scope = '游戏' if evidence['entry_kind'] == 'game' else '直播'
             value = {'sentences':[{'text':f'在那次{scope}中，我耐心解释了规则。','basis':[evidence['ref']]}]}
-        elif purpose == 'persona_check':
+        elif purpose in ('persona_check', 'persona_recheck'):
             value = {'sentences':[{'index':i+1,'supported':True,'fabricated':False,
                 'scene_qualified':True,'violations':[],'reason':'场景明确'} for i,_ in enumerate(payload['candidate'])], 'change_degree':'small','reason':'单场经历'}
         else:
             raise AssertionError('external mode must not call a model judge')
-        if purpose == 'persona_check':
+        if purpose in ('persona_check', 'persona_recheck'):
             value = add_clause_proofs(value, payload)
         return ModelReply(dumps(value),'stop',{})
 
@@ -196,7 +196,8 @@ def test_rejected_candidates_export_but_do_not_count_as_changes(tmp_path):
             reply = super().chat(messages,purpose,**kwargs)
             if purpose=='persona_check':
                 output = json.loads(reply.content)
-                output['sentences'][0]['supported'] = 'false'  # Invalid verdict: cannot safely recover.
+                for row in output['sentences']:
+                    row['supported'] = False  # Every candidate sentence is explicitly rejected.
                 reply.content = dumps(output)
             return reply
     corpus = tmp_path/'small.jsonl'
@@ -494,3 +495,35 @@ def test_sentence_recovery_metrics_and_materials_remain_scoreable(tmp_path,again
     _,scored=score_persona_judgments(materials.parent,[first],tmp_path,judge_model='fake-test',out=tmp_path/'score')
     assert scored['metrics']['deleted_sentence_ratio']==metrics['deleted_sentence_ratio']
     assert scored['metrics']['grounded_change_ratio']==1
+
+
+@pytest.mark.parametrize('persistent', [False, True])
+def test_local_invalid_fields_do_not_abort_later_timeline_checkpoints(tmp_path, persistent):
+    class InvalidFields(FakeGateway):
+        damaged = False
+        def chat(self, messages, purpose, **kwargs):
+            reply = super().chat(messages, purpose, **kwargs)
+            payload = json.loads(messages[-1]['content'])
+            if purpose in ('persona_check', 'persona_recheck') and payload['task'] == 'check_facts_and_rules':
+                value = json.loads(reply.content)
+                for candidate, row in zip(payload['candidate'], value['sentences']):
+                    if candidate['origin'] == 'memory' and not candidate.get('initial_setting'):
+                        if persistent or not self.damaged:
+                            row['reason'] = ''
+                            self.damaged = True
+                reply.content = dumps(value)
+            return reply
+    corpus = tmp_path/'format.jsonl'
+    corpus.write_text(dumps(TIMELINE)+'\n', encoding='utf-8')
+    scoring = tmp_path/'scoring.md'
+    scoring.write_text('格式测试', encoding='utf-8')
+    materials, report = run_persona_eval({}, tmp_path, corpus=corpus, out=tmp_path/'out',
+        judge_mode='external', gateway_factory=InvalidFields,
+        runner_identity='fake-field-recovery', scoring_path=scoring)
+    assert report['metrics']['run_valid']
+    row = report['rows'][0]
+    assert [c['checkpoint']['id'] for c in row['checkpoints']] == ['c1', 'c2']
+    assert (materials.parent/'run.json').is_file()
+    checks = row['checkpoints'][0]['result']['version']['checks']['initial_model']
+    assert not checks['incomplete_checks']
+    assert checks['invalid_sentence_checks']

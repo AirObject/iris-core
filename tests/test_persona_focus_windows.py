@@ -72,7 +72,7 @@ def test_large_sentence_is_checked_in_small_windows_without_losing_context(store
 def test_one_bad_focus_in_later_window_keeps_entire_sentence_unsupported(store,bad):
     material,sentence=material_and_sentence();model=FocusModel(bad=bad)
     result=run(store,model,material,[sentence])
-    assert len(model.calls)==2
+    assert len(model.calls)==(3 if bad=='wrong_index' else 2)
     degree,structural,problems=_check_verdicts(result,[sentence],material=material)
     assert not structural and 1 in problems
     assert not result['sentences'][0]['supported']
@@ -114,7 +114,7 @@ class FullSentenceModel(FocusModel):
             prototype = row['clauses'][0]
             row['clauses'] = [{**copy.deepcopy(prototype), 'index': part['index']}
                               for part in _clause_parts(sentence['text'])]
-            if self.mutation is not None and len(self.calls) == 1:
+            if self.mutation is not None and (len(self.calls) == 1 or request.get('format_retry')):
                 self.mutation(row)
         return ModelReply(dumps(output), 'stop', {})
 
@@ -178,7 +178,7 @@ def test_extra_focus_fallback_never_accepts_incomplete_or_malformed_results(stor
             parts[2]['supported'] = 'true'
     material, sentence = material_and_sentence(); model = FullSentenceModel(mutation=mutate)
     result = run(store, model, material, [sentence])
-    assert result['incomplete_checks'] and not result['sentences'][0]['supported']
+    assert not result['incomplete_checks'] and result['invalid_sentence_checks'] and not result['sentences'][0]['supported']
     assert not result['normalizations']
 
 

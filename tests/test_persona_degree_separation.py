@@ -86,12 +86,11 @@ def test_prechecked_recovery_can_defer_degree_without_fake_model_comparison(stor
     assert result['change_degree']=='large'
 
 
-def test_degree_cannot_reset_original_single_window_budget(store):
+def test_degree_shares_fixed_stage_budget_after_a_slow_single_window(store):
     model=SeparateModel(durations=[350,11]);outputs={}
-    with pytest.raises(ModelError) as failure:
-        check(store,model,sentences=batch_sentences()[:1],outputs=outputs)
-    assert failure.value.reason=='timeout'
-    assert [c['deadline'] for c in model.calls]==[360,360]
+    result = check(store,model,sentences=batch_sentences()[:1],outputs=outputs)
+    assert result['degree_assessment']['status']=='complete'
+    assert [c['deadline'] for c in model.calls]==[360,710]
     assert len(outputs['persona_check_batches'])==2
     assert outputs['persona_check_batches'][0]['persona_check']
     assert outputs['persona_check_batches'][1]['persona_check']
@@ -147,7 +146,8 @@ def test_failed_degree_after_valid_facts_keeps_current_persona(store, failure):
     result = PersonaEngine(store, model).regenerate(expected_version=old['id'])
     assert current_persona(store)['id'] == old['id']
     assert result['status'] == ('failed' if failure == 'timeout' else 'rejected')
-    assert [p.get('task') for _,p in model.calls] == ['generate', 'check_facts_and_rules', 'degree_only']
+    assert [p.get('task') for _,p in model.calls] == (
+        ['generate', 'check_facts_and_rules', 'degree_only'] + (['degree_only'] if failure == 'timeout' else []))
     with store.read() as conn:
         saved = json.loads(conn.execute('SELECT outputs_json FROM persona_attempts WHERE id=?',
             (result['attempt_id'],)).fetchone()[0])

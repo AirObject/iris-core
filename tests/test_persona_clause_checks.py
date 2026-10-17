@@ -218,8 +218,10 @@ def test_timeout_in_later_batch_records_attempt_and_keeps_current_version(store)
     assert current_persona(store)['id'] == 1
     with store.read() as conn:
         row = conn.execute('SELECT outputs_json FROM persona_attempts WHERE id=?', (result['attempt_id'],)).fetchone()
-    assert len(json.loads(row[0])['persona_check_batches']) == 3
-    assert [purpose for purpose, _ in model.calls] == ['persona_generate', 'persona_check', 'persona_check', 'persona_check']
+    batches = json.loads(row[0])['persona_check_batches']
+    assert len(batches) == 5
+    assert batches[2]['persona_check_timeout_retries'][0]['status'] == 'complete'
+    assert [purpose for purpose, _ in model.calls] == ['persona_generate'] + ['persona_check'] * 6
 
 
 def test_model_cannot_inject_computed_diagnostics_or_crash_batch_validation(store):
@@ -237,12 +239,13 @@ def test_model_cannot_inject_computed_diagnostics_or_crash_batch_validation(stor
     assert all(row['clause_errors'] == [] for row in result['sentences'])
 
 
-def test_one_batch_still_has_only_360_seconds(store):
+def test_one_batch_gets_one_360_second_retry_inside_the_stage(store):
     gateway = BatchGateway(duration=361)
     with pytest.raises(ModelError) as error:
         PersonaEngine(store, gateway)._check_all('persona_check', batch_material(), batch_sentences()[:4], full_content='整稿', outputs={})
     assert error.value.reason == 'timeout'
-    assert len(gateway.calls) == 1 and gateway.calls[0][2] == 360
+    assert len(gateway.calls) == 2
+    assert [c[2] for c in gateway.calls] == [360, 721]
 
 
 def test_multiple_batches_use_full_request_budget_within_fixed_stage(store):

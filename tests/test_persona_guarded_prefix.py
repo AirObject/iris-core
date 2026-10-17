@@ -98,18 +98,18 @@ def test_proof_failure_cannot_excuse_a_malformed_or_ineligible_prefix(store, bad
         else: row['persona_kind'] = 'task'
     model = PrefixModel(first=mutate)
     result, _, _ = check(store, model)
-    assert len(model.calls) == 1 and result['incomplete_checks']
+    assert len(model.calls) == 2 and not result['incomplete_checks'] and result['invalid_sentence_checks']
     assert not result['sentences'][0]['supported']
     assert not result['sentences'][0].get('guard_rejected_prefix')
     assert not result['normalizations']
 
 
-def test_bad_scope_structure_stays_incomplete_even_with_an_adverse_date_guard(store):
+def test_bad_scope_structure_is_rejected_after_correction_even_with_an_adverse_date_guard(store):
     material, sentence = general_material()
     model = PrefixModel(first=lambda row: row.update(scope_check={'preserved': 'true'}))
     result = PersonaEngine(store, model)._check_all('persona_recheck', material, [sentence],
         full_content=sentence['text'], outputs={})
-    assert len(model.calls) == 1 and result['incomplete_checks']
+    assert len(model.calls) == 2 and not result['incomplete_checks'] and result['invalid_sentence_checks']
     assert not result['sentences'][0].get('guard_rejected_prefix')
 
 

@@ -120,17 +120,17 @@ def test_malformed_repeat_is_never_discarded(store, bad):
         result = PersonaEngine(store, model)._check_all('persona_check', material, [sentence],
             full_content=sentence['text'], outputs={})
         assert model.calls[0][0]['candidate'][0]['scope_check_required']
-        assert any('invalid activity scope verdict' in e for e in result['incomplete_checks'])
+        assert any('invalid activity scope verdict' in e for item in result['invalid_sentence_checks'] for e in item['errors'])
     else:
         result, _, _, _ = check(store, model)
-    assert result['incomplete_checks'] and not result['sentences'][0]['supported']
+    assert not result['incomplete_checks'] and result['invalid_sentence_checks'] and not result['sentences'][0]['supported']
     assert not result['normalizations']
 
 
 @pytest.mark.parametrize('indices', [[1, 1], [1, 1, 3], [2, 2, 1], [1, True, 2], [1, '1', 2], [1, 1, 99]])
 def test_repeats_cannot_supply_missing_reordered_or_malformed_requested_ids(store, indices):
     result, _, _, _ = check(store, ExtraModel(indices))
-    assert result['incomplete_checks'] and not result['sentences'][0]['supported']
+    assert not result['incomplete_checks'] and result['invalid_sentence_checks'] and not result['sentences'][0]['supported']
     assert not result['normalizations']
 
 
@@ -146,7 +146,7 @@ def test_suffix_completion_keeps_all_repeated_verdicts_and_the_original_deadline
     assert not result['incomplete_checks']
     assert result['sentences'][0]['supported'] is (not negative)
     assert bool(_check_verdicts(result, sentences, material=material)[2]) is negative
-    assert [d for _, d in model.calls[:2]] == [360, 360]
+    assert [d for _, d in model.calls[:2]] == [360, 361]
     audit = outputs['persona_check_batches'][0]['persona_check_focus_completions'][0]
     assert audit['completed'] and audit['repeated_clause_indices'] == [2]
     raw = json.loads(audit['outputs']['persona_check'])['sentences'][0]

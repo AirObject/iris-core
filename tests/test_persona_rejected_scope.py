@@ -74,7 +74,7 @@ def test_independent_adverse_proof_rejects_without_claiming_the_missing_scope_pa
 @pytest.mark.parametrize('purpose', ['persona_check', 'persona_recheck'])
 def test_complete_positive_proofs_still_require_the_scope_verdict(store, purpose):
     result, _, _, _ = check_scope(store, MissingScope(failure='valid'), purpose)
-    assert result['incomplete_checks'] and not result['sentences'][0]['supported']
+    assert not result['incomplete_checks'] and result['invalid_sentence_checks'] and not result['sentences'][0]['supported']
     assert not result['sentences'][0].get('unchecked_scope_check')
     assert not result['normalizations']
 
@@ -102,7 +102,7 @@ def test_existing_bad_fields_are_not_hidden_by_an_independent_proof_failure(stor
             part['scope_check'] = {'candidate_scope': '共读',
                 'source_scopes': [{'ref': 'M1', 'quote': '共读'}], 'preserved': True}
     result, _, _, _ = check_scope(store, MissingScope(mutation=mutate))
-    assert result['incomplete_checks'] and not result['sentences'][0]['supported']
+    assert not result['incomplete_checks'] and result['invalid_sentence_checks'] and not result['sentences'][0]['supported']
     assert not result['sentences'][0].get('unchecked_scope_check')
     assert not result['normalizations']
 
@@ -137,13 +137,13 @@ def test_complete_scope_cannot_be_bypassed_by_a_model_injected_unchecked_flag(st
 def test_absent_scope_cannot_be_excused_by_the_model_injected_unchecked_flag(store):
     model = MissingScope(failure='valid', mutation=lambda row: row.update(unchecked_scope_check=True))
     result, _, _, _ = check_scope(store, model)
-    assert result['incomplete_checks'] and not result['sentences'][0].get('unchecked_scope_check')
+    assert not result['incomplete_checks'] and result['invalid_sentence_checks'] and not result['sentences'][0].get('unchecked_scope_check')
 
 
 def test_a_negative_row_alone_cannot_stand_in_for_the_missing_scope(store):
     model = MissingScope(failure='valid', mutation=lambda row: row.update(supported=False))
     result, _, _, _ = check_scope(store, model)
-    assert result['incomplete_checks'] and not result['sentences'][0].get('unchecked_scope_check')
+    assert not result['incomplete_checks'] and result['invalid_sentence_checks'] and not result['sentences'][0].get('unchecked_scope_check')
 
 
 def test_scope_omission_after_proof_failure_cannot_publish_the_claim(store):
