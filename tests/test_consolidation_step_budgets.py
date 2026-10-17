@@ -25,6 +25,21 @@ PURPOSES = ('consolidation_merge', 'consolidation_entry_profile_observe',
 MIGRATION = '034_consolidation_step_budgets.sql'
 
 
+def pre_budget_store(path, monkeypatch):
+    original = db.files
+    def old_resources(package):
+        root = original(package)
+        def joinpath(name):
+            target = root.joinpath(name)
+            if name == 'migrations':
+                return SimpleNamespace(iterdir=lambda: [p for p in target.iterdir() if p.name < MIGRATION])
+            return target
+        return SimpleNamespace(joinpath=joinpath)
+    with monkeypatch.context() as patch:
+        patch.setattr(db, 'files', old_resources)
+        return Store(path)
+
+
 def owner_for(store, **settings):
     store.set_setting('consolidation', {**dict.fromkeys(BUDGETS, 2), **settings})
     clock = Clock()
@@ -55,18 +70,7 @@ def test_new_database_memory_call_budget_defaults_to_300(tmp_path, precreated):
                                                  (True, 7, 7), (False, 7, 7), (True, 0, 0)])
 def test_migration_preserves_admin_choices_and_existing_run_snapshots(tmp_path, monkeypatch, saved, value, expected):
     path = tmp_path / 'old.db'
-    original = db.files
-    def old_resources(package):
-        root = original(package)
-        def joinpath(name):
-            target = root.joinpath(name)
-            if name == 'migrations':
-                return SimpleNamespace(iterdir=lambda: [p for p in target.iterdir() if p.name != MIGRATION])
-            return target
-        return SimpleNamespace(joinpath=joinpath)
-    with monkeypatch.context() as patch:
-        patch.setattr(db, 'files', old_resources)
-        old = Store(path)
+    old = pre_budget_store(path, monkeypatch)
     settings = {'max_calls': value, 'merge_enabled': False, 'method': 'strict', 'extra_legacy_field': 'keep'}
     old.set_setting('consolidation', settings)
     with old.write() as conn:
@@ -90,10 +94,9 @@ def test_any_prior_admin_save_preserves_50_even_when_only_switch_was_saved(tmp_p
     # A real settings PATCH saves the complete effective object, even if the
     # administrator only changes a switch. The migration must respect that act.
     path = tmp_path / 'old.db'
-    old = Store(path)
+    old = pre_budget_store(path, monkeypatch)
     old.set_setting('consolidation', {'max_calls': 50})
     with old.write() as conn:
-        conn.execute('DELETE FROM schema_migrations WHERE version=?', (MIGRATION,))
         operation(conn, 'consolidation_settings_saved', 'settings', 'consolidation', {'merge_enabled': False})
     old.close()
     reopened = Store(path)

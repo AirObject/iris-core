@@ -12,7 +12,9 @@ from . import backup
 from .db import dumps
 from .memory_ops import adjust_retention, delete_memory, lifecycle_settings, message_references, missing_batch_targets, operation
 from .model_health import utc_now
-from .media import GRACE_PERIOD, cleanup_upload_orphans, delete_unreferenced_file, files_for_message, mark_unreferenced
+from .media import (DEFAULT_MEDIA_RETENTION_DAYS, GRACE_PERIOD, cleanup_upload_orphans,
+                    delete_expired_file, delete_unreferenced_file, files_for_message,
+                    mark_expired_file, mark_unreferenced, media_retention_days)
 from .queue import reset_batch
 from .runtime_journal import cleanup, maintenance_span, record
 
@@ -110,6 +112,7 @@ class Maintenance:
                 rid = row[0]
             else:
                 config = lifecycle_settings(conn)
+                config['media_retention_days'] = media_retention_days(self.store)
                 from .consolidation import consolidation_settings
                 model_config = consolidation_settings(conn)
                 zone_row = conn.execute("SELECT value_json FROM runtime_settings WHERE key='timezone'").fetchone()
@@ -228,9 +231,12 @@ class Maintenance:
         if phase == "media":
             with self.store.read() as conn:
                 return [dict(r) for r in conn.execute("""SELECT id,id AS cursor_id,CAST(id AS TEXT) AS item_key
-                    FROM media_files WHERE id>? AND id<=? AND unreferenced_at IS NOT NULL
-                    AND julianday(unreferenced_at)<=julianday(?) ORDER BY id LIMIT 128""",
-                    (run['cursor_id'], run['media_through'], (current-GRACE_PERIOD).isoformat()))]
+                    FROM media_files WHERE id>? AND id<=? AND (
+                    (unreferenced_at IS NOT NULL AND julianday(unreferenced_at)<=julianday(?))
+                    OR bytes_purge_pending=1 OR (bytes_purged_at IS NULL AND julianday(created_at)<julianday(?)))
+                    ORDER BY id LIMIT 128""",
+                    (run['cursor_id'], run['media_through'], (current-GRACE_PERIOD).isoformat(),
+                     (current-timedelta(days=config.get('media_retention_days', DEFAULT_MEDIA_RETENTION_DAYS))).isoformat()))]
         if phase == "goals":
             from .consolidation import run_settings
             with self.store.read() as conn:
@@ -299,6 +305,16 @@ class Maintenance:
 
     def _process_item(self, run, phase, candidate):
         try:
+            if phase == 'media':
+                # Commit intent separately from unlink/progress. A restart can
+                # complete a pending deletion even after unlink succeeded.
+                with self.store.write() as conn:
+                    if self._progress(conn, run, candidate) is None:
+                        return
+                    config = json.loads(run['settings_json'])
+                    mark_expired_file(self.store, conn, candidate['id'],
+                        as_of=datetime.fromisoformat(run['created_at']), current=self.clock(),
+                        days=config.get('media_retention_days', DEFAULT_MEDIA_RETENTION_DAYS))
             with self.store.write() as conn:
                 progress = self._progress(conn, run, candidate)
                 if progress is None:
@@ -321,7 +337,9 @@ class Maintenance:
         executed_at = self.clock()
         mid = candidate["id"]
         if phase == "media":
-            deleted = delete_unreferenced_file(self.store, conn, mid, current)
+            deleted = delete_unreferenced_file(self.store, conn, mid, executed_at)
+            if not deleted and delete_expired_file(self.store, conn, mid, executed_at):
+                return 'media_purged', None, {}
             return ("media_deleted", None, {}) if deleted else ("skipped", "media_referenced_or_not_due", {})
         if phase == "goals":
             from .goals import expire_internal_question, review_goal_basis, GoalConflict

@@ -96,3 +96,17 @@ def test_interrupted_attempt_is_reported_without_publishing_or_repeating(store,m
 
 # Historical document-path regression on the pre-switch schema.
 from profile_legacy import legacy_schema
+
+
+@pytest.fixture(autouse=True)
+def legacy_media_phase(monkeypatch, legacy_schema):
+    # These historical document-path cases intentionally use schema 031.
+    # Current media retention requires later columns; keep the profile flow intact.
+    original = Maintenance._candidates
+
+    def candidates(self, run, phase):
+        if phase == 'media':
+            return []
+        return original(self, run, phase)
+
+    monkeypatch.setattr(Maintenance, '_candidates', candidates)
