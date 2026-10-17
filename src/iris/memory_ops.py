@@ -1222,6 +1222,21 @@ def write_entry_profile_memory(store, entry_id, *, op, content=None, category=No
                 (memory_id,expected_revision,revision,dumps(before),dumps({**before,'importance':50}),stamp))
         else:
             revision = expected_revision
+        renewal = None
+        if op=='admit':
+            profile_category = conn.execute('SELECT category FROM entry_profile_memories WHERE memory_id=?',
+                                            (memory_id,)).fetchone()
+            admission = conn.execute('SELECT state,body_revision FROM entry_profile_admissions WHERE memory_id=?',(memory_id,)).fetchone()
+            if (profile_category and profile_category[0] in ('topic','saying') and admission
+                    and (admission['state']!='accepted' or admission['body_revision']!=revision)):
+                # Start the ordinary importance-50 lifetime at admission. An
+                # atomic floor preserves stronger confirmations. The caller
+                # commits accepted in this transaction; routine rechecks and
+                # restart/replay do not recharge the same accepted body revision.
+                renewed = adjust_retention(store,memory_id,floor=round(30+50*.4),
+                    expected_revision=revision,current=current,_conn=conn)
+                conn.execute('UPDATE memories SET decay_visits=0 WHERE id=?',(memory_id,))
+                renewal = {'before':target['retention'],'after':renewed['retention'],'decay_visits':0}
         if op=='retire':
             manage_memory(store,memory_id,expected_revision,action='forget',_conn=conn,_record=False)
         written_sources=[]
@@ -1253,5 +1268,6 @@ def write_entry_profile_memory(store, entry_id, *, op, content=None, category=No
         # Metadata-only audit; original model output stays with the producer's
         # indexed attempt record, which the ordinary purge machinery redacts.
         operation(conn,'entry_profile_'+op,'memory',memory_id,
-            {'entry_id':entry_id,'revision':revision,'confirmed':confirmed,'new_evidence':len(fresh)},actor=actor,stamp=stamp)
+            {'entry_id':entry_id,'revision':revision,'confirmed':confirmed,'new_evidence':len(fresh),
+             **({'admission_retention':renewal} if renewal is not None else {})},actor=actor,stamp=stamp)
         return dict(memory_id=memory_id,revision=revision,op=op,confirmed=confirmed,source_ids=written_sources)
