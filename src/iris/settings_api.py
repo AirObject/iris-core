@@ -344,17 +344,15 @@ def install_settings(app):
 
     @router.patch('/settings/limits')
     def limits(payload: Limits):
-        changes = payload.model_dump()
-        # Existing clients do not know these fields; omission preserves their values.
-        for key in ('learning_image_limit', 'native_image_learning', 'media_retention_days'):
-            if key not in payload.model_fields_set:
-                changes.pop(key)
+        changes = payload.model_dump(exclude_unset=True)
         with app.state.store.write() as conn:
             for key, value in changes.items():
                 conn.execute('INSERT OR REPLACE INTO runtime_settings VALUES(?,?)', (key, dumps(value)))
             audit(conn, 'limits_saved', changes)
-        app.state.health.set_daily_token_limit(payload.daily_token_limit)
-        app.state.scheduler.set_concurrency(payload.learning_concurrency)
+        if 'daily_token_limit' in changes:
+            app.state.health.set_daily_token_limit(payload.daily_token_limit)
+        if 'learning_concurrency' in changes:
+            app.state.scheduler.set_concurrency(payload.learning_concurrency)
         return snapshot()
 
     @router.post('/settings/models/{kind}/retry')

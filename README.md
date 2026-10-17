@@ -147,7 +147,7 @@ docker start iris
 | `PUT /settings/models/{chat\|embedding}` | 保存模型；api_key 省略保留，空字符串清除，enabled=false 停用 |
 | `POST /settings/models/{chat\|embedding}/test` | 空 JSON 测已保存配置，模型 JSON 测草稿 |
 | `POST /settings/models/{chat\|embedding}/retry` | 对暂时不可用／账户问题请求重试 |
-| `PATCH /settings/limits` | daily_token_limit（null 不限）、learning_concurrency、learning_image_limit、native_image_learning、media_retention_days（默认 7，整数 1—36500） |
+| `PATCH /settings/limits` | daily_token_limit（null 不限）、learning_concurrency、learning_image_limit、native_image_learning、media_retention_days（默认 7，整数 1—36500）；所有字段省略即保留现值，daily_token_limit 显式 null 才表示不限；操作记录只包含实际提交的字段 |
 
 ## 中文试用与管理界面
 

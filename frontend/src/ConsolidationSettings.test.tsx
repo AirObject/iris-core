@@ -78,7 +78,8 @@ beforeEach(() => {
           );
         if (url.endsWith("/consolidation")) {
           settings.consolidation = { ...settings.consolidation, ...body };
-          settings.lifecycle.maintenance_time = body.maintenance_time;
+          if ("maintenance_time" in body)
+            settings.lifecycle.maintenance_time = body.maintenance_time;
         }
         if (url.endsWith("/goal-dedup-judge")) settings.goal_dedup_judge = body;
         settings.operations = [
@@ -107,7 +108,7 @@ test("整理设置保存时间、调用预算与所有开关，并显示操作�
     target: { value: "04:15" },
   });
   fireEvent.change(
-    within(section).getByLabelText("每次整理的模型调用次数预算"),
+    within(section).getByLabelText("记忆整理（合并／矛盾／依赖）每轮调用上限"),
     { target: { value: "0" } },
   );
   await userEvent.click(within(section).getByLabelText("矛盾检查与建议"));
@@ -122,12 +123,8 @@ test("整理设置保存时间、调用预算与所有开关，并显示操作�
   expect(request.body).toEqual({
     maintenance_time: "04:15",
     max_calls: 0,
-    merge_enabled: true,
     conflict_enabled: false,
-    dependency_enabled: true,
-    persona_enabled: true,
     person_summary_enabled: false,
-    goal_review_enabled: true,
   });
   expect((request.init?.headers as any)["X-Iris-CSRF"]).toBe(
     "consolidation-settings-test",
@@ -136,19 +133,19 @@ test("整理设置保存时间、调用预算与所有开关，并显示操作�
   expect(within(section).getByText(/只影响之后接受的新运行/)).toBeVisible();
 });
 
-test.each(["", "51", "1.5"])(
+test.each(["", "-1", "1001", "1.5"])(
   "整理预算 %s 被阻止，未发送请求",
   async (input) => {
     render(<SettingsPage />);
     fireEvent.change(
-      await screen.findByLabelText("每次整理的模型调用次数预算"),
+      await screen.findByLabelText("记忆整理（合并／矛盾／依赖）每轮调用上限"),
       { target: { value: input } },
     );
     await userEvent.click(
       screen.getByRole("button", { name: "保存梦境整理设置" }),
     );
     expect(
-      await screen.findByText(/模型调用次数预算须为 0—50 的整数/),
+      await screen.findByText(/每轮调用上限须为 0—1000 的整数/),
     ).toBeVisible();
     expect(requests.some((r) => r.init?.method === "PATCH")).toBe(false);
   },
