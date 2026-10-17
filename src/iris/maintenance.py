@@ -235,11 +235,11 @@ class Maintenance:
             from .consolidation import run_settings
             with self.store.read() as conn:
                 settings = run_settings(conn, run['id'])
-                if not settings['enabled'] or not settings['goal_review_enabled']:
-                    return []
+                basis_review = settings['enabled'] and settings['goal_review_enabled']
                 return [dict(r) for r in conn.execute("""SELECT id,id AS cursor_id,revision,CAST(id AS TEXT) AS item_key
-                    FROM goals WHERE id>? AND id<=? AND state='open' AND merged_into IS NULL ORDER BY id LIMIT 100""",
-                    (run['cursor_id'],run['goal_through']))]
+                    FROM goals WHERE id>? AND id<=? AND state='open' AND merged_into IS NULL
+                    AND (? OR (origin='internal' AND kind='question')) ORDER BY id LIMIT 100""",
+                    (run['cursor_id'],run['goal_through'],basis_review))]
         if phase in ("decay", "expiry"):
             where = "m.id>? AND m.id<=? AND m.lifecycle!='deleted'"
             params = [run["cursor_id"], run["memory_through"]]
@@ -324,8 +324,15 @@ class Maintenance:
             deleted = delete_unreferenced_file(self.store, conn, mid, current)
             return ("media_deleted", None, {}) if deleted else ("skipped", "media_referenced_or_not_due", {})
         if phase == "goals":
-            from .goals import review_goal_basis, GoalConflict
+            from .goals import expire_internal_question, review_goal_basis, GoalConflict
+            from .consolidation import run_settings
             try:
+                if expire_internal_question(conn, executed_at, goal_id=mid, expected_revision=candidate['revision'],
+                                            as_of=current, zone=ZoneInfo(run['timezone'])):
+                    return 'questions_expired', 'question_expired', {}
+                settings = run_settings(conn, run['id'])
+                if not settings['enabled'] or not settings['goal_review_enabled']:
+                    return 'checked', None, {}
                 # Include the review's changes, report and cursor in this one
                 # small transaction. The standalone paging helper cannot commit
                 # our cursor/report atomically, so use its single-item API.
@@ -424,7 +431,7 @@ class Maintenance:
     def _summary(items, progress):
         result = {name: {"count": 0, "memory_ids": [], "object_ids": []} for name in (
             "decayed", "checked", "forgotten", "restored", "deleted", "dependencies_weakened",
-            "messages_deleted", "batches_retried", "skipped", "failed")}
+            "messages_deleted", "batches_retried", "questions_expired", "skipped", "failed")}
         for item in items:
             names = [] if item["outcome"] in ("checked", "skipped") else [item["outcome"]]
             transition = item["details"].get("transition")
@@ -471,6 +478,8 @@ class Maintenance:
                 items.append(item)
             report["items"] = items
             report["summary"] = self._summary(items, progress)
+            expired = report['summary']['questions_expired']
+            report['question_expiry'] = {'count':expired['count'], 'goal_ids':expired['object_ids']}
             model = conn.execute("SELECT * FROM consolidation_runs WHERE run_id=?", (run_id,)).fetchone()
             if model:
                 rows = conn.execute("SELECT outcome,reason,details_json FROM consolidation_run_work WHERE run_id=?", (run_id,)).fetchall()

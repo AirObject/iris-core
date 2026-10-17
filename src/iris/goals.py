@@ -29,6 +29,8 @@ from .query_analysis import SubjectNames
 from .state import local_time, role_zone
 
 DEFAULTS = {'default_reminder_minutes': 60, 'overdue_reminders': True}
+QUESTION_EXPIRY_KEY = 'internal_question_expiry_days'
+DEFAULT_QUESTION_EXPIRY_DAYS = 7
 ALL_ENTRIES = Scope(kind='all')
 REVIEW_RETRY_DELAYS = (30, 120, 600)
 
@@ -49,9 +51,24 @@ class GoalMerged(Exception):
         super().__init__('目标已合并')
 
 
-def goal_settings(conn):
+def _stored_goal_settings(conn):
     row = conn.execute("SELECT value_json FROM runtime_settings WHERE key='goals'").fetchone()
     return {**DEFAULTS, **(json.loads(row[0]) if row else {})}
+
+
+def goal_settings(conn):
+    # Keep the existing settings API projection until its separate rollout.
+    return {key: value for key, value in _stored_goal_settings(conn).items() if key != QUESTION_EXPIRY_KEY}
+
+
+def _question_expiry_days(value):
+    if type(value) is not int or not 1 <= value <= 365:
+        raise GoalError(QUESTION_EXPIRY_KEY, '内部询问保留天数须为 1—365 的整数')
+    return value
+
+
+def question_expiry_days(conn):
+    return _question_expiry_days(_stored_goal_settings(conn).get(QUESTION_EXPIRY_KEY, DEFAULT_QUESTION_EXPIRY_DAYS))
 
 
 def _current(value=None):
@@ -340,6 +357,45 @@ def _basis_observations(conn, goal_id):
                 changes.append(row['lifecycle'])
         observed = (row['revision'],row['lifecycle'],int(row['purged_at'] is not None),row['merged_into'])
         yield row['memory_id'],row['memory_revision'],observed,changes
+
+
+def expire_internal_question(conn, current, *, goal_id, expected_revision, as_of, zone):
+    """Close one expired question in the maintenance item's write transaction.
+
+    Creation day is day 0 in the run's role timezone; day N remains open.
+    The run's cutoff is stable across restarts, while closed_at is execution time.
+    """
+    if not conn.in_transaction:
+        raise ValueError('question expiry requires a write transaction')
+    row = _row(conn, goal_id)
+    if row['revision'] != expected_revision:
+        raise GoalConflict()
+    if (row['origin'] != 'internal' or row['kind'] != 'question'
+            or row['state'] != 'open' or row['merged_into'] is not None):
+        return False
+    days = question_expiry_days(conn)
+    created = datetime.fromisoformat(row['created_at'])
+    if created.tzinfo is None:
+        raise GoalError('created_at', '创建时间须带时区')
+    age = (as_of.astimezone(zone).date() - created.astimezone(zone).date()).days
+    if age <= days:
+        return False
+    current = _current(current)
+    before = _snapshot(conn, goal_id)
+    changed = conn.execute("""UPDATE goals SET state='abandoned',closed_at=?,closed_by='maintenance',
+        revision=revision+1,updated_at=? WHERE id=? AND revision=? AND state='open' AND merged_into IS NULL""",
+        (current.isoformat(), current.isoformat(), goal_id, expected_revision)).rowcount
+    if changed != 1:
+        raise GoalConflict()
+    # A pending/in-flight dedup review cannot revive or merge this closed goal.
+    # Cancellation does not publish a notification or alter duplicate receipts.
+    _cancel_review(conn, goal_id, current, {'status':'created','target_id':None,'reason':'goal_closed'})
+    sid = _record_snapshot(conn, goal_id, before, actor='maintenance', action='expire_question',
+                           reason='question_expired', current=current)
+    operation(conn, 'goal_question_expired', 'goal', goal_id,
+              {'revision_before':expected_revision, 'snapshot_id':sid, QUESTION_EXPIRY_KEY:days},
+              actor='maintenance', stamp=current.isoformat())
+    return True
 
 
 def review_goal_basis(conn, current, *, goal_id=None, expected_revision=None):
@@ -1381,6 +1437,17 @@ class Goals:
                           actor=actor,stamp=_current(self.clock()).isoformat())
             return options
 
+    def configure_question_expiry(self, days, *, actor='admin'):
+        """Internal configuration; HTTP/settings UI exposure is a separate change."""
+        days = _question_expiry_days(days)
+        with self.store.write() as conn:
+            settings = _stored_goal_settings(conn)
+            settings[QUESTION_EXPIRY_KEY] = days
+            conn.execute("INSERT OR REPLACE INTO runtime_settings VALUES('goals',?)", (dumps(settings),))
+            operation(conn, 'settings_goals', 'settings', 'goals', {QUESTION_EXPIRY_KEY:days},
+                      actor=actor, stamp=_current(self.clock()).isoformat())
+        return days
+
     def configure(self,*,default_reminder_minutes=None,overdue_reminders=None,actor='admin'):
         if default_reminder_minutes is not None:
             _lead(default_reminder_minutes)
@@ -1388,7 +1455,7 @@ class Goals:
             raise GoalError('overdue_reminders','过期提醒开关须为布尔值')
         with self.store.write() as conn:
             current=_current(self.clock())
-            settings=goal_settings(conn)
+            settings=_stored_goal_settings(conn)
             changes={k:v for k,v in {'default_reminder_minutes':default_reminder_minutes,'overdue_reminders':overdue_reminders}.items() if v is not None and v!=settings[k]}
             settings.update(changes)
             conn.execute("INSERT INTO runtime_settings(key,value_json) VALUES('goals',?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json",(dumps(settings),))
@@ -1409,4 +1476,4 @@ class Goals:
                     for row in _rows(conn,"state='open' AND merged_into IS NULL AND deadline_at IS NOT NULL AND deadline_at<=?",(current.isoformat(),)):
                         _next_overdue(conn,row,current)
             operation(conn,'settings_goals','settings','goals',changes,actor=actor,stamp=current.isoformat())
-            return settings
+            return goal_settings(conn)
