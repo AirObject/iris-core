@@ -1187,7 +1187,15 @@ def write_entry_profile_memory(store, entry_id, *, op, content=None, category=No
         if not manual and not bound:
             raise ValueError('profile sources required')
         known = {r[0] for r in conn.execute('SELECT identity FROM entry_profile_evidence_receipts WHERE memory_id=?',(memory_id,))} if memory_id else set()
-        fresh = [s for s in bound if not known.intersection(s['identities'])]
+        # Identical author/text may be a later independent short saying.
+        # Only an actual message's producer-validated group can bypass content
+        # dedupe. The message identity still blocks replay and edited messages.
+        profile_category = conn.execute('SELECT category FROM entry_profile_memories WHERE memory_id=?',
+                                        (memory_id,)).fetchone() if target else None
+        repeat_uses = set(confirmation_groups or ()) if op=='confirm' and profile_category and profile_category[0]=='saying' else set()
+        fresh = [s for s in bound if not known.intersection(s['identities']) or
+                 s['field']=='content' and 'message:'+str(s['message_id']) in repeat_uses and
+                 'message:'+str(s['message_id']) not in known]
         if op in ('revise','retire') and not fresh:
             raise ValueError('no new profile evidence')
         if op == 'new':

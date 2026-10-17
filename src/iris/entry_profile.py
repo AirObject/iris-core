@@ -1273,10 +1273,10 @@ def _memory_original(source, category, saying):
     return category != 'saying' or saying in source['excerpt']
 
 
-def _memory_independent(left, right, category, messages):
+def _memory_independent(left, right, category, messages, *, independent_short_use=False):
     a, b = left['message'], right['message']
     if (left['evidence_identity'] == right['evidence_identity']
-            or _memory_copies(a['content'], b['content'])):
+            or not (category=='saying' and independent_short_use) and _memory_copies(a['content'], b['content'])):
         return False
     ta, tb = _instant(a['occurred_at']), _instant(b['occurred_at'])
     gap = abs((ta - tb).total_seconds())
@@ -1814,6 +1814,9 @@ def _projection_items(conn, entry_id):
     items=[]; omitted=[]; tokens=0
     for row in memory_profile_rows(conn,entry_id,usable_only=True):
         label = ITEM_LABELS.get(row['category'],'管理员说明')
+        # Sources prove the body; they are not host-facing quotations. Do not
+        # append raw evidence here (dates, one-off details and private context
+        # may be necessary for checking but are not a stable profile).
         # Rendering is one line per memory; keep the stored manual body lossless.
         item = dict(memory_id=row['memory_id'],text=label+'：'+whitespace(row['body']))
         cost = estimate_tokens(item['text'])
@@ -2098,7 +2101,7 @@ def incremental_prompts():
     from importlib.resources import files
     import hashlib
     result={}
-    for stage,name in (('observe','entry_profile_observe_v3'),('admit','entry_profile_admit_v3')):
+    for stage,name in (('observe','entry_profile_observe_v6'),('admit','entry_profile_admit_v6')):
         value=files('iris').joinpath('prompts',name+'.md').read_text(encoding='utf-8')
         result[stage]=dict(name=name,text=value,sha256=hashlib.sha256(value.encode()).hexdigest())
     return result
@@ -2154,7 +2157,8 @@ def validate_incremental_observations(value, limits=None):
 
 
 def validate_incremental_admission(value, payload, previous=None):
-    if (not isinstance(value,dict) or set(value)!={'decision','violations','reason','safe_sources'}
+    if (not isinstance(value,dict) or not {'decision','violations','reason','safe_sources'}<=set(value)
+            or set(value)-{'decision','violations','reason','safe_sources','group_reviews','meaning_support'}
             or value['decision'] not in ('accept','reject','insufficient')
             or not isinstance(value['violations'],list) or any(v not in MEMORY_PROFILE_VIOLATIONS for v in value['violations'])
             or value['violations']!=sorted(set(value['violations']),key=MEMORY_PROFILE_VIOLATIONS.index)
@@ -2169,7 +2173,68 @@ def validate_incremental_admission(value, payload, previous=None):
         _inc_source_shape(source)
     if previous and (previous.get('decision') in ('reject','insufficient') or previous.get('violations')) and value['decision']=='accept':
         raise ValueError('repair_changed_semantic_rejection')
+    if payload.get('review_contract')=='groups_and_meaning_v1':
+        _inc_validate_reviews(value,payload,previous)
     return value
+
+
+def _inc_contains_ref(ref, pool):
+    return any(ref['message_id']==s['message_id'] and ref['field']==s['field']
+               and whitespace(ref['excerpt']) in whitespace(s['excerpt']) for s in pool)
+
+
+def _inc_meaning_text(value):
+    # Ignore formatting punctuation only, never particles, negation or numbers.
+    return ''.join(c for c in value if not c.isspace() and not unicodedata.category(c).startswith('P'))
+
+
+def _inc_validate_reviews(value, payload, previous=None):
+    memory=payload['memory'];accepted=value['decision']=='accept'
+    groups=memory.get('discussion_groups',[])
+    reviews=value.get('group_reviews',[]);points=value.get('meaning_support',[])
+    if not isinstance(reviews,list) or not isinstance(points,list) or len(reviews)>6 or len(points)>24:
+        raise ValueError('invalid_review_arrays')
+    by_id={g['group_id']:g for g in groups};seen=set();passed=set()
+    previous_reviews=(previous or {}).get('group_reviews',[])
+    if not isinstance(previous_reviews,list): previous_reviews=[]
+    for review in reviews:
+        if (not isinstance(review,dict) or set(review)!={'group_id','focus','same_topic','independent','reason'}
+                or type(review['group_id']) is not int or review['group_id'] not in by_id or review['group_id'] in seen
+                or any(type(review[k]) is not bool for k in ('same_topic','independent'))
+                or any(not isinstance(review[k],str) or not review[k].strip() or len(review[k])>240 for k in ('focus','reason'))):
+            raise ValueError('invalid_group_review')
+        gid=review['group_id'];seen.add(gid)
+        for old in previous_reviews:
+            if isinstance(old,dict) and old.get('group_id')==gid:
+                if any(old.get(k) is False and review[k] for k in ('same_topic','independent')):
+                    raise ValueError('repair_changed_group_rejection')
+        if review['same_topic'] and review['independent'] and by_id[gid]['eligible']:
+            passed.add(gid)
+    if accepted and groups:
+        if seen!=set(by_id): raise ValueError('missing_group_reviews')
+        safe_ids={s['message_id'] for s in value['safe_sources']}
+        dates={g['date'] for gid,g in by_id.items() if gid in passed and safe_ids.intersection(g['message_ids'])}
+        if len(dates)<2: raise ValueError('reviewed_groups_insufficient')
+        unrelated={mid for r in reviews if not r['same_topic'] for mid in by_id[r['group_id']]['message_ids']}
+        if safe_ids & unrelated: raise ValueError('unrelated_group_retained')
+    if accepted and memory['category']=='topic' and memory.get('action')!='retire' and not groups:
+        raise ValueError('missing_discussion_groups')
+    for point in points:
+        if (not isinstance(point,dict) or set(point)!={'point','source_refs'}
+                or not isinstance(point['point'],str) or not point['point'].strip() or len(point['point'])>180
+                or not isinstance(point['source_refs'],list) or not 1<=len(point['source_refs'])<=6):
+            raise ValueError('invalid_meaning_point')
+        for ref in point['source_refs']:
+            _inc_source_shape(ref)
+            if (not _inc_contains_ref(ref,memory['sources']) or
+                    accepted and not _inc_contains_ref(ref,value['safe_sources'])):
+                raise ValueError('meaning_unbound_excerpt')
+        if not any(ref['message_id'] in memory.get('definition_refs',[]) for ref in point['source_refs']):
+            raise ValueError('meaning_without_explanation')
+    if accepted:
+        meaning=memory.get('meaning','') if memory['category']=='saying' else ''
+        if _inc_meaning_text(''.join(p['point'] for p in points))!=_inc_meaning_text(meaning):
+            raise ValueError('meaning_points_incomplete')
 
 
 def _inc_bound(conn, entry_id, refs, messages, *, target=None, repairs=None):
@@ -2217,6 +2282,18 @@ _INC_PERSONAL_RULE = re.compile(r'(?:(?:我|本人)(?:的|自己的)|(?:我|本�
 _INC_EXTERNAL_RULE = re.compile(r'(?:公司|学校|协会|机构|单位|组织).{0,4}(?:规定|要求|制度)')
 _INC_FOLLOWUP = re.compile(r'还有吗|怎么样了|有结果了吗|有消息了吗|后来呢|找到[了啦]|已经.{0,8}(?:寄|发|给)|之前问|上次问|前几天.{0,6}(?:问|求)|(?:进度|结果).{0,3}(?:怎样|如何)|接着上次|跟进|催办')
 _INC_REQUEST = re.compile(r'[?？]|求|谁有|能否|有没有|想找|帮忙|拜托')
+# Discourse grammar, not a topic dictionary. Ambiguous semantic continuations
+# remain the per-group reviewer's responsibility.
+_INC_PRIOR_DISCUSSION = re.compile(r'(?:上[次回场]|前[次回场]|此前|之前|先前|前几天|前些天).{0,12}(?:问|求助|讲|说|讨论|建议)|(?:那次|那场).{0,6}(?:讨论|讲解|求助)')
+_INC_RESULT_REPORT = re.compile(r'(?:回来|来|补个|补充).{0,4}(?:报告|汇报|反馈)|(?:按|照着?|采纳|采用).{0,12}(?:建议|办法|方法).{0,16}(?:了|过|已经|解决|成功)|(?:问题|故障).{0,4}(?:解决了|好了)|回去.{0,8}(?:试|做)(?:了|过)|(?:试了|试过).{0,8}(?:有效|有用|好了|确实)')
+
+
+def _inc_explicit_continuation(text):
+    # A reference is not enough by itself (one can introduce a new question).
+    # Require an explicit report/adoption as well. Unknown antecedents are
+    # excluded as witnesses, rather than linked to an invented earlier ID.
+    return bool(_INC_PRIOR_DISCUSSION.search(text) and _INC_RESULT_REPORT.search(text))
+
 
 
 def _inc_saying_key(value):
@@ -2227,7 +2304,34 @@ def _inc_saying_key(value):
         value=value[:-len(pieces.pop().word)]
     # A narrow demonstrative-N + V question, not arbitrary bag-of-words reordering.
     match=re.fullmatch(r'[这那](?:一)?['+_INC_CLASSIFIERS+r']?([\u4e00-\u9fff]{1,4})还([\u4e00-\u9fff])着?',value)
-    return match[2]+match[1] if match else value
+    if match: return match[2]+match[1]
+    # A closed grammar around an unchanged lexical core. One full doubled
+    # utterance remains one use. Negation and lexical characters are preserved.
+    doubled=re.fullmatch(r'([\u4e00-\u9fff]{2,8})\1',value)
+    if doubled: value=doubled[1]
+    is_verb=lambda text: bool(text) and posseg.dt.word_tag_tab.get(text[0],'').startswith('v')
+    if (len(value)>=3 and len(pieces)>1 and pieces[0].word=='先' and pieces[0].flag=='d'
+            and pieces[1].flag.startswith('v') and is_verb(value[1:])): value=value[1:]
+    if is_verb(value):
+        trailing=re.fullmatch(r'([\u4e00-\u9fff]{2,8})(?:一下下?|一会儿?)',value)
+        if trailing: value=trailing[1]
+        verb=value[0]
+        if posseg.dt.word_tag_tab.get(value[1:],'') in ('n','ng','nz','ns','nt'): return value
+        prefixes=[verb+'一下下',verb+'一下',verb+'一会儿',verb+'一会',verb+'一'+verb,verb+verb]
+        prefixes += [verb+c for c in _INC_CLASSIFIERS]
+        for prefix in prefixes:
+            rest=value[len(prefix):] if value.startswith(prefix) else ''
+            if re.fullmatch(r'[\u4e00-\u9fff]{1,7}',rest):
+                value=verb+rest
+                break
+    return value
+
+
+def _inc_short_saying_use(saying, text):
+    # A copied statement containing additional facts is not a bare saying.
+    # Quote/reported-speech exclusions run before this narrow copy exception.
+    key=_inc_saying_key(saying)
+    return bool(re.fullmatch(r'[\u4e00-\u9fff]{2,8}|[a-z0-9]{2,16}',key)) and _inc_saying_key(text)==key
 
 
 def _inc_saying_used(saying, excerpt):
@@ -2241,9 +2345,10 @@ def _inc_saying_used(saying, excerpt):
     boundaries={0};offset=0
     for token in posseg.cut(text,HMM=False):
         offset+=len(token.word);boundaries.add(offset)
-    def matched(pattern,noun=''):
+    def matched(pattern,noun='',inflected=False):
         for m in re.finditer(pattern,text):
             if m.start() not in boundaries or m.end() not in boundaries: continue
+            if inflected and posseg.dt.word_tag_tab.get(m.group()[1:],'') in ('n','ng','nz','ns','nt'): continue
             # A second segmentation from the noun prevents overlapping dictionary
             # words from accepting a fragment of a longer, different object.
             tail=text[m.end()-len(noun):] if noun else ''
@@ -2252,12 +2357,13 @@ def _inc_saying_used(saying, excerpt):
             return True
         return False
     if matched(re.escape(key),key[1:]): return True
-    # Keep every lexical character and its order. Only one grammatical insertion,
-    # single initial-verb reduplication, or a demonstrative question is allowed.
+    # Keep lexical characters and order. Light duration/aspect insertions
+    # require a dictionary verb; no unrestricted gaps or semantic synonyms.
     if not re.fullmatch(r'[\u4e00-\u9fff]{2,8}',key) or key[0] in '不没无非别未': return False
     verb,noun=key[0],key[1:]
-    inflection=r'(?:[的了着过]|(?:[一两三]?['+_INC_CLASSIFIERS+r'])|'+re.escape(verb)+r'|一'+re.escape(verb)+r')?'
-    if matched(re.escape(verb)+inflection+re.escape(noun),noun): return True
+    light=r'一下下?|一会儿?|' if posseg.dt.word_tag_tab.get(verb,'').startswith('v') else ''
+    inflection=r'(?:'+light+r'[的了着过]|(?:[一两三]?['+_INC_CLASSIFIERS+r'])|'+re.escape(verb)+r'|一'+re.escape(verb)+r')?'
+    if matched(re.escape(verb)+inflection+re.escape(noun),noun,inflected=True): return True
     return matched(r'[这那](?:一)?['+_INC_CLASSIFIERS+r']?'+re.escape(noun)+r'还'+re.escape(verb)+r'着?[吗呢]?')
 
 
@@ -2286,18 +2392,19 @@ def _inc_entity_terms(body):
     return list(dict.fromkeys(result))
 
 
+def _inc_term_present(term, text):
+    term=unicodedata.normalize('NFKC',term).casefold()
+    text=unicodedata.normalize('NFKC',text).casefold()
+    if re.fullmatch(r'\d+(?:\.\d+)?%?',term):
+        return bool(re.search(r'(?<![\d.])'+re.escape(term)+r'(?![\d.])',text))
+    if re.search(r'[a-z]',term):
+        return bool(re.search(r'(?<![a-z0-9])'+re.escape(term)+r'(?![a-z0-9])',text))
+    return term in text
+
+
 def _inc_missing_entities(body, evidence):
-    texts=[unicodedata.normalize('NFKC',x).casefold() for x in evidence]
-    missing=[]
-    for term in _inc_entity_terms(body):
-        term=unicodedata.normalize('NFKC',term).casefold()
-        if re.fullmatch(r'\d+(?:\.\d+)?%?',term):
-            found=any(re.search(r'(?<![\d.])'+re.escape(term)+r'(?![\d.])',x) for x in texts)
-        elif re.search(r'[a-z]',term):
-            found=any(re.search(r'(?<![a-z0-9])'+re.escape(term)+r'(?![a-z0-9])',x) for x in texts)
-        else: found=any(term in x for x in texts)
-        if not found: missing.append(term)
-    return missing
+    return [unicodedata.normalize('NFKC',term).casefold() for term in _inc_entity_terms(body)
+            if not any(_inc_term_present(term,text) for text in evidence)]
 
 
 def _inc_rule_reason(sources):
@@ -2320,6 +2427,7 @@ def _inc_original(source, category, saying):
     quote=message.get('quote') or {}
     if quote and _memory_observation_text(source['excerpt']) in _memory_observation_text(quote.get('content','')):
         return False
+    if category=='topic' and _inc_explicit_continuation(message['content']): return False
     return category!='saying' or _inc_saying_used(saying,source['excerpt'])
 
 
@@ -2349,7 +2457,7 @@ def _inc_same_discussion(left, right):
             quote.get('speaker')==a['speaker'] and quoted and
             quoted==_memory_observation_text(a['content'])):
         return True
-    if (a['speaker']!=b['speaker'] or not _INC_FOLLOWUP.search(b['content'])
+    if (a['speaker']!=b['speaker'] or not (_INC_FOLLOWUP.search(b['content']) or _INC_RESULT_REPORT.search(b['content']))
             or not _INC_REQUEST.search(a['content'])):
         return False
     text=_memory_observation_text(b['content'])
@@ -2370,43 +2478,161 @@ def _inc_source_key(source):
     return (source['message']['position'],source['field'],source['excerpt'])
 
 
-def _inc_groups(sources, category, saying=''):
-    ordered=sorted(sources,key=lambda s:(s['message']['position'],s.get('source_id',0)))
-    messages=[s['message'] for s in ordered]
+def _inc_topic_roots(ordered):
+    """Keep the complete graph even when only some excerpts mention a detail."""
     roots=list(range(len(ordered)))
     def root(index):
         while roots[index]!=index:
             roots[index]=roots[roots[index]];index=roots[index]
         return index
-    if category=='topic':
-        # Only genuine identity/reply/follow-up links may propagate. Calendar
-        # proximity and substring similarity cannot join whole discussion days.
-        for i,source in enumerate(ordered):
-            content=_memory_observation_text(source['message']['content'])
-            for j,prior in enumerate(ordered[:i]):
-                if (source['evidence_identity']==prior['evidence_identity'] or
-                        source.get('burst_id') and source.get('burst_id')==prior.get('burst_id') or
-                        content and content==_memory_observation_text(prior['message']['content']) or
-                        _inc_same_discussion(source,prior)):
-                    roots[root(i)]=root(j)
+    for i,source in enumerate(ordered):
+        content=_memory_observation_text(source['message']['content'])
+        for j,prior in enumerate(ordered[:i]):
+            if (source['evidence_identity']==prior['evidence_identity'] or
+                    source.get('burst_id') and source.get('burst_id')==prior.get('burst_id') or
+                    content and content==_memory_observation_text(prior['message']['content']) or
+                    _inc_same_discussion(source,prior)):
+                roots[root(i)]=root(j)
+    return [root(i) for i in range(len(ordered))]
+
+
+def _inc_topic_witnesses(ordered, roots, eligible=None):
     selected=[];selected_roots=set()
     for i,source in enumerate(ordered):
-        if category in ('topic','saying') and not _inc_original(source,category,saying): continue
-        if category=='topic':
-            identity=root(i)
-            if identity in selected_roots: continue
-            # At most one original per local date. Do not turn this necessary
-            # threshold into an equivalence edge linking every source that day.
-            if any(source['message']['date']==prior['message']['date'] or
-                    abs((_instant(source['message']['occurred_at'])-
-                         _instant(prior['message']['occurred_at'])).total_seconds())<30*60
-                    for prior in selected): continue
-            selected_roots.add(identity)
-        elif any(source['evidence_identity']==prior['evidence_identity'] or
-                 source.get('burst_id') and source.get('burst_id')==prior.get('burst_id') or
-                 not _memory_independent(source,prior,category,messages) for prior in selected): continue
+        if eligible is not None and _inc_source_key(source) not in eligible: continue
+        if not _inc_original(source,'topic','') or roots[i] in selected_roots: continue
+        # Same-day peers need not be equivalent, but cannot satisfy recurrence.
+        if any(source['message']['date']==prior['message']['date'] or
+                abs((_instant(source['message']['occurred_at'])-
+                     _instant(prior['message']['occurred_at'])).total_seconds())<30*60
+                for prior in selected): continue
+        selected.append(source);selected_roots.add(roots[i])
+    return selected
+
+
+def _inc_groups(sources, category, saying=''):
+    ordered=sorted(sources,key=lambda s:(s['message']['position'],s.get('source_id',0)))
+    if category=='topic':
+        return _inc_topic_witnesses(ordered,_inc_topic_roots(ordered))
+    messages=[s['message'] for s in ordered];selected=[]
+    for source in ordered:
+        if category=='saying' and not _inc_original(source,category,saying): continue
+        if any(source['evidence_identity']==prior['evidence_identity'] or
+                source.get('burst_id') and source.get('burst_id')==prior.get('burst_id') or
+                not _memory_independent(source,prior,category,messages,
+                    independent_short_use=category=='saying' and
+                        _inc_short_saying_use(saying,source['message']['content']) and
+                        _inc_short_saying_use(saying,prior['message']['content'])) for prior in selected): continue
         selected.append(source)
     return selected
+
+
+def _inc_topic_details(body, witnesses, page=None):
+    """Literal recurrence hints, never a substitute for semantic clause review.
+
+    Compute links before filtering by entity or page, so an omitted bridge
+    cannot split one event into two discussions. Quotes are not original uses.
+    """
+    ordered=sorted(witnesses,key=lambda s:(s['message']['position'],s.get('source_id',0)))
+    roots=_inc_topic_roots(ordered)
+    page_keys={_inc_source_key(s) for s in page} if page is not None else None
+    result=[]
+    for term in _inc_entity_terms(body):
+        eligible={_inc_source_key(s) for s in ordered if _inc_term_present(term,s['excerpt'])}
+        all_matches=_inc_topic_witnesses(ordered,roots,eligible)
+        matches=_inc_topic_witnesses(ordered,roots,eligible & page_keys) if page_keys is not None else all_matches
+        result.append(dict(term=term,independent_uses=len(matches),all_evidence_uses=len(all_matches),
+                           message_ids=[s['message']['position'] for s in matches]))
+    return result
+
+
+def _inc_discussion_groups(witnesses, page):
+    """Preserve full-pool links when evidence selection omits a bridge."""
+    ordered=sorted(witnesses,key=lambda s:(s['message']['position'],s.get('source_id',0)))
+    roots=_inc_topic_roots(ordered);page_keys={_inc_source_key(s) for s in page}
+    eligible_keys={_inc_source_key(s) for s in _inc_topic_witnesses(ordered,roots,page_keys)}
+    groups={}
+    for i,source in enumerate(ordered):
+        if _inc_source_key(source) not in page_keys: continue
+        root=roots[i];gid=ordered[root]['message']['position']
+        group=groups.setdefault(gid,dict(group_id=gid,message_ids=[],date=source['message']['date'],eligible=False))
+        mid=source['message']['position']
+        if mid not in group['message_ids']: group['message_ids'].append(mid)
+        if _inc_source_key(source) in eligible_keys:
+            group['eligible']=True;group['date']=source['message']['date']
+    return list(groups.values())
+
+
+def _inc_select_evidence(witnesses, category, body, saying, definitions, proposal, fits):
+    """Shrink sources, never the body's evidentiary obligations.
+
+    Links are computed on the complete pool before deletion. Literal support is
+    a necessary condition only: the checker must still ground every semantic
+    clause in the selected excerpts. Omitted sources remain unreviewed.
+    """
+    ordered=sorted(witnesses,key=lambda s:(_instant(s['message']['occurred_at']),*_inc_source_key(s)))
+    roots=_inc_topic_roots(ordered) if category=='topic' else None
+    retire=bool(proposal and proposal['action']=='retire')
+    terms=[] if retire else _inc_entity_terms(body.partition('：')[2] if category=='saying' else body)
+    terms=list(dict.fromkeys(terms))
+    keys=[_inc_source_key(s) for s in ordered]
+    term_keys=[{key for key,s in zip(keys,ordered) if _inc_term_present(term,s['excerpt'])} for term in terms]
+    original_keys={_inc_source_key(s) for s in _inc_groups(ordered,category,saying)}
+    definition_keys={key for key,s in zip(keys,ordered) if s['message']['position'] in definitions}
+    change_keys=[{key for key,s in zip(keys,ordered) if s['message']['position']==ref['message_id']
+                 and s['field']==ref['field'] and whitespace(ref['excerpt']) in s['excerpt']}
+                 for ref in proposal['source_refs']] if proposal else []
+    def counts(page):
+        chosen={_inc_source_key(s) for s in page}
+        # Rule consensus may need two speakers; a lone announcement stays one.
+        base=(len(_inc_topic_witnesses(ordered,roots,chosen)) if roots is not None
+              else len(chosen & original_keys))
+        result=[min(2,base)]
+        for eligible in term_keys:
+            result.append(int(bool(chosen & eligible)))
+            if category=='topic':
+                result.append(min(2,len(_inc_topic_witnesses(ordered,roots,chosen & eligible))))
+        if definitions: result.append(int(bool(chosen & definition_keys)))
+        result.extend(int(bool(chosen & eligible)) for eligible in change_keys)
+        if category=='rule' and not retire: result.append(int(_inc_rule_reason(page) is None))
+        return result
+    target=counts(ordered)
+    # Earliest plus the latest different speaker, then remaining recent sources.
+    # This is a stable preference, not a semantic relevance or sentiment rank.
+    earliest=ordered[:1]
+    different=[s for s in reversed(ordered) if earliest and s['speaker']!=earliest[0]['speaker']]
+    priority=[]
+    for source in [*earliest,*different[:1],*reversed(ordered)]:
+        if _inc_source_key(source) not in {_inc_source_key(s) for s in priority}: priority.append(source)
+    rank={_inc_source_key(s):i for i,s in enumerate(priority)}
+    def shrink(removal_order):
+        page=list(ordered)
+        for source in removal_order:
+            smaller=[s for s in page if _inc_source_key(s)!=_inc_source_key(source)]
+            if counts(smaller)==target: page=smaller
+        return page
+    preferred=shrink(list(reversed(priority)))
+    if fits(preferred): return preferred
+    # If preferred contexts are too large, try compact witnesses with exactly
+    # the same support requirements. Never truncate a context or a quotation.
+    compact=shrink(sorted(ordered,key=lambda s:(estimate_tokens(dumps(s['message'])),rank[_inc_source_key(s)]),reverse=True))
+    if fits(compact): return compact
+    # Overlapping details can leave a larger irreducible set after deletion.
+    # A second, deterministic gain-first cover removes that ordering bias.
+    page=[];remaining=list(ordered)
+    while counts(page)!=target and remaining:
+        before=counts(page)
+        def gain(source):
+            after=counts([*page,source])
+            return sum(max(0,b-a) for a,b in zip(before,after))
+        best=max(remaining,key=lambda s:(gain(s),-estimate_tokens(dumps(s['message'])),-rank[_inc_source_key(s)]))
+        if not gain(best): break
+        page.append(best);remaining.remove(best)
+    if counts(page)==target:
+        # Stable output order is independent of the order in which callers bind sources.
+        page.sort(key=lambda s:(_instant(s['message']['occurred_at']),*_inc_source_key(s)))
+        if fits(page): return page
+    return None
 
 
 def _inc_enough(sources, category, saying=''):
@@ -2469,6 +2695,20 @@ def _inc_directory(conn, entry_id, messages, limits):
     rows=memory_profile_rows(conn,entry_id)
     pool=[{k:r[k] for k in ('memory_id','revision','category','body','manual_protected','independent_days','independent_uses','last_confirmed_at')}
           for r in rows if r['lifecycle']!='deleted']
+    for row in pool:
+        if row['category']!='topic' or row['manual_protected']: continue
+        current=next(r for r in rows if r['memory_id']==row['memory_id'])
+        if current['admission_state']=='accepted': continue
+        # Feedback is data, not evidence. Keep it revision/body scoped and on
+        # the existing memory purge dependency; never copy old source excerpts.
+        rejected=conn.execute("""SELECT parsed_json FROM entry_profile_incremental_work
+            WHERE entry_id=? AND memory_id=? AND memory_revision=? AND kind='admit' AND state='rejected'
+            AND json_extract(payload_json,'$.memory.body')=? ORDER BY id DESC LIMIT 1""",
+            (entry_id,row['memory_id'],row['revision'],row['body'])).fetchone()
+        if rejected and rejected['parsed_json']:
+            vote=json.loads(rejected['parsed_json'])
+            row['admission_feedback']={k:vote[k] for k in ('decision','violations')}
+            row['admission_feedback']['reason']=vote['reason'][:240]
     terms=set(segmented(' '.join(m['content'] for m in messages)).split())
     cursor=_memory_state(conn,entry_id)['scan_cursor']
     # Stable lexical selection, confirmation recency, and rotation share the directory.
@@ -2810,31 +3050,6 @@ class IncrementalProfileTask:
         for source in sources:
             key=_inc_source_key(source)
             if key not in seen: witnesses.append(source);seen.add(key)
-        # Every input is reviewed. No relevance/sentiment-based omission of remainder.
-        # 32 is the unified writer's existing source limit, not a model context increase.
-        if len(witnesses)>32:
-            conn.execute("UPDATE entry_profile_admissions SET reason='evidence_budget_exceeded' WHERE memory_id=?",(row['id'],))
-            return None
-        core=[]
-        def include(source):
-            if _inc_source_key(source) not in {_inc_source_key(s) for s in core}: core.append(source)
-        for source in selected[:1 if category=='rule' else 2]: include(source)
-        for source in witnesses:
-            if source['message']['position'] in definitions: include(source)
-            if proposal and any(source['message']['position']==r['message_id'] and source['field']==r['field'] for r in proposal['source_refs']): include(source)
-        # Supply explicit announcement / consensus together in every page.
-        if category=='rule' and not retire and _inc_rule_reason(core):
-            for source in witnesses:
-                include(source)
-                if not _inc_rule_reason(core): break
-        prose=body.partition('：')[2] if category=='saying' else body
-        missing=_inc_missing_entities(prose,[s['excerpt'] for s in core]) if not retire else []
-        while missing:
-            best=max(witnesses,key=lambda s:sum(term in s['excerpt'] for term in missing))
-            include(best)
-            after=_inc_missing_entities(prose,[s['excerpt'] for s in core])
-            if after==missing: break
-            missing=after
         def public_source(s):
             return dict(message_id=s['message']['position'],field=s['field'],excerpt=s['excerpt'],speaker=s['speaker'],
                 date=s['message']['date'],occurred_at=s['message']['occurred_at'],context=s['message']['content'],message_speaker=s['message']['speaker'],
@@ -2843,27 +3058,29 @@ class IncrementalProfileTask:
             meaning=proposal['meaning'] if proposal else body.partition('：')[2] if category=='saying' else '',
             definition_refs=definitions,sources=[])
         if proposal: memory.update(action=proposal['action'],old_body=row['content'])
+        def page_memory(page):
+            value={**memory,'sources':[public_source(s) for s in page]}
+            if category=='topic' and not retire:
+                value['topic_detail_review']=_inc_topic_details(body,witnesses,page)
+                value['discussion_groups']=_inc_discussion_groups(witnesses,page)
+            return value
         def fits(page):
-            return len(page)<=self.limits.evidence and estimate_tokens(dumps({**memory,'sources':[public_source(s) for s in page]}))<=self.limits.evidence_tokens
-        if not fits(core):
+            material=page_memory(page)
+            # Include the larger structured-review prompt and envelope within
+            # the existing cap; do not let a frozen candidate fail only at call.
+            envelope=dict(review_contract='groups_and_meaning_v1',entry_id=row['owner_entry_id'],
+                as_of=_instant(self.clock()).isoformat(),timezone=_setting(conn,'timezone','Asia/Shanghai'),memory=material)
+            return (len(page)<=self.limits.evidence and estimate_tokens(dumps(material))<=self.limits.evidence_tokens
+                and estimate_tokens(self.prompts['admit']['text'])+estimate_tokens(dumps(envelope))<=self.limits.admit_request_tokens)
+        core=_inc_select_evidence(witnesses,category,body,saying,definitions,proposal,fits)
+        if core is None:
             conn.execute("UPDATE entry_profile_admissions SET reason='evidence_budget_exceeded' WHERE memory_id=?",(row['id'],))
             return None
-        remaining=[s for s in witnesses if _inc_source_key(s) not in {_inc_source_key(v) for v in core}]
-        pages=[];page=list(core)
-        for source in remaining:
-            if not fits([*page,source]):
-                pages.append(page);page=list(core)
-            if not fits([*page,source]):
-                conn.execute("UPDATE entry_profile_admissions SET reason='evidence_budget_exceeded' WHERE memory_id=?",(row['id'],))
-                return None
-            page.append(source)
-        pages.append(page)
-        if len(pages)>8:
-            conn.execute("UPDATE entry_profile_admissions SET reason='evidence_budget_exceeded' WHERE memory_id=?",(row['id'],))
-            return None
+        pages=[core]
         zone=_setting(conn,'timezone','Asia/Shanghai');stamp=_instant(self.clock()).isoformat()
         snapshot=dict(settings_revision=_settings(conn,row['owner_entry_id'])['revision'],evidence_revision=meta['evidence_revision'],
             source_fingerprints={str(s['message']['position']):s['message']['fingerprint'] for s in witnesses},proposal=proposal,
+            evidence_selection=dict(strategy='necessary_v1',available=len(witnesses),selected=len(core),omitted=len(witnesses)-len(core)),
             # Numeric roots are required by the existing recursive purge index, also
             # on pages that do not contain a particular message as model evidence.
             evidence_refs=[dict(message_id=s['message']['position']) for s in witnesses])
@@ -2871,8 +3088,8 @@ class IncrementalProfileTask:
                      zone,snapshot['settings_revision'],self.prompts['admit']['sha256']])
         first=None
         for index,page in enumerate(pages):
-            key=_hash([group,index]);page_memory={**memory,'sources':[public_source(s) for s in page]}
-            payload=dict(entry_id=row['owner_entry_id'],as_of=stamp,timezone=zone,memory=page_memory,
+            key=_hash([group,index])
+            payload=dict(review_contract='groups_and_meaning_v1',entry_id=row['owner_entry_id'],as_of=stamp,timezone=zone,memory=page_memory(page),
                 _snapshot={**snapshot,'bundle':dict(key=group,index=index,count=len(pages))})
             if conn.execute('SELECT 1 FROM entry_profile_incremental_work WHERE work_key=?',(key,)).fetchone(): continue
             wid=conn.execute('''INSERT INTO entry_profile_incremental_work(entry_id,work_key,kind,memory_id,memory_revision,
@@ -2893,6 +3110,7 @@ class IncrementalProfileTask:
     def _apply_admission(self, work, parsed):
         from .memory_ops import write_entry_profile_memory, entry_profile_source, _profile_manual
         payload=json.loads(work['payload_json']);memory=payload['memory'];snap=payload['_snapshot'];stamp=_instant(self.clock()).isoformat()
+        validate_incremental_admission(parsed,_inc_public_payload(payload))
         with self.store.write() as conn:
             current=conn.execute('''SELECT m.*,p.category FROM memories m JOIN entry_profile_memories p ON p.memory_id=m.id
                 WHERE m.id=? AND m.purged_at IS NULL AND m.lifecycle='active' ''',(memory['memory_id'],)).fetchone()
@@ -2906,7 +3124,7 @@ class IncrementalProfileTask:
             all_sources=_inc_all_sources(conn,current,stamp)
             if snap.get('proposal'):
                 snapshot=MemoryProfileSnapshot(work['entry_id'],'','group',payload['timezone'],stamp,0,0,0,False)
-                all_sources=[]
+                # Keep omitted old bindings for full-pool snapshot validation.
                 values=list(memory['sources'])
                 if snap.get('bundle'):
                     for sibling in conn.execute("SELECT payload_json FROM entry_profile_incremental_work WHERE memory_id=? AND json_extract(payload_json,'$._snapshot.bundle.key')=?",(current['id'],snap['bundle']['key'])):
@@ -3000,6 +3218,7 @@ class IncrementalProfileTask:
         """Cheap preflight in addition to post-call CAS; never spend on an already stale target."""
         from .memory_ops import _profile_manual
         memory=payload['memory'];snap=payload['_snapshot']
+        if payload.get('review_contract')!='groups_and_meaning_v1': return False
         row=conn.execute('SELECT * FROM memories WHERE id=?',(memory['memory_id'],)).fetchone()
         meta=conn.execute('SELECT * FROM entry_profile_admissions WHERE memory_id=?',(memory['memory_id'],)).fetchone()
         if (not row or not meta or row['purged_at'] or row['lifecycle']!='active' or _profile_manual(conn,row)
