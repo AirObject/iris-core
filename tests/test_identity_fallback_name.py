@@ -210,3 +210,12 @@ def test_failed_intake_rolls_back_name_revision_and_audit(store, failure):
     assert audits(store) == []
     with store.read() as conn:
         assert conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0] == 1
+
+
+def test_exact_account_name_is_not_recovery_even_with_whitespace(store):
+    account = " account-a "
+    receive(store, "first", sender=account, account_id=account)
+    before = identity(store, account)
+    receive(store, "again", sender=account, account_id=account)
+    assert identity(store, account) == before
+    assert audits(store) == []

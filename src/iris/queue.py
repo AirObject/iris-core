@@ -226,7 +226,8 @@ def _subject(conn: sqlite3.Connection, platform: str, account_id: str, name: str
         subject_id = canonical_subject(conn, row["subject_id"])
         # Intake already holds the write transaction. Only recover an exact
         # account fallback; later ordinary nickname changes remain ignored.
-        if row["display_name"] == account_id and name.strip() not in ("", account_id):
+        if (row["display_name"] == account_id and name != account_id
+                and name.strip() not in ("", account_id)):
             before = conn.execute("SELECT revision FROM subjects WHERE id=?", (subject_id,)).fetchone()[0]
             conn.execute("UPDATE platform_identities SET display_name=? WHERE platform=? AND account_id=?",
                          (name, platform, account_id))
