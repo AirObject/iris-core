@@ -1,4 +1,4 @@
-"""Shared budgets and the PS2 automatic consolidation step."""
+"""Independent step budgets and the PS2 automatic consolidation step."""
 import json
 
 import pytest
@@ -13,7 +13,7 @@ from test_person_summary import Clock, Model, seed, memory
 def prepare(store, *, budget=50, limit=10, enabled=True):
     clock=Clock(); seed(store,clock)
     for i in range(8): memory(store,clock,f'乙同学测试{i}',speaker='b',days_ago=3)
-    config={'enabled':True,'max_calls':budget,'merge_enabled':False,'conflict_enabled':False,
+    config={'enabled':True,'person_summary_max_calls':budget,'merge_enabled':False,'conflict_enabled':False,
             'dependency_enabled':False,'persona_enabled':False,'goal_review_enabled':False,'entry_profile_enabled':False,
             'person_summary_enabled':enabled}
     store.set_setting('consolidation',config)
@@ -235,9 +235,10 @@ def test_discovery_builds_names_once_and_uses_precomputed_unique_labels(store, m
     assert built[0].unique_labels['b'] == ['乙同学']
 
 
-def test_memory_consolidation_uses_budget_before_person_summaries(store, monkeypatch):
-    clock, model, gateway, run, config = prepare(store, budget=3, limit=2)
+def test_memory_consolidation_does_not_spend_person_summary_budget(store, monkeypatch):
+    clock, model, gateway, run, config = prepare(store, budget=4, limit=2)
     config['merge_enabled'] = True
+    config['max_calls'] = 1
     store.set_setting('consolidation', config)
     with store.write() as conn:
         conn.execute('UPDATE consolidation_runs SET settings_json=? WHERE run_id=?', (dumps(config),run['id']))
@@ -264,10 +265,12 @@ def test_memory_consolidation_uses_budget_before_person_summaries(store, monkeyp
     maintenance = Maintenance(store, gateway=model, clock=clock)
     maintenance.run(run['id'])
     assert order == ['memory', 'applied', 'summary']
-    assert len(model.calls) == 2
+    assert len(model.calls) == 4
     report = maintenance.report(run['id'])
     assert report['state'] == 'completed'
-    assert any(i['outcome']=='person_summary' and i['reason']=='call_budget' for i in report['items'])
+    assert sum(i['outcome']=='person_summary' and i['details']['status']=='published' for i in report['items']) == 2
     with store.read() as conn:
         purposes = [r[0] for r in conn.execute('SELECT purpose FROM consolidation_calls ORDER BY id')]
-    assert purposes == ['consolidation_dependency','consolidation_person_summary_generate','consolidation_person_summary_check']
+    assert purposes == ['consolidation_dependency',
+                        'consolidation_person_summary_generate','consolidation_person_summary_check',
+                        'consolidation_person_summary_generate','consolidation_person_summary_check']

@@ -278,7 +278,7 @@ def test_revision_skip_after_an_earlier_merge_is_a_quality_miss_not_infrastructu
 def test_runner_budget_exhaustion_is_invalid_without_extra_calls(tmp_path):
     case = runner.load_corpus(runner.ROOT / 'evals/consolidation_v1.json')[0]
     def factory(store, clock):
-        store.set_setting('consolidation', {'max_calls': 1})
+        store.set_setting('consolidation', {**store.setting('consolidation'), 'max_calls': 1})
         return Model(store, {'decision': 'separate', 'reason': 'fake', 'evidence': [], 'updates': [], 'unknown': 1})
     row = runner.case_run(case, tmp_path / 'budget.db', factory, 'broad')
     assert len(row['calls']) == 1

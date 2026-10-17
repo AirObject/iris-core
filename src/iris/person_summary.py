@@ -1167,11 +1167,13 @@ def update_summaries_for_run(store, gateway, run, config, *, clock=utc_now, stop
             if not due['due']:
                 continue
             expected=due['current_version']
-            count=conn.execute('SELECT COUNT(*) FROM consolidation_calls WHERE run_id=?',(run_id,)).fetchone()[0]
         engine=PersonSummaryEngine(store,gateway,clock=clock)
         try:
-            if count+2>config['max_calls']:
-                result=engine._skip(subject_id,expected,'periodic',due,'call_budget',run_id,stamp)
+            from .consolidation import check_step_admission
+            try:
+                check_step_admission(store,gateway,run_id,'person_summary',clock=clock,stop=stop)
+            except ModelError as error:
+                result=engine._skip(subject_id,expected,'periodic',due,error.reason or error.category,run_id,stamp)
             else:
                 result=engine.update(subject_id,expected_version=expected,run_id=run_id)
         except PersonSummaryBusy:
