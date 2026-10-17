@@ -240,6 +240,7 @@ class EntryProfileEdit(EntryProfileRevision):
 
 
 def _edit_entry_profile(store, entry_id, payload):
+    entry_profile.require_legacy_write(store,entry_id)
     # Keep v1 on its original editing path. The v2 adapter uses the same CAS,
     # version insertion, supersession and audit helpers; no generation changes.
     with store.read() as conn:
@@ -520,10 +521,17 @@ class ConfirmPerson(Revision):
     expected_target_revision: int = Field(gt=0, strict=True)
 
 
+class NewProfileMemory(Input):
+    kind: Literal['入口画像']
+    owner_entry_id: str = Field(min_length=1,max_length=200)
+    category: Literal['topic','saying','rule'] | None = None
+    content: str = Field(min_length=1,max_length=1000)
+
+
 class MemoryQuery(Input):
     text: str = Field(default="", max_length=1000)
     person_id: str | None = Field(default=None, max_length=100)
-    kind: Literal["事件", "事实", "偏好", "关系", "观点", "计划", "自我", "其他"] | None = None
+    kind: Literal["事件", "事实", "偏好", "关系", "观点", "计划", "自我", "其他", "入口画像"] | None = None
     entry_id: str | None = Field(default=None, max_length=200)
     time_from: str | None = None
     time_to: str | None = None
@@ -732,6 +740,16 @@ def install_admin(app):
     @router.delete("/people/{subject_id}/aliases/{alias_id}")
     def delete_person_alias(subject_id: str, alias_id: int, payload: Revision):
         return people.delete_alias(app.state.store, subject_id, alias_id, **payload.model_dump())
+
+    @router.post("/memories", status_code=201)
+    def create_profile_memory(payload: NewProfileMemory):
+        from .memory_ops import write_entry_profile_memory
+        with app.state.store.read() as conn:
+            if entry_profile._entry(conn,payload.owner_entry_id)['kind'] not in ('group','live'):
+                raise ValueError('entry kind does not support profiles')
+        result=write_entry_profile_memory(app.state.store,payload.owner_entry_id,op='new',
+            content=payload.content,category=payload.category,importance=80,manual=True)
+        return admin_data.memory_detail(app.state.store,result['memory_id'])
 
     @router.get("/memories")
     def memories(query: Annotated[MemoryQuery, Query()]):
@@ -1186,6 +1204,10 @@ def install_admin(app):
     @app.exception_handler(person_summary.PersonSummaryBusy)
     async def person_summary_busy(request, exc):
         return error('person_summary_generation_in_progress', '已有摘要生成任务或服务正在停止，请查询任务状态', 409)
+
+    @app.exception_handler(entry_profile.EntryProfileRetired)
+    async def entry_profile_retired(request, exc):
+        return error(str(exc), '整版画像写入方式已退役，请使用逐条记忆接口', 410)
 
     @app.exception_handler(entry_profile.EntryProfileConflict)
     async def entry_profile_conflict(request, exc):

@@ -528,10 +528,10 @@ test.each(["local", "external"] as const)(
       "Content-Type": "application/json; charset=utf-8",
     });
     expect(write.body).toEqual({
-      daily_token_limit: 12345,
-      learning_concurrency: 3,
       native_image_learning: true,
     });
+    expect(settings.daily_token_limit).toBe(12345);
+    expect(settings.learning_concurrency).toBe(3);
     expect(requests.filter((r) => r.init?.method)).toHaveLength(1);
     unmount();
     render(<SettingsPage />);
@@ -580,12 +580,15 @@ test("vision 关闭保留已开启的运行设置，外部模式解释修改位�
   expect(toggle).toBeChecked();
   expect(toggle).toBeDisabled();
   expect(screen.getByText(/请在外部模型配置中启用/)).toBeVisible();
+  fireEvent.change(screen.getByLabelText("学习并发"), {
+    target: { value: "4" },
+  });
   await userEvent.click(screen.getByRole("button", { name: "保存用量与学习" }));
   expect(await screen.findByText("已保存")).toBeVisible();
   expect(
-    requests.find((r) => r.url.endsWith("/settings/limits"))?.body
-      .native_image_learning,
-  ).toBe(true);
+    requests.find((r) => r.url.endsWith("/settings/limits"))?.body,
+  ).toEqual({ learning_concurrency: 4 });
+  expect(settings.native_image_learning).toBe(true);
 });
 
 test("未启用对话模型时原图开关不可用", async () => {

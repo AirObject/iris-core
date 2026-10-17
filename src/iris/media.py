@@ -15,6 +15,8 @@ import stat
 import tempfile
 import time
 import uuid
+from contextlib import contextmanager, ExitStack
+from threading import Lock
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -22,6 +24,10 @@ from .models import IMAGE_TOTAL_TIMEOUT, ModelError, image_content_part
 
 DEFAULT_MAX_BYTES = 10 * 1024 * 1024
 DEFAULT_LEARNING_IMAGE_LIMIT = 8
+DEFAULT_MEDIA_RETENTION_DAYS = 7
+_ACTIVE_UNDERSTANDINGS = {}
+_DEFERRED_UNDERSTANDINGS = {}
+_ACTIVE_LOCK = Lock()
 GRACE_PERIOD = timedelta(days=1)
 REFUSAL_TEXT = '敏感信息无法访问'
 LABELS = {'image': '图片', 'audio': '音频', 'video': '视频'}
@@ -175,13 +181,14 @@ def save_media(store, data, *, content_type, understanding_text=None, max_bytes=
         # Only the rename/existence check and metadata commit hold the writer;
         # streaming, hashing and fsync above do not block message intake.
         with store.write() as conn:
-            row = conn.execute('SELECT id,refused_at FROM media_files WHERE sha256=?', (sha,)).fetchone()
-            if not target.exists():
+            row = conn.execute('SELECT id,refused_at,bytes_purged_at FROM media_files WHERE sha256=?', (sha,)).fetchone()
+            if not target.exists() or (row and row['bytes_purged_at']):
                 os.replace(temporary, target)
             elif not target.is_file():
                 raise MediaError('unsafe_media_path')
             if row:
                 fid = row[0]
+                conn.execute('UPDATE media_files SET bytes_purged_at=NULL,bytes_purge_pending=0 WHERE id=?', (fid,))
                 if row['refused_at'] and not host_text:
                     source, text = 'refused', REFUSAL_TEXT
                 # A fresh upload of an orphan gets a fresh attachment window.
@@ -228,9 +235,9 @@ def attach_media(store, conn, message_id, media_ids):
     if not isinstance(media_ids, (list, tuple)) or any(not isinstance(mid, str) for mid in media_ids) or len(set(media_ids)) != len(media_ids):
         raise MediaError('invalid_media_list')
     for position, media_id in enumerate(media_ids):
-        row = conn.execute('''SELECT f.sha256 FROM media_objects o JOIN media_files f ON f.id=o.file_id
+        row = conn.execute('''SELECT f.sha256,f.bytes_purged_at FROM media_objects o JOIN media_files f ON f.id=o.file_id
             WHERE o.id=?''', (media_id,)).fetchone()
-        if row is None or not _path(store, row[0]).is_file():
+        if row is None or row['bytes_purged_at'] or not _path(store, row[0]).is_file():
             raise MediaError('invalid_media')
         conn.execute('INSERT INTO message_media VALUES(?,?,?)', (message_id, position, media_id))
 
@@ -269,6 +276,111 @@ def native_learning_enabled(store, gateway):
 def learning_image_limit(store):
     value = store.setting('learning_image_limit', DEFAULT_LEARNING_IMAGE_LIMIT)
     return value if type(value) is int and 0 <= value <= 32 else DEFAULT_LEARNING_IMAGE_LIMIT
+
+
+def validate_media_retention_days(value):
+    if type(value) is not int or not 1 <= value <= 36500:
+        raise ValueError('media_retention_days must be an integer from 1 to 36500')
+    return value
+
+
+def media_retention_days(store):
+    try:
+        return validate_media_retention_days(store.setting('media_retention_days', DEFAULT_MEDIA_RETENTION_DAYS))
+    except ValueError:
+        return DEFAULT_MEDIA_RETENTION_DAYS
+
+
+def _admission_active(admission):
+    with admission.condition:
+        return admission.active > 0
+
+
+def _reap_deferred():
+    # Called under _ACTIVE_LOCK. Gateway admission retains its lease until a
+    # timed-out HTTP Future exits; no extra worker or model call is needed here.
+    for key, admissions in list(_DEFERRED_UNDERSTANDINGS.items()):
+        active = {admission for admission in admissions if _admission_active(admission)}
+        if active:
+            _DEFERRED_UNDERSTANDINGS[key] = active
+        else:
+            del _DEFERRED_UNDERSTANDINGS[key]
+
+
+@contextmanager
+def _understanding_inflight(store, file_id, gateway):
+    # Register while holding the Store writer, before publishing the lease.
+    # A provider can return after its lease expires; it still owns these bytes.
+    key = (store.path, file_id)
+    attempt = {'timed_out': False}
+    with _ACTIVE_LOCK:
+        _reap_deferred()
+        _ACTIVE_UNDERSTANDINGS[key] = _ACTIVE_UNDERSTANDINGS.get(key, 0) + 1
+    try:
+        yield attempt
+    finally:
+        with _ACTIVE_LOCK:
+            admission = getattr(gateway, '_image_admission', None)
+            if attempt['timed_out'] and admission is not None and _admission_active(admission):
+                # Conservatively keep this file until the image pool is idle;
+                # the gateway does not expose a per-image deferred Future.
+                _DEFERRED_UNDERSTANDINGS.setdefault(key, set()).add(admission)
+            remaining = _ACTIVE_UNDERSTANDINGS[key] - 1
+            if remaining:
+                _ACTIVE_UNDERSTANDINGS[key] = remaining
+            else:
+                del _ACTIVE_UNDERSTANDINGS[key]
+
+
+def _file_busy(store, conn, file_id, current):
+    with _ACTIVE_LOCK:
+        _reap_deferred()
+        if (_ACTIVE_UNDERSTANDINGS.get((store.path, file_id))
+                or _DEFERRED_UNDERSTANDINGS.get((store.path, file_id))):
+            return True
+    return bool(conn.execute("""SELECT 1 FROM media_objects WHERE file_id=? AND attempt_token IS NOT NULL
+        AND (julianday(lease_until) IS NULL OR julianday(lease_until)>julianday(?)) LIMIT 1""",
+        (file_id, current.isoformat())).fetchone())
+
+
+def _file_protected(store, conn, file_id, current):
+    from .memory_ops import message_references
+    if _file_busy(store, conn, file_id, current):
+        return True
+    messages = conn.execute("""SELECT DISTINCT r.message_id FROM media_objects o
+        JOIN message_media r ON r.media_id=o.id WHERE o.file_id=?""", (file_id,))
+    return any(message_references(conn, row[0]) for row in messages)
+
+
+def mark_expired_file(store, conn, file_id, *, as_of, current, days):
+    """Persist deletion intent before unlink, so a crash never hides an accidental loss.
+
+    The caller commits this transaction before completing deletion. Pending
+    intentions are rejected by backup and retried by daily maintenance.
+    """
+    row = conn.execute('SELECT * FROM media_files WHERE id=?', (file_id,)).fetchone()
+    if row is None or row['bytes_purged_at'] or as_of-datetime.fromisoformat(row['created_at']) <= timedelta(days=days):
+        return
+    if row['unreferenced_at'] and as_of-datetime.fromisoformat(row['unreferenced_at']) >= GRACE_PERIOD:
+        return  # Ordinary orphan cleanup also removes its unreferenced metadata.
+    if _file_protected(store, conn, file_id, current) or not _path(store, row['sha256']).is_file():
+        return  # Do not reclassify an unmarked missing file as intentional cleanup.
+    conn.execute('UPDATE media_files SET bytes_purged_at=?,bytes_purge_pending=1 WHERE id=?',
+                 (current.isoformat(), file_id))
+
+
+def delete_expired_file(store, conn, file_id, current):
+    """Finish only a durable cleanup intent, rechecking protection under the writer."""
+    row = conn.execute('SELECT * FROM media_files WHERE id=?', (file_id,)).fetchone()
+    if row is None or not row['bytes_purge_pending']:
+        return False
+    path = _path(store, row['sha256'])
+    if path.exists() and _file_protected(store, conn, file_id, current):
+        conn.execute('UPDATE media_files SET bytes_purged_at=NULL,bytes_purge_pending=0 WHERE id=?', (file_id,))
+        return False
+    path.unlink(missing_ok=True)
+    conn.execute('UPDATE media_files SET bytes_purge_pending=0 WHERE id=?', (file_id,))
+    return True
 
 
 def plan_learning_images(store, batch, snapshot, *, enabled):
@@ -316,8 +428,8 @@ def pending_media_messages(store, *, limit=8, current=None):
     """A bounded, durable work source; expired leases are eligible after restart."""
     with store.read() as conn:
         rows = conn.execute('''SELECT MIN(r.message_id) AS message_id FROM media_objects o
-            JOIN message_media r ON r.media_id=o.id
-            WHERE o.kind='image' AND o.understanding_source='unprocessed' AND o.completed_at IS NULL
+            JOIN message_media r ON r.media_id=o.id JOIN media_files f ON f.id=o.file_id
+            WHERE f.bytes_purged_at IS NULL AND o.kind='image' AND o.understanding_source='unprocessed' AND o.completed_at IS NULL
             AND (o.attempt_token IS NULL OR o.lease_until<=?)
             GROUP BY o.id ORDER BY message_id,o.id LIMIT ?''', ((current or _now()).isoformat(), limit))
         return list(dict.fromkeys(row[0] for row in rows))
@@ -350,52 +462,55 @@ def prepare_media(store, gateway, message_ids, *, batch_id=None, budget_seconds=
         if remaining <= 0:
             break
         token = uuid.uuid4().hex
-        with store.write() as conn:
-            row = conn.execute('''SELECT o.*,f.sha256,f.content_type,f.size_bytes,f.refused_at
-                FROM media_objects o JOIN media_files f ON f.id=o.file_id WHERE o.id=?''', (media_id,)).fetchone()
-            if row is None or row['kind'] != 'image' or row['understanding_source'] != 'unprocessed' or row['completed_at']:
-                continue
-            if row['refused_at']:
-                conn.execute("UPDATE media_objects SET understanding_source='refused',understanding_text=?,completed_at=? WHERE id=?",
-                             (REFUSAL_TEXT, clock().isoformat(), media_id))
-                continue
-            if row['attempt_token'] and datetime.fromisoformat(row['lease_until']) > clock():
-                continue
-            conn.execute('UPDATE media_objects SET attempt_token=?,lease_until=? WHERE id=?',
-                         (token, (clock()+timedelta(seconds=remaining)).isoformat(), media_id))
-            pending += 1
-        source, text, error, completed = 'unprocessed', '[图片，未理解]', None, True
-        try:
-            path = _path(store, row['sha256'])
-            with path.open('rb') as file:
-                data = file.read(row['size_bytes']+1)
-            if len(data) != row['size_bytes'] or hashlib.sha256(data).hexdigest() != row['sha256']:
-                raise MediaError('invalid_media')
-            result = gateway.image_understanding(data, row['content_type'], batch_id=batch_id, _deadline=deadline)
-            if monotonic() > deadline:
-                raise ModelError('retryable', 'total timeout', reason='timeout')
-            if not isinstance(result, str) or not result.strip():
-                raise ModelError('invalid_output', 'invalid image description')
-            source, text = 'system', result
-        except ModelError as exc:
-            if exc.category == 'content_rejection':
-                source, text = 'refused', REFUSAL_TEXT
-            # Store categories only; provider prose can contain input or secrets.
-            error = exc.category
-            completed = exc.category not in ('paused', 'queue_full', 'queue_timeout')
-        except (OSError, ValueError):
-            error = 'file_unavailable'
-        with store.write() as conn:
-            current = conn.execute('SELECT attempt_token,understanding_source FROM media_objects WHERE id=?', (media_id,)).fetchone()
-            if current is None or current['attempt_token'] != token or current['understanding_source'] != 'unprocessed':
-                continue
-            if source == 'refused':
-                conn.execute('UPDATE media_files SET refused_at=? WHERE id=?', (clock().isoformat(), row['file_id']))
-            if conn.execute('SELECT refused_at FROM media_files WHERE id=?', (row['file_id'],)).fetchone()[0]:
-                source, text, completed = 'refused', REFUSAL_TEXT, True
-            conn.execute('''UPDATE media_objects SET understanding_source=?,understanding_text=?,last_error=?,
-                completed_at=?,attempt_token=NULL,lease_until=NULL WHERE id=? AND attempt_token=?''',
-                (source, text, error, clock().isoformat() if completed else None, media_id, token))
+        with ExitStack() as active:
+            with store.write() as conn:
+                row = conn.execute('''SELECT o.*,f.sha256,f.content_type,f.size_bytes,f.refused_at,f.bytes_purged_at
+                    FROM media_objects o JOIN media_files f ON f.id=o.file_id WHERE o.id=?''', (media_id,)).fetchone()
+                if row is None or row['bytes_purged_at'] or row['kind'] != 'image' or row['understanding_source'] != 'unprocessed' or row['completed_at']:
+                    continue
+                if row['refused_at']:
+                    conn.execute("UPDATE media_objects SET understanding_source='refused',understanding_text=?,completed_at=? WHERE id=?",
+                                 (REFUSAL_TEXT, clock().isoformat(), media_id))
+                    continue
+                if row['attempt_token'] and datetime.fromisoformat(row['lease_until']) > clock():
+                    continue
+                conn.execute('UPDATE media_objects SET attempt_token=?,lease_until=? WHERE id=?',
+                             (token, (clock()+timedelta(seconds=remaining)).isoformat(), media_id))
+                attempt = active.enter_context(_understanding_inflight(store, row['file_id'], gateway))
+                pending += 1
+            source, text, error, completed = 'unprocessed', '[图片，未理解]', None, True
+            try:
+                path = _path(store, row['sha256'])
+                with path.open('rb') as file:
+                    data = file.read(row['size_bytes']+1)
+                if len(data) != row['size_bytes'] or hashlib.sha256(data).hexdigest() != row['sha256']:
+                    raise MediaError('invalid_media')
+                result = gateway.image_understanding(data, row['content_type'], batch_id=batch_id, _deadline=deadline)
+                if monotonic() > deadline:
+                    raise ModelError('retryable', 'total timeout', reason='timeout')
+                if not isinstance(result, str) or not result.strip():
+                    raise ModelError('invalid_output', 'invalid image description')
+                source, text = 'system', result
+            except ModelError as exc:
+                attempt['timed_out'] = exc.reason == 'timeout'
+                if exc.category == 'content_rejection':
+                    source, text = 'refused', REFUSAL_TEXT
+                # Store categories only; provider prose can contain input or secrets.
+                error = exc.category
+                completed = exc.category not in ('paused', 'queue_full', 'queue_timeout')
+            except (OSError, ValueError):
+                error = 'file_unavailable'
+            with store.write() as conn:
+                current = conn.execute('SELECT attempt_token,understanding_source FROM media_objects WHERE id=?', (media_id,)).fetchone()
+                if current is None or current['attempt_token'] != token or current['understanding_source'] != 'unprocessed':
+                    continue
+                if source == 'refused':
+                    conn.execute('UPDATE media_files SET refused_at=? WHERE id=?', (clock().isoformat(), row['file_id']))
+                if conn.execute('SELECT refused_at FROM media_files WHERE id=?', (row['file_id'],)).fetchone()[0]:
+                    source, text, completed = 'refused', REFUSAL_TEXT, True
+                conn.execute('''UPDATE media_objects SET understanding_source=?,understanding_text=?,last_error=?,
+                    completed_at=?,attempt_token=NULL,lease_until=NULL WHERE id=? AND attempt_token=?''',
+                    (source, text, error, clock().isoformat() if completed else None, media_id, token))
 
 
 def files_for_message(conn, message_id):
@@ -423,6 +538,8 @@ def delete_unreferenced_file(store, conn, file_id, current):
         return False
     if conn.execute('''SELECT 1 FROM media_objects o JOIN message_media r ON r.media_id=o.id
         WHERE o.file_id=? LIMIT 1''', (file_id,)).fetchone():
+        return False
+    if _file_busy(store, conn, file_id, current):
         return False
     _path(store, row['sha256']).unlink(missing_ok=True)
     conn.execute('DELETE FROM media_files WHERE id=?', (file_id,))

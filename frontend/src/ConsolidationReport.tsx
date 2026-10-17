@@ -9,6 +9,8 @@ import { Badge, Pagination, RoleTime, seconds } from "./ui";
 import { PersonaChecks } from "./PersonaDetails";
 import { personaDegrees } from "./persona-labels";
 import {
+  consolidationBudgets,
+  consolidationSteps,
   consolidationReason,
   consolidationSwitches,
   suggestionKinds,
@@ -334,6 +336,80 @@ function PersonSummaryReport({ data }: { data: MaintenanceReport }) {
   );
 }
 
+function StepBudgetReport({ data }: { data: MaintenanceReport }) {
+  const budgets = data.items.filter(
+    (item) => item.outcome === "model_step_budget",
+  );
+  const trimmed = data.items.filter(
+    (item) => item.outcome === "backlog_trimmed",
+  );
+  const expiry = data.question_expiry;
+  return (
+    <>
+      {(data.consolidation || budgets.length > 0) && (
+        <section
+          className="detail-section"
+          aria-label="各步骤模型调用上限与用量"
+        >
+          <h3>各步骤模型调用上限与用量</h3>
+          <p className="fine-print">
+            每一步独立计数，包含重试和修正；上限沿用本次运行接受时的设置。未到期、关闭或没有任务的步骤可能没有记录。
+          </p>
+          {!budgets.length && <p className="quiet">本次未记录步骤用量。</p>}
+          {budgets.map((item) => (
+            <article
+              className="maintenance-item"
+              key={item.item_key}
+              aria-label={
+                consolidationSteps[item.details.step || ""] ||
+                item.details.step ||
+                "未知步骤"
+              }
+            >
+              <h4>
+                {consolidationSteps[item.details.step || ""] ||
+                  item.details.step ||
+                  "未知步骤"}
+              </h4>
+              <p>
+                本轮上限：{item.details.max_calls ?? "未记录"} 次 · 已用：
+                {item.details.calls_used ?? "未记录"} 次
+              </p>
+              <p>
+                停止原因：
+                {item.reason ? consolidationReason(item.reason) : "未记录"}
+              </p>
+            </article>
+          ))}
+        </section>
+      )}
+      {!!trimmed.length && (
+        <section className="detail-section" aria-label="配对积压修剪">
+          <h3>配对积压修剪</h3>
+          {trimmed.map((item) => (
+            <p key={item.item_key}>
+              配对积压修剪：{item.details.count ?? "未记录"} 项 ·
+              待处理配对上限：{item.details.limit ?? "未记录"} 项
+            </p>
+          ))}
+          <p className="fine-print">
+            仅修剪待处理配对，不改变记忆；相关记忆发生变化后可重新规划。
+          </p>
+        </section>
+      )}
+      {expiry && (
+        <section className="detail-section" aria-label="询问到期结束">
+          <h3>询问到期结束</h3>
+          <p>到期自动结束的询问：{expiry.count} 条</p>
+          <p className="fine-print">
+            仅学习产生且超过保留天数仍未结束的询问；宿主或管理员创建的询问和普通目标不受影响。
+          </p>
+        </section>
+      )}
+    </>
+  );
+}
+
 export function ConsolidationReportSections({
   data,
   openMemory,
@@ -362,17 +438,18 @@ export function ConsolidationReportSections({
               </p>
               <p className="fine-print">
                 {calls.unknown_usage_calls ?? 0}{" "}
-                次调用用量未知；用量为已知合计，包含实际重试、persona
+                次调用用量未知；用量为四步骤已知合计，包含实际重试、入口画像、persona
                 及人物摘要调用。
               </p>
             </>
           )}
           <details>
             <summary>本次接受任务时的整理设置</summary>
-            <p>
-              模型调用次数预算：
-              {data.consolidation.settings.max_calls ?? "未记录"}
-            </p>
+            {consolidationBudgets.map(([key, label]) => (
+              <p key={key}>
+                {label}：{data.consolidation?.settings[key] ?? "未记录"}
+              </p>
+            ))}
             {consolidationSwitches.map(([key, label]) => (
               <p key={key}>
                 {label}：
@@ -387,6 +464,7 @@ export function ConsolidationReportSections({
           </details>
         </section>
       )}
+      <StepBudgetReport data={data} />
       {(data.consolidation ||
         data.items.some((i) => i.phase === "consolidation")) && (
         <>

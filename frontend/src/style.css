@@ -3398,3 +3398,33 @@ tr:last-child td {
     flex-wrap: wrap;
   }
 }
+
+.profile-projection { border-left: 3px solid var(--purple); background: #f7f8fb; padding: 14px 18px; }
+.profile-memory-list { display: grid; gap: 18px; }
+.profile-memory-card { border: 1px solid var(--line); border-radius: 12px; padding: 18px; min-width: 0; scroll-margin-top: 16px; }
+.profile-memory-card h4 { margin: 8px 0; }
+.profile-memory-card blockquote { margin: 12px 0; padding: 8px 14px; border-left: 3px solid var(--line); background: #f7f8fb; }
+.profile-memory-card blockquote p { margin: 4px 0; }
+.profile-memory-card blockquote footer { font-size: 12px; color: var(--muted); }
+.profile-memory-metadata { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; font-size: 13px; }
+.profile-memory-metadata dt { color: var(--muted); }
+.profile-memory-metadata dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+.profile-memory-evidence { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 12px; }
+.profile-source-target { outline: 2px solid var(--purple); border-radius: 8px; padding: 8px; scroll-margin-top: 16px; }
+@media (max-width: 600px) {
+  .profile-memory-card { padding: 12px; }
+  .profile-memory-metadata { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .profile-memory-metadata div { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+  .profile-memory-metadata dd { margin: 0; }
+}
+
+.profile-progress-grid, .profile-work-metadata { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; font-size: 13px; }
+.profile-progress-grid dt, .profile-work-metadata dt { color: var(--muted); }
+.profile-progress-grid dd, .profile-work-metadata dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+.profile-work-card { border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-top: 12px; min-width: 0; }
+.profile-pending-sources { border-top: 1px dashed var(--line); margin-top: 12px; }
+@media (max-width: 600px) {
+  .profile-progress-grid, .profile-work-metadata { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .profile-progress-grid div, .profile-work-metadata div { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+  .profile-progress-grid dd, .profile-work-metadata dd { margin: 0; }
+}

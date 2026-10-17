@@ -145,3 +145,7 @@ def test_summary_edit_keeps_valid_structured_evidence_and_rejects_changed_basis(
     with pytest.raises(person_summary.PersonSummaryConflict, match='evidence_changed'):
         person_summary.admin_edit(store, 'a', content, expected_version=2, clock=clock)
     assert person_summary.current_summary(store, 'a', clock=clock)['version'] == 2
+
+
+# Historical document-path regression on the pre-switch schema.
+from profile_legacy import legacy_schema

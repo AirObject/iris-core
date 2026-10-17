@@ -14,14 +14,15 @@ from .auth import audit, error, local
 from .configuration import CONFIG_LOCK_WAIT_SECONDS, ConfigurationBusy
 from .db import dumps
 from .memory_ops import update_role, lifecycle_settings, operation
-from .media import DEFAULT_LEARNING_IMAGE_LIMIT, learning_image_limit, native_image_learning_setting
+from .media import (DEFAULT_LEARNING_IMAGE_LIMIT, DEFAULT_MEDIA_RETENTION_DAYS, learning_image_limit,
+                    media_retention_days, native_image_learning_setting)
 from .models import JUDGMENT_KINDS, MODEL_KINDS, Gateway, ModelConfig, ModelError
 from .recall_judge import settings as judge_settings
 from .persona import DEFAULT_GOAL, DEFAULT_RULES, DEFAULT_PUBLISH_MODE, persona_settings
 from .state import state_settings
 from .service_status import model_health_snapshot
 from .consolidation import consolidation_settings
-from .goals import goal_settings
+from .goals import DEFAULT_QUESTION_EXPIRY_DAYS, goal_settings
 from .goal_dedup_judge import DEFAULTS as GOAL_JUDGE_DEFAULTS, settings as goal_judge_settings
 
 CONNECTION_TIMEOUT = 10
@@ -146,6 +147,7 @@ class StateSettings(Input):
 class GoalsSettings(Input):
     default_reminder_minutes: int = Field(default=60, ge=0, le=525600, strict=True)
     overdue_reminders: bool = Field(default=True, strict=True)
+    internal_question_expiry_days: int = Field(default=DEFAULT_QUESTION_EXPIRY_DAYS, ge=1, le=365, strict=True)
 
 
 class Limits(Input):
@@ -153,6 +155,7 @@ class Limits(Input):
     learning_concurrency: int = Field(default=2, ge=1, le=32, strict=True)
     learning_image_limit: int = Field(default=DEFAULT_LEARNING_IMAGE_LIMIT, ge=0, le=32, strict=True)
     native_image_learning: bool = Field(default=False, strict=True)
+    media_retention_days: int = Field(default=DEFAULT_MEDIA_RETENTION_DAYS, ge=1, le=36500, strict=True)
 
 
 class Lifecycle(Input):
@@ -171,7 +174,10 @@ class Lifecycle(Input):
 
 
 class ConsolidationSettings(Input):
-    max_calls: int = Field(default=50, ge=0, le=50, strict=True)
+    max_calls: int = Field(default=300, ge=0, le=1000, strict=True)
+    entry_profile_max_calls: int = Field(default=60, ge=0, le=1000, strict=True)
+    person_summary_max_calls: int = Field(default=40, ge=0, le=1000, strict=True)
+    persona_max_calls: int = Field(default=30, ge=0, le=1000, strict=True)
     merge_enabled: bool = Field(default=True, strict=True)
     conflict_enabled: bool = Field(default=True, strict=True)
     dependency_enabled: bool = Field(default=True, strict=True)
@@ -212,6 +218,7 @@ def install_settings(app):
                 'learning_concurrency': store.setting('learning_concurrency', 2),
                 'learning_image_limit': learning_image_limit(store),
                 'native_image_learning': native_image_learning_setting(store),
+                'media_retention_days': media_retention_days(store),
                 'consolidation': consolidation, 'persona': persona, 'lifecycle': lifecycle, 'recall_judge': judge_settings(store), 'state': state, 'goals': goals,
                 'goal_dedup_judge': goal_judge_settings(store),
                 'health': model_health_snapshot(app.state.health), 'presets': PRESETS, 'operations': operations}
@@ -337,17 +344,15 @@ def install_settings(app):
 
     @router.patch('/settings/limits')
     def limits(payload: Limits):
-        changes = payload.model_dump()
-        # Existing clients do not know these fields; omission preserves their values.
-        for key in ('learning_image_limit', 'native_image_learning'):
-            if key not in payload.model_fields_set:
-                changes.pop(key)
+        changes = payload.model_dump(exclude_unset=True)
         with app.state.store.write() as conn:
             for key, value in changes.items():
                 conn.execute('INSERT OR REPLACE INTO runtime_settings VALUES(?,?)', (key, dumps(value)))
             audit(conn, 'limits_saved', changes)
-        app.state.health.set_daily_token_limit(payload.daily_token_limit)
-        app.state.scheduler.set_concurrency(payload.learning_concurrency)
+        if 'daily_token_limit' in changes:
+            app.state.health.set_daily_token_limit(payload.daily_token_limit)
+        if 'learning_concurrency' in changes:
+            app.state.scheduler.set_concurrency(payload.learning_concurrency)
         return snapshot()
 
     @router.post('/settings/models/{kind}/retry')

@@ -4,88 +4,88 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { EntryProfileDialog } from "./EntryProfile";
 import { setCSRF } from "./api";
-const text = "这次聊天围绕照片整理展开，参与者会在解释前先询问照片的拍摄日期。";
-const sentence = {
-  text,
+import type { ProfileMemory, ProfileSnapshot } from "./entry-profile-types";
+
+const time = "2026-10-14T00:00:00Z";
+const profile: ProfileMemory = {
+  memory_id: 42,
+  revision: 3,
+  category: "topic",
+  body: "常聊胶片冲洗。",
+  owner_entry_id: "A/群",
   author: "model",
-  admin_written: false,
-  basis: [
+  manual_created: false,
+  manual_protected: false,
+  lifecycle: "active",
+  usable: true,
+  retention: 72,
+  pinned: false,
+  last_confirmed_at: null,
+  admission_state: "accepted",
+  admission_reason: null,
+  independent_days: 2,
+  independent_uses: 2,
+  pending_sources: [],
+  sources: [
     {
-      message_id: 9,
-      evidence: {
-        content: "照片是哪天拍的？",
-        occurred_at: "2026-10-11T00:00:00Z",
+      ref: "msg:9",
+      field: "quote",
+      excerpt: "今天又洗了一卷黑白胶片。",
+      speaker: "lin",
+      message: {
+        position: 9,
+        content: "引用上周的话",
+        occurred_at: time,
+        entry_id: "A/群",
       },
     },
   ],
 };
-const version = {
-  version: 1,
-  content: text.repeat(5),
-  status: "published",
-  is_current: true,
-  source: "regenerate",
-  author: "model",
-  generated_at: "2026-10-11T00:00:00Z",
-  change_degree: "small",
-  sentences: [sentence],
-  checks: {
-    passed: true,
-    deterministic: { passed: true },
-    model: {
-      reason: "限定当次聊天",
-      sentences: [
-        {
-          index: 1,
-          supported: true,
-          scene_qualified: true,
-          violations: [],
-          reason: "有原话",
-        },
-      ],
-    },
-    checked_sentences: [sentence],
-    deleted_sentences: [],
-  },
-};
-let snapshot: any,
+let snapshot: ProfileSnapshot,
   requests: { url: string; init?: RequestInit; body: any }[],
-  fail: number;
+  failure: { status: number; code: string } | null;
+let taskState: string;
 const response = (value: unknown, status = 200) =>
   new Response(JSON.stringify(value), { status });
+const writes = () => requests.filter((r) => r.init?.method);
+const card = (id = 42) =>
+  within(screen.getByRole("article", { name: `画像记忆 #${id}` }));
 function panel() {
   return render(
     <EntryProfileDialog
-      entry={{ id: "A", name: "摄影群" }}
+      entry={{ id: "A/群", name: "摄影群" }}
       onClose={vi.fn()}
       openMemory={vi.fn()}
     />,
   );
 }
 beforeEach(() => {
-  fail = 0;
   requests = [];
+  failure = null;
+  taskState = "running";
   setCSRF("profile-test-csrf");
   snapshot = {
-    entry: { id: "A", kind: "group", name: "摄影群" },
+    mode: "memory",
     supported: true,
     global_enabled: true,
-    settings: {
-      enabled: true,
-      publish_mode: "check_auto",
-      current_version: 1,
-      revision: 1,
+    settings: { enabled: true, current_version: 17, revision: 2 },
+    projection: {
+      text: "常聊话题：常聊胶片冲洗。",
+      version: 17,
+      generated_at: time,
+      possibly_stale: false,
+      memory_ids: [42],
     },
-    current: version,
-    pending: null,
-    pending_count: 0,
-    possibly_stale: false,
-    stale_basis: [],
+    memories: [structuredClone(profile)],
+    diagnostics: { omitted_memory_ids: [] },
+    migration: [],
+    rebuild_pending: false,
     latest_attempt: null,
   };
   vi.stubGlobal(
@@ -94,65 +94,116 @@ beforeEach(() => {
       const body = JSON.parse(String(init?.body || "{}"));
       requests.push({ url, init, body });
       if (init?.method) {
-        if (fail)
+        if (failure)
+          return response(
+            { error: { code: failure.code, message: "服务返回错误" } },
+            failure.status,
+          );
+        if (url.endsWith("/regenerate"))
           return response(
             {
-              error: {
-                code: "entry_profile_conflict",
-                message: "当前画像已变化，请刷新后重试",
+              accepted: true,
+              attempt: {
+                id: 8,
+                state: "running",
+                stage: "generating",
+                started_at: time,
               },
             },
-            fail,
-          );
-        if (url.endsWith("/regenerate")) {
-          snapshot = {
-            ...snapshot,
-            latest_attempt: { id: 4, state: "running", stage: "generating" },
-          };
-          return response(
-            { accepted: true, attempt: snapshot.latest_attempt },
             202,
           );
-        }
-        if (url.endsWith("/settings")) {
+        if (url.endsWith("/settings"))
           snapshot = {
             ...snapshot,
-            settings: { ...snapshot.settings, ...body },
+            settings: { ...snapshot.settings, enabled: body.enabled },
           };
-          return response(snapshot.settings);
-        }
-        if (url.endsWith("/confirm") || url.endsWith("/reject"))
-          snapshot = { ...snapshot, pending: null, pending_count: 0 };
-        return response(version);
+        if (url.endsWith("/memories/42") && init.method === "PATCH")
+          snapshot = {
+            ...snapshot,
+            memories: [
+              {
+                ...snapshot.memories[0],
+                body: body.content,
+                revision: body.expected_revision + 1,
+              },
+            ],
+          };
+        if (url.endsWith("/memories/42") && init.method === "DELETE")
+          snapshot = {
+            ...snapshot,
+            memories: [
+              {
+                ...snapshot.memories[0],
+                lifecycle: "deleted",
+                revision: body.expected_revision + 1,
+              },
+            ],
+          };
+        if (url.endsWith("/restore"))
+          snapshot = {
+            ...snapshot,
+            memories: snapshot.memories.map((m) => ({
+              ...m,
+              lifecycle: "active",
+            })),
+          };
+        return response({ id: 48 }, url.endsWith("/memories") ? 201 : 200);
       }
-      if (url.includes("/diff?"))
+      if (url.endsWith("/catalog"))
+        return response({ people: [{ id: "lin", name: "小林" }] });
+      if (url.includes("/versions?")) return response({ items: [], total: 0 });
+      if (url.includes("/attempts/"))
         return response({
-          changed: true,
-          sentences: [
+          id: 8,
+          state: taskState,
+          stage: taskState === "running" ? "checking" : "finished",
+          reason: taskState === "skipped" ? "no_new_evidence" : null,
+          version: taskState === "running" ? null : 18,
+          started_at: time,
+        });
+      if (url.endsWith("/memories/42"))
+        return response({
+          id: 42,
+          revision: snapshot.memories[0].revision,
+          content: snapshot.memories[0].body,
+          lifecycle: snapshot.memories[0].lifecycle,
+          sources: [
             {
-              op: "replace",
-              before: [{ text: "旧版措辞" }],
-              after: [{ text: "新版措辞" }],
+              id: 3,
+              kind: "message",
+              message_id: 9,
+              message: {
+                id: 9,
+                content: "引用上周的话",
+                quote_content: "今天又洗了一卷黑白胶片。",
+                quote_author_subject_id: "lin",
+                sender_name: "小林",
+                occurred_at: time,
+              },
+              context: [
+                {
+                  id: 8,
+                  sender_name: "小周",
+                  content: "前一条聊天",
+                  occurred_at: time,
+                },
+              ],
+            },
+          ],
+          revisions: [
+            {
+              id: 2,
+              actor: "admin",
+              revision_before: 2,
+              revision_after: 3,
+              before: { content: "旧正文" },
+              after: { content: "常聊胶片冲洗。" },
+              created_at: time,
             },
           ],
         });
-      if (/\/versions\/\d+$/.test(url))
-        return response(
-          Number(url.split("/").at(-1)) === 2
-            ? { ...version, version: 2, status: "candidate", is_current: false }
-            : version,
-        );
-      if (url.includes("/versions?"))
-        return response({
-          items: [
-            version,
-            { ...version, version: 2, status: "candidate", is_current: false },
-          ],
-          total: 2,
-          limit: 10,
-          offset: 0,
-        });
-      return response(snapshot);
+      if (url.endsWith("/profile")) return response(snapshot);
+      throw new Error(`Unexpected read: ${url}`);
     }),
   );
 });
@@ -161,223 +212,271 @@ afterEach(() => {
   vi.unstubAllGlobals();
   setCSRF("");
 });
-test("展示当前版本、逐句原话与检查；浏览无写入", async () => {
+
+test("按条展示类别、作者、生命周期与保留强度；预览使用服务端原文和独立 version，阅读不写入", async () => {
+  snapshot.memories.push(
+    {
+      ...profile,
+      memory_id: 43,
+      category: "saying",
+      body: "开窗：先看底片。",
+      sources: [],
+    },
+    {
+      ...profile,
+      memory_id: 44,
+      category: "rule",
+      author: "admin",
+      manual_created: true,
+      manual_protected: true,
+      body: "不要刷屏。",
+      sources: [],
+    },
+    {
+      ...profile,
+      memory_id: 45,
+      category: null,
+      author: "admin",
+      body: "欢迎分享作品。",
+      sources: [],
+      last_confirmed_at: time,
+    },
+  );
   panel();
   expect(
-    await screen.findByRole("heading", { name: "当前已发布 · v1" }),
+    await screen.findByRole("heading", { name: "宿主投影预览 · v17" }),
   ).toBeVisible();
-  await userEvent.click(
-    screen.getByRole("button", { name: "查看当前依据与检查" }),
-  );
-  expect(await screen.findByText("照片是哪天拍的？")).toBeVisible();
-  expect(screen.getByText("有原话")).toBeVisible();
-  expect(requests.every((r) => !r.init?.method)).toBe(true);
+  expect(screen.getByText("常聊话题：常聊胶片冲洗。")).toBeVisible();
+  expect(card().getByText("话题")).toBeVisible();
+  expect(card(43).getByText("说法")).toBeVisible();
+  expect(card(44).getByText("群规")).toBeVisible();
+  expect(card(45).getByText("管理员说明")).toBeVisible();
+  expect(card().getByText("模型")).toBeVisible();
+  expect(card(44).getByText("人工保护")).toBeVisible();
+  expect(card().getByText("72")).toBeVisible();
+  expect(card().getByText("暂无确认记录")).toBeVisible();
+  expect(card(45).queryByText("接口未提供")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /确认发布|拒绝候选|回滚/ }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("发布方式")).not.toBeInTheDocument();
+  expect(requests.some((r) => /\/versions\/17$/.test(r.url))).toBe(false);
+  expect(writes()).toEqual([]);
 });
-test("编辑发布携带打开时版本及 CSRF，409 后保留草稿不重发", async () => {
-  panel();
-  await screen.findByText("检查通过自动发布");
-  await userEvent.click(screen.getByRole("button", { name: "编辑正文" }));
-  const input = screen.getByLabelText("画像正文");
-  fireEvent.change(input, {
-    target: { value: text.repeat(5) + "管理员补充。" },
-  });
-  fail = 409;
-  await userEvent.click(screen.getByRole("button", { name: "发布编辑" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("当前画像已变化");
-  expect(input).toHaveValue(text.repeat(5) + "管理员补充。");
-  const write = requests.find((r) => r.init?.method === "PUT")!;
-  expect(write.body.expected_version).toBe(1);
-  expect(write.init?.headers).toMatchObject({
-    "X-Iris-CSRF": "profile-test-csrf",
-  });
-  expect(requests.filter((r) => r.init?.method)).toHaveLength(1);
-});
-test("长度不足不能发布", async () => {
-  panel();
-  await screen.findByText("检查通过自动发布");
-  await userEvent.click(screen.getByRole("button", { name: "编辑正文" }));
-  fireEvent.change(screen.getByLabelText("画像正文"), {
-    target: { value: "太短" },
-  });
-  expect(screen.getByRole("button", { name: "发布编辑" })).toBeDisabled();
-});
-test("入口开关与人工确认设置保存使用 expected_version", async () => {
-  panel();
-  await screen.findByText("检查通过自动发布");
-  await userEvent.click(screen.getByRole("button", { name: "修改画像设置" }));
-  await userEvent.click(screen.getByLabelText("启用本入口画像"));
-  await userEvent.selectOptions(
-    screen.getByLabelText("发布方式"),
-    "all_manual",
-  );
-  await userEvent.click(screen.getByRole("button", { name: "保存画像设置" }));
-  await waitFor(() =>
-    expect(requests.find((r) => r.init?.method === "PATCH")?.body).toEqual({
-      expected_version: 1,
-      enabled: false,
-      publish_mode: "all_manual",
-    }),
-  );
-});
-test.each(["confirm", "reject"] as const)(
-  "待确认候选 %s；确认前展示依据检查",
-  async (action) => {
-    snapshot.pending = {
-      ...version,
-      version: 2,
-      status: "candidate",
-      is_current: false,
-    };
-    snapshot.pending_count = 1;
+
+test.each(["topic", "saying", "rule", ""])(
+  "人工新建 %s 使用通用记忆接口、入口范围和 CSRF",
+  async (category) => {
     panel();
-    expect(await screen.findByText("待确认 1")).toBeVisible();
-    await userEvent.click(
-      screen.getByRole("button", { name: "审阅待确认 v2" }),
-    );
-    await screen.findByText("照片是哪天拍的？");
-    if (action === "reject")
-      fireEvent.change(screen.getByLabelText("拒绝原因"), {
-        target: { value: "范围太宽" },
-      });
-    await userEvent.click(
-      screen.getByRole("button", {
-        name: action === "confirm" ? "确认发布 v2" : "拒绝候选 v2",
-      }),
-    );
-    await waitFor(() =>
-      expect(
-        requests.find((r) => r.url.endsWith("/" + action))?.body,
-      ).toMatchObject({ expected_version: 1 }),
-    );
+    await screen.findByText("常聊胶片冲洗。");
+    await userEvent.click(screen.getByRole("button", { name: "人工新建" }));
+    expect(screen.getByRole("button", { name: "创建画像记忆" })).toBeDisabled();
+    await userEvent.selectOptions(screen.getByLabelText("子类"), category);
+    fireEvent.change(screen.getByLabelText("新画像正文"), {
+      target: { value: "保持友善。" },
+    });
+    await userEvent.click(screen.getByRole("button", { name: "创建画像记忆" }));
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    expect(writes()[0]).toMatchObject({
+      url: "/admin/api/memories",
+      body: {
+        kind: "入口画像",
+        owner_entry_id: "A/群",
+        category: category || null,
+        content: "保持友善。",
+      },
+      init: { method: "POST", headers: { "X-Iris-CSRF": "profile-test-csrf" } },
+    });
   },
 );
-test("后台运行即时反馈，轮询只读，重复生成禁用", async () => {
+
+test("编辑允许短正文，使用记忆 revision 而非投影 version", async () => {
+  panel();
+  await screen.findByText("常聊胶片冲洗。");
+  await userEvent.click(card().getByRole("button", { name: "编辑" }));
+  fireEvent.change(screen.getByLabelText("画像正文"), {
+    target: { value: "新正文。" },
+  });
+  await userEvent.click(screen.getByRole("button", { name: "保存修改" }));
+  expect(writes()[0]).toMatchObject({
+    url: "/admin/api/memories/42",
+    init: { method: "PATCH" },
+    body: { expected_revision: 3, content: "新正文。" },
+  });
+  expect(await screen.findByText("修改已保存。")).toBeVisible();
+});
+
+test("409 与自动刷新保留草稿和旧 revision，显式核对后才能重试", async () => {
+  panel();
+  await screen.findByText("常聊胶片冲洗。");
+  await userEvent.click(card().getByRole("button", { name: "编辑" }));
+  fireEvent.change(screen.getByLabelText("画像正文"), {
+    target: { value: "我的编辑草稿。" },
+  });
+  snapshot = {
+    ...snapshot,
+    memories: [{ ...profile, revision: 4, body: "另一位管理员的正文。" }],
+  };
+  failure = { status: 409, code: "revision_conflict" };
+  await userEvent.click(screen.getByRole("button", { name: "保存修改" }));
+  await screen.findByText("另一位管理员的正文。");
+  expect(screen.getByLabelText("画像正文")).toHaveValue("我的编辑草稿。");
+  expect(screen.getByRole("button", { name: "保存修改" })).toBeDisabled();
+  expect(writes()).toHaveLength(1);
+  expect(writes()[0].body.expected_revision).toBe(3);
+  failure = null;
+  await userEvent.click(
+    screen.getByRole("button", { name: "已核对最新修订，保留草稿继续" }),
+  );
+  await userEvent.click(screen.getByRole("button", { name: "保存修改" }));
+  expect(writes()[1].body).toEqual({
+    expected_revision: 4,
+    content: "我的编辑草稿。",
+  });
+});
+
+test("删除二次确认使用打开时修订，已删除标识无恢复或编辑入口", async () => {
+  panel();
+  await screen.findByText("常聊胶片冲洗。");
+  await userEvent.click(card().getByRole("button", { name: "删除" }));
+  expect(writes()).toEqual([]);
+  await userEvent.click(screen.getByRole("button", { name: "确认删除" }));
+  expect(writes()[0]).toMatchObject({
+    init: { method: "DELETE" },
+    body: { expected_revision: 3 },
+  });
+  await screen.findByText("画像记忆已删除，历史仍保留。");
+  expect(
+    card().queryByRole("button", { name: "恢复" }),
+  ).not.toBeInTheDocument();
+  expect(
+    card().queryByRole("button", { name: "编辑" }),
+  ).not.toBeInTheDocument();
+});
+
+test("只允许恢复已遗忘条目，提交记忆修订号", async () => {
+  snapshot.memories = [{ ...profile, lifecycle: "forgotten", usable: false }];
+  panel();
+  await screen.findByText("常聊胶片冲洗。");
+  await userEvent.click(card().getByRole("button", { name: "恢复" }));
+  expect(writes()[0]).toMatchObject({
+    url: "/admin/api/memories/42/restore",
+    init: { method: "POST" },
+    body: { expected_revision: 3 },
+  });
+  expect(await screen.findByText("画像记忆已恢复。")).toBeVisible();
+});
+
+test("原话跳转读取通用详情，展示来源上下文及修订历史，无 prepare 或模型写请求", async () => {
+  panel();
+  await screen.findByText("常聊胶片冲洗。");
+  await userEvent.click(
+    card().getByRole("button", { name: "跳转来源消息 #9" }),
+  );
+  const source = await screen.findByRole("region", { name: "来源消息 #9" });
+  expect(await within(source).findByText("引用上周的话")).toBeVisible();
+  expect(within(source).getByText(/转引原话（原作者：小林）/)).toBeVisible();
+  await userEvent.click(within(source).getByText("查看前后文"));
+  expect(within(source).getByText("前一条聊天")).toBeVisible();
+  expect(screen.getByText(/修改前/).parentElement).toHaveTextContent("旧正文");
+  expect(screen.getByText(/修订 2 → 3/)).toBeVisible();
+  expect(writes()).toEqual([]);
+  expect(requests.some((r) => r.url.includes("/prepare"))).toBe(false);
+});
+
+test.each([
+  "entry_profile_legacy_write_retired",
+  "entry_profile_publish_mode_retired",
+])("410 %s 解释旧接口退役，保留草稿", async (code) => {
+  panel();
+  await screen.findByText("常聊胶片冲洗。");
+  await userEvent.click(card().getByRole("button", { name: "编辑" }));
+  fireEvent.change(screen.getByLabelText("画像正文"), {
+    target: { value: "草稿保留。" },
+  });
+  failure = { status: 410, code };
+  await userEvent.click(screen.getByRole("button", { name: "保存修改" }));
+  expect(
+    await screen.findByText(/旧画像的整版编辑、回滚和候选审批已退役/),
+  ).toBeVisible();
+  expect(screen.getByLabelText("画像正文")).toHaveValue("草稿保留。");
+});
+
+test("无投影时仍用 settings.current_version 保存入口开关，不发送审批模式", async () => {
+  snapshot.projection = null;
+  panel();
+  await screen.findByText(/entry_profile 为 null/);
+  await userEvent.click(screen.getByRole("button", { name: "修改画像设置" }));
+  await userEvent.click(screen.getByLabelText("启用本入口画像"));
+  await userEvent.click(screen.getByRole("button", { name: "保存画像设置" }));
+  expect(writes()[0]).toMatchObject({
+    url: "/admin/api/entries/A%2F%E7%BE%A4/profile/settings",
+    body: { expected_version: 17, enabled: false },
+  });
+});
+
+test("任务 202 后只 GET 轮询，终态停止任务轮询，不把投影号当旧版本", async () => {
   vi.useFakeTimers();
   panel();
   await act(async () => {});
-  fireEvent.click(screen.getByRole("button", { name: "重新生成" }));
+  fireEvent.click(screen.getByRole("button", { name: "立即运行" }));
   await act(async () => {});
-  expect(screen.getByText("正在生成")).toBeVisible();
-  expect(screen.getByRole("button", { name: "重新生成" })).toBeDisabled();
+  expect(screen.getByText("正在检查画像条目…")).toBeVisible();
+  expect(screen.getByRole("button", { name: "立即运行" })).toBeDisabled();
+  taskState = "skipped";
   await act(async () => {
-    await vi.advanceTimersByTimeAsync(6000);
+    await vi.advanceTimersByTimeAsync(1600);
   });
-  expect(requests.filter((r) => r.init?.method)).toHaveLength(1);
-  snapshot = {
-    ...snapshot,
-    latest_attempt: {
-      id: 4,
-      state: "skipped",
-      stage: "finished",
-      reason: "daily_limit",
-    },
-  };
+  expect(screen.getByText(/没有新依据，本次跳过/)).toBeVisible();
+  expect(screen.getByText("任务完成时的宿主投影版本：v18")).toBeVisible();
+  const count = requests.filter((r) => r.url.includes("/attempts/")).length;
   await act(async () => {
-    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(8000);
   });
-  expect(screen.getByText(/今天已经尝试过生成/)).toBeVisible();
-});
-test("任意版本比较与回滚", async () => {
-  panel();
-  await screen.findByText("检查通过自动发布");
-  fireEvent.change(screen.getByLabelText("对比起始版本"), {
-    target: { value: "1" },
-  });
-  fireEvent.change(screen.getByLabelText("对比目标版本"), {
-    target: { value: "2" },
-  });
-  await userEvent.click(screen.getByRole("button", { name: "逐句对比" }));
-  expect(await screen.findByText("旧版措辞")).toBeVisible();
-  expect(screen.getByText("新版措辞")).toBeVisible();
-  await userEvent.click(screen.getByRole("button", { name: "查看 v1" }));
-  await userEvent.click(
-    await screen.findByRole("button", { name: "将 v1 复制为新版本" }),
+  expect(requests.filter((r) => r.url.includes("/attempts/"))).toHaveLength(
+    count,
   );
-  expect(
-    requests.find((r) => r.url.endsWith("/rollback"))?.body.expected_version,
-  ).toBe(1);
+  expect(writes()).toHaveLength(1);
+  expect(writes()[0].body).toEqual({ expected_version: 17 });
+  expect(requests.some((r) => /\/versions\/18/.test(r.url))).toBe(false);
 });
-test("可能过时依据提示，关闭和私聊入口不生成", async () => {
-  snapshot.possibly_stale = true;
-  snapshot.stale_basis = [{ message_id: 9, reason: "message_cleaned" }];
+
+test("预算遗漏、过时与重建提示可见；关闭和私聊不能生成", async () => {
+  snapshot.diagnostics.omitted_memory_ids = [42];
+  snapshot.projection!.possibly_stale = true;
+  snapshot.rebuild_pending = true;
   snapshot.settings.enabled = false;
   const view = panel();
-  await screen.findByText(/可能过时.*1 条依据/);
-  expect(screen.getByText(/消息 #9.*原消息已清理/)).toBeVisible();
-  expect(screen.getByRole("button", { name: "重新生成" })).toBeDisabled();
+  await screen.findByText(/受展示预算限制/);
+  expect(screen.getByText(/投影可能过时/)).toBeVisible();
+  expect(screen.getByText(/画像正在等待新任务重建/)).toBeVisible();
+  expect(screen.getByRole("button", { name: "立即运行" })).toBeDisabled();
   view.unmount();
   snapshot.supported = false;
   panel();
   expect(await screen.findByText("私聊入口不生成入口画像。")).toBeVisible();
   expect(
-    screen.queryByRole("button", { name: "重新生成" }),
+    screen.queryByRole("button", { name: "人工新建" }),
   ).not.toBeInTheDocument();
 });
 
-test("打开依据记忆前关闭画像面板，避免两个焦点陷阱叠加", async () => {
-  const original = vi.mocked(fetch).getMockImplementation()!;
-  vi.mocked(fetch).mockImplementation(async (input, init) =>
-    String(input).endsWith("/versions/1")
-      ? response({
-          ...version,
-          sentences: [
-            {
-              ...sentence,
-              basis: [
-                { memory_id: 11, revision: 2, evidence: { content: "原记忆" } },
-              ],
-            },
-          ],
-        })
-      : original(input, init),
-  );
-  const close = vi.fn(),
-    open = vi.fn();
-  render(
-    <EntryProfileDialog
-      entry={{ id: "A", name: "摄影群" }}
-      onClose={close}
-      openMemory={open}
-    />,
-  );
-  await userEvent.click(
-    await screen.findByRole("button", { name: "查看当前依据与检查" }),
-  );
-  await userEvent.click(
-    await screen.findByRole("button", { name: "记忆 #11 · 修订 2" }),
-  );
-  expect(close).toHaveBeenCalledTimes(1);
-  expect(open).toHaveBeenCalledWith(11);
-  expect(close.mock.invocationCallOrder[0]).toBeLessThan(
-    open.mock.invocationCallOrder[0],
-  );
-});
-
-
-test("模型检查格式错误及无效候选句安全展示，不阻断版本详情", async () => {
-  const original = vi.mocked(fetch).getMockImplementation()!;
-  vi.mocked(fetch).mockImplementation(async (input, init) =>
-    String(input).endsWith("/versions/1")
-      ? response({
-          ...version,
-          status: "rejected",
-          checks: {
-            ...version.checks,
-            passed: false,
-            reason: "invalid_output",
-            model: { reason: { invalid: true }, sentences: true },
-            deleted_sentences: [
-              { index: 2, sentence: { text: { invalid: true } }, reason: "invalid_sentence" },
-            ],
-          },
-        })
-      : original(input, init),
-  );
+test("恢复发生修订冲突后，显式刷新可使用新修订重新操作", async () => {
+  snapshot.memories = [{ ...profile, lifecycle: "forgotten", usable: false }];
   panel();
-  await userEvent.click(
-    await screen.findByRole("button", { name: "查看当前依据与检查" }),
+  await screen.findByText("常聊胶片冲洗。");
+  snapshot = {
+    ...snapshot,
+    memories: [{ ...snapshot.memories[0], revision: 4 }],
+  };
+  failure = { status: 409, code: "revision_conflict" };
+  await userEvent.click(card().getByRole("button", { name: "恢复" }));
+  await screen.findByText(/这条画像记忆已变化/);
+  expect(card().getByRole("button", { name: "恢复" })).toBeDisabled();
+  failure = null;
+  await userEvent.click(card().getByRole("button", { name: "刷新画像记忆" }));
+  await waitFor(() =>
+    expect(card().getByRole("button", { name: "恢复" })).toBeEnabled(),
   );
-  expect(await screen.findByText("模型检查输出格式无效，本版未通过检查。")).toBeVisible();
-  expect(screen.getByText("候选第 2 项")).toBeVisible();
-  expect(screen.getByText("照片是哪天拍的？")).toBeVisible();
+  await userEvent.click(card().getByRole("button", { name: "恢复" }));
+  expect(writes()[1].body).toEqual({ expected_revision: 4 });
 });

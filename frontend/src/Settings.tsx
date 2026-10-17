@@ -1,3 +1,4 @@
+import { GoalSettings, LimitsSettings } from "./RuntimeSettings";
 import {
   ConsolidationSettings,
   GoalDedupSettings,
@@ -67,6 +68,7 @@ export type Settings = {
   daily_token_limit: number | null;
   learning_concurrency: number;
   native_image_learning?: boolean;
+  media_retention_days?: number;
   lifecycle: LifecycleConfig;
   recall_judge: RecallJudgeConfig;
   state: StateConfig;
@@ -477,48 +479,19 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
       timezone: settings.role.timezone || timezone(),
     }),
     [models, setModels] = useState(settings.models);
-  const [limit, setLimit] = useState(
-      settings.daily_token_limit?.toString() || "",
-    ),
-    [concurrency, setConcurrency] = useState(settings.learning_concurrency),
-    [error, setError] = useState(""),
+  const [errorPath, setErrorPath] = useState("");
+  const [error, setError] = useState(""),
     [saved, setSaved] = useState(""),
     [busy, setBusy] = useState(false);
   const [staleMinutes, setStaleMinutes] = useState(
     String(settings.state.stale_after_minutes),
   );
-  const [nativeImages, setNativeImages] = useState(
-    settings.native_image_learning === true,
-  );
-  const nativeImagesDirty = useRef(false);
-  const nativeImagesAvailable =
-    settings.models.chat.enabled && settings.models.chat.vision === true;
-  useEffect(() => {
-    if (!nativeImagesDirty.current)
-      setNativeImages(settings.native_image_learning === true);
-  }, [settings.native_image_learning]);
   const stateDirty = useRef(false);
   const modelDirty = useRef(new Set<ModelKind>());
   useEffect(() => {
     if (!stateDirty.current)
       setStaleMinutes(String(settings.state.stale_after_minutes));
   }, [settings.state.stale_after_minutes]);
-  const [reminderMinutes, setReminderMinutes] = useState(
-    String(settings.goals.default_reminder_minutes),
-  );
-  const [overdueReminders, setOverdueReminders] = useState(
-    settings.goals.overdue_reminders,
-  );
-  const goalsDirty = useRef(false);
-  useEffect(() => {
-    if (!goalsDirty.current) {
-      setReminderMinutes(String(settings.goals.default_reminder_minutes));
-      setOverdueReminders(settings.goals.overdue_reminders);
-    }
-  }, [
-    settings.goals.default_reminder_minutes,
-    settings.goals.overdue_reminders,
-  ]);
   const save = async (path: string, method: string, value: unknown) => {
     if (busy) return;
     setBusy(true);
@@ -527,18 +500,9 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
     try {
       const latest = await api<Settings>(path, json(method, value));
       setSettings(latest);
-      if (path === "/settings/limits") {
-        nativeImagesDirty.current = false;
-        setNativeImages(latest.native_image_learning === true);
-      }
       if (path === "/settings/state") {
         stateDirty.current = false;
         setStaleMinutes(String(latest.state.stale_after_minutes));
-      }
-      if (path === "/settings/goals") {
-        goalsDirty.current = false;
-        setReminderMinutes(String(latest.goals.default_reminder_minutes));
-        setOverdueReminders(latest.goals.overdue_reminders);
       }
       for (const kind of modelKinds) {
         if (path === `/settings/models/${kind}`) {
@@ -559,6 +523,7 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
       setSaved("已保存");
       return latest;
     } catch (e) {
+      setErrorPath(path);
       setError(errorText(e));
       return null;
     } finally {
@@ -567,7 +532,12 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
   };
   return (
     <div className="settings-grid">
-      {error && <Notice error>{error}</Notice>}
+      {error &&
+        ![
+          "/settings/limits",
+          "/settings/goals",
+          "/settings/consolidation",
+        ].includes(errorPath) && <Notice error>{error}</Notice>}
       {saved && <Notice>{saved}</Notice>}
       <section className="panel settings-panel">
         <h2>角色</h2>
@@ -673,72 +643,17 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
             )}
           </section>
         ))}
-      <section className="panel settings-panel">
-        <h2>用量与学习</h2>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void save("/settings/limits", "PATCH", {
-              daily_token_limit: limit ? Number(limit) : null,
-              learning_concurrency: concurrency,
-              native_image_learning: nativeImages,
-            });
-          }}
-        >
-          <label>
-            每日 token 上限
-            <input
-              type="number"
-              min={1}
-              value={limit}
-              placeholder="不限"
-              onChange={(e) => setLimit(e.target.value)}
-            />
-          </label>
-          <label>
-            学习并发
-            <input
-              type="number"
-              required
-              min={1}
-              max={32}
-              value={concurrency}
-              onChange={(e) => setConcurrency(Number(e.target.value))}
-            />
-          </label>
-          <p className="muted">
-            按角色时区每日恢复；在途调用和未报告的 token
-            可能使实际用量超过上限。
-          </p>
-          <label className="check-label">
-            <input
-              type="checkbox"
-              aria-describedby="native-image-learning-help native-image-learning-availability"
-              checked={nativeImages}
-              disabled={busy || !nativeImagesAvailable}
-              onChange={(e) => {
-                nativeImagesDirty.current = true;
-                setNativeImages(e.target.checked);
-                setSaved("");
-              }}
-            />
-            学习时直接看原图
-          </label>
-          <p className="lifecycle-help" id="native-image-learning-help">
-            默认关闭。开启后，后续学习把原图交给对话模型；图片描述仍用于回复准备、检索与管理页。超限或不可用的图片沿用描述或占位。
-          </p>
-          <p className="lifecycle-help" id="native-image-learning-availability">
-            {!nativeImagesAvailable
-              ? `${!settings.models.chat.enabled ? "当前对话模型未启用，无法直接看原图。" : "当前对话模型未启用图片输入（vision），此设置暂不生效。"}${settings.model_source === "external" ? "请在外部模型配置中启用对话模型及 vision。" : "请先启用并保存对话模型的“支持图片输入（vision）”。"}`
-              : settings.model_source === "external"
-                ? "这是运行设置，使用外部模型配置时也可以保存。"
-                : "使用已保存的对话模型图片能力；保存后对后续学习生效。"}
-          </p>
-          <button className="primary" disabled={busy}>
-            保存用量与学习
-          </button>
-        </form>
-      </section>
+      <LimitsSettings
+        value={settings}
+        busy={busy}
+        saveError={errorPath === "/settings/limits" ? error : ""}
+        nativeImagesAvailable={
+          settings.models.chat.enabled && settings.models.chat.vision === true
+        }
+        chatEnabled={settings.models.chat.enabled}
+        external={settings.model_source === "external"}
+        save={(value) => save("/settings/limits", "PATCH", value)}
+      />
       <section className="panel settings-panel">
         <h2>当前状态</h2>
         <p className="lifecycle-help">
@@ -757,6 +672,7 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
               minutes > 525600
             ) {
               setSaved("");
+              setErrorPath("/settings/state");
               setError("可能过时的分钟数须为 1—525600 的整数");
               return;
             }
@@ -792,78 +708,18 @@ function SettingsForm({ settings: initial }: { settings: Settings }) {
           </button>
         </form>
       </section>
-      <section className="panel settings-panel">
-        <h2>目标与提醒</h2>
-        <p>
-          未单独填写提前量的普通目标使用默认值。询问不安排提醒，过期不会自动放弃目标。
-        </p>
-        <form
-          noValidate
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (busy) return;
-            const minutes = Number(reminderMinutes);
-            if (
-              !reminderMinutes.trim() ||
-              !Number.isInteger(minutes) ||
-              minutes < 0 ||
-              minutes > 525600
-            ) {
-              setSaved("");
-              setError("默认提醒提前量须为 0—525600 的整数");
-              return;
-            }
-            void save("/settings/goals", "PATCH", {
-              default_reminder_minutes: minutes,
-              overdue_reminders: overdueReminders,
-            });
-          }}
-        >
-          <label>
-            默认提醒提前量（分钟）
-            <input
-              aria-label="默认提醒提前量（分钟）"
-              type="number"
-              min={0}
-              max={525600}
-              step={1}
-              required
-              disabled={busy}
-              value={reminderMinutes}
-              onChange={(e) => {
-                goalsDirty.current = true;
-                setReminderMinutes(e.target.value);
-                setSaved("");
-              }}
-            />
-            <small>0—525600 的整数，默认 60 分钟；0 表示到期时提醒。</small>
-          </label>
-          <label className="check-label">
-            <input
-              type="checkbox"
-              disabled={busy}
-              checked={overdueReminders}
-              onChange={(e) => {
-                goalsDirty.current = true;
-                setOverdueReminders(e.target.checked);
-                setSaved("");
-              }}
-            />
-            启用过期提醒
-          </label>
-          <p className="lifecycle-help">
-            过期提醒每日最多一次。
-            <a href="#/state?tab=notifications">查看提醒</a>
-            ；“已取走”只表示宿主拿到了。
-          </p>
-          <button className="primary" disabled={busy}>
-            保存目标与提醒设置
-          </button>
-        </form>
-      </section>
+      <GoalSettings
+        value={settings.goals}
+        busy={busy}
+        saveError={errorPath === "/settings/goals" ? error : ""}
+        save={async (value) =>
+          (await save("/settings/goals", "PATCH", value))?.goals || null
+        }
+      />
       {settings.consolidation && (
         <ConsolidationSettings
           value={settings.consolidation}
+          saveError={errorPath === "/settings/consolidation" ? error : ""}
           timezone={settings.role.timezone}
           busy={busy}
           save={async (value) =>

@@ -221,7 +221,7 @@ def case_run(case,dbpath,gateway_factory,method,resolution='report_only_v1'):
     store=Store(dbpath)
     gateway=None
     try:
-        store.set_setting('consolidation',{'enabled':True,'method':method,'max_calls':50,'resolution':resolution})
+        store.set_setting('consolidation',{'enabled':True,'method':method,'max_calls':50,'resolution':resolution,'entry_profile_enabled':False})
         key_map,source_map=seed(store,case)
         members={v:[k] for k,v in key_map.items()}
         retention=[]

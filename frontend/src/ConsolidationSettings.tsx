@@ -1,46 +1,48 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Notice } from "./ui";
-import { consolidationSwitches } from "./consolidation-labels";
+import {
+  consolidationBudgets,
+  consolidationSwitches,
+} from "./consolidation-labels";
+import { changedSettings, useSettingsDraft } from "./settings-draft";
 import type {
   ConsolidationConfig,
   GoalDedupConfig,
 } from "./consolidation-types";
 
+const configOf = (value: ConsolidationConfig) => ({
+  ...value,
+  person_summary_enabled: value.person_summary_enabled ?? true,
+  entry_profile_max_calls: value.entry_profile_max_calls ?? 60,
+  person_summary_max_calls: value.person_summary_max_calls ?? 40,
+  persona_max_calls: value.persona_max_calls ?? 30,
+});
+
 export function ConsolidationSettings({
   value,
   timezone,
   busy,
+  saveError,
   save,
 }: {
   value: ConsolidationConfig;
   timezone: string | null;
   busy: boolean;
-  save: (value: ConsolidationConfig) => Promise<ConsolidationConfig | null>;
+  saveError?: string;
+  save: (
+    value: Partial<ConsolidationConfig>,
+  ) => Promise<ConsolidationConfig | null>;
 }) {
-  const [draft, setDraft] = useState(() => ({
-    ...value,
-    person_summary_enabled: value.person_summary_enabled ?? true,
-    max_calls: String(value.max_calls),
-  }));
-  const dirty = useRef(false);
+  const current = configOf(value);
+  const { draft, change, reset } = useSettingsDraft({
+    ...current,
+    max_calls: String(current.max_calls),
+    entry_profile_max_calls: String(current.entry_profile_max_calls),
+    person_summary_max_calls: String(current.person_summary_max_calls),
+    persona_max_calls: String(current.persona_max_calls),
+  });
   const [error, setError] = useState(""),
     [saved, setSaved] = useState(false);
-  useEffect(() => {
-    if (!dirty.current)
-      setDraft({
-        ...value,
-        person_summary_enabled: value.person_summary_enabled ?? true,
-        max_calls: String(value.max_calls),
-      });
-  }, [value]);
-  function change<K extends keyof typeof draft>(
-    key: K,
-    next: (typeof draft)[K],
-  ) {
-    dirty.current = true;
-    setSaved(false);
-    setDraft((d) => ({ ...d, [key]: next }));
-  }
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (busy) return;
@@ -50,24 +52,28 @@ export function ConsolidationSettings({
       setError("整理运行时间须为 HH:MM，范围 00:00—23:59");
       return;
     }
-    const calls = Number(draft.max_calls);
-    if (
-      !draft.max_calls.trim() ||
-      !Number.isInteger(calls) ||
-      calls < 0 ||
-      calls > 50
-    ) {
-      setError("模型调用次数预算须为 0—50 的整数");
-      return;
+    for (const [key, label] of consolidationBudgets) {
+      const calls = Number(draft[key]);
+      if (
+        !draft[key].trim() ||
+        !Number.isInteger(calls) ||
+        calls < 0 ||
+        calls > 1000
+      ) {
+        setError(`${label}须为 0—1000 的整数`);
+        return;
+      }
     }
-    const result = await save({ ...draft, max_calls: calls });
-    if (result) {
-      dirty.current = false;
-      setDraft({
-        ...result,
-        person_summary_enabled: result.person_summary_enabled ?? true,
-        max_calls: String(result.max_calls),
-      });
+    const changes = changedSettings(current, {
+      ...draft,
+      max_calls: Number(draft.max_calls),
+      entry_profile_max_calls: Number(draft.entry_profile_max_calls),
+      person_summary_max_calls: Number(draft.person_summary_max_calls),
+      persona_max_calls: Number(draft.persona_max_calls),
+    });
+    if (!Object.keys(changes).length) return;
+    if (await save(changes)) {
+      reset();
       setSaved(true);
     }
   }
@@ -81,42 +87,46 @@ export function ConsolidationSettings({
       <p className="lifecycle-help">
         整理不中断接收和学习。修改只影响之后接受的新运行，已接受的运行与续跑沿用其设置快照。
       </p>
-      <form onSubmit={submit} noValidate>
+      <form onSubmit={submit} noValidate onChange={() => setSaved(false)}>
         <fieldset disabled={busy} className="lifecycle-fieldset">
+          <label>
+            整理运行时间
+            <input
+              aria-label="整理运行时间"
+              type="text"
+              required
+              maxLength={5}
+              placeholder="03:00"
+              value={draft.maintenance_time}
+              onChange={(e) => change("maintenance_time", e.target.value)}
+            />
+            <small>
+              HH:MM · 角色时区 {timezone || "未设置"}，与每日记忆维护共用时间。
+            </small>
+          </label>
           <div className="form-grid">
-            <label>
-              整理运行时间
-              <input
-                aria-label="整理运行时间"
-                type="text"
-                required
-                maxLength={5}
-                placeholder="03:00"
-                value={draft.maintenance_time}
-                onChange={(e) => change("maintenance_time", e.target.value)}
-              />
-              <small>
-                HH:MM · 角色时区 {timezone || "未设置"}
-                ，与每日记忆维护共用时间。
-              </small>
-            </label>
-            <label>
-              每次整理的模型调用次数预算
-              <input
-                aria-label="每次整理的模型调用次数预算"
-                type="number"
-                min={0}
-                max={50}
-                step={1}
-                required
-                value={draft.max_calls}
-                onChange={(e) => change("max_calls", e.target.value)}
-              />
-              <small>
-                0—50，包含重试、修正、persona 与人物摘要生成及检查。
-              </small>
-            </label>
+            {consolidationBudgets.map(([key, label, fallback]) => (
+              <label key={key}>
+                {label}
+                <input
+                  aria-label={label}
+                  type="number"
+                  min={0}
+                  max={1000}
+                  step={1}
+                  required
+                  value={draft[key]}
+                  onChange={(e) => change(key, e.target.value)}
+                />
+                <small>0—1000 的整数，默认 {fallback} 次。</small>
+              </label>
+            ))}
           </div>
+          <p className="lifecycle-help">
+            以上均为每轮调用上限，各步骤互不占用；HTTP 重试和 JSON
+            修正计入所属步骤。0
+            表示停用该步骤的模型调用，其他步骤、记忆生命周期维护与开启的目标依据复核仍会执行。
+          </p>
           {consolidationSwitches.map(([key, label]) => (
             <label className="check-label" key={key}>
               <input
@@ -128,27 +138,20 @@ export function ConsolidationSettings({
             </label>
           ))}
           <p className="lifecycle-help">
-            预算为 0
-            时不调用模型，记忆生命周期维护与开启的目标依据复核仍会执行。persona
-            与人物摘要需满足各自更新条件且至少剩余 2
+            persona 与人物摘要需满足各自更新条件且在各自上限内至少剩余 2
             次调用名额。人物摘要开关只影响之后的整理，不关闭已发布摘要的宿主读取。
           </p>
           <p className="lifecycle-help">
             矛盾和依赖复核只产生管理员可见的模型建议；目标依据复核不自动完成或放弃目标。
           </p>
-          {error && <Notice error>{error}</Notice>}
+          {(error || saveError) && <Notice error>{error || saveError}</Notice>}
           {saved && <Notice>梦境整理设置已保存</Notice>}
           <div className="actions">
             <button className="primary">保存梦境整理设置</button>
             <button
               type="button"
               onClick={() => {
-                dirty.current = false;
-                setDraft({
-                  ...value,
-                  person_summary_enabled: value.person_summary_enabled ?? true,
-                  max_calls: String(value.max_calls),
-                });
+                reset();
                 setError("");
                 setSaved(false);
               }}

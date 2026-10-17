@@ -10,6 +10,18 @@ export const suggestionStatuses = {
   confirmed: "已确认",
   cleared: "已清除",
 };
+export const consolidationBudgets = [
+  ["max_calls", "记忆整理（合并／矛盾／依赖）每轮调用上限", 300],
+  ["entry_profile_max_calls", "入口画像每轮调用上限", 60],
+  ["person_summary_max_calls", "人物摘要每轮调用上限", 40],
+  ["persona_max_calls", "persona 每轮调用上限", 30],
+] as const;
+export const consolidationSteps: Record<string, string> = {
+  memory: "记忆整理（合并／矛盾／依赖）",
+  entry_profile: "入口画像",
+  person_summary: "人物摘要",
+  persona: "persona",
+};
 export const consolidationSwitches = [
   ["merge_enabled", "合并重复记忆"],
   ["conflict_enabled", "矛盾检查与建议"],
@@ -22,6 +34,9 @@ export function consolidationReason(reason: string) {
   const labels: Record<string, string> = {
     disabled: "本次设置已关闭",
     model_items_disabled: "记忆模型整理项目均已关闭",
+    usage_limit: "每日 token 上限已用尽",
+    paused: "模型用途已暂停",
+    interrupted: "运行已中断",
     call_budget: "模型调用次数预算已用尽",
     persona_busy: "已有 persona 任务正在运行",
     checks_rejected: "persona 检查未通过，候选被拒绝",

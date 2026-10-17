@@ -26,7 +26,7 @@ def persona_case(store, *, budget=50, degree='small', supported=True, **settings
     with store.write() as conn:
         conn.execute('UPDATE persona_versions SET created_at=?', ((clock()-timedelta(days=8)).isoformat(),))
     add_self(store, '我在阅读时喜欢安静。')
-    store.set_setting('consolidation', {'max_calls':budget, 'merge_enabled':False,
+    store.set_setting('consolidation', {'persona_max_calls':budget, 'merge_enabled':False,
         'conflict_enabled':False, 'dependency_enabled':False, **settings})
     model = FakeGateway(store, {'sentences':[]},
                         degree=degree, supported=supported)
@@ -65,12 +65,12 @@ def test_persona_insufficient_budget_does_not_start_and_next_run_can_update(stor
     assert report['persona']['reason'] == 'call_budget'
     with store.read() as conn:
         assert conn.execute('SELECT COUNT(*) FROM persona_attempts').fetchone()[0] == 0
-    store.set_setting('consolidation', {**store.setting('consolidation'), 'max_calls':3})
+    store.set_setting('consolidation', {**store.setting('consolidation'), 'persona_max_calls':3})
     assert complete(engine)['persona']['status'] == 'published'
     assert len(model.calls) == 3
 
 
-def test_persona_degree_cannot_publish_after_shared_budget_is_exhausted(store):
+def test_persona_degree_cannot_publish_after_persona_budget_is_exhausted(store):
     engine, model, _ = persona_case(store, budget=2)
     before = current_persona(store)['id']
     report = complete(engine)
@@ -81,7 +81,7 @@ def test_persona_degree_cannot_publish_after_shared_budget_is_exhausted(store):
     assert model.calls[-1][1]['task'] == 'check_facts_and_rules'
     with store.read() as conn:
         assert not conn.execute("SELECT 1 FROM persona_versions WHERE status='pending'").fetchone()
-    store.set_setting('consolidation', {**store.setting('consolidation'), 'max_calls':3})
+    store.set_setting('consolidation', {**store.setting('consolidation'), 'persona_max_calls':3})
     retry = complete(engine)
     assert retry['persona']['status'] == 'published'
     assert retry['summary']['model_calls']['count'] == 3
@@ -209,7 +209,7 @@ def test_settings_patch_is_audited_and_only_next_run_changes(store):
         assert response.json()['lifecycle']['maintenance_time']=='04:15'
     engine.run(rid)
     assert engine.report(rid)['summary']['merged']['count']==1
-    assert engine.report(rid)['consolidation']['settings']['max_calls']==50
+    assert engine.report(rid)['consolidation']['settings']['max_calls']==300
     next_report = complete(engine)
     assert not next_report['consolidation']['settings']['merge_enabled']
     assert next_report['persona']['reason']=='disabled'
@@ -217,7 +217,7 @@ def test_settings_patch_is_audited_and_only_next_run_changes(store):
         assert conn.execute("SELECT 1 FROM admin_operations WHERE action='consolidation_settings_saved'").fetchone()
 
 
-@pytest.mark.parametrize('payload', [{'max_calls':51},{'max_calls':-1},{'max_calls':True},{'merge_enabled':'false'},
+@pytest.mark.parametrize('payload', [{'max_calls':1001},{'max_calls':-1},{'max_calls':True},{'merge_enabled':'false'},
                                       {'maintenance_time':'24:00'},{'method':'strict'},{'unrecognized':True}])
 def test_settings_strict_validation(store, payload):
     with TestClient(create_app(store=store),base_url='http://127.0.0.1',client=('127.0.0.1',12345)) as client:
@@ -250,8 +250,8 @@ def test_persona_writeback_rechecks_version_and_evidence(store, change):
     assert not [i for i in report['items'] if i['outcome']=='persona_published']
 
 
-def test_budget_is_shared_after_merge_and_defers_persona(store):
-    engine, persona, _ = persona_case(store, budget=2, merge_enabled=True, conflict_enabled=True)
+def test_memory_budget_does_not_defer_persona_with_its_own_limit(store):
+    engine, persona, _ = persona_case(store, budget=2, max_calls=1, merge_enabled=True, conflict_enabled=True)
     pair(store)
     # Keep persona's self evidence from forming irrelevant candidate pairs.
     co = Model(store,merge_answer)
@@ -262,8 +262,8 @@ def test_budget_is_shared_after_merge_and_defers_persona(store):
     engine.gateway = Combined()
     report = complete(engine)
     assert report['summary']['merged']['count']==1
-    assert report['summary']['model_calls']['count']==1
-    assert report['persona']['reason']=='call_budget' and not persona.calls
+    assert report['summary']['model_calls']['count']==3
+    assert report['persona']['status']=='published' and len(persona.calls)==2
 
 
 def test_D01_prepare_and_goal_operations_while_persona_is_running(store):
@@ -305,7 +305,7 @@ def test_stop_between_persona_generation_and_check_never_publishes(store):
     (2,'repair',1,'failed'), (3,'repair',3,'failed'), (4,'repair',4,'published'),
     (2,'retry',1,'failed'), (3,'retry',3,'failed'), (4,'retry',4,'published'),
 ])
-def test_persona_http_retries_and_json_repairs_use_shared_budget(store,budget,first_response,expected_calls,status):
+def test_persona_http_retries_and_json_repairs_use_persona_budget(store,budget,first_response,expected_calls,status):
     import httpx
     from iris.models import Gateway, ModelConfig
     from fake_openai import completion
@@ -433,7 +433,7 @@ def test_consolidation_settings_csrf_and_time_alias(store):
         assert client.get('/admin/api/settings').json()['consolidation']['maintenance_time']=='05:30'
         client.headers.pop('X-Iris-CSRF')
         assert client.patch('/admin/api/settings/consolidation',json={'max_calls':1}).status_code==403
-        assert client.get('/admin/api/settings').json()['consolidation']['max_calls']==50
+        assert client.get('/admin/api/settings').json()['consolidation']['max_calls']==300
 
 
 def test_complete_phase_order_merges_before_persona_then_reviews_goals(store):

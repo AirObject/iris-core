@@ -65,6 +65,11 @@ def _filters(conn, *, people=(), kinds=(), stances=(), time_from=None, time_to=N
     if '入口画像' in kinds:
         if entry_id is None:
             raise ValueError('entry_id required for entry profile kind')
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE name='entry_profile_admissions'").fetchone():
+            from .entry_profile import memory_profile_rows
+            usable=[r['memory_id'] for r in memory_profile_rows(conn,entry_id,usable_only=True)]
+            clauses.append("(m.kind!='入口画像' OR m.id IN (SELECT value FROM json_each(?)))")
+            args.append(dumps(usable))
     else:
         clauses.append("m.kind!='入口画像'")
     if people:
@@ -644,7 +649,7 @@ class Retrieval:
             if visibility.token != visibility_token:
                 result["goals"] = self._goals(conn, entry_id, min(goal_limit, 10), participants=participant_ids, current=self.clock())
             result["persona"] = persona_context(conn)
-            result["entry_profile"] = profile_context(conn, entry_id)
+            result["entry_profile"] = profile_context(conn, entry_id, known_memory_ids=known_memory_ids)
             result["state"] = current_state(conn, current=self.clock())
             result.update(memories=final, recent_messages=recent, judgment=diagnostic)
             result['hints'].append({'code': 'recall_judgment', **diagnostic,

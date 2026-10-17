@@ -241,3 +241,7 @@ def test_background_daily_limit_skip_does_not_make_model_calls(client):
     result = finished(client, start(client, 1))
     assert result['state'] == 'skipped' and result['reason'] == 'daily_limit'
     assert len(engine(client).gateway.calls) == calls
+
+
+# Historical document-path regression on the pre-switch schema.
+from profile_legacy import legacy_schema

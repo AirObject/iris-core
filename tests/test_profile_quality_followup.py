@@ -96,9 +96,11 @@ def test_unrelated_new_memory_cannot_extend_a_recent_wishs_expiry():
 
 
 @pytest.mark.parametrize('family,version', [('entry_profile','v2'), ('person_summary','v2')])
-def test_runner_records_loaded_versions_in_fingerprinted_run_json(tmp_path, family, version):
+def test_runner_records_loaded_versions_in_fingerprinted_run_json(tmp_path, family, version, monkeypatch):
     from pathlib import Path
     if family == 'entry_profile':
+        from profile_legacy import use_legacy_schema
+        use_legacy_schema(monkeypatch)
         from test_entry_profile_eval import _runner as runner, corpus
         from test_entry_profile import Model
         path = corpus(tmp_path)

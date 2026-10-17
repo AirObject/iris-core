@@ -160,8 +160,8 @@ test("设置轮询更新不会覆盖整理和去重判断草稿，还原可取�
     </>,
   );
   const user = userEvent.setup();
-  await user.clear(screen.getByLabelText("每次整理的模型调用次数预算"));
-  await user.type(screen.getByLabelText("每次整理的模型调用次数预算"), "12");
+  await user.clear(screen.getByLabelText("记忆整理（合并／矛盾／依赖）每轮调用上限"));
+  await user.type(screen.getByLabelText("记忆整理（合并／矛盾／依赖）每轮调用上限"), "12");
   await user.clear(screen.getByLabelText("目标去重判断预算（秒）"));
   await user.type(screen.getByLabelText("目标去重判断预算（秒）"), "7");
   rerender(
@@ -179,10 +179,10 @@ test("设置轮询更新不会覆盖整理和去重判断草稿，还原可取�
       />
     </>,
   );
-  expect(screen.getByLabelText("每次整理的模型调用次数预算")).toHaveValue(12);
+  expect(screen.getByLabelText("记忆整理（合并／矛盾／依赖）每轮调用上限")).toHaveValue(12);
   expect(screen.getByLabelText("目标去重判断预算（秒）")).toHaveValue(7);
   await user.click(screen.getByRole("button", { name: "还原整理设置" }));
   await user.click(screen.getByRole("button", { name: "还原目标判断设置" }));
-  expect(screen.getByLabelText("每次整理的模型调用次数预算")).toHaveValue(25);
+  expect(screen.getByLabelText("记忆整理（合并／矛盾／依赖）每轮调用上限")).toHaveValue(25);
   expect(screen.getByLabelText("目标去重判断预算（秒）")).toHaveValue(9);
 });

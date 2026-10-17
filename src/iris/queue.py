@@ -220,9 +220,25 @@ def should_learn(pending_count: int, oldest_at: datetime | None, latest_at: date
 
 
 def _subject(conn: sqlite3.Connection, platform: str, account_id: str, name: str) -> str:
-    row = conn.execute("SELECT subject_id FROM platform_identities WHERE platform=? AND account_id=?", (platform, account_id)).fetchone()
+    row = conn.execute("SELECT subject_id,display_name FROM platform_identities WHERE platform=? AND account_id=?",
+                       (platform, account_id)).fetchone()
     if row:
-        return canonical_subject(conn, row[0])
+        subject_id = canonical_subject(conn, row["subject_id"])
+        # Intake already holds the write transaction. Only recover an exact
+        # account fallback; later ordinary nickname changes remain ignored.
+        if (row["display_name"] == account_id and name != account_id
+                and name.strip() not in ("", account_id)):
+            before = conn.execute("SELECT revision FROM subjects WHERE id=?", (subject_id,)).fetchone()[0]
+            conn.execute("UPDATE platform_identities SET display_name=? WHERE platform=? AND account_id=?",
+                         (name, platform, account_id))
+            renamed = conn.execute("UPDATE subjects SET name=? WHERE id=? AND name=?",
+                                   (name, subject_id, account_id)).rowcount
+            # The existing subjects_revision trigger owns the increment.
+            after = conn.execute("SELECT revision FROM subjects WHERE id=?", (subject_id,)).fetchone()[0]
+            operation(conn, "identity_fallback_name_updated", "subject", subject_id,
+                      {"platform": platform, "account_id": account_id, "subject_name_updated": bool(renamed),
+                       "revision_before": before, "revision_after": after}, actor="system")
+        return subject_id
     subject_id = uuid.uuid4().hex
     conn.execute("INSERT INTO subjects(id,kind,name,created_at) VALUES(?,'person',?,?)", (subject_id, name, now()))
     conn.execute("INSERT INTO platform_identities(subject_id,platform,account_id,display_name) VALUES(?,?,?,?)",

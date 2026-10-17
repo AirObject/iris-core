@@ -696,12 +696,16 @@ export function MemoryDetail({
 export function SourceView({
   source: s,
   openMemory,
+  initiallyOpen = false,
+  speakerNames = {},
 }: {
   source: Source;
   openMemory: (id: number) => void;
+  initiallyOpen?: boolean;
+  speakerNames?: Record<string, string>;
 }) {
   return (
-    <details className="source">
+    <details className="source" open={initiallyOpen || undefined}>
       <summary>
         {s.kind === "message"
           ? `来源消息 · ${s.message?.sender_name || "原文已不可用"}`
@@ -716,6 +720,15 @@ export function SourceView({
             {time(s.message.occurred_at)}
           </p>
           <blockquote>{s.message.content}</blockquote>
+          {s.message.quote_content && (
+            <blockquote>
+              转引原话（原作者：
+              {speakerNames[s.message.quote_author_subject_id || ""] ||
+                s.message.quote_author_subject_id ||
+                "未记录"}
+              ）：{s.message.quote_content}
+            </blockquote>
+          )}
           <MessageMedia media={s.message.media} />
           <details className="source-context">
             <summary>查看前后文</summary>
@@ -752,16 +765,18 @@ export function SourceView({
     </details>
   );
 }
-function RevisionView({ revision: r }: { revision: Revision }) {
+export function RevisionView({ revision: r }: { revision: Revision }) {
   return (
     <article className="revision">
       <small>
         {time(r.created_at)} ·{" "}
         {(
-          { admin: "管理员", learning: "学习", maintenance: "维护" } as Record<
-            string,
-            string
-          >
+          {
+            admin: "管理员",
+            learning: "学习",
+            maintenance: "维护",
+            entry_profile: "画像学习",
+          } as Record<string, string>
         )[r.actor] || r.actor}{" "}
         · 修订 {r.revision_before} → {r.revision_after}
       </small>

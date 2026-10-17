@@ -119,6 +119,6 @@ def test_consolidation_setting_roundtrip_and_strict_type(client,store):
     response=client.patch('/admin/api/settings/consolidation',json={'person_summary_enabled':False})
     assert response.status_code==200 and response.json()['consolidation']['person_summary_enabled'] is False
     assert client.patch('/admin/api/settings/consolidation',json={'person_summary_enabled':1}).status_code==400
-    assert client.get('/admin/api/settings').json()['consolidation']['max_calls']==50
+    assert client.get('/admin/api/settings').json()['consolidation']['max_calls']==300
     with store.read() as conn:
         assert conn.execute("SELECT 1 FROM admin_operations WHERE action='consolidation_settings_saved'").fetchone()
