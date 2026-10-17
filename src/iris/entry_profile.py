@@ -2101,7 +2101,7 @@ def incremental_prompts():
     from importlib.resources import files
     import hashlib
     result={}
-    for stage,name in (('observe','entry_profile_observe_v6'),('admit','entry_profile_admit_v6')):
+    for stage,name in (('observe','entry_profile_observe_v7'),('admit','entry_profile_admit_v7')):
         value=files('iris').joinpath('prompts',name+'.md').read_text(encoding='utf-8')
         result[stage]=dict(name=name,text=value,sha256=hashlib.sha256(value.encode()).hexdigest())
     return result
@@ -2563,6 +2563,45 @@ def _inc_discussion_groups(witnesses, page):
     return list(groups.values())
 
 
+def _inc_excerpt_hints(text):
+    """Selection hints only; neither numbers nor these patterns prove a violation.
+
+    Stable quantities/definitions stay eligible. Privacy and implicit event
+    narratives require the semantic check; no domain vocabulary is used here.
+    """
+    text=unicodedata.normalize('NFKC',text)
+    hints=[]
+    if re.search(r'\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}月\d{1,2}[日号]|\d{4}年|\d{1,2}:\d{2}'
+                 r'|[今昨明][天晚夜早]|[上下]周|前几天|当[天晚]|那[天晚]',text):
+        hints.append('date_or_time')
+    if re.search(r'(?:\d+(?:\.\d+)?|[零〇一二两三四五六七八九十百千万]+)\s*'
+                 r'(?:元|块钱|美元|摄氏度|°[CcFf]|℃|度)(?![量数])',text):
+        hints.append('transient_quantity')
+    if re.search(r'[这那本上]次|这一回|那一回|我(?:们)?(?:曾经|刚刚|刚|又)?(?:遇到|遭遇|经历)',text):
+        hints.append('occasion_or_experience')
+    return hints
+
+
+def _inc_rule_terms(text):
+    # Retain any literal clause support already available in the pool. This
+    # cannot require exact wording from a paraphrase or certify announcement
+    # authority; those remain semantic admission decisions.
+    from jieba import posseg
+    return list(dict.fromkeys(word for word,flag in posseg.cut(text,HMM=False)
+        if flag.startswith(('n','v','a')) or word in ('不','不得','不能','须','必须','先','后')))
+
+
+def _inc_rule_clause_anchors(body, ordered):
+    anchors=[]
+    for clause in re.split(r'[，,；;。！？!?\n]',body):
+        terms=_inc_rule_terms(clause)
+        scores=[sum(_inc_term_present(term,s['excerpt']) for term in terms) for s in ordered]
+        best=max(scores,default=0)
+        if best:
+            anchors.append({_inc_source_key(s) for s,n in zip(ordered,scores) if n==best})
+    return anchors
+
+
 def _inc_select_evidence(witnesses, category, body, saying, definitions, proposal, fits):
     """Shrink sources, never the body's evidentiary obligations.
 
@@ -2574,7 +2613,9 @@ def _inc_select_evidence(witnesses, category, body, saying, definitions, proposa
     roots=_inc_topic_roots(ordered) if category=='topic' else None
     retire=bool(proposal and proposal['action']=='retire')
     terms=[] if retire else _inc_entity_terms(body.partition('：')[2] if category=='saying' else body)
+    if category=='rule' and not retire: terms.extend(_inc_rule_terms(body))
     terms=list(dict.fromkeys(terms))
+    rule_anchors=_inc_rule_clause_anchors(body,ordered) if category=='rule' and not retire else []
     keys=[_inc_source_key(s) for s in ordered]
     term_keys=[{key for key,s in zip(keys,ordered) if _inc_term_present(term,s['excerpt'])} for term in terms]
     original_keys={_inc_source_key(s) for s in _inc_groups(ordered,category,saying)}
@@ -2592,6 +2633,7 @@ def _inc_select_evidence(witnesses, category, body, saying, definitions, proposa
             result.append(int(bool(chosen & eligible)))
             if category=='topic':
                 result.append(min(2,len(_inc_topic_witnesses(ordered,roots,chosen & eligible))))
+        result.extend(int(bool(chosen & eligible)) for eligible in rule_anchors)
         if definitions: result.append(int(bool(chosen & definition_keys)))
         result.extend(int(bool(chosen & eligible)) for eligible in change_keys)
         if category=='rule' and not retire: result.append(int(_inc_rule_reason(page) is None))
@@ -2599,11 +2641,17 @@ def _inc_select_evidence(witnesses, category, body, saying, definitions, proposa
     target=counts(ordered)
     # Earliest plus the latest different speaker, then remaining recent sources.
     # This is a stable preference, not a semantic relevance or sentiment rank.
-    earliest=ordered[:1]
-    different=[s for s in reversed(ordered) if earliest and s['speaker']!=earliest[0]['speaker']]
+    # Prefer excerpts without explicit occasion hints, only while preserving
+    # the full-pool support vector above. A necessary risky source still goes
+    # to the checker for contiguous shortening or rejection, never auto-approval.
+    risk={_inc_source_key(s):len(_inc_excerpt_hints(s['excerpt'])) for s in ordered}
     priority=[]
-    for source in [*earliest,*different[:1],*reversed(ordered)]:
-        if _inc_source_key(source) not in {_inc_source_key(s) for s in priority}: priority.append(source)
+    for level in sorted(set(risk.values())):
+        tier=[s for s in ordered if risk[_inc_source_key(s)]==level]
+        earliest=tier[:1]
+        different=[s for s in reversed(tier) if earliest and s['speaker']!=earliest[0]['speaker']]
+        for source in [*earliest,*different[:1],*reversed(tier)]:
+            if _inc_source_key(source) not in {_inc_source_key(s) for s in priority}: priority.append(source)
     rank={_inc_source_key(s):i for i,s in enumerate(priority)}
     def shrink(removal_order):
         page=list(ordered)
@@ -3053,7 +3101,7 @@ class IncrementalProfileTask:
         def public_source(s):
             return dict(message_id=s['message']['position'],field=s['field'],excerpt=s['excerpt'],speaker=s['speaker'],
                 date=s['message']['date'],occurred_at=s['message']['occurred_at'],context=s['message']['content'],message_speaker=s['message']['speaker'],
-                quote=s['message'].get('quote'),burst_id=s.get('burst_id'))
+                quote=s['message'].get('quote'),burst_id=s.get('burst_id'),excerpt_hints=_inc_excerpt_hints(s['excerpt']))
         memory=dict(memory_id=row['id'],revision=row['revision'],category=category,body=body,saying=saying,
             meaning=proposal['meaning'] if proposal else body.partition('：')[2] if category=='saying' else '',
             definition_refs=definitions,sources=[])
@@ -3078,9 +3126,10 @@ class IncrementalProfileTask:
             return None
         pages=[core]
         zone=_setting(conn,'timezone','Asia/Shanghai');stamp=_instant(self.clock()).isoformat()
-        snapshot=dict(settings_revision=_settings(conn,row['owner_entry_id'])['revision'],evidence_revision=meta['evidence_revision'],
+        snapshot=dict(admission_prompt_sha256=self.prompts['admit']['sha256'],
+            settings_revision=_settings(conn,row['owner_entry_id'])['revision'],evidence_revision=meta['evidence_revision'],
             source_fingerprints={str(s['message']['position']):s['message']['fingerprint'] for s in witnesses},proposal=proposal,
-            evidence_selection=dict(strategy='necessary_v1',available=len(witnesses),selected=len(core),omitted=len(witnesses)-len(core)),
+            evidence_selection=dict(strategy='necessary_stable_excerpts_v2',available=len(witnesses),selected=len(core),omitted=len(witnesses)-len(core)),
             # Numeric roots are required by the existing recursive purge index, also
             # on pages that do not contain a particular message as model evidence.
             evidence_refs=[dict(message_id=s['message']['position']) for s in witnesses])
@@ -3218,7 +3267,8 @@ class IncrementalProfileTask:
         """Cheap preflight in addition to post-call CAS; never spend on an already stale target."""
         from .memory_ops import _profile_manual
         memory=payload['memory'];snap=payload['_snapshot']
-        if payload.get('review_contract')!='groups_and_meaning_v1': return False
+        if (payload.get('review_contract')!='groups_and_meaning_v1'
+                or snap.get('admission_prompt_sha256')!=self.prompts['admit']['sha256']): return False
         row=conn.execute('SELECT * FROM memories WHERE id=?',(memory['memory_id'],)).fetchone()
         meta=conn.execute('SELECT * FROM entry_profile_admissions WHERE memory_id=?',(memory['memory_id'],)).fetchone()
         if (not row or not meta or row['purged_at'] or row['lifecycle']!='active' or _profile_manual(conn,row)

@@ -179,10 +179,10 @@ def test_non_topics_do_not_acquire_recurrence_detail_requirement(store):
     assert 'topic_detail_review' not in g.calls[-1]['payload']['memory']
 
 
-def test_default_prompts_load_v6_and_explicitly_check_every_detail():
+def test_default_prompts_load_v7_and_explicitly_check_every_detail():
     prompts = ep.incremental_prompts()
     assert [prompts[x]['name'] for x in ('observe', 'admit')] == [
-        'entry_profile_observe_v6', 'entry_profile_admit_v6']
+        'entry_profile_observe_v7', 'entry_profile_admit_v7']
     assert '单次细节' in prompts['observe']['text']
     assert '每个细节' in prompts['admit']['text']
     assert 'admission_feedback' in prompts['observe']['text']

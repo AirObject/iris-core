@@ -18,11 +18,11 @@ def frozen(store, mid):
     return task, dict(work) if work else None
 
 
-def test_defaults_use_frozen_group_review_v6():
+def test_defaults_use_frozen_excerpt_review_v7():
     p = ep.incremental_prompts()
     assert [(p[k]['name'], p[k]['sha256']) for k in ('observe', 'admit')] == [
-        ('entry_profile_observe_v6', 'aa55d820d7b37163cced5edc2c89b32fa8f0c8ce30a20e4da2eaae0084aa3d85'),
-        ('entry_profile_admit_v6', 'fedacee6636e3548e494f65d220fa44fc3c5b8eade7713202a222fe1908774dc')]
+        ('entry_profile_observe_v7', '8b69c862d4eb0e3939536c0ece0f1b5b3f1efa367c3ebe42b17625b426c86ec5'),
+        ('entry_profile_admit_v7', 'f2c7ea0bb4fd2483e0957c4eaca63413e77bb901a5915588afae1ec0f8d3ab2b')]
 
 
 def test_only_earliest_and_latest_independent_sources_are_approved(store):

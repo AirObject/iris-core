@@ -260,7 +260,7 @@ def test_indirect_topic_sources_remain_normalized_in_persisted_projection(store)
 
 def test_default_engine_reports_actual_memory_prompts_and_refuses_legacy_override(store):
     engine=ep.EntryProfileEngine(store,None)
-    assert engine.prompt_metadata['prompt_versions']==['entry_profile_observe_v6','entry_profile_admit_v6']
+    assert engine.prompt_metadata['prompt_versions']==['entry_profile_observe_v7','entry_profile_admit_v7']
     with pytest.raises(ep.EntryProfileRetired):
         ep.EntryProfileEngine(store,None,prompt_version='v2')
 
