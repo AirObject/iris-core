@@ -1814,6 +1814,9 @@ def _projection_items(conn, entry_id):
     items=[]; omitted=[]; tokens=0
     for row in memory_profile_rows(conn,entry_id,usable_only=True):
         label = ITEM_LABELS.get(row['category'],'管理员说明')
+        # Sources prove the body; they are not host-facing quotations. Do not
+        # append raw evidence here (dates, one-off details and private context
+        # may be necessary for checking but are not a stable profile).
         # Rendering is one line per memory; keep the stored manual body lossless.
         item = dict(memory_id=row['memory_id'],text=label+'：'+whitespace(row['body']))
         cost = estimate_tokens(item['text'])
@@ -2098,7 +2101,7 @@ def incremental_prompts():
     from importlib.resources import files
     import hashlib
     result={}
-    for stage,name in (('observe','entry_profile_observe_v4'),('admit','entry_profile_admit_v4')):
+    for stage,name in (('observe','entry_profile_observe_v6'),('admit','entry_profile_admit_v6')):
         value=files('iris').joinpath('prompts',name+'.md').read_text(encoding='utf-8')
         result[stage]=dict(name=name,text=value,sha256=hashlib.sha256(value.encode()).hexdigest())
     return result
@@ -2154,7 +2157,8 @@ def validate_incremental_observations(value, limits=None):
 
 
 def validate_incremental_admission(value, payload, previous=None):
-    if (not isinstance(value,dict) or set(value)!={'decision','violations','reason','safe_sources'}
+    if (not isinstance(value,dict) or not {'decision','violations','reason','safe_sources'}<=set(value)
+            or set(value)-{'decision','violations','reason','safe_sources','group_reviews','meaning_support'}
             or value['decision'] not in ('accept','reject','insufficient')
             or not isinstance(value['violations'],list) or any(v not in MEMORY_PROFILE_VIOLATIONS for v in value['violations'])
             or value['violations']!=sorted(set(value['violations']),key=MEMORY_PROFILE_VIOLATIONS.index)
@@ -2169,7 +2173,68 @@ def validate_incremental_admission(value, payload, previous=None):
         _inc_source_shape(source)
     if previous and (previous.get('decision') in ('reject','insufficient') or previous.get('violations')) and value['decision']=='accept':
         raise ValueError('repair_changed_semantic_rejection')
+    if payload.get('review_contract')=='groups_and_meaning_v1':
+        _inc_validate_reviews(value,payload,previous)
     return value
+
+
+def _inc_contains_ref(ref, pool):
+    return any(ref['message_id']==s['message_id'] and ref['field']==s['field']
+               and whitespace(ref['excerpt']) in whitespace(s['excerpt']) for s in pool)
+
+
+def _inc_meaning_text(value):
+    # Ignore formatting punctuation only, never particles, negation or numbers.
+    return ''.join(c for c in value if not c.isspace() and not unicodedata.category(c).startswith('P'))
+
+
+def _inc_validate_reviews(value, payload, previous=None):
+    memory=payload['memory'];accepted=value['decision']=='accept'
+    groups=memory.get('discussion_groups',[])
+    reviews=value.get('group_reviews',[]);points=value.get('meaning_support',[])
+    if not isinstance(reviews,list) or not isinstance(points,list) or len(reviews)>6 or len(points)>24:
+        raise ValueError('invalid_review_arrays')
+    by_id={g['group_id']:g for g in groups};seen=set();passed=set()
+    previous_reviews=(previous or {}).get('group_reviews',[])
+    if not isinstance(previous_reviews,list): previous_reviews=[]
+    for review in reviews:
+        if (not isinstance(review,dict) or set(review)!={'group_id','focus','same_topic','independent','reason'}
+                or type(review['group_id']) is not int or review['group_id'] not in by_id or review['group_id'] in seen
+                or any(type(review[k]) is not bool for k in ('same_topic','independent'))
+                or any(not isinstance(review[k],str) or not review[k].strip() or len(review[k])>240 for k in ('focus','reason'))):
+            raise ValueError('invalid_group_review')
+        gid=review['group_id'];seen.add(gid)
+        for old in previous_reviews:
+            if isinstance(old,dict) and old.get('group_id')==gid:
+                if any(old.get(k) is False and review[k] for k in ('same_topic','independent')):
+                    raise ValueError('repair_changed_group_rejection')
+        if review['same_topic'] and review['independent'] and by_id[gid]['eligible']:
+            passed.add(gid)
+    if accepted and groups:
+        if seen!=set(by_id): raise ValueError('missing_group_reviews')
+        safe_ids={s['message_id'] for s in value['safe_sources']}
+        dates={g['date'] for gid,g in by_id.items() if gid in passed and safe_ids.intersection(g['message_ids'])}
+        if len(dates)<2: raise ValueError('reviewed_groups_insufficient')
+        unrelated={mid for r in reviews if not r['same_topic'] for mid in by_id[r['group_id']]['message_ids']}
+        if safe_ids & unrelated: raise ValueError('unrelated_group_retained')
+    if accepted and memory['category']=='topic' and memory.get('action')!='retire' and not groups:
+        raise ValueError('missing_discussion_groups')
+    for point in points:
+        if (not isinstance(point,dict) or set(point)!={'point','source_refs'}
+                or not isinstance(point['point'],str) or not point['point'].strip() or len(point['point'])>180
+                or not isinstance(point['source_refs'],list) or not 1<=len(point['source_refs'])<=6):
+            raise ValueError('invalid_meaning_point')
+        for ref in point['source_refs']:
+            _inc_source_shape(ref)
+            if (not _inc_contains_ref(ref,memory['sources']) or
+                    accepted and not _inc_contains_ref(ref,value['safe_sources'])):
+                raise ValueError('meaning_unbound_excerpt')
+        if not any(ref['message_id'] in memory.get('definition_refs',[]) for ref in point['source_refs']):
+            raise ValueError('meaning_without_explanation')
+    if accepted:
+        meaning=memory.get('meaning','') if memory['category']=='saying' else ''
+        if _inc_meaning_text(''.join(p['point'] for p in points))!=_inc_meaning_text(meaning):
+            raise ValueError('meaning_points_incomplete')
 
 
 def _inc_bound(conn, entry_id, refs, messages, *, target=None, repairs=None):
@@ -2217,6 +2282,18 @@ _INC_PERSONAL_RULE = re.compile(r'(?:(?:我|本人)(?:的|自己的)|(?:我|本�
 _INC_EXTERNAL_RULE = re.compile(r'(?:公司|学校|协会|机构|单位|组织).{0,4}(?:规定|要求|制度)')
 _INC_FOLLOWUP = re.compile(r'还有吗|怎么样了|有结果了吗|有消息了吗|后来呢|找到[了啦]|已经.{0,8}(?:寄|发|给)|之前问|上次问|前几天.{0,6}(?:问|求)|(?:进度|结果).{0,3}(?:怎样|如何)|接着上次|跟进|催办')
 _INC_REQUEST = re.compile(r'[?？]|求|谁有|能否|有没有|想找|帮忙|拜托')
+# Discourse grammar, not a topic dictionary. Ambiguous semantic continuations
+# remain the per-group reviewer's responsibility.
+_INC_PRIOR_DISCUSSION = re.compile(r'(?:上[次回场]|前[次回场]|此前|之前|先前|前几天|前些天).{0,12}(?:问|求助|讲|说|讨论|建议)|(?:那次|那场).{0,6}(?:讨论|讲解|求助)')
+_INC_RESULT_REPORT = re.compile(r'(?:回来|来|补个|补充).{0,4}(?:报告|汇报|反馈)|(?:按|照着?|采纳|采用).{0,12}(?:建议|办法|方法).{0,16}(?:了|过|已经|解决|成功)|(?:问题|故障).{0,4}(?:解决了|好了)|回去.{0,8}(?:试|做)(?:了|过)|(?:试了|试过).{0,8}(?:有效|有用|好了|确实)')
+
+
+def _inc_explicit_continuation(text):
+    # A reference is not enough by itself (one can introduce a new question).
+    # Require an explicit report/adoption as well. Unknown antecedents are
+    # excluded as witnesses, rather than linked to an invented earlier ID.
+    return bool(_INC_PRIOR_DISCUSSION.search(text) and _INC_RESULT_REPORT.search(text))
+
 
 
 def _inc_saying_key(value):
@@ -2350,6 +2427,7 @@ def _inc_original(source, category, saying):
     quote=message.get('quote') or {}
     if quote and _memory_observation_text(source['excerpt']) in _memory_observation_text(quote.get('content','')):
         return False
+    if category=='topic' and _inc_explicit_continuation(message['content']): return False
     return category!='saying' or _inc_saying_used(saying,source['excerpt'])
 
 
@@ -2379,7 +2457,7 @@ def _inc_same_discussion(left, right):
             quote.get('speaker')==a['speaker'] and quoted and
             quoted==_memory_observation_text(a['content'])):
         return True
-    if (a['speaker']!=b['speaker'] or not _INC_FOLLOWUP.search(b['content'])
+    if (a['speaker']!=b['speaker'] or not (_INC_FOLLOWUP.search(b['content']) or _INC_RESULT_REPORT.search(b['content']))
             or not _INC_REQUEST.search(a['content'])):
         return False
     text=_memory_observation_text(b['content'])
@@ -2466,6 +2544,23 @@ def _inc_topic_details(body, witnesses, page=None):
         result.append(dict(term=term,independent_uses=len(matches),all_evidence_uses=len(all_matches),
                            message_ids=[s['message']['position'] for s in matches]))
     return result
+
+
+def _inc_discussion_groups(witnesses, page):
+    """Preserve full-pool links when evidence selection omits a bridge."""
+    ordered=sorted(witnesses,key=lambda s:(s['message']['position'],s.get('source_id',0)))
+    roots=_inc_topic_roots(ordered);page_keys={_inc_source_key(s) for s in page}
+    eligible_keys={_inc_source_key(s) for s in _inc_topic_witnesses(ordered,roots,page_keys)}
+    groups={}
+    for i,source in enumerate(ordered):
+        if _inc_source_key(source) not in page_keys: continue
+        root=roots[i];gid=ordered[root]['message']['position']
+        group=groups.setdefault(gid,dict(group_id=gid,message_ids=[],date=source['message']['date'],eligible=False))
+        mid=source['message']['position']
+        if mid not in group['message_ids']: group['message_ids'].append(mid)
+        if _inc_source_key(source) in eligible_keys:
+            group['eligible']=True;group['date']=source['message']['date']
+    return list(groups.values())
 
 
 def _inc_select_evidence(witnesses, category, body, saying, definitions, proposal, fits):
@@ -2967,9 +3062,16 @@ class IncrementalProfileTask:
             value={**memory,'sources':[public_source(s) for s in page]}
             if category=='topic' and not retire:
                 value['topic_detail_review']=_inc_topic_details(body,witnesses,page)
+                value['discussion_groups']=_inc_discussion_groups(witnesses,page)
             return value
         def fits(page):
-            return len(page)<=self.limits.evidence and estimate_tokens(dumps(page_memory(page)))<=self.limits.evidence_tokens
+            material=page_memory(page)
+            # Include the larger structured-review prompt and envelope within
+            # the existing cap; do not let a frozen candidate fail only at call.
+            envelope=dict(review_contract='groups_and_meaning_v1',entry_id=row['owner_entry_id'],
+                as_of=_instant(self.clock()).isoformat(),timezone=_setting(conn,'timezone','Asia/Shanghai'),memory=material)
+            return (len(page)<=self.limits.evidence and estimate_tokens(dumps(material))<=self.limits.evidence_tokens
+                and estimate_tokens(self.prompts['admit']['text'])+estimate_tokens(dumps(envelope))<=self.limits.admit_request_tokens)
         core=_inc_select_evidence(witnesses,category,body,saying,definitions,proposal,fits)
         if core is None:
             conn.execute("UPDATE entry_profile_admissions SET reason='evidence_budget_exceeded' WHERE memory_id=?",(row['id'],))
@@ -2987,7 +3089,7 @@ class IncrementalProfileTask:
         first=None
         for index,page in enumerate(pages):
             key=_hash([group,index])
-            payload=dict(entry_id=row['owner_entry_id'],as_of=stamp,timezone=zone,memory=page_memory(page),
+            payload=dict(review_contract='groups_and_meaning_v1',entry_id=row['owner_entry_id'],as_of=stamp,timezone=zone,memory=page_memory(page),
                 _snapshot={**snapshot,'bundle':dict(key=group,index=index,count=len(pages))})
             if conn.execute('SELECT 1 FROM entry_profile_incremental_work WHERE work_key=?',(key,)).fetchone(): continue
             wid=conn.execute('''INSERT INTO entry_profile_incremental_work(entry_id,work_key,kind,memory_id,memory_revision,
@@ -3008,6 +3110,7 @@ class IncrementalProfileTask:
     def _apply_admission(self, work, parsed):
         from .memory_ops import write_entry_profile_memory, entry_profile_source, _profile_manual
         payload=json.loads(work['payload_json']);memory=payload['memory'];snap=payload['_snapshot'];stamp=_instant(self.clock()).isoformat()
+        validate_incremental_admission(parsed,_inc_public_payload(payload))
         with self.store.write() as conn:
             current=conn.execute('''SELECT m.*,p.category FROM memories m JOIN entry_profile_memories p ON p.memory_id=m.id
                 WHERE m.id=? AND m.purged_at IS NULL AND m.lifecycle='active' ''',(memory['memory_id'],)).fetchone()
@@ -3115,6 +3218,7 @@ class IncrementalProfileTask:
         """Cheap preflight in addition to post-call CAS; never spend on an already stale target."""
         from .memory_ops import _profile_manual
         memory=payload['memory'];snap=payload['_snapshot']
+        if payload.get('review_contract')!='groups_and_meaning_v1': return False
         row=conn.execute('SELECT * FROM memories WHERE id=?',(memory['memory_id'],)).fetchone()
         meta=conn.execute('SELECT * FROM entry_profile_admissions WHERE memory_id=?',(memory['memory_id'],)).fetchone()
         if (not row or not meta or row['purged_at'] or row['lifecycle']!='active' or _profile_manual(conn,row)

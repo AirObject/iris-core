@@ -211,7 +211,7 @@ EVIDENCE=[
 
 
 def seed_legacy_pages(store):
-    """A pre-EF-18 frozen two-page bundle must still finish atomically."""
+    """A two-page bundle with current review metadata must still finish atomically."""
     mid,ids=seed(store,EVIDENCE)
     task=ep.IncrementalProfileTask(store,Gateway(store),clock=lambda:NOW)
     with store.write() as c:
@@ -225,6 +225,7 @@ def seed_legacy_pages(store):
             payload['memory']['sources']=[dict(message_id=s['message']['position'],field=s['field'],excerpt=s['excerpt'],
                 speaker=s['speaker'],date=s['message']['date'],occurred_at=s['message']['occurred_at'],
                 context=s['message']['content'],message_speaker=s['message']['speaker'],quote=s['message'].get('quote'),burst_id=s.get('burst_id')) for s in page]
+            payload['memory']['discussion_groups']=ep._inc_discussion_groups(sources,page)
             payload['_snapshot'].pop('evidence_selection',None)
             payload['_snapshot']['bundle']=dict(key='legacy-'+str(mid),index=i,count=2)
             if i==0:

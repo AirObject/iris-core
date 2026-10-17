@@ -60,9 +60,17 @@ def propose(payload, *, category='topic', body=TOPIC):
 
 
 def accept(payload):
-    return {'decision': 'accept', 'violations': [], 'reason': '逐条核对通过。',
+    value = {'decision': 'accept', 'violations': [], 'reason': '逐条核对通过。',
         'safe_sources': [{k: s[k] for k in ('message_id', 'field', 'excerpt')}
                          for s in payload['memory']['sources']]}
+    if payload.get('review_contract')=='groups_and_meaning_v1':
+        value['group_reviews']=[dict(group_id=g['group_id'],focus='同一主题的独立讨论。',
+            same_topic=True,independent=g['eligible'],reason='假模型确认该组的独立性。')
+            for g in payload['memory'].get('discussion_groups',[])]
+        meaning=payload['memory'].get('meaning','')
+        value['meaning_support']=[dict(point=meaning,source_refs=[ref for ref in value['safe_sources']
+            if ref['message_id'] in payload['memory'].get('definition_refs',[])])] if meaning else []
+    return value
 
 
 class Gateway:
