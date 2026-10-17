@@ -160,6 +160,8 @@ test.each(["high", "medium"])(
     await user.click(screen.getByRole("button", { name: "测试对话模型连接" }));
     expect(await screen.findByText(/密钥无效.*12/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "保存对话模型" }));
+    await user.clear(screen.getByLabelText("学习并发"));
+    await user.type(screen.getByLabelText("学习并发"), "3");
     await user.click(screen.getByRole("button", { name: "保存用量与学习" }));
     const saved = calls.find(
       (c) =>

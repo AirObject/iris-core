@@ -3,6 +3,9 @@ import type { PersonaVersion } from "./persona-types";
 export type ConsolidationConfig = {
   maintenance_time: string;
   max_calls: number;
+  entry_profile_max_calls?: number;
+  person_summary_max_calls?: number;
+  persona_max_calls?: number;
   merge_enabled: boolean;
   conflict_enabled: boolean;
   dependency_enabled: boolean;
@@ -63,6 +66,11 @@ export type MemorySuggestion = Suggestion & {
   };
 };
 export type ConsolidationDetails = {
+  step?: string;
+  max_calls?: number;
+  calls_used?: number;
+  count?: number;
+  limit?: number;
   subject_id?: string;
   version?: number | null;
   attempt_id?: number | null;

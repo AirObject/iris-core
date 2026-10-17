@@ -42,6 +42,7 @@ const countNames: Record<string, string> = {
   dependencies_weakened: "依据扣减",
   messages_deleted: "清理消息",
   batches_retried: "重试批次",
+  questions_expired: "询问到期结束",
   checked: "检查项目",
   skipped: "跳过",
   failed: "失败",
@@ -72,12 +73,16 @@ const reasonNames: Record<string, string> = {
 function Counts({ summary }: { summary: MaintenanceSummary }) {
   return (
     <dl className="maintenance-counts">
-      {Object.entries(summary).map(([key, group]) => (
-        <div key={key}>
-          <dt>{countNames[key] || key}</dt>
-          <dd>{group.count}</dd>
-        </div>
-      ))}
+      {Object.entries(summary)
+        .filter(
+          ([key]) => !["model_step_budget", "backlog_trimmed"].includes(key),
+        )
+        .map(([key, group]) => (
+          <div key={key}>
+            <dt>{countNames[key] || key}</dt>
+            <dd>{group.count}</dd>
+          </div>
+        ))}
     </dl>
   );
 }

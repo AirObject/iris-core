@@ -213,6 +213,7 @@ export type Goal = {
   basis_annotations?: GoalBasisAnnotation[];
 };
 export type GoalConfig = {
+  internal_question_expiry_days?: number;
   default_reminder_minutes: number;
   overdue_reminders: boolean;
 };
@@ -413,6 +414,7 @@ export type MaintenanceItem = {
 export type MaintenanceReport = MaintenanceRun &
   ConsolidationProjection & {
     timezone: string;
+    question_expiry?: { count: number; goal_ids: number[] };
     items: MaintenanceItem[];
   };
 export type TrialCatalog = {

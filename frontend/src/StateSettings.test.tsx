@@ -84,7 +84,7 @@ beforeEach(() => {
           );
         settings = {
           ...settings,
-          goals: body,
+          goals: { ...settings.goals, ...body },
           operations: [
             {
               id: 2,
@@ -262,7 +262,7 @@ test("目标设置轮询保留草稿，保存失败后可以重试", async () =>
     await vi.advanceTimersByTimeAsync(2000);
   });
   expect(input).toHaveValue(90);
-  expect(screen.getByLabelText("启用过期提醒")).not.toBeChecked();
+  expect(screen.getByLabelText("启用过期提醒")).toBeChecked();
   fail = true;
   fireEvent.click(screen.getByRole("button", { name: "保存目标与提醒设置" }));
   await act(async () => {});

@@ -52,7 +52,7 @@ test.each([
   },
 );
 
-test("原图读取失败保留说明，音视频为附件，不假装图片正在理解", () => {
+test("原图 404 触发读取失败后显示占位并保留说明，音视频为附件，不假装图片正在理解", () => {
   render(
     <MessageMedia
       media={[
@@ -70,6 +70,10 @@ test("原图读取失败保留说明，音视频为附件，不假装图片正�
   );
   fireEvent.error(screen.getByRole("img"));
   expect(screen.getByText("图片不可用或已清理")).toBeVisible();
+  expect(screen.queryByRole("img")).not.toBeInTheDocument();
+  expect(
+    screen.getAllByText(mediaFixture.understanding_text).length,
+  ).toBeGreaterThan(0);
   expect(screen.getByRole("link", { name: "查看音频附件 2" })).toHaveAttribute(
     "href",
     "/admin/api/media/audio-one/file",
