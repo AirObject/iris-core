@@ -180,16 +180,47 @@ def _check_database(path, versions):
         conn.close()
 
 
-def _check_media_files(database, members):
-    # Media files are immutable and named by hash. A pinned database snapshot
-    # must never point to bytes missed by inventory or concurrent file cleanup.
+def _media_state(conn):
+    columns = {row[1] for row in conn.execute('PRAGMA table_info(media_files)')}
+    if not columns:
+        return {}
+    cleanup = 'bytes_purged_at,bytes_purge_pending' if 'bytes_purged_at' in columns else 'NULL,0'
+    return {row[0]: tuple(row[1:]) for row in conn.execute(f'SELECT sha256,size_bytes,{cleanup} FROM media_files')}
+
+
+def _check_media_files(database, members, purged_media=None):
+    # Old archives have no cleanup column or manifest extension. Intentional
+    # absence must match both the DB and the manifest; accidental loss still fails.
     with contextlib.closing(sqlite3.connect(database.as_uri() + '?mode=ro&immutable=1', uri=True)) as conn:
-        if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='media_files'").fetchone():
-            return  # Backups from before migration 022 have no media registry.
-        for digest, size in conn.execute('SELECT sha256,size_bytes FROM media_files'):
-            detail = members.get('media/' + digest)
-            if detail is None or detail['sha256'] != digest or detail['size'] != size:
-                raise BackupError('media_integrity', '媒体文件与数据库登记的哈希或大小不一致，请检查文件后重试。')
+        state = _media_state(conn)
+    expected = {}
+    for digest, (size, purged_at, pending) in state.items():
+        detail = members.get('media/' + digest)
+        if pending:
+            raise BackupError('media_changed', '媒体清理尚未完成，请稍后重试。')
+        if purged_at is not None:
+            expected[digest] = purged_at
+            if detail is not None:
+                raise BackupError('media_integrity', '已清理媒体仍包含文件字节。')
+        elif detail is None or detail['sha256'] != digest or detail['size'] != size:
+            raise BackupError('media_integrity', '媒体文件与数据库登记的哈希或大小不一致，请检查文件后重试。')
+    if expected != (purged_media if purged_media is not None else {}):
+        raise BackupError('media_integrity', '媒体清理清单与数据库登记不一致。')
+
+
+def _check_media_snapshot(conn, directory, state, inventory):
+    # Called just before publication while holding the same writer as cleanup
+    # and upload. The archive copy itself never holds this lock.
+    live = _media_state(conn)
+    for digest, original in state.items():
+        if live.get(digest) != original:
+            raise BackupError('media_changed', '导出期间媒体发生变化，请重试。')
+        path = directory / 'media' / digest
+        if original[1] is not None:
+            if path.exists() or path.is_symlink():
+                raise BackupError('media_changed', '导出期间媒体发生变化，请重试。')
+        elif _identity(path.stat(follow_symlinks=False)) != inventory.get('media/' + digest):
+            raise BackupError('media_changed', '导出期间媒体发生变化，请重试。')
 
 
 def _metadata(manifest, size, *, purpose='manual'):
@@ -227,8 +258,11 @@ def export_archive(store, output, *, include_secrets=False, actor='local_cli', r
                     # BEGIN alone does not pin a SQLite snapshot; this SELECT does.
                     versions = _versions(source)
                     _check_versions(versions)
-                    has_media = source.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='media_files'").fetchone()
-                    registered = {'media/' + row[0] for row in source.execute('SELECT sha256 FROM media_files')} if has_media else set()
+                    media_state = _media_state(source)
+                    if any(row[2] for row in media_state.values()):
+                        raise BackupError('media_changed', '媒体清理尚未完成，请稍后重试。')
+                    registered = {'media/' + digest for digest, row in media_state.items() if row[1] is None}
+                    purged_media = {digest: row[1] for digest, row in media_state.items() if row[1] is not None}
                     stamp = now()
                     if include_secrets:
                         keys = runtime._secrets()
@@ -238,6 +272,8 @@ def export_archive(store, output, *, include_secrets=False, actor='local_cli', r
                         with _private_file(stage / 'secrets.json') as file:
                             file.write(dumps({'format_version': 1, 'keys': {key: keys[key] for key in sorted(keys if _preserve_all_secrets else references)}}).encode())
                 inventory = _media_inventory(directory / 'media')
+                if any('media/' + digest in (inventory or {}) for digest in purged_media):
+                    raise BackupError('media_changed', '已清理媒体字节重新出现，请重试。')
                 if inventory is not None:
                     # Retain legacy non-addressed attachments when stable. New
                     # content-addressed files outside the snapshot are not needed.
@@ -262,7 +298,8 @@ def export_archive(store, output, *, include_secrets=False, actor='local_cli', r
                     raise BackupError('media_changed', '导出期间媒体发生变化，请重试。')
             manifest = {'format': 'iris-backup', 'format_version': FORMAT_VERSION, 'backup_id': uuid.uuid4().hex,
                         'created_at': stamp, 'migration_version': versions[-1], 'migrations': versions,
-                        'includes_model_secrets': include_secrets, 'media_included': inventory is not None, 'files': {}}
+                        'includes_model_secrets': include_secrets, 'media_included': inventory is not None,
+                        'purged_media': purged_media, 'files': {}}
             if _scheduled is not None:
                 manifest['backup_id'] = _scheduled['backup_id']
                 manifest['scheduled_backup'] = {key: _scheduled[key] for key in ('owner', 'day')}
@@ -278,7 +315,7 @@ def export_archive(store, output, *, include_secrets=False, actor='local_cli', r
                             digest.update(data)
                             size += len(data)
                     manifest['files'][name] = {'sha256': digest.hexdigest(), 'size': size}
-                _check_media_files(stage / 'iris.db', manifest['files'])
+                _check_media_files(stage / 'iris.db', manifest['files'], manifest.get('purged_media'))
                 raw_manifest = dumps(manifest).encode('utf-8')
                 if len(raw_manifest) > MANIFEST_LIMIT:
                     raise BackupError('manifest_too_large', '备份清单超过 8 MiB，请减少媒体文件数后重试。')
@@ -286,8 +323,12 @@ def export_archive(store, output, *, include_secrets=False, actor='local_cli', r
             _sync_file(archive_path)
             result = _metadata(manifest, archive_path.stat().st_size, purpose=purpose)
             # link is atomic and refuses replacement, including a racing symlink.
-            os.link(archive_path, output)
-            published = True
+            # Offline pre-import exports already own the service lease. Online
+            # exports take the writer only for the final recheck and publication.
+            with (store.write() if isinstance(store, Store) else store.read()) as live:
+                _check_media_snapshot(live, directory, media_state, inventory or {})
+                os.link(archive_path, output)
+                published = True
             _sync_directory(output.parent)
             result.update(started_at=started_at, finished_at=now(), duration_ms=round((time.monotonic()-started)*1000))
             if _scheduled is None:
@@ -483,6 +524,13 @@ def _read_manifest(archive):
         raise _invalid()
     if any(type(value.get(field)) is not bool for field in ('includes_model_secrets', 'media_included')):
         raise _invalid()
+    purged = value.get('purged_media', {})
+    if not isinstance(purged, dict):
+        raise _invalid()
+    for digest, stamp in purged.items():
+        if (not isinstance(digest, str) or not re.fullmatch(r'[0-9a-f]{64}', digest)
+                or not isinstance(stamp, str) or datetime.fromisoformat(stamp).tzinfo is None):
+            raise _invalid()
     members = value.get('files')
     if not isinstance(members, dict) or 'iris.db' not in members or set(names) != {'manifest.json', *members}:
         raise _invalid()
@@ -525,7 +573,7 @@ def _unpack(archive_path, stage):
             if size != detail['size'] or digest.hexdigest() != detail['sha256']:
                 raise _invalid()
     _check_database(stage / 'iris.db', manifest['migrations'])
-    _check_media_files(stage / 'iris.db', manifest['files'])
+    _check_media_files(stage / 'iris.db', manifest['files'], manifest.get('purged_media'))
     if manifest['includes_model_secrets']:
         # Validate the optional file without returning or logging its contents.
         with contextlib.closing(sqlite3.connect(stage / 'iris.db')) as conn:
