@@ -1231,9 +1231,12 @@ def write_entry_profile_memory(store, entry_id, *, op, content=None, category=No
         else:
             revision = expected_revision
         renewal = None
-        if op=='admit' and profile_category and profile_category[0] in ('topic','saying'):
+        if op=='admit':
+            profile_category = conn.execute('SELECT category FROM entry_profile_memories WHERE memory_id=?',
+                                            (memory_id,)).fetchone()
             admission = conn.execute('SELECT state,body_revision FROM entry_profile_admissions WHERE memory_id=?',(memory_id,)).fetchone()
-            if admission and (admission['state']!='accepted' or admission['body_revision']!=revision):
+            if (profile_category and profile_category[0] in ('topic','saying') and admission
+                    and (admission['state']!='accepted' or admission['body_revision']!=revision)):
                 # Start the ordinary importance-50 lifetime at admission. An
                 # atomic floor preserves stronger confirmations. The caller
                 # commits accepted in this transaction; routine rechecks and
