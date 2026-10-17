@@ -28,7 +28,7 @@ def client(store):
         value.app.state.scheduler.stop()
         login_admin(value)
         value.app.state.persona_jobs.engine.gateway = FakeGateway(store, {
-            'sentences': [{'text': '初始设定中，我来自云城。', 'basis': ['M1']}]})
+            'sentences': []})
         yield value
 
 
@@ -97,7 +97,7 @@ def test_s02_s03_background_publication(client, degree, status):
     v = client.get(f"/admin/api/persona/versions/{attempt['version_id']}").json()
     assert v['change_degree'] == degree and v['checks']['passed']
     assert len(v['checks']['model']['sentences']) == len(v['sentences'])
-    assert [p for p, _ in gateway(client).calls] == ['persona_generate', 'persona_check']
+    assert [p for p, _ in gateway(client).calls] == ['persona_generate', 'persona_check', 'persona_check']
 
 
 def test_s04_rejection_reason_and_previous_preserved(client):
@@ -138,14 +138,14 @@ def test_s05_stale_basis_and_prepare_projection(client, store, action, reason):
 
 def test_s17_deleted_basis_absent_from_new_generation(client, store):
     delete_memory(store, 1, 1)
-    mid = add_self(store, '我在昨晚读书时选择了安静的角落。')
-    gateway(client).generated = {'sentences': [{'text': '昨晚读书时，我选择了安静的角落。', 'basis': ['M1']}]}
+    mid = add_self(store, '我在那次读书时选择了安静的角落。')
+    gateway(client).generated = {'sentences': [{'text': '那次读书时，我选择了安静的角落。', 'basis': ['M1']}]}
     task = finished(client, start(client))
     assert task['state'] == 'current'
     payload = gateway(client).calls[0][1]
     assert '我来自云城' not in dumps(payload['evidence'])
     detail = client.get(f"/admin/api/persona/versions/{task['version_id']}").json()
-    assert detail['sentences'][0]['basis'][0]['memory_id'] == mid
+    assert detail['sentences'][-1]['basis'][0]['memory_id'] == mid
     assert '我来自云城' not in detail['content'] and not current(client)['needs_update']
 
 
@@ -387,7 +387,7 @@ def test_persona_shutdown_waits_for_accepted_task_before_closing_store(store):
     from iris.persona import PersonaJobs
     setup_role(store, 'Iris', '我来自云城。')
     entered, release, closed = threading.Event(), threading.Event(), threading.Event()
-    fake = FakeGateway(store, {'sentences': [{'text': '初始设定中，我来自云城。', 'basis': ['M1']}]},
+    fake = FakeGateway(store, {'sentences': []},
                        callback=lambda: (entered.set(), release.wait(10)))
     jobs = PersonaJobs(store, fake)
     jobs.submit(expected_version=1)

@@ -1,3 +1,4 @@
+from persona_fakes import add_clause_proofs
 import copy
 import json
 import tempfile
@@ -32,13 +33,18 @@ class FakeGateway:
     def chat(self, messages, purpose, **kwargs):
         assert not self.store._writer.in_transaction
         FakeGateway.calls += 1
+        payload=json.loads(messages[-1]['content'])
         if purpose == 'persona_generate':
-            value = {'sentences':[{'text':'在那次直播中，我耐心解释了规则。','basis':['M1']}]}
-        elif purpose == 'persona_check':
-            value = {'sentences':[{'index':1,'supported':True,'fabricated':False,
-                'scene_qualified':True,'violations':[],'reason':'场景明确'}], 'change_degree':'small','reason':'单场经历'}
+            evidence = payload['evidence']['memories'][0]
+            scope = '游戏' if evidence['entry_kind'] == 'game' else '直播'
+            value = {'sentences':[{'text':f'在那次{scope}中，我耐心解释了规则。','basis':[evidence['ref']]}]}
+        elif purpose in ('persona_check', 'persona_recheck'):
+            value = {'sentences':[{'index':i+1,'supported':True,'fabricated':False,
+                'scene_qualified':True,'violations':[],'reason':'场景明确'} for i,_ in enumerate(payload['candidate'])], 'change_degree':'small','reason':'单场经历'}
         else:
             raise AssertionError('external mode must not call a model judge')
+        if purpose in ('persona_check', 'persona_recheck'):
+            value = add_clause_proofs(value, payload)
         return ModelReply(dumps(value),'stop',{})
 
     def close(self):
@@ -81,16 +87,16 @@ def make_round(materials, target, *, disagree=False):
 
 def test_timeline_external_export_and_cache(material, tmp_path):
     directory, report, corpus, scoring = material
-    assert FakeGateway.calls == 4
+    assert FakeGateway.calls == 6
     rows = report['rows'][0]['observations']
     assert [r['candidate']['status'] for r in rows] == ['current','current','current','pending']
-    assert rows[1]['candidate']['sentences'][0]['date_count'] == 1
+    assert rows[1]['candidate']['sentences'][-1]['date_count'] == 1
     assert rows[-1]['candidate']['change_degree'] == 'large'
     assert report['metrics']['changes'] == 2
     assert report['metrics']['admin_publications'] == 1
     _, repeat = run_persona_eval({},tmp_path,corpus=corpus,out=tmp_path/'out',judge_mode='external',
         gateway_factory=FakeGateway,runner_identity='fake-format-v1',scoring_path=scoring)
-    assert FakeGateway.calls == 4 and repeat['resumed_cases'] == 1
+    assert FakeGateway.calls == 6 and repeat['resumed_cases'] == 1
     assert directory.joinpath('run.json').is_file()
 
 
@@ -190,7 +196,8 @@ def test_rejected_candidates_export_but_do_not_count_as_changes(tmp_path):
             reply = super().chat(messages,purpose,**kwargs)
             if purpose=='persona_check':
                 output = json.loads(reply.content)
-                output['sentences'][0]['supported'] = False
+                for row in output['sentences']:
+                    row['supported'] = False  # Every candidate sentence is explicitly rejected.
                 reply.content = dumps(output)
             return reply
     corpus = tmp_path/'small.jsonl'
@@ -449,3 +456,74 @@ def test_frozen_public_persona_contract_keeps_small_medium_auto():
     cases = load_corpus(public)
     assert len(cases) == 5
     assert all(case['persona_publish_mode'] == 'small_medium_auto' for case in cases)
+
+
+@pytest.mark.parametrize('again',[False,True])
+def test_sentence_recovery_metrics_and_materials_remain_scoreable(tmp_path,again):
+    from test_persona_optimization import Model
+    bounded = "我在那次直播中耐心解释规则。"
+    class RecoveryModel(Model):
+        def __init__(self,configs,store,**kwargs):
+            super().__init__(store,again=again,repair=bounded)
+        def close(self):
+            pass
+    case=copy.deepcopy(TIMELINE)
+    case['events']=case['events'][:2]
+    case['events'][0]['memory']['content'] = bounded
+    case['events'][0]['memory']['sources'][0]['content'] = bounded
+    corpus=tmp_path/'recovery.jsonl'
+    corpus.write_text(dumps(case),encoding='utf-8')
+    materials,report=run_persona_eval({},tmp_path,corpus=corpus,out=tmp_path/'out',judge_mode='external',
+        gateway_factory=RecoveryModel,runner_identity='recovery')
+    metrics=report['metrics']
+    assert metrics['check_rejected_ratio']==0
+    assert metrics['changes']==1
+    assert metrics['deleted_sentences']==int(again)
+    assert metrics['repaired_sentences']==int(not again)
+    assert metrics['candidate_deletion_ratio']==int(again)
+    assert metrics['proposed_sentences']==3
+    assert metrics['deleted_sentence_ratio']==int(again)/3
+    assert report['prompt_versions']==['persona_check_v33','persona_degree_v1','persona_generate_v20']
+    assert report['repair_policy']=='first_eligible_bound_memory_v2'
+    assert 'persona_sentence_repair' not in report['timeouts_seconds']
+    assert report['timeouts_seconds']['persona_check']==360
+    manifest=json.loads(materials.read_text())
+    document=json.loads((materials.parent/manifest['cases'][0]['file']).read_text())
+    checks=document['input']['candidate']['checks']
+    assert bool(checks['deleted_sentences']) is again
+    first=make_round(materials.parent,tmp_path/'first')
+    _,scored=score_persona_judgments(materials.parent,[first],tmp_path,judge_model='fake-test',out=tmp_path/'score')
+    assert scored['metrics']['deleted_sentence_ratio']==metrics['deleted_sentence_ratio']
+    assert scored['metrics']['grounded_change_ratio']==1
+
+
+@pytest.mark.parametrize('persistent', [False, True])
+def test_local_invalid_fields_do_not_abort_later_timeline_checkpoints(tmp_path, persistent):
+    class InvalidFields(FakeGateway):
+        damaged = False
+        def chat(self, messages, purpose, **kwargs):
+            reply = super().chat(messages, purpose, **kwargs)
+            payload = json.loads(messages[-1]['content'])
+            if purpose in ('persona_check', 'persona_recheck') and payload['task'] == 'check_facts_and_rules':
+                value = json.loads(reply.content)
+                for candidate, row in zip(payload['candidate'], value['sentences']):
+                    if candidate['origin'] == 'memory' and not candidate.get('initial_setting'):
+                        if persistent or not self.damaged:
+                            row['reason'] = ''
+                            self.damaged = True
+                reply.content = dumps(value)
+            return reply
+    corpus = tmp_path/'format.jsonl'
+    corpus.write_text(dumps(TIMELINE)+'\n', encoding='utf-8')
+    scoring = tmp_path/'scoring.md'
+    scoring.write_text('格式测试', encoding='utf-8')
+    materials, report = run_persona_eval({}, tmp_path, corpus=corpus, out=tmp_path/'out',
+        judge_mode='external', gateway_factory=InvalidFields,
+        runner_identity='fake-field-recovery', scoring_path=scoring)
+    assert report['metrics']['run_valid']
+    row = report['rows'][0]
+    assert [c['checkpoint']['id'] for c in row['checkpoints']] == ['c1', 'c2']
+    assert (materials.parent/'run.json').is_file()
+    checks = row['checkpoints'][0]['result']['version']['checks']['initial_model']
+    assert not checks['incomplete_checks']
+    assert checks['invalid_sentence_checks']

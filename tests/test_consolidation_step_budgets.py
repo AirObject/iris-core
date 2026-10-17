@@ -310,7 +310,7 @@ def test_legacy_run_snapshot_missing_step_keys_keeps_memory_cap_and_call_counts(
 def test_pair_backlog_does_not_starve_summary_or_persona_and_resume_does_not_repeat(store):
     from test_maintenance_cognition import persona_case, complete
     from test_person_summary import Model as SummaryModel, seed
-    engine, persona, clock = persona_case(store, budget=2, max_calls=1,
+    engine, persona, clock = persona_case(store, budget=3, max_calls=1,
         merge_enabled=True, conflict_enabled=True, person_summary_max_calls=2, entry_profile_enabled=False)
     seed(store, clock, count=16)
     memory, summary = Model(store), SummaryModel(store)
@@ -324,13 +324,13 @@ def test_pair_backlog_does_not_starve_summary_or_persona_and_resume_does_not_rep
     assert report['consolidation']['skip_reason'] == 'call_budget'
     assert report['persona']['status'] == 'published'
     assert any(i['outcome'] == 'person_summary' and i['details']['status'] == 'published' for i in report['items'])
-    assert len(memory.requests) == 1 and len(summary.calls) == len(persona.calls) == 2
+    assert len(memory.requests) == 1 and len(summary.calls) == 2 and len(persona.calls) == 3
     with store.read() as conn:
         assert conn.execute("SELECT COUNT(*) FROM consolidation_work WHERE kind='pair' AND state='pending'").fetchone()[0] > 20
-        assert consolidation.step_call_counts(conn, report['id']) == {'memory': 1, 'entry_profile': 0, 'person_summary': 2, 'persona': 2}
+        assert consolidation.step_call_counts(conn, report['id']) == {'memory': 1, 'entry_profile': 0, 'person_summary': 2, 'persona': 3}
     Maintenance(store, gateway=engine.gateway, clock=clock).run(report['id'])
-    assert len(memory.requests) == 1 and len(summary.calls) == len(persona.calls) == 2
-    assert engine.report(report['id'])['summary']['model_calls']['count'] == 5
+    assert len(memory.requests) == 1 and len(summary.calls) == 2 and len(persona.calls) == 3
+    assert engine.report(report['id'])['summary']['model_calls']['count'] == 6
 
 
 @pytest.mark.parametrize('reason', ['usage_limit', 'paused', 'interrupted'])
