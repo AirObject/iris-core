@@ -11,7 +11,7 @@ from test_entry_profile import Clock, Model, messages
 
 
 def dream(store, clock, **settings):
-    store.set_setting('consolidation',dict(enabled=True,max_calls=50,merge_enabled=False,
+    store.set_setting('consolidation',dict(enabled=True,entry_profile_max_calls=50,merge_enabled=False,
         conflict_enabled=False,dependency_enabled=False,persona_enabled=False,goal_review_enabled=False,**settings))
     engine=Maintenance(store,gateway=Model(store),clock=clock)
     return engine,engine.request()
@@ -33,7 +33,7 @@ def test_profiles_run_when_other_model_steps_are_disabled_and_not_repeated(store
             'consolidation_entry_profile_generate','consolidation_entry_profile_check']
 
 
-@pytest.mark.parametrize('setting,value',[('enabled',False),('entry_profile_enabled',False),('max_calls',0),('max_calls',1)])
+@pytest.mark.parametrize('setting,value',[('enabled',False),('entry_profile_enabled',False),('entry_profile_max_calls',0),('entry_profile_max_calls',1)])
 def test_switches_and_small_budgets_do_not_call(store,setting,value):
     clock=Clock(); messages(store,clock)
     engine,rid=dream(store,clock)
@@ -51,7 +51,7 @@ def test_two_entries_share_run_cap_and_budget_skips_do_not_consume_daily_generat
     engine,rid=dream(store,clock)
     with store.write() as conn:
         config=json.loads(conn.execute('SELECT settings_json FROM consolidation_runs WHERE run_id=?',(rid,)).fetchone()[0])
-        config['max_calls']=2
+        config['entry_profile_max_calls']=2
         conn.execute('UPDATE consolidation_runs SET settings_json=? WHERE run_id=?',(dumps(config),rid))
     engine.run(rid)
     assert len(engine.gateway.calls)==2
@@ -64,7 +64,7 @@ def test_gateway_reserves_checker_on_each_generation_retry(store):
     clock=Clock(); messages(store,clock)
     _,rid=dream(store,clock)
     with store.write() as conn:
-        config=json.loads(conn.execute('SELECT settings_json FROM consolidation_runs WHERE run_id=?',(rid,)).fetchone()[0]);config['max_calls']=2
+        config=json.loads(conn.execute('SELECT settings_json FROM consolidation_runs WHERE run_id=?',(rid,)).fetchone()[0]);config['entry_profile_max_calls']=2
         conn.execute('UPDATE consolidation_runs SET settings_json=? WHERE run_id=?',(dumps(config),rid))
     owner=Consolidation(store,Model(store),clock=clock);owner.run_id=rid
     owner.reserve({'id':None},'consolidation_entry_profile_generate')

@@ -20,12 +20,17 @@ from .search_text import match_query, terms, words
 # Candidate order and parameters are frozen before the first real-model probe.
 METHODS = {'balanced': 0.40, 'strict': 0.65, 'broad': 0.20}
 RESOLUTIONS = ('report_only_v1',)
-DEFAULTS = {'enabled': True, 'max_calls': 50, 'method': 'broad', 'resolution': 'report_only_v1',
+DEFAULTS = {'enabled': True, 'max_calls': 300,
+            'entry_profile_max_calls': 18, 'person_summary_max_calls': 40, 'persona_max_calls': 6,
+            'method': 'broad', 'resolution': 'report_only_v1',
             'merge_enabled': True, 'conflict_enabled': True, 'dependency_enabled': True,
             'persona_enabled': True, 'goal_review_enabled': True, 'entry_profile_enabled': True, 'person_summary_enabled': True}
 PROMPT_VERSION = 'consolidation_report_only_v2'
 MERGE_PROMPT_VERSION = 'consolidation_pair_v3'
 MAX_ANCESTORS = 64
+MAX_PENDING_PAIRS = 2000
+BUDGET_FIELDS = {'memory': 'max_calls', 'entry_profile': 'entry_profile_max_calls',
+                 'person_summary': 'person_summary_max_calls', 'persona': 'persona_max_calls'}
 
 
 class InvalidOutput(ValueError):
@@ -45,8 +50,8 @@ def consolidation_settings(conn):
     """One snapshot for new runs; evaluation-only method knobs remain internal."""
     row = conn.execute("SELECT value_json FROM runtime_settings WHERE key='consolidation'").fetchone()
     value = {**DEFAULTS, **(json.loads(row[0]) if row else {}), 'resolution': 'report_only_v1'}
-    if (value['method'] not in METHODS or type(value['max_calls']) is not int
-            or not 0 <= value['max_calls'] <= 50
+    if (value['method'] not in METHODS
+            or any(type(value[k]) is not int or not 0 <= value[k] <= 1000 for k in BUDGET_FIELDS.values())
             or any(type(value[k]) is not bool for k in DEFAULTS if k.endswith('enabled'))):
         raise ValueError('invalid consolidation settings')
     return value
@@ -55,6 +60,54 @@ def consolidation_settings(conn):
 def run_settings(conn, run_id):
     row = conn.execute('SELECT settings_json FROM consolidation_runs WHERE run_id=?', (run_id,)).fetchone()
     return {**DEFAULTS, **json.loads(row[0]), 'resolution': 'report_only_v1'}
+
+
+def budget_step(purpose):
+    for step, prefix in (('entry_profile', 'consolidation_entry_profile_'),
+                         ('person_summary', 'consolidation_person_summary_'), ('persona', 'persona_')):
+        if purpose.startswith(prefix):
+            return step
+    return 'memory'
+
+
+def step_call_counts(conn, run_id):
+    # Include interrupted reservations and every retry/repair. Never infer usage
+    # from attempts, which may contain several network calls or no call at all.
+    counts = dict.fromkeys(BUDGET_FIELDS, 0)
+    for purpose, count in conn.execute('SELECT purpose,COUNT(*) FROM consolidation_calls WHERE run_id=? GROUP BY purpose', (run_id,)):
+        counts[budget_step(purpose)] += count
+    return counts
+
+
+def report_step_budget(conn, run_id, step, stamp, reason=None):
+    settings = run_settings(conn, run_id)
+    details = {'step': step, 'max_calls': settings[BUDGET_FIELDS[step]],
+               'calls_used': step_call_counts(conn, run_id)[step]}
+    conn.execute("""INSERT INTO maintenance_items
+        (run_id,phase,item_key,object_id,outcome,reason,details_json,created_at)
+        VALUES(?,'consolidation',?,?,'model_step_budget',?,?,?)
+        ON CONFLICT(run_id,phase,item_key) DO UPDATE SET details_json=excluded.details_json,
+            reason=COALESCE(excluded.reason,maintenance_items.reason)""",
+        (run_id,'budget:'+step,run_id,reason,dumps(details),stamp))
+
+
+def check_step_admission(store, gateway, run_id, step, *, required=2, clock=utc_now, stop=None):
+    """Preflight only: common stops precede step limits, without reserving a call."""
+    try:
+        if stop and stop():
+            raise ModelError('paused', 'maintenance stopped', paused=True, reason='interrupted')
+        health = getattr(gateway, 'health', None)
+        if health:
+            health.check('chat', 'learning')
+        with store.read() as conn:
+            settings = run_settings(conn, run_id)
+            count = step_call_counts(conn, run_id)[step]
+        if count + required > settings[BUDGET_FIELDS[step]]:
+            raise ModelError('budget', 'call budget', reason='call_budget')
+    except ModelError as error:
+        with store.write() as conn:
+            report_step_budget(conn, run_id, step, clock().isoformat(), error.reason or error.category)
+        raise
 
 
 def pair_policy(settings):
@@ -570,13 +623,22 @@ def merge_detail_decision(payload, result):
 
 class _CallHealth:
     """Purpose-local view; never mutate the shared Gateway or its health object."""
-    def __init__(self, owner, health, work):
+    def __init__(self, owner, health, work, *, stop=None):
         self.owner,self.real,self.work=owner,health,work
+        self.stop=stop if stop is not None else owner.stop
         self.call_id=None
 
     def check(self, kind, purpose, *, probe=False):
         # learning's existing admission includes the common daily generation limit.
-        token=self.real.check('chat','learning') if self.real else None
+        try:
+            if self.stop and self.stop():
+                raise ModelError('paused','maintenance stopped',paused=True,reason='interrupted')
+            token=self.real.check('chat','learning') if self.real else None
+        except ModelError as error:
+            with self.owner.store.write() as conn:
+                report_step_budget(conn,self.owner.run_id,budget_step(purpose),self.owner.clock().isoformat(),
+                                   error.reason or error.category)
+            raise
         self.call_id=self.owner.reserve(self.work,purpose)
         return token
 
@@ -596,17 +658,25 @@ class Consolidation:
     def __init__(self, store, gateway=None, *, clock=utc_now):
         self.store,self.gateway,self.clock=store,gateway,clock
         self.run_id=None
+        self.stop=None
 
     def reserve(self, work, purpose):
+        step=budget_step(purpose)
         with self.store.write() as conn:
-            settings=json.loads(conn.execute('SELECT settings_json FROM consolidation_runs WHERE run_id=?',(self.run_id,)).fetchone()[0])
-            count=conn.execute('SELECT COUNT(*) FROM consolidation_calls WHERE run_id=?',(self.run_id,)).fetchone()[0]
-            # A generation retry/repair must still leave one call for the checker.
+            settings=run_settings(conn,self.run_id)
+            count=step_call_counts(conn,self.run_id)[step]
+            # Each generation retry/repair still leaves one call for its checker.
             required = 2 if purpose.startswith(('persona_generate', 'consolidation_entry_profile_generate', 'consolidation_person_summary_generate')) else 1
-            if count+required>settings['max_calls']:
-                raise ModelError('budget','call budget',reason='call_budget')
-            return conn.execute('INSERT INTO consolidation_calls(run_id,work_id,purpose,created_at) VALUES(?,?,?,?)',
-                (self.run_id,work['id'],purpose,self.clock().isoformat())).lastrowid
+            exhausted=count+required>settings[BUDGET_FIELDS[step]]
+            cid=None
+            if not exhausted:
+                cid=conn.execute('INSERT INTO consolidation_calls(run_id,work_id,purpose,created_at) VALUES(?,?,?,?)',
+                    (self.run_id,work['id'],purpose,self.clock().isoformat())).lastrowid
+            report_step_budget(conn,self.run_id,step,self.clock().isoformat(),'call_budget' if exhausted else None)
+        # Persist the stop reason without spending a call or rolling back its report.
+        if exhausted:
+            raise ModelError('budget','call budget',reason='call_budget')
+        return cid
 
     def finish_call(self,cid,result,duration,usage,finish=None,error=None,effort=None,raw=None):
         with self.store.write() as conn:
@@ -877,6 +947,7 @@ class Consolidation:
         scanned=[(mid,fp) for mid,fp in scanned if mid not in failed_ids]
         with self.store.write() as conn:
             conn.executemany('INSERT OR REPLACE INTO consolidation_scanned VALUES(?,?)',scanned)
+            self._trim_pair_backlog(conn,run['id'])
             # A bounded run snapshot; the durable pending queue remains ordered.
             conn.execute('''INSERT OR IGNORE INTO consolidation_run_work(run_id,work_id)
                 SELECT ?,id FROM consolidation_work WHERE state IN ('pending','classified','decided')
@@ -891,6 +962,24 @@ class Consolidation:
                 (run['id'],settings['resolution'],PROMPT_VERSION,MERGE_PROMPT_VERSION,settings['dependency_enabled'],settings['merge_enabled'],
                  settings['conflict_enabled'],settings['merge_enabled'],settings['conflict_enabled']))
             conn.execute('UPDATE consolidation_runs SET planned=1 WHERE run_id=?',(run['id'],))
+
+    def _trim_pair_backlog(self,conn,run_id):
+        # A terminal queue state, not a semantic decision or receipt. Unchanged
+        # fingerprints stay trimmed; a changed scan can enqueue a new fingerprint.
+        trimmed=[row[0] for row in conn.execute("""SELECT id FROM consolidation_work
+            WHERE kind='pair' AND state IN ('pending','classified','decided')
+            ORDER BY importance DESC,julianday(changed_at) DESC,id LIMIT -1 OFFSET ?""",(MAX_PENDING_PAIRS,))]
+        if not trimmed:
+            return
+        conn.executemany("UPDATE consolidation_work SET state='backlog_trimmed',result_json=? WHERE id=?",
+                         ((dumps({'reason':'backlog_trimmed'}),wid) for wid in trimmed))
+        previous=conn.execute("SELECT details_json FROM maintenance_items WHERE run_id=? AND phase='consolidation' AND item_key='backlog:pair'",(run_id,)).fetchone()
+        count=len(trimmed)+(json.loads(previous[0])['count'] if previous else 0)
+        conn.execute("""INSERT INTO maintenance_items
+            (run_id,phase,item_key,object_id,outcome,reason,details_json,created_at)
+            VALUES(?,'consolidation','backlog:pair',?,'backlog_trimmed','backlog_trimmed',?,?)
+            ON CONFLICT(run_id,phase,item_key) DO UPDATE SET details_json=excluded.details_json""",
+            (run_id,run_id,dumps({'count':count,'limit':MAX_PENDING_PAIRS}),self.clock().isoformat()))
 
     def _stale(self,conn,payload):
         for old in payload['memories']:
@@ -924,6 +1013,7 @@ class Consolidation:
 
     def run(self,run,*,stop=None):
         self.run_id=run['id']
+        self.stop=stop
         with self.store.write() as conn:
             if not conn.execute('SELECT 1 FROM consolidation_runs WHERE run_id=?',(self.run_id,)).fetchone():
                 conn.execute('INSERT INTO consolidation_runs(run_id,settings_json) VALUES(?,?)',
@@ -938,9 +1028,22 @@ class Consolidation:
             return True
         # Entry profiles are a separate durable step using this run's call ledger.
         from .entry_profile import update_profiles_for_run
-        if not update_profiles_for_run(self.store, _PersonaGateway(self, stop=stop), run, config,
-                                       clock=self.clock, stop=stop):
-            return False
+        profile_gateway=_PersonaGateway(self, stop=stop)
+        with self.store.read() as conn:
+            counts=step_call_counts(conn,self.run_id)
+        # Legacy entry-profile preflight counts the whole ledger. Offset only
+        # other steps; per-HTTP admission below always uses the exact step cap.
+        profile_config={**config,'max_calls':config['entry_profile_max_calls']+sum(counts.values())-counts['entry_profile']}
+        try:
+            if config['entry_profile_enabled']:
+                check_step_admission(self.store,profile_gateway,self.run_id,'entry_profile',
+                                     required=0,clock=self.clock,stop=stop)
+        except ModelError as error:
+            if error.reason=='interrupted':
+                return False
+        else:
+            if not update_profiles_for_run(self.store,profile_gateway,run,profile_config,clock=self.clock,stop=stop):
+                return False
         if not any(config[key] for key in ('merge_enabled','conflict_enabled','dependency_enabled')):
             if not self._person_summaries(run,config,stop):
                 return False
@@ -962,6 +1065,8 @@ class Consolidation:
                     return False
             except ModelError as exc:
                 reason=exc.reason or exc.category
+                if reason=='interrupted':
+                    return False
                 if reason in ('call_budget','usage_limit','paused','temporary_unavailable') or exc.paused:
                     with self.store.write() as conn:
                         self.record(conn,work,'skipped',reason,done=False)
@@ -1019,7 +1124,7 @@ class Consolidation:
                 # The failure receipt is a new short transaction.
                 self.fail_work(work,exc,'invalid_action')
                 blocked.add(frozenset(payload.get('pair_ids',[payload.get('target_id')])))
-        # Memory merge/conflict/dependency work has first use of the budget.
+        # Person summaries have their own cap even if memory work exhausted its cap.
         if not self._person_summaries(run,config,stop):
             return False
         self.halt(budget_reason)
@@ -1234,7 +1339,7 @@ class _PersonaGateway:
             inner = object.__new__(_CallGateway)
             inner.__dict__ = self.gateway.__dict__.copy()
             inner._co = owner
-            inner.health = _CallHealth(owner, self.health, {'id': None})
+            inner.health = _CallHealth(owner, self.health, {'id': None}, stop=stop)
             self.gateway = inner
 
     def chat(self, messages, purpose, max_tokens=16000, **kwargs):
@@ -1242,7 +1347,7 @@ class _PersonaGateway:
             raise ModelError('paused', 'maintenance stopped', paused=True, reason='interrupted')
         if isinstance(self.gateway, Gateway):
             return self.gateway.chat(messages, purpose, max_tokens, **kwargs)
-        gate = _CallHealth(self.owner, self.health, {'id': None})
+        gate = _CallHealth(self.owner, self.health, {'id': None}, stop=self.stop)
         gate.check('chat', purpose)
         started = self.monotonic()
         try:
@@ -1290,10 +1395,14 @@ def update_persona_for_run(store, gateway, run, *, clock=utc_now, stop=None):
             status, reason = 'not_due', due['reason']
         elif not gateway or not callable(getattr(gateway, 'chat', None)):
             reason = 'unconfigured'
+        if reason is None:
+            admission_owner=Consolidation(store,gateway,clock=clock)
+            admission_owner.run_id=run_id
+            try:
+                check_step_admission(store,_PersonaGateway(admission_owner,stop=stop),run_id,'persona',clock=clock,stop=stop)
+            except ModelError as error:
+                reason=error.reason or error.category
         with store.write() as conn:
-            count = conn.execute('SELECT COUNT(*) FROM consolidation_calls WHERE run_id=?', (run_id,)).fetchone()[0]
-            if reason is None and count+2 > settings['max_calls']:
-                reason = 'call_budget'
             attempt = None
             if reason is None:
                 previous = conn.execute('SELECT id FROM persona_versions WHERE is_current=1').fetchone()

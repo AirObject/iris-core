@@ -171,7 +171,10 @@ class Lifecycle(Input):
 
 
 class ConsolidationSettings(Input):
-    max_calls: int = Field(default=50, ge=0, le=50, strict=True)
+    max_calls: int = Field(default=300, ge=0, le=1000, strict=True)
+    entry_profile_max_calls: int = Field(default=18, ge=0, le=1000, strict=True)
+    person_summary_max_calls: int = Field(default=40, ge=0, le=1000, strict=True)
+    persona_max_calls: int = Field(default=6, ge=0, le=1000, strict=True)
     merge_enabled: bool = Field(default=True, strict=True)
     conflict_enabled: bool = Field(default=True, strict=True)
     dependency_enabled: bool = Field(default=True, strict=True)
