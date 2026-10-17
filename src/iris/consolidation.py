@@ -21,7 +21,7 @@ from .search_text import match_query, terms, words
 METHODS = {'balanced': 0.40, 'strict': 0.65, 'broad': 0.20}
 RESOLUTIONS = ('report_only_v1',)
 DEFAULTS = {'enabled': True, 'max_calls': 300,
-            'entry_profile_max_calls': 18, 'person_summary_max_calls': 40, 'persona_max_calls': 6,
+            'entry_profile_max_calls': 60, 'person_summary_max_calls': 40, 'persona_max_calls': 30,
             'method': 'broad', 'resolution': 'report_only_v1',
             'merge_enabled': True, 'conflict_enabled': True, 'dependency_enabled': True,
             'persona_enabled': True, 'goal_review_enabled': True, 'entry_profile_enabled': True, 'person_summary_enabled': True}

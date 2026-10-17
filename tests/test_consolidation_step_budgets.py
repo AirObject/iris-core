@@ -129,8 +129,10 @@ def test_old_settings_missing_new_keys_and_patch_roundtrip(store):
         client.app.state.scheduler.stop()
         value = client.get('/admin/api/settings').json()['consolidation']
         assert value['max_calls'] == 50
-        for key in BUDGETS[1:]:
-            assert value[key] == consolidation.DEFAULTS[key]
+        expected = {'entry_profile_max_calls': 60, 'person_summary_max_calls': 40, 'persona_max_calls': 30}
+        for key, limit in expected.items():
+            assert value[key] == limit
+            assert getattr(ConsolidationSettings(), key) == limit
         response = client.patch('/admin/api/settings/consolidation', json={'persona_max_calls': 9})
         assert response.status_code == 200
         assert response.json()['consolidation']['persona_max_calls'] == 9
