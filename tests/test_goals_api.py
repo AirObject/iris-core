@@ -104,7 +104,7 @@ def test_admin_goal_crud_filters_settings_notifications_and_audit(client, store)
     assert client.get('/admin/api/goals').status_code == 409
     login_admin(client)
     default = client.get('/admin/api/settings').json()['goals']
-    assert default == {'default_reminder_minutes': 60, 'overdue_reminders': True}
+    assert default == {'default_reminder_minutes': 60, 'overdue_reminders': True, 'internal_question_expiry_days': 7}
     response = client.post('/admin/api/goals', json={'content': '管理员安排', 'entry_id': 'A',
                                                     'deadline': '2026-10-09T05:00:00Z'})
     assert response.status_code == 201, response.text
@@ -130,7 +130,7 @@ def test_admin_goal_crud_filters_settings_notifications_and_audit(client, store)
     settings = client.patch('/admin/api/settings/goals', json={'default_reminder_minutes': 30,
                                                              'overdue_reminders': False})
     assert settings.status_code == 200
-    assert settings.json()['goals'] == {'default_reminder_minutes': 30, 'overdue_reminders': False}
+    assert settings.json()['goals'] == {'default_reminder_minutes': 30, 'overdue_reminders': False, 'internal_question_expiry_days': 7}
     assert client.patch('/admin/api/settings/goals', json={}).json()['goals'] == settings.json()['goals']
     with store.read() as conn:
         operations = [dict(row) for row in conn.execute("SELECT * FROM admin_operations WHERE object_type IN ('goal','settings')")]

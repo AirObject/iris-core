@@ -280,8 +280,8 @@ def test_setting_write_persists_and_existing_admin_patch_preserves_internal_key(
         login_admin(client)
         response = client.patch('/admin/api/settings/goals', json={'default_reminder_minutes': 90, 'overdue_reminders': False})
         assert response.status_code == 200
-        assert response.json()['goals'] == {'default_reminder_minutes': 90, 'overdue_reminders': False}
-        assert client.patch('/admin/api/settings/goals', json={KEY: days}).status_code == 400
+        assert response.json()['goals'] == {'default_reminder_minutes': 90, 'overdue_reminders': False, KEY: days}
+        assert client.patch('/admin/api/settings/goals', json={KEY: days}).status_code == 200
     with store.read() as conn:
         assert question_expiry_days(conn) == days
         assert json.loads(conn.execute("SELECT value_json FROM runtime_settings WHERE key='goals'").fetchone()[0]) == {
