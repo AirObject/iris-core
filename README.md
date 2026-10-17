@@ -460,7 +460,7 @@ PUT 的活动经去除首尾空白后，按区分大小写的完整字符串判�
 
 目标属于角色，所有入口共享，入口只记录产生位置；它是待办意图，不是当前活动、记忆或 persona。学习仍可同时保存承诺记忆与内部目标，目标本身不加入学习材料，也不会因聊天中的含糊说法自动完成。询问为 `kind=question`，没有截止时间或提醒，宿主可直接注入，并决定何时问。
 
-学习产生的内部询问（`origin=internal`、`kind=question`）超过保留天数仍为 `open` 时，由每日维护自动结束为 `abandoned`，`closed_by=maintenance`。保留天数使用运行设置 `goals.internal_question_expiry_days`，缺省 7，须为 1—365 的整数；当前只可通过 `Goals.configure_question_expiry(days)` 内部配置，管理设置接口与页面尚未开放。已有设置保存会保留此键。
+学习产生的内部询问（`origin=internal`、`kind=question`）超过保留天数仍为 `open` 时，由每日维护自动结束为 `abandoned`，`closed_by=maintenance`。保留天数使用运行设置 `goals.internal_question_expiry_days`，缺省 7，须为 1—365 的严格整数。`GET /admin/api/settings` 的 `goals` 分区返回此字段；可通过 `PATCH /admin/api/settings/goals` 提交 `{"internal_question_expiry_days":14}` 修改，字段省略时保留现值，字符串、布尔值、小数、null 或越界值返回 400。可与其他目标设置一起提交，所有字段与操作记录在同一事务中保存；沿用管理员会话及 CSRF 校验。页面接入由 UX 后续完成。
 
 天数按维护任务开始时的角色时区计算自然日：创建当天为第 0 天，第 N 天仍保留，进入第 N+1 天后的首次维护才结束。例如 N=7、10 月 10 日创建，10 月 17 日仍保留，10 月 18 日起可结束。续跑使用该维护任务的开始时间与时区判断到期，结束时间记录实际执行时间；写入前核对修订号，冲突留到下一次维护。此清理不依赖模型整理／目标依据复核开关，不发通知或提醒，也不改变承诺记忆。维护报告列出数量与目标 ID，目标修订记录固定原因 `question_expired` 及状态变化，不复制正文。合并来源节点跳过，保留目标按自身来源与创建时间判断；“可能重复”仍需按原规则处理。
 
@@ -487,7 +487,7 @@ PUT 的活动经去除首尾空白后，按区分大小写的完整字符串判�
 
 prepare 与 `search(include_goals=true)` 返回最多 10 个未结束目标／询问：临近和过期优先，其次本入口、涉及当前参与者，再按期限与创建时间。此分区不改变记忆选取。管理员接口沿用会话、CSRF 和操作记录：`GET/POST /admin/api/goals`，`GET/PATCH /admin/api/goals/{id}`；管理修改须带 `expected_revision`，可编辑正文。列表另支持 `entry_id/possible_duplicate/deadline_from/deadline_to`，日期筛选包含整天。详情含 `sources`、`promise_memories`（同证据角色记忆及当时修订，并非新增语义承诺分类）、`merged_goals`、提醒计划和通知历史。
 
-可能重复关系通过 `POST /admin/api/goals/{id}/duplicates/{other_id}/merge` 或 `/dismiss` 处理，正文须含两方 `expected_revision/other_revision`；合并仍守住类型、人物、期限、数字与否定边界。`GET /admin/api/notifications` 按 `status/goal_id` 分页，只读不取走。`PATCH /admin/api/settings/goals` 设置 `default_reminder_minutes` 和 `overdue_reminders`（默认 true），写入操作记录。页面接入留到后续界面阶段。
+可能重复关系通过 `POST /admin/api/goals/{id}/duplicates/{other_id}/merge` 或 `/dismiss` 处理，正文须含两方 `expected_revision/other_revision`；合并仍守住类型、人物、期限、数字与否定边界。`GET /admin/api/notifications` 按 `status/goal_id` 分页，只读不取走。`PATCH /admin/api/settings/goals` 设置 `default_reminder_minutes`、`overdue_reminders`（默认 true）和 `internal_question_expiry_days`（默认 7），省略的字段保留现值，写入操作记录。页面接入留到后续界面阶段。
 
 旧状态映射：`done/completed` → completed，`cancelled/canceled/abandoned` → abandoned，其余（包括 in_progress、pending、failed 和未知值）→ open；过期／失败不推导放弃。未知旧来源映射 internal。无法确定的历史完成时间和操作者保留 null。
 

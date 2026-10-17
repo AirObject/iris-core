@@ -22,7 +22,7 @@ from .persona import DEFAULT_GOAL, DEFAULT_RULES, DEFAULT_PUBLISH_MODE, persona_
 from .state import state_settings
 from .service_status import model_health_snapshot
 from .consolidation import consolidation_settings
-from .goals import goal_settings
+from .goals import DEFAULT_QUESTION_EXPIRY_DAYS, goal_settings
 from .goal_dedup_judge import DEFAULTS as GOAL_JUDGE_DEFAULTS, settings as goal_judge_settings
 
 CONNECTION_TIMEOUT = 10
@@ -147,6 +147,7 @@ class StateSettings(Input):
 class GoalsSettings(Input):
     default_reminder_minutes: int = Field(default=60, ge=0, le=525600, strict=True)
     overdue_reminders: bool = Field(default=True, strict=True)
+    internal_question_expiry_days: int = Field(default=DEFAULT_QUESTION_EXPIRY_DAYS, ge=1, le=365, strict=True)
 
 
 class Limits(Input):

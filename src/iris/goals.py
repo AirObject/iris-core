@@ -53,12 +53,11 @@ class GoalMerged(Exception):
 
 def _stored_goal_settings(conn):
     row = conn.execute("SELECT value_json FROM runtime_settings WHERE key='goals'").fetchone()
-    return {**DEFAULTS, **(json.loads(row[0]) if row else {})}
+    return {**DEFAULTS, QUESTION_EXPIRY_KEY: DEFAULT_QUESTION_EXPIRY_DAYS, **(json.loads(row[0]) if row else {})}
 
 
 def goal_settings(conn):
-    # Keep the existing settings API projection until its separate rollout.
-    return {key: value for key, value in _stored_goal_settings(conn).items() if key != QUESTION_EXPIRY_KEY}
+    return _stored_goal_settings(conn)
 
 
 def _question_expiry_days(value):
@@ -1438,7 +1437,7 @@ class Goals:
             return options
 
     def configure_question_expiry(self, days, *, actor='admin'):
-        """Internal configuration; HTTP/settings UI exposure is a separate change."""
+        """Set question retention without changing reminder settings."""
         days = _question_expiry_days(days)
         with self.store.write() as conn:
             settings = _stored_goal_settings(conn)
@@ -1448,15 +1447,20 @@ class Goals:
                       actor=actor, stamp=_current(self.clock()).isoformat())
         return days
 
-    def configure(self,*,default_reminder_minutes=None,overdue_reminders=None,actor='admin'):
+    def configure(self,*,default_reminder_minutes=None,overdue_reminders=None,
+                  internal_question_expiry_days=None,actor='admin'):
         if default_reminder_minutes is not None:
             _lead(default_reminder_minutes)
         if overdue_reminders is not None and type(overdue_reminders) is not bool:
             raise GoalError('overdue_reminders','过期提醒开关须为布尔值')
+        if internal_question_expiry_days is not None:
+            _question_expiry_days(internal_question_expiry_days)
         with self.store.write() as conn:
             current=_current(self.clock())
             settings=_stored_goal_settings(conn)
-            changes={k:v for k,v in {'default_reminder_minutes':default_reminder_minutes,'overdue_reminders':overdue_reminders}.items() if v is not None and v!=settings[k]}
+            requested = {'default_reminder_minutes': default_reminder_minutes,
+                         'overdue_reminders': overdue_reminders, QUESTION_EXPIRY_KEY: internal_question_expiry_days}
+            changes={k:v for k,v in requested.items() if v is not None and v!=settings[k]}
             settings.update(changes)
             conn.execute("INSERT INTO runtime_settings(key,value_json) VALUES('goals',?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json",(dumps(settings),))
             if 'default_reminder_minutes' in changes:
