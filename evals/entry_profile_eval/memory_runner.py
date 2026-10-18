@@ -464,19 +464,31 @@ def _incremental_stages(work, manual):
                 target=directory.get(raw.get('memory_id'),{})
                 mid=raw.get('memory_id',applied.get(index,{}).get('memory_id',f"{item['id']}:{index}"))
                 body=raw.get('body',target.get('body',''))
+                category=raw.get('category',target.get('category'))
                 if raw.get('action')=='retire': continue
-                candidate=dict(memory_id=mid,body=body,category=raw.get('category',target.get('category')),
+                # The writer constructs saying bodies from these fields; the raw
+                # body is retained unchanged in run.json, not used as final prose.
+                if category=='saying' and raw.get('op') in ('propose','change'):
+                    body=raw['saying']+('：'+raw['meaning'] if raw['meaning'] else '')
+                candidate=dict(memory_id=mid,body=body,category=category,
                     author='admin' if target.get('manual_protected') else 'model',observed_at=payload['as_of'],
                     work_id=item['id'],sources=[])
                 key=(mid,body)
                 candidate['sources']=copy.deepcopy(accumulated.get(key,[]))
                 for ref in raw.get('source_refs',[]):
                     try:
+                        excerpt=ref.get('excerpt')
+                        if 'start_segment' in ref:
+                            from iris.entry_profile import _inc_segment_excerpt
+                            message=next((m for m in payload['messages'] if m['message_id']==ref['message_id']),None)
+                            if message is None: raise ValueError('unbound_source_interval')
+                            original=message['content'] if ref['field']=='content' else (message.get('quote') or {}).get('content','')
+                            excerpt=_inc_segment_excerpt(original,ref['start_segment'],ref['end_segment'])
                         bound=_memory_bind_source(dict(ref='msg:'+str(ref['message_id']),field=ref['field'],
-                            excerpt=ref['excerpt'],via_memory=None),dict(messages=payload['messages'],memories=[]))
+                            excerpt=excerpt,via_memory=None),dict(messages=payload['messages'],memories=[]))
                         candidate['sources'].append(_judge_source(bound))
                     except ValueError:
-                        candidate['sources'].append({k:ref[k] for k in ('message_id','field','excerpt') if k in ref})
+                        candidate['sources'].append({k:ref[k] for k in ('message_id','field','excerpt','start_segment','end_segment') if k in ref})
                 stages['generated'].append(candidate)
                 if index in applied:
                     effective=next((r for r in result.get('deterministic',[]) if r['index']==index),None)
