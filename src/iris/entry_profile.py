@@ -2261,41 +2261,125 @@ def _inc_saying_used(saying, excerpt):
     return matched(r'[这那](?:一)?['+_INC_CLASSIFIERS+r']?'+re.escape(noun)+r'还'+re.escape(verb)+r'着?[吗呢]?')
 
 
-def _inc_entity_terms(body):
-    """Literal anchors, not an open-ended inventory of nouns in a theme.
+# Units/classifiers describe grammar and measurement, never a topic vocabulary.
+_INC_NUMERALS = '零〇一二两三四五六七八九十百千万亿'
+_INC_NUMBER = r'(?:\d+(?:\.\d+)?|[' + _INC_NUMERALS + r']+)'
+_INC_COUNT = re.compile(r'\s*(?:种|类|个|次|遍|回|趟|项|步|轮|版|组|份|件|条|张|段|层|块|片|本|章|节)(?![a-zA-Z0-9])')
+_INC_UNIT = r'(?:摄氏度|毫米|厘米|公里|千米|千克|公斤|毫克|毫升|分钟|小时|个月|米|克|升|度|元|秒|天|日|周|月|年|%|°[CF]|mm|cm|km|kg|mg|ml)'
+_INC_NAMING = re.compile(r'(?:品牌|型号|系列|产品名|地名|公司名|作品名|姓名|作者)(?:为|是|叫|名为|[:：])?\s*$')
 
-    Dictionary person/place/organization names are deterministic hints only.
-    Unknown names and ordinary words used as brands remain the semantic check's
-    responsibility unless explicitly named or written as an identifier.
+
+def _inc_gendered(body):
+    # 他 in these neutral words/affixes is not a gendered personal pronoun.
+    # Do not remove real pronouns from compounds such as 他们/他俩, nor mask 她.
+    neutral = re.sub(r'其他|吉他|他[人者处方]|(?:利|排)他', ' ', body)
+    return bool(_MEMORY_GENDERED.search(neutral))
+
+
+def _inc_saying_body(body, saying, meaning):
+    """Check literal structure, allowing equivalent framing but no paraphrase."""
+    expected = saying + ('：' + meaning if meaning else '')
+    if not saying:
+        raise ValueError('unbound_meaning')
+    # Preserve every previously accepted exact structure before parsing framing.
+    if body.rstrip('。.!！?？') == expected.rstrip('。.!！?？'):
+        return expected
+    if re.search(r'[:：]', saying):
+        raise ValueError('unbound_meaning')
+    core = body.rstrip('。.!！?？').strip()
+    head, separator, tail = re.split(r'([:：])', core, maxsplit=1) if re.search(r'[:：]', core) else (core, '', '')
+    head = head.strip()
+    if len(head) >= 2 and (head[0], head[-1]) in (('“','”'), ('「','」'), ('『','』'), ('"','"')):
+        head = head[1:-1].strip()
+    if (head != saying or bool(separator) != bool(meaning)
+            or tail.strip() != meaning.rstrip('。.!！?？').strip()):
+        raise ValueError('unbound_meaning')
+    return expected
+
+
+def _inc_entity_terms(body):
+    """Literal names and concrete values; ordinary counts go to semantic review.
+
+    POS labels alone may mislabel a grammatical compound as a person's/place's
+    name. Only transparent verb/adverb or measure/pronoun compounds are deferred
+    here; explicit naming and genuine proper-name hints remain literal anchors.
+    Ambiguous unmarked names still need the unchanged model check.
     """
     from jieba import posseg
-    body=unicodedata.normalize('NFKC',body)
-    result=[a or b for a,b in re.findall(r'《([^》]+)》|〈([^〉]+)〉',body)]
-    result+=re.findall(r'(?:品牌|型号|系列|产品名|地名|公司名|作品名)(?:为|是|叫|名为|[:：])?\s*[“「『"]([^”」』"]+)[”」』"]',body)
-    # Preserve composite dates/times: matching their individual numbers is not enough.
-    result+=re.findall(r'\d{4}年\d{1,2}月\d{1,2}[日号]|\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}月\d{1,2}[日号]|\d{1,2}[:：]\d{2}',body)
-    result+=re.findall(r'(?<![a-zA-Z0-9_.])\d+(?:\.\d+)?(?:%|％)?',body)
-    identifiers=re.findall(r'(?<![a-zA-Z0-9])[a-zA-Z][a-zA-Z0-9]*(?:[-_][a-zA-Z0-9]+)*(?![a-zA-Z0-9])',body)
-    result.extend(term for term in identifiers if any(c.isupper() or c.isdigit() for c in term))
-    for word,flag in posseg.cut(body,HMM=False):
-        if flag.startswith(('nr','ns','nt')) and len(word)>=2:
-            result.append(word)
-        elif flag=='m':
-            quantity=re.match(r'[零〇一二两三四五六七八九十百千万]+',word)
-            if quantity: result.append(quantity[0])
+    body = unicodedata.normalize('NFKC', body)
+    result = []; protected = []
+    def collect(pattern, group=0):
+        for match in re.finditer(pattern, body):
+            if covered(*match.span(group)): continue
+            result.append(match[group]); protected.append(match.span())
+    def covered(start, end):
+        return any(left <= start and end <= right for left, right in protected)
+    def generic_number(start, end):
+        return bool(_INC_COUNT.match(body[end:]) or re.search(r'第\s*$', body[:start]))
+    collect(r'《([^》]+)》|〈([^〉]+)〉')
+    # Keep title content rather than its framing marks.
+    result = [term[1:-1] for term in result]
+    collect(r'(?:品牌|型号|系列|产品名|地名|公司名|作品名)(?:为|是|叫|名为|[:：])?\s*[“「『"]([^”」』"]+)[”」』"]', 1)
+    # A whole date/time is an anchor; its individual digits are not substitutes.
+    collect(r'\d{4}年\d{1,2}月\d{1,2}[日号]|\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}月\d{1,2}[日号]|\d{1,2}[:：]\d{2}')
+    collect(_INC_NUMBER + '年' + _INC_NUMBER + '月(?:' + _INC_NUMBER + '[日号])?|' + _INC_NUMBER + '月' + _INC_NUMBER + '[日号]')
+    # Whole Chinese calendar/clock values, not the 三 from a quantity like 三点意见.
+    collect(_INC_NUMBER + '(?:点|时)(?:' + _INC_NUMBER + '分|半|整)')
+    collect(r'(?:凌晨|早上|上午|中午|下午|傍晚|晚上|夜里)\s*' + _INC_NUMBER + '(?:点|时)(?:' + _INC_NUMBER + '分|半|整)?')
+    collect(r'(?:时间|时刻)(?:为|是|[:：])\s*(' + _INC_NUMBER + '(?:点|时))', 1)
+    collect(r'(?<![a-zA-Z0-9_.])(?:[a-zA-Z][a-zA-Z0-9_-]*)?\d+(?:\.\d+){2,}(?![a-zA-Z0-9_.])')
+    for match in re.finditer(r'(?<![a-zA-Z0-9])[a-zA-Z][a-zA-Z0-9]*(?:[-_][a-zA-Z0-9]+)*(?![a-zA-Z0-9])', body):
+        if any(c.isupper() or c.isdigit() for c in match[0]):
+            result.append(match[0]); protected.append(match.span())
+    # Units without a value are generic. Exact measured values stay bound as a
+    # whole, so 十公里 cannot be proved by 三十公里 or 十厘米.
+    for match in re.finditer(r'(?<![a-zA-Z0-9.' + _INC_NUMERALS + r'])' + _INC_NUMBER + r'\s*' + _INC_UNIT + r'(?![a-zA-Z0-9])', body):
+        if covered(*match.span()): continue
+        # Every-N temporal intervals describe recurrence, not a dated event or
+        # measured reading. Their truth still belongs to semantic admission.
+        recurring = re.search(r'每(?:隔|过)?\s*$', body[:match.start()]) and re.search(r'(?:分钟|小时|天|周|月|年)$', match[0])
+        if not recurring: result.append(match[0])
+        protected.append(match.span())
+    collect(r'百分之[' + _INC_NUMERALS + ']+')
+    for match in re.finditer(r'(?<![a-zA-Z0-9_.])\d+(?:\.\d+)?', body):
+        if not covered(*match.span()) and not generic_number(*match.span()):
+            result.append(match[0])
+    offset = 0
+    for word, flag in posseg.cut(body, HMM=False):
+        start, end = offset, offset + len(word); offset = end
+        if covered(start, end): continue
+        named = bool(_INC_NAMING.search(body[:start]))
+        if flag.startswith(('nr','ns','nt')) and len(word) >= 2:
+            first = posseg.dt.word_tag_tab.get(word[0], '')
+            last = posseg.dt.word_tag_tab.get(word[-1], '')
+            grammatical = (len(word) == 2 and first.startswith('v')
+                and (last in ('a','ad','d') or re.fullmatch(_INC_UNIT, word[-1])))
+            neutral_compound = flag.startswith('ns') and last.startswith('r')
+            locative = bool(re.search(r'(?:在|从|到|位于|来自|前往)\s*$', body[:start]))
+            if named or not grammatical and not (neutral_compound and not locative):
+                result.append(word)
+        elif flag == 'm' and re.fullmatch('[' + _INC_NUMERALS + ']+', word):
+            # Do not take the 一 from 一点/一些/一起, nor 三 from 三类.
+            if not generic_number(start, end): result.append(word)
     return list(dict.fromkeys(result))
 
 
 def _inc_missing_entities(body, evidence):
-    texts=[unicodedata.normalize('NFKC',x).casefold() for x in evidence]
-    missing=[]
+    texts = [unicodedata.normalize('NFKC', x).casefold() for x in evidence]
+    missing = []
     for term in _inc_entity_terms(body):
-        term=unicodedata.normalize('NFKC',term).casefold()
-        if re.fullmatch(r'\d+(?:\.\d+)?%?',term):
-            found=any(re.search(r'(?<![\d.])'+re.escape(term)+r'(?![\d.])',x) for x in texts)
-        elif re.search(r'[a-z]',term):
-            found=any(re.search(r'(?<![a-z0-9])'+re.escape(term)+r'(?![a-z0-9])',x) for x in texts)
-        else: found=any(term in x for x in texts)
+        term = unicodedata.normalize('NFKC', term).casefold()
+        if re.match(r'[\d' + _INC_NUMERALS + ']', term):
+            bare = re.fullmatch(_INC_NUMBER, term) is not None
+            boundary = ('0-9.' if bare else 'a-z0-9.') + _INC_NUMERALS
+            ending = boundary.replace('.', '')
+            quantity = re.fullmatch('(' + _INC_NUMBER + r')\s*(' + _INC_UNIT + ')', term, re.I)
+            pattern = re.escape(term) if not quantity else re.escape(quantity[1]) + r'\s*' + re.escape(quantity[2])
+            found = any(re.search(r'(?<![' + boundary + '])' + pattern + r'(?![' + ending + r'])(?!\.\d)', x) for x in texts)
+        elif re.search(r'[a-z]', term):
+            found = any(re.search(r'(?<![a-z0-9])' + re.escape(term) + r'(?![a-z0-9])', x) for x in texts)
+        else:
+            found = any(term in x for x in texts)
         if not found: missing.append(term)
     return missing
 
@@ -2703,14 +2787,15 @@ class IncrementalProfileTask:
                         if raw.get('action')=='retire':
                             if body or saying or meaning or raw['definition_refs'] or category!=target['category']:
                                 raise ValueError('invalid_retirement')
-                        elif (not body or _MEMORY_GENDERED.search(body) or _ACCOUNT.search(body)):
+                        elif (not body or _inc_gendered(body) or _ACCOUNT.search(body)):
                             raise ValueError('invalid_or_gendered_body')
                         elif category=='saying':
-                            expected=saying+('：'+meaning if meaning else '')
-                            if not saying or body.rstrip('。.!！?？')!=expected.rstrip('。.!！?？') or bool(meaning)!=bool(raw['definition_refs']):
+                            saying=whitespace(saying);meaning=whitespace(meaning)
+                            expected=_inc_saying_body(body,saying,meaning)
+                            if bool(meaning)!=bool(raw['definition_refs']):
                                 raise ValueError('unbound_meaning')
                             if body!=expected:
-                                result['normalizations'].append(dict(index=index,reason='saying_terminal_punctuation'))
+                                result['normalizations'].append(dict(index=index,reason='saying_literal_framing'))
                             body=expected
                         elif saying or meaning or raw['definition_refs']:
                             raise ValueError('unexpected_meaning')
