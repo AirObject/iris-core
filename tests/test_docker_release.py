@@ -177,4 +177,4 @@ def test_cli_version_does_not_start_service(capsys):
     with pytest.raises(SystemExit) as result:
         main(['--version'])
     assert result.value.code == 0
-    assert capsys.readouterr().out.strip() == 'iris 0.0.1'
+    assert capsys.readouterr().out.strip() == 'iris 0.0.2'
