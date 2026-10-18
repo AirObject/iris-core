@@ -411,3 +411,31 @@ def test_identical_actual_uses_count_but_bursts_and_quotes_do_not():
     b=copy.deepcopy(a);b['evidence_identity']='message:21';b['message'].update(position=21,occurred_at='2026-10-04T12:00:00+08:00',date='2026-10-04')
     b['field']='quote'
     assert not ep._inc_enough([a,b],'saying','搭桥')
+
+
+@pytest.mark.parametrize("semantic_link",[False,True])
+def test_proof_selection_keeps_the_initiator_of_a_supporting_answer(semantic_link):
+    p=payload();m=p['memory'];m['body']='比较容器的密封性。';m['proof_points']=ep._inc_proof_points(m['body'],'topic')
+    if not semantic_link:m['sources'][1].update(group_id=11,count_eligible=False)
+    # The answer proves the point, but its initiating question is needed to
+    # establish the discussion. A shorter, unrelated question on that day
+    # cannot replace that witness merely because the calendar date matches.
+    stray={**m['sources'][0],'source_id':'stray','message_id':13,'group_id':13,'excerpt':'另一话题？','context':'另一话题？'}
+    stray['segments']=ep._inc_segments(stray['excerpt']);m['sources'].append(stray)
+    m=ep._inc_memory_page(m,m['sources']);p['memory']=m
+    v=vote(p)
+    v['point_support'][0]['source_ids']=['s2','s3']
+    if semantic_link:v['group_reviews'][1].update(discussion_id=11,independent=False)
+    selected,reason=ep._inc_plan_proof(m,[v],lambda ss:len(ss)<=3)
+    assert reason is None
+    assert {s['source_id'] for s in selected}=={'s1','s2','s3'}
+
+
+def test_removed_initiator_cannot_keep_a_group_counting_via_its_answer():
+    p=payload();m=p['memory'];m['sources'][1].update(group_id=11,count_eligible=False)
+    p['memory']=ep._inc_memory_page(m,m['sources'])
+    v=vote(p)
+    v['safe_sources']=[r for r in v['safe_sources'] if r['message_id']!=11]
+    for point in v['point_support']:point['source_ids']=['s2','s3']
+    with pytest.raises(ValueError,match='group|support'):
+        ep.validate_incremental_admission(v,p)

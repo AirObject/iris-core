@@ -2184,7 +2184,8 @@ def _inc_validate_proof(value, payload, previous=None):
             return target['group_id'] if (review['same_topic'] and target['same_topic'] and target['independent']
                 and target['discussion_id']==target['group_id'] and groups[target['group_id']]['eligible']) else None
         # Answers may contribute to their root's content; they never add a root.
-        eligible={gid for gid,g in groups.items() if root(gid)==gid and set(g['source_ids'])&set(safe_by_id)}
+        eligible={gid for gid,g in groups.items() if root(gid)==gid
+            and any(sid in safe_by_id and safe_by_id[sid]['count_eligible'] for sid in g['source_ids'])}
         if final:
             if len({groups[g]['date'] for g in eligible})<2: raise ValueError('reviewed_groups_insufficient')
             for refs in support.values():
@@ -2261,7 +2262,7 @@ def _inc_plan_proof(memory, votes, fits):
     """
     from itertools import combinations
     by_id={s['source_id']:s for s in memory['sources']};points={p['point_id'] for p in memory['proof_points']}
-    safe={};units=[];roles={};rule={k:set() for k in ('scope','persistent','announcement','endorsements')}
+    safe={};units=[];roles={};links={};rule={k:set() for k in ('scope','persistent','announcement','endorsements')}
     for vote in votes:
         if vote['decision']!='accept': return None,'mapping_rejected'
         for ref in vote['safe_sources']:
@@ -2269,6 +2270,11 @@ def _inc_plan_proof(memory, votes, fits):
                 if s['message_id']==ref['message_id'] and s['field']==ref['field'] and whitespace(ref['excerpt']) in whitespace(s['excerpt']):
                     safe[sid]={**s,'excerpt':ref['excerpt'],'segments':_inc_segments(ref['excerpt'])}
         roles.update({r['source_id']:r['role'] for r in vote['usage_reviews']})
+        for review in vote['group_reviews']:
+            gid,parent=review['group_id'],review['discussion_id']
+            if parent!=gid:
+                if gid in links and links[gid]!=parent: return None,'proof_gap:conflicting_discussion_links'
+                links[gid]=parent
         for key,refs in vote['rule_support'].items(): rule[key].update(refs)
         for point in vote['point_support']:
             refs=set(point['source_ids'])
@@ -2281,6 +2287,12 @@ def _inc_plan_proof(memory, votes, fits):
     # so an answer/qualifier on another page is not silently discarded.
     by_day={}
     for point,day,refs in units: by_day.setdefault(day,{}).setdefault(point,set()).update(refs)
+    def discussion_root(gid):
+        seen=set()
+        while gid in links:
+            if gid in seen: return None
+            seen.add(gid);gid=links[gid]
+        return gid
     options=[];category=memory['category']
     if category=='topic':
         days=sorted(by_day)
@@ -2301,10 +2313,14 @@ def _inc_plan_proof(memory, votes, fits):
         for chosen in sorted(set(choices)):
             if not all(sum(p in by_day[d] for d in chosen)>=2 for p in points): continue
             keep=set().union(*(refs for d in chosen for refs in by_day[d].values()))
-            for d in chosen:
-                witnesses=[s for s in safe.values() if s['date']==d and s['count_eligible']]
+            # A supporting answer needs its own discussion's initiating
+            # witness, not an arbitrary (possibly unrelated) question that day.
+            needed={discussion_root(by_id[s]['group_id']) for s in keep}
+            if None in needed: continue
+            for gid in sorted(needed):
+                witnesses=[s for s in safe.values() if s['group_id']==gid and s['count_eligible']]
                 if not witnesses: break
-                keep.add(min(witnesses,key=lambda s:(len(s['excerpt']),s['message_id']))['source_id'])
+                keep.add(min(witnesses,key=lambda s:(len(s['excerpt']),s['message_id'],s['source_id']))['source_id'])
             else: options.append(keep)
     else:
         if any(not any(p==point for p,day,refs in units) for point in points): return None,'proof_gap:missing_point'
