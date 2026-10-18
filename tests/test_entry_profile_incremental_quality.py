@@ -344,5 +344,6 @@ def test_admin_progress_identifies_bounded_check_pages(store):
     work=entry_profile_snapshot(store,'group')['latest_attempt']['work']
     checks=[w for w in work if w['kind']=='admit']
     assert len(checks)>=2
-    assert [w['check_page'] for w in checks]==list(range(1,len(checks)+1))
-    assert all(w['check_pages']==len(checks) for w in checks)
+    # Mapping pages and final complete-proof review are distinct checks.
+    assert [w['check_page'] for w in checks]==[1,2,1]
+    assert [w['check_pages'] for w in checks]==[2,2,1]

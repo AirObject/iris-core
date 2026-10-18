@@ -21,7 +21,6 @@ def test_common_nouns_are_semantically_checked_not_literal_entities(body, eviden
 @pytest.mark.parametrize('body,evidence,needle', [
     ('讨论《远山纪事》的叙述。', ['讨论《近海纪事》的叙述。'], '远山纪事'),
     ('比较苏州的路线。', ['杭州的路线更平缓。'], '苏州'),
-    ('比较华为的设备。', ['比较不同品牌的设备。'], '华为'),
     ('比较型号 X4 与 RF-35。', ['型号 X40 与 RF-50。'], 'x4'),
     ('选择品牌为“佳能”的镜头。', ['尼康镜头。'], '佳能'),
     ('比较十公里线路。', ['五公里线路。'], '十'),
@@ -180,3 +179,13 @@ def test_collective_or_broadcast_notice_is_not_a_single_person_request(store, te
     g = Gateway(store, lambda p: propose(p, category='rule', body='分享内容前核对信息。'))
     run(store, g)
     assert any('admit' in call['purpose'] for call in g.calls)
+
+
+def test_ambiguous_dictionary_name_is_sent_to_semantic_review(store):
+    # Bare nr tags are not sufficient to distinguish a real brand from a
+    # mislabeled common noun; the checker must still prove the body point.
+    mid,_=seed(store,[(1,'甲','比较不同品牌的设备。'),(4,'乙','比较设备的构造。')],body='比较华为的设备。')
+    gateway=check_seed(store,Gateway(store,checks=reject))
+    check=next(c['payload'] for c in gateway.calls if 'admit' in c['purpose'])
+    assert '华为' in check['memory']['entity_hints']
+    assert not projection(store)

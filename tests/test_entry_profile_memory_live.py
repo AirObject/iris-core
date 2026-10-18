@@ -89,8 +89,8 @@ class RuleGateway:
                 'saying':'','meaning':'','definition_refs':[],
                 'source_refs':[{'message_id':source['message_id'],'field':'content','excerpt':source['content']}]}]}
         elif purpose.endswith('_admit'):
-            output={'decision':'accept','violations':[],'reason':'明确的长期群规',
-                'safe_sources':[{k:s[k] for k in ('message_id','field','excerpt')} for s in payload['memory']['sources']]}
+            from test_entry_profile_incremental import accept
+            output=accept(payload)
             if self.hook: self.hook()
         elif purpose.endswith('_generate'):
             source = payload['messages'][0]
@@ -260,7 +260,7 @@ def test_indirect_topic_sources_remain_normalized_in_persisted_projection(store)
 
 def test_default_engine_reports_actual_memory_prompts_and_refuses_legacy_override(store):
     engine=ep.EntryProfileEngine(store,None)
-    assert engine.prompt_metadata['prompt_versions']==['entry_profile_observe_v3','entry_profile_admit_v3']
+    assert engine.prompt_metadata['prompt_versions']==['entry_profile_observe_v8','entry_profile_admit_v8']
     with pytest.raises(ep.EntryProfileRetired):
         ep.EntryProfileEngine(store,None,prompt_version='v2')
 

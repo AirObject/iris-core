@@ -60,9 +60,25 @@ def propose(payload, *, category='topic', body=TOPIC):
 
 
 def accept(payload):
-    return {'decision': 'accept', 'violations': [], 'reason': '逐条核对通过。',
-        'safe_sources': [{k: s[k] for k in ('message_id', 'field', 'excerpt')}
-                         for s in payload['memory']['sources']]}
+    memory=payload['memory']
+    result={'decision':'accept','violations':[],'reason':'逐条核对通过。',
+        'safe_sources':[{k:s[k] for k in ('message_id','field','excerpt')} for s in memory['sources']]}
+    if payload.get('review_contract')=='semantic_v8':
+        result.update(point_support=[dict(point_id=p['point_id'],source_ids=[s['source_id'] for s in memory['sources']]) for p in memory['proof_points']],
+            group_reviews=[],usage_reviews=[],rule_support={})
+        if memory['category']=='topic' and memory.get('action')!='retire':
+            result['group_reviews']=[dict(group_id=g['group_id'],discussion_id=g['group_id'],focus='本条主题',same_topic=True,
+                independent=g['eligible'],reason='假模型按测试设定证明独立性') for g in memory['discussion_groups']]
+        elif memory['category']=='saying':
+            definitions=memory['definition_refs']
+            result['usage_reviews']=[dict(source_id=s['source_id'],role='use_and_definition' if s['message_id'] in definitions else 'use',
+                reason='假模型使用角色') for s in memory['sources']]
+            for point in result['point_support']:
+                point['source_ids']=[s['source_id'] for s in memory['sources'] if s['message_id'] in definitions]
+        elif memory['category']=='rule':
+            ids=[s['source_id'] for s in memory['sources']]
+            result['rule_support']=dict(scope=ids,persistent=ids,announcement=ids,endorsements=[])
+    return result
 
 
 class Gateway:
@@ -85,6 +101,8 @@ class Gateway:
             self.hook(self, purpose, payload)
         handler = self.observations if 'observe' in purpose else self.checks
         result = handler(payload) if callable(handler) else handler.pop(0)
+        if isinstance(result,dict) and result.get('decision') in ('reject','insufficient') and payload.get('review_contract')=='semantic_v8':
+            result={**dict(point_support=[],group_reviews=[],usage_reviews=[],rule_support={}),**result}
         if isinstance(result, Exception):
             raise result
         return SimpleNamespace(content=result if isinstance(result, str) else dumps(result),
@@ -229,11 +247,21 @@ def test_confirmations_do_not_publish_unchecked_new_excerpts_or_bump_projection(
     add(store, '长期的广告禁令继续有效；同事家里遭遇的私事不必转发。', 4, sender='乙')
     gateway.observations = lambda p: {'observations':[{'op':'confirm','memory_id':mid,
         'source_refs':[source(p['messages'][0])]}]}
+    def keep_checked_rule(p):
+        # Recheck is now triggered by fresh evidence; it must not publish the
+        # new private excerpt before or merely because that evidence exists.
+        assert len(profiles(store)[0]['sources'])==1
+        value=accept(p);kept=p['memory']['sources'][0]
+        value['safe_sources']=value['safe_sources'][:1]
+        for point in value['point_support']: point['source_ids']=[kept['source_id']]
+        value['rule_support']=dict(scope=[kept['source_id']],persistent=[kept['source_id']],announcement=[kept['source_id']],endorsements=[])
+        return value
+    gateway.checks=keep_checked_rule
     run(store, gateway)
     assert projection(store)['version'] == before['version']
     row = profiles(store)[0]
     assert len(row['sources']) == 1 and '同事' not in dumps(row['sources'])
-    assert row['retention'] == 47 and len(gateway.calls) == 3
+    assert row['retention'] == 47 and len(gateway.calls) == 4
 
 
 def test_replay_and_restart_do_not_duplicate_candidate_or_confirmation(store):
@@ -387,8 +415,9 @@ def test_restoring_forgotten_candidate_keeps_gate_and_never_revives_deleted(stor
 def test_smaller_excerpt_must_keep_support_and_cannot_borrow_neighbor(store):
     add(store,'本群长期禁止广告；另外同事的事请勿转发。')
     def check(p):
-        return {'decision':'accept','violations':[],'reason':'保留规则原句。',
-            'safe_sources':[{'message_id':p['memory']['sources'][0]['message_id'],'field':'content','excerpt':'本群长期禁止广告'}]}
+        value=accept(p)
+        value['safe_sources'][0]['excerpt']='本群长期禁止广告'
+        return value
     run(store,Gateway(store,lambda p:propose(p,category='rule',body='禁止广告。'),check))
     row=profiles(store)[0]
     assert row['usable'] and [s['excerpt'] for s in row['sources']]==['本群长期禁止广告']
@@ -571,7 +600,10 @@ def test_change_check_cannot_remove_the_actual_change_announcement(store):
             'category':'rule','body':'','saying':'','meaning':'','definition_refs':[],
             'source_refs':[source(p['messages'][0])]}]}
     def check(p):
-        value=accept(p);value['safe_sources']=[s for s in value['safe_sources'] if s['message_id']==first];return value
+        value=accept(p);value['safe_sources']=[s for s in value['safe_sources'] if s['message_id']==first]
+        ids=[s['source_id'] for s in p['memory']['sources'] if s['message_id']==first]
+        value['rule_support']=dict(scope=ids,persistent=ids,announcement=ids,endorsements=[])
+        return value
     result=run(store,Gateway(store,observe,check))
     assert projection(store)['text']==before
     assert result['reason']=='change_basis_removed'

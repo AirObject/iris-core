@@ -1782,7 +1782,7 @@ def memory_profile_rows(conn, entry_id, *, as_of=None, usable_only=False):
         supported = manual or bool(sources)
         if not manual and row['category'] in ('topic','saying'):
             if admission:
-                supported = _inc_enough(sources,row['category'],saying)
+                supported = _inc_enough(sources,row['category'],saying) and _inc_approved_proof_valid(conn,row,admission,sources)
             else:
                 originals = [s for s in sources if _memory_original(s,row['category'],saying)]
                 supported = any(_memory_independent(a,b,row['category'],[s['message'] for s in sources])
@@ -2070,6 +2070,304 @@ def _execute_memory_task(engine, entry_id, attempt, gateway, repository, due):
             _ACTIVE_ATTEMPTS.discard((engine.store.path,attempt))
 
 
+# EF-22: bounded, typed proof contracts. These helpers do not make model calls.
+def _inc_segments(text):
+    """Lossless contiguous clauses, indexed by the producer instead of regenerated."""
+    return [x for x in re.findall(r'[^，,；;。.!！？?\n]*[，,；;。.!！？?\n]|[^，,；;。.!！？?\n]+$',text) if x]
+
+
+def _inc_segment_excerpt(text, first, end):
+    parts=_inc_segments(text)
+    if type(first) is not int or type(end) is not int or not 0<=first<end<=len(parts):
+        raise ValueError('invalid_source_interval')
+    result=''.join(parts[first:end])
+    if not 1<=len(result.strip())<=300: raise ValueError('source_interval_limit')
+    return result
+
+
+def _inc_proof_points(body, category):
+    text=body.partition('：')[2] if category=='saying' else body
+    points=[x for x in _inc_segments(text) if any(c.isalnum() for c in x)]
+    if len(points)>24: raise ValueError('proof_point_limit')
+    return [dict(point_id=i,text=x) for i,x in enumerate(points,1)]
+
+
+def _inc_gendered(text):
+    from jieba import posseg
+    if re.search(r'\b(?:he|him|his|himself|she|her|hers|herself)\b',text,re.I): return True
+    return any(word in {'他','她','妳','祂','他们','她们','妳们','祂们'} for word,flag in posseg.cut(text,HMM=False))
+
+
+def _inc_resolve_safe(value, memory):
+    resolved=[]
+    for ref in value:
+        if isinstance(ref,dict) and set(ref)=={'source_id','start_segment','end_segment'}:
+            original=next((s for s in memory['sources'] if s['source_id']==ref['source_id']),None)
+            if not original: raise ValueError('checker_unbound_interval')
+            ref=dict(message_id=original['message_id'],field=original['field'],
+                excerpt=_inc_segment_excerpt(original['excerpt'],ref['start_segment'],ref['end_segment']))
+        _inc_source_shape(ref)
+        if set(ref)!={'message_id','field','excerpt'}: raise ValueError('invalid_safe_source')
+        if not any(ref['message_id']==s['message_id'] and ref['field']==s['field']
+                and whitespace(ref['excerpt']) in whitespace(s['excerpt']) for s in memory['sources']):
+            raise ValueError('checker_unbound_excerpt')
+        if ref in resolved: raise ValueError('duplicate_safe_source')
+        resolved.append(ref)
+    return resolved
+
+
+def _inc_public_canonical(s):
+    """Only for recomputing deterministic counts, never a provenance binding."""
+    message=dict(position=s['message_id'],ref='msg:'+str(s['message_id']),speaker=s['message_speaker'],
+        content=s['context'],date=s['date'],occurred_at=s['occurred_at'],quote=s.get('quote'),kind='message')
+    return dict(message=message,speaker=s['speaker'],field=s['field'],excerpt=s['excerpt'],
+        burst_id=s.get('burst_id'),evidence_identity='message:'+str(s['message_id']))
+
+
+def _inc_validate_proof(value, payload, previous=None):
+    memory=payload['memory'];final=payload.get('mode','final')=='final';accept=value['decision']=='accept'
+    source_by_id={s['source_id']:s for s in memory['sources']}
+    safe_by_id={sid:{**s,'excerpt':r['excerpt']} for sid,s in source_by_id.items() for r in value['safe_sources']
+        if r['message_id']==s['message_id'] and r['field']==s['field'] and whitespace(r['excerpt']) in whitespace(s['excerpt'])}
+    groups={g['group_id']:g for g in memory['discussion_groups']}
+    reviews=value['group_reviews'];usages=value['usage_reviews'];points=value['point_support'];rule=value['rule_support']
+    if any(not isinstance(x,list) for x in (reviews,usages,points)) or not isinstance(rule,dict):
+        raise ValueError('invalid_proof_fields')
+    if len(reviews)>6 or len(usages)>6 or len(points)>24: raise ValueError('proof_array_limit')
+    def ids(values, *, empty=True):
+        if (not isinstance(values,list) or any(not isinstance(x,str) or x not in source_by_id for x in values)
+                or len(values)!=len(set(values)) or not empty and not values): raise ValueError('unbound_proof_sources')
+        if accept and any(x not in safe_by_id for x in values): raise ValueError('proof_source_removed')
+        return set(values)
+    old_groups=(previous or {}).get('group_reviews')
+    old_usages=(previous or {}).get('usage_reviews')
+    old_groups=old_groups if isinstance(old_groups,list) else []
+    old_usages=old_usages if isinstance(old_usages,list) else []
+    by_group={}
+    for r in reviews:
+        if (not isinstance(r,dict) or set(r)!={'group_id','discussion_id','same_topic','independent','focus','reason'}
+                or type(r['group_id']) is not int or r['group_id'] not in groups or r['group_id'] in by_group
+                or type(r['discussion_id']) is not int or r['discussion_id'] not in groups
+                or any(type(r[k]) is not bool for k in ('same_topic','independent'))
+                or any(not isinstance(r[k],str) or not r[k].strip() or len(r[k])>240 for k in ('focus','reason'))):
+            raise ValueError('invalid_group_review')
+        if r['independent'] and r['discussion_id']!=r['group_id']: raise ValueError('split_discussion_count')
+        by_group[r['group_id']]=r
+        for old in old_groups:
+            if isinstance(old,dict) and old.get('group_id')==r['group_id'] and any(old.get(k) is False and r[k] for k in ('same_topic','independent')):
+                raise ValueError('repair_changed_group_rejection')
+    roles={}
+    allowed={'use','definition','use_and_definition','mention','quote','other'}
+    for r in usages:
+        if (not isinstance(r,dict) or set(r)!={'source_id','role','reason'} or not isinstance(r['source_id'],str)
+                or r['source_id'] not in source_by_id or r['source_id'] in roles or not isinstance(r['role'],str) or r['role'] not in allowed
+                or not isinstance(r['reason'],str) or not 1<=len(r['reason'])<=240): raise ValueError('invalid_usage_review')
+        roles[r['source_id']]=r['role']
+        for old in old_usages:
+            if (isinstance(old,dict) and old.get('source_id')==r['source_id'] and old.get('role') in ('mention','quote','other')
+                    and r['role'] in ('use','use_and_definition')): raise ValueError('repair_changed_usage_rejection')
+    support={};expected={p['point_id'] for p in memory['proof_points']}
+    for p in points:
+        if (not isinstance(p,dict) or set(p)!={'point_id','source_ids'} or type(p['point_id']) is not int
+                or p['point_id'] not in expected or p['point_id'] in support): raise ValueError('invalid_point_support')
+        support[p['point_id']]=ids(p['source_ids'])
+    category=memory['category'];retire=memory.get('action')=='retire'
+    if rule:
+        if set(rule)!={'scope','persistent','announcement','endorsements'}: raise ValueError('invalid_rule_support')
+        for refs in rule.values(): ids(refs)
+    if not accept: return value
+    if set(support)!=expected: raise ValueError('missing_proof_points')
+    if category=='topic' and not retire:
+        if set(by_group)!=set(groups): raise ValueError('missing_group_reviews')
+        def root(gid):
+            review=by_group[gid];target=by_group[review['discussion_id']]
+            return target['group_id'] if (review['same_topic'] and target['same_topic'] and target['independent']
+                and target['discussion_id']==target['group_id'] and groups[target['group_id']]['eligible']) else None
+        # Answers may contribute to their root's content; they never add a root.
+        eligible={gid for gid,g in groups.items() if root(gid)==gid and set(g['source_ids'])&set(safe_by_id)}
+        if final:
+            if len({groups[g]['date'] for g in eligible})<2: raise ValueError('reviewed_groups_insufficient')
+            for refs in support.values():
+                proved={root(source_by_id[s]['group_id']) for s in refs}
+                if len({groups[g]['date'] for g in proved if g in eligible})<2: raise ValueError('point_independent_support_insufficient')
+        if final and any(not by_group[s['group_id']]['same_topic'] for s in safe_by_id.values()):
+            raise ValueError('unrelated_group_retained')
+    elif category=='saying' and not retire:
+        if set(roles)!=set(source_by_id): raise ValueError('missing_usage_reviews')
+        if final:
+            uses=[_inc_public_canonical(s) for sid,s in safe_by_id.items() if roles[sid] in ('use','use_and_definition')]
+            if not _inc_enough(uses,'saying',memory['saying']): raise ValueError('reviewed_uses_insufficient')
+        for refs in support.values():
+            if final and (not refs or not any(source_by_id[s]['message_id'] in memory['definition_refs']
+                    and roles[s] in ('definition','use_and_definition') for s in refs)):
+                raise ValueError('meaning_without_bound_definition')
+    elif category=='rule' and final:
+        if not rule or not rule['scope'] or not rule['persistent'] or not (rule['announcement'] or
+                len({source_by_id[s]['speaker'] for s in rule['endorsements']})>=2):
+            raise ValueError('rule_positive_basis_required')
+    if category!='topic' and reviews or category!='saying' and usages or category!='rule' and rule:
+        raise ValueError('unexpected_category_proof')
+    if final and any(not refs for refs in support.values()): raise ValueError('point_without_support')
+    return value
+
+
+def _inc_discussion_components(sources):
+    """Grouping identity only. Non-counting replies remain available as proof."""
+    roots=list(range(len(sources)))
+    def root(i):
+        while roots[i]!=i: i=roots[i]
+        return i
+    for i,s in enumerate(sources):
+        for j,p in enumerate(sources[:i]):
+            if (s['evidence_identity']==p['evidence_identity'] or
+                    s.get('burst_id') and s.get('burst_id')==p.get('burst_id') or _inc_same_discussion(s,p)):
+                roots[root(i)]=root(j)
+    return { _inc_source_key(s):min(sources[j]['message']['position'] for j in range(len(sources)) if root(j)==root(i))
+             for i,s in enumerate(sources)}
+
+
+def _inc_proof_memory(row, sources, category, body, saying, definitions, proposal=None):
+    components=_inc_discussion_components(sources)
+    public=[]
+    for s in sources:
+        sid='s'+_hash(_inc_source_key(s))[:12]
+        public.append(dict(source_id=sid,message_id=s['message']['position'],field=s['field'],excerpt=s['excerpt'],
+            segments=_inc_segments(s['excerpt']),speaker=s['speaker'],date=s['message']['date'],occurred_at=s['message']['occurred_at'],
+            context=s['message']['content'],message_speaker=s['message']['speaker'],quote=s['message'].get('quote'),
+            burst_id=s.get('burst_id'),group_id=components[_inc_source_key(s)],count_eligible=_inc_original(s,category,saying) and (category!='topic' or s['message']['position']==components[_inc_source_key(s)])))
+    memory=dict(memory_id=row['id'],revision=row['revision'],category=category,body=body,saying=saying,
+        meaning=body.partition('：')[2] if category=='saying' else '',definition_refs=definitions,
+        proof_points=_inc_proof_points(body,category),entity_hints=_inc_entity_hints(body),sources=public,discussion_groups=[])
+    if proposal: memory.update(action=proposal['action'],old_body=row['content'])
+    return _inc_memory_page(memory,public)
+
+
+def _inc_memory_page(memory, sources):
+    groups=[]
+    if memory['category']=='topic' and memory.get('action')!='retire':
+        for gid in sorted({s['group_id'] for s in sources}):
+            members=[s for s in sources if s['group_id']==gid]
+            groups.append(dict(group_id=gid,date=min(s['date'] for s in members),
+                source_ids=[s['source_id'] for s in members],eligible=any(s['count_eligible'] for s in members)))
+    return {**memory,'sources':sources,'discussion_groups':groups}
+
+
+def _inc_plan_proof(memory, votes, fits):
+    """Select complete conjunctions reported by mapping pages, never bare counts.
+
+    A page's source list for a point is a conjunction. Keep it intact. Topic
+    mapping units are local days; final review still resolves real discussions.
+    No unit can prove an omitted clause or a definition inferred from mere use.
+    """
+    from itertools import combinations
+    by_id={s['source_id']:s for s in memory['sources']};points={p['point_id'] for p in memory['proof_points']}
+    safe={};units=[];roles={};rule={k:set() for k in ('scope','persistent','announcement','endorsements')}
+    for vote in votes:
+        if vote['decision']!='accept': return None,'mapping_rejected'
+        for ref in vote['safe_sources']:
+            for sid,s in by_id.items():
+                if s['message_id']==ref['message_id'] and s['field']==ref['field'] and whitespace(ref['excerpt']) in whitespace(s['excerpt']):
+                    safe[sid]={**s,'excerpt':ref['excerpt'],'segments':_inc_segments(ref['excerpt'])}
+        roles.update({r['source_id']:r['role'] for r in vote['usage_reviews']})
+        for key,refs in vote['rule_support'].items(): rule[key].update(refs)
+        for point in vote['point_support']:
+            refs=set(point['source_ids'])
+            if not refs: continue
+            if memory['category']=='topic':
+                for day in sorted({by_id[s]['date'] for s in refs}):
+                    units.append((point['point_id'],day,{s for s in refs if by_id[s]['date']==day}))
+            else: units.append((point['point_id'],'',refs))
+    # A proof may span mapping pages. Combine all contributors for the same day,
+    # so an answer/qualifier on another page is not silently discarded.
+    by_day={}
+    for point,day,refs in units: by_day.setdefault(day,{}).setdefault(point,set()).update(refs)
+    options=[];category=memory['category']
+    if category=='topic':
+        days=sorted(by_day)
+        choices=list(combinations(days,2))+list(combinations(days,3))
+        # A complete proof may need >3 days (different repeated body points).
+        # Bounded greedy cover from each seed avoids exponential subset search.
+        for seed in [None]+days:
+            chosen=[] if seed is None else [seed]
+            while len(chosen)<6 and not all(sum(p in by_day[d] for d in chosen)>=2 for p in points):
+                missing={p:2-sum(p in by_day[d] for d in chosen) for p in points}
+                remaining=[d for d in days if d not in chosen]
+                if not remaining: break
+                day=min(remaining,key=lambda d:(-sum(missing[p]>0 for p in by_day[d]),
+                    len(set().union(*by_day[d].values())),d))
+                if not any(missing[p]>0 for p in by_day[day]): break
+                chosen.append(day)
+            choices.append(tuple(sorted(chosen)))
+        for chosen in sorted(set(choices)):
+            if not all(sum(p in by_day[d] for d in chosen)>=2 for p in points): continue
+            keep=set().union(*(refs for d in chosen for refs in by_day[d].values()))
+            for d in chosen:
+                witnesses=[s for s in safe.values() if s['date']==d and s['count_eligible']]
+                if not witnesses: break
+                keep.add(min(witnesses,key=lambda s:(len(s['excerpt']),s['message_id']))['source_id'])
+            else: options.append(keep)
+    else:
+        if any(not any(p==point for p,day,refs in units) for point in points): return None,'proof_gap:missing_point'
+        # Retain every contributing definition/qualifier; no keyword-based slicing.
+        core=set().union(*(refs for _,_,refs in units)) if units else set()
+        if category=='saying':
+            uses=[sid for sid in safe if roles.get(sid) in ('use','use_and_definition')]
+            for pair in combinations(uses,2):
+                if _inc_enough([_inc_public_canonical(safe[s]) for s in pair],'saying',memory['saying']):
+                    options.append(core|set(pair))
+        else:
+            extras=set().union(*rule.values())
+            options=[core|extras]
+    ranked=[]
+    for keep in options:
+        if not keep<=set(safe): continue
+        selected=[safe[s] for s in sorted(keep,key=lambda sid:(by_id[sid]['message_id'],sid))]
+        if fits(selected): ranked.append(selected)
+    if not ranked: return None,'proof_gap:complete_evidence_budget' if options else 'proof_gap:independent_point_support'
+    # Shortest complete proof first, then latest + earliest; stable tie break.
+    result=min(ranked,key=lambda ss:(sum(estimate_tokens(dumps(s)) for s in ss),-max(s['message_id'] for s in ss),min(s['message_id'] for s in ss)))
+    return result,None
+
+
+def _inc_feedback(conn, entry_id, budget=450):
+    feedback=[];used=0
+    rows=conn.execute("SELECT id,kind,state,reason,result_json,payload_json FROM entry_profile_incremental_work WHERE entry_id=? AND state IN ('applied','failed','rejected') ORDER BY id DESC LIMIT 16",(entry_id,)).fetchall()
+    for row in rows:
+        result=json.loads(row['result_json'] or '{}');payload=json.loads(row['payload_json']);items=[]
+        if row['kind']=='observe':
+            for removed in result.get('removed',[]):
+                originals=result.get('generated',[]);index=removed.get('index',0)
+                raw=originals[index-1] if 0<index<=len(originals) else {}
+                items.append(dict(category=raw.get('category'),body=str(raw.get('body',''))[:180],reason=removed['reason']))
+        elif row['state'] in ('failed','rejected') or result.get('proof_gap'):
+            memory=payload.get('memory',{})
+            items.append(dict(memory_id=memory.get('memory_id'),category=memory.get('category'),body=memory.get('body',''),
+                reason=result.get('proof_gap') or result.get('reason') or row['reason']))
+        for item in items:
+            item.update(evidence=False,work_id=row['id']);item['reason']=str(item['reason'])[:240]
+            item['_refs']=([dict(message_id=m['message_id']) for m in payload.get('messages',[])]
+                + payload.get('_snapshot',{}).get('evidence_refs',[])
+                + ([dict(memory_id=item['memory_id'])] if item.get('memory_id') else []))
+            cost=estimate_tokens(dumps({k:v for k,v in item.items() if not k.startswith('_')}))
+            if len(feedback)>=6 or used+cost>budget: continue
+            feedback.append(item);used+=cost
+    # A deterministic block before queueing has no work record. Include its
+    # current diagnostic without treating it as evidence or losing purge links.
+    blocked=conn.execute("""SELECT m.id,m.content,p.category,a.reason FROM entry_profile_admissions a
+        JOIN memories m ON m.id=a.memory_id JOIN entry_profile_memories p ON p.memory_id=m.id
+        WHERE p.entry_id=? AND m.lifecycle='active' AND m.purged_at IS NULL AND a.reason IS NOT NULL
+        ORDER BY m.id DESC LIMIT 12""",(entry_id,)).fetchall()
+    for row in blocked:
+        if any(item.get('memory_id')==row['id'] and item['reason']==row['reason'] for item in feedback): continue
+        item=dict(memory_id=row['id'],category=row['category'],body=row['content'][:180],
+            reason=row['reason'][:240],evidence=False,work_id=None)
+        cost=estimate_tokens(dumps(item))
+        if len(feedback)>=6 or used+cost>budget: continue
+        item['_refs']=[dict(memory_id=row['id'])]
+        feedback.append(item);used+=cost
+    return feedback
+
+
 # EF-13: bounded observations and independent per-memory admission.
 @dataclass(frozen=True)
 class IncrementalProfileLimits:
@@ -2098,29 +2396,37 @@ def incremental_prompts():
     from importlib.resources import files
     import hashlib
     result={}
-    for stage,name in (('observe','entry_profile_observe_v3'),('admit','entry_profile_admit_v3')):
+    for stage,name in (('observe','entry_profile_observe_v8'),('admit','entry_profile_admit_v8')):
         value=files('iris').joinpath('prompts',name+'.md').read_text(encoding='utf-8')
         result[stage]=dict(name=name,text=value,sha256=hashlib.sha256(value.encode()).hexdigest())
     return result
 
 
 def _inc_public_message(message):
-    return {k:message[k] for k in ('message_id','speaker','content','occurred_at','date','quote','fragment') if k in message}
+    result={k:message[k] for k in ('message_id','speaker','content','occurred_at','date','quote','fragment') if k in message}
+    result['segments']={'content':_inc_segments(message['content']),'quote':_inc_segments((message.get('quote') or {}).get('content',''))}
+    return result
 
 
 def _inc_public_payload(payload):
     result={k:v for k,v in payload.items() if not k.startswith('_')}
     if 'messages' in result:
         result['messages']=[_inc_public_message(m) for m in result['messages']]
+    if 'feedback' in result:
+        result['feedback']=[{k:v for k,v in item.items() if not k.startswith('_')} for item in result['feedback']]
     return result
 
 
 def _inc_source_shape(value):
-    if (not isinstance(value,dict) or set(value)!={'message_id','field','excerpt'}
-            or type(value['message_id']) is not int or value['message_id']<1
-            or value['field'] not in ('content','quote') or not isinstance(value['excerpt'],str)
-            or not 1<=len(value['excerpt'].strip())<=300):
-        raise ValueError('invalid_source_shape')
+    if not isinstance(value,dict): raise ValueError('invalid_source_shape')
+    base={'message_id','field'}
+    if (type(value.get('message_id')) is not int or value['message_id']<1
+            or value.get('field') not in ('content','quote')): raise ValueError('invalid_source_shape')
+    if set(value)==base|{'start_segment','end_segment'}:
+        if type(value['start_segment']) is not int or type(value['end_segment']) is not int or not 0<=value['start_segment']<value['end_segment']:
+            raise ValueError('invalid_source_interval')
+    elif (set(value)!=base|{'excerpt'} or not isinstance(value['excerpt'],str)
+            or not 1<=len(value['excerpt'].strip())<=300): raise ValueError('invalid_source_shape')
 
 
 def validate_incremental_observations(value, limits=None):
@@ -2139,6 +2445,7 @@ def validate_incremental_observations(value, limits=None):
             expected|={'category','body','saying','meaning','definition_refs'}
             if (not isinstance(item.get('category'),str) or item['category'] not in ITEM_LABELS or any(not isinstance(item.get(k),str) for k in ('body','saying','meaning'))
                     or len(item['body'])>180 or len(item['saying'])>40
+                    or item['category']=='saying' and len(item['saying'])+bool(item['meaning'])+len(item['meaning'])>180
                     or not isinstance(item.get('definition_refs'),list)
                     or any(type(x) is not int or x<1 for x in item['definition_refs'])):
                 raise ValueError('invalid_candidate_fields')
@@ -2154,21 +2461,25 @@ def validate_incremental_observations(value, limits=None):
 
 
 def validate_incremental_admission(value, payload, previous=None):
-    if (not isinstance(value,dict) or set(value)!={'decision','violations','reason','safe_sources'}
+    expected={'decision','violations','reason','safe_sources'}
+    if payload.get('review_contract')=='semantic_v8': expected|={'point_support','group_reviews','usage_reviews','rule_support'}
+    if (not isinstance(value,dict) or set(value)!=expected
             or value['decision'] not in ('accept','reject','insufficient')
             or not isinstance(value['violations'],list) or any(v not in MEMORY_PROFILE_VIOLATIONS for v in value['violations'])
             or value['violations']!=sorted(set(value['violations']),key=MEMORY_PROFILE_VIOLATIONS.index)
             or not isinstance(value['reason'],str) or not value['reason'].strip() or len(value['reason'])>1000
             or not isinstance(value['safe_sources'],list) or len(value['safe_sources'])>6):
         raise ValueError('invalid_admission')
-    if value['decision']=='accept' and (value['violations'] or not value['safe_sources']):
+    if value['decision']=='accept' and (value['violations'] or not value['safe_sources'] and payload.get('mode')!='map'):
         raise ValueError('invalid_accepted_admission')
     if value['decision']!='accept' and value['safe_sources']:
         raise ValueError('rejected_sources')
-    for source in value['safe_sources']:
-        _inc_source_shape(source)
+    value=copy.deepcopy(value)
+    value['safe_sources']=_inc_resolve_safe(value['safe_sources'],payload['memory']) if payload.get('review_contract')=='semantic_v8' else value['safe_sources']
+    for source in value['safe_sources']: _inc_source_shape(source)
     if previous and (previous.get('decision') in ('reject','insufficient') or previous.get('violations')) and value['decision']=='accept':
         raise ValueError('repair_changed_semantic_rejection')
+    if payload.get('review_contract')=='semantic_v8': _inc_validate_proof(value,payload,previous)
     return value
 
 
@@ -2181,6 +2492,9 @@ def _inc_bound(conn, entry_id, refs, messages, *, target=None, repairs=None):
         message=pool.get(raw['message_id'])
         if not message or message['entry_id']!=entry_id:
             raise ValueError('unbound_source')
+        if 'start_segment' in raw:
+            text=message['content'] if raw['field']=='content' else (message.get('quote') or {}).get('content','')
+            raw=dict(message_id=raw['message_id'],field=raw['field'],excerpt=_inc_segment_excerpt(text,raw['start_segment'],raw['end_segment']))
         field=raw['field'];snippet=whitespace(raw['excerpt'])
         quote=message.get('quote') or {}
         fields={'content':message['content'],'quote':quote.get('content','')}
@@ -2219,6 +2533,20 @@ _INC_FOLLOWUP = re.compile(r'还有吗|怎么样了|有结果了吗|有消息了
 _INC_REQUEST = re.compile(r'[?？]|求|谁有|能否|有没有|想找|帮忙|拜托')
 
 
+# Discourse grammar, not a topic dictionary. Ambiguous semantic continuations
+# remain the per-group reviewer's responsibility.
+_INC_PRIOR_DISCUSSION = re.compile(r'(?:上[次回场]|前[次回场]|此前|之前|先前|前几天|前些天).{0,12}(?:问|求助|讲|说|讨论|建议)|(?:那次|那场).{0,6}(?:讨论|讲解|求助)')
+_INC_RESULT_REPORT = re.compile(r'(?:回来|来|补个|补充).{0,4}(?:报告|汇报|反馈)|(?:按|照着?|采纳|采用).{0,12}(?:建议|办法|方法).{0,16}(?:了|过|已经|解决|成功)|(?:问题|故障).{0,4}(?:解决了|好了)|回去.{0,8}(?:试|做)(?:了|过)|(?:试了|试过).{0,8}(?:有效|有用|好了|确实)')
+
+
+def _inc_explicit_continuation(text):
+    # A reference is not enough by itself (one can introduce a new question).
+    # Require an explicit report/adoption as well. Unknown antecedents are
+    # excluded as witnesses, rather than linked to an invented earlier ID.
+    return bool(_INC_PRIOR_DISCUSSION.search(text) and _INC_RESULT_REPORT.search(text))
+
+
+
 def _inc_saying_key(value):
     from jieba import posseg
     value=_memory_observation_text(value)
@@ -2227,7 +2555,34 @@ def _inc_saying_key(value):
         value=value[:-len(pieces.pop().word)]
     # A narrow demonstrative-N + V question, not arbitrary bag-of-words reordering.
     match=re.fullmatch(r'[这那](?:一)?['+_INC_CLASSIFIERS+r']?([\u4e00-\u9fff]{1,4})还([\u4e00-\u9fff])着?',value)
-    return match[2]+match[1] if match else value
+    if match: return match[2]+match[1]
+    # A closed grammar around an unchanged lexical core. One full doubled
+    # utterance remains one use. Negation and lexical characters are preserved.
+    doubled=re.fullmatch(r'([\u4e00-\u9fff]{2,8})\1',value)
+    if doubled: value=doubled[1]
+    is_verb=lambda text: bool(text) and posseg.dt.word_tag_tab.get(text[0],'').startswith('v')
+    if (len(value)>=3 and len(pieces)>1 and pieces[0].word=='先' and pieces[0].flag=='d'
+            and pieces[1].flag.startswith('v') and is_verb(value[1:])): value=value[1:]
+    if is_verb(value):
+        trailing=re.fullmatch(r'([\u4e00-\u9fff]{2,8})(?:一下下?|一会儿?)',value)
+        if trailing: value=trailing[1]
+        verb=value[0]
+        if posseg.dt.word_tag_tab.get(value[1:],'') in ('n','ng','nz','ns','nt'): return value
+        prefixes=[verb+'一下下',verb+'一下',verb+'一会儿',verb+'一会',verb+'一'+verb,verb+verb]
+        prefixes += [verb+c for c in _INC_CLASSIFIERS]
+        for prefix in prefixes:
+            rest=value[len(prefix):] if value.startswith(prefix) else ''
+            if re.fullmatch(r'[\u4e00-\u9fff]{1,7}',rest):
+                value=verb+rest
+                break
+    return value
+
+
+def _inc_short_saying_use(saying, text):
+    # A copied statement containing additional facts is not a bare saying.
+    # Quote/reported-speech exclusions run before this narrow copy exception.
+    key=_inc_saying_key(saying)
+    return bool(re.fullmatch(r'[\u4e00-\u9fff]{2,8}|[a-z0-9]{2,16}',key)) and _inc_saying_key(text)==key
 
 
 def _inc_saying_used(saying, excerpt):
@@ -2241,9 +2596,10 @@ def _inc_saying_used(saying, excerpt):
     boundaries={0};offset=0
     for token in posseg.cut(text,HMM=False):
         offset+=len(token.word);boundaries.add(offset)
-    def matched(pattern,noun=''):
+    def matched(pattern,noun='',inflected=False):
         for m in re.finditer(pattern,text):
             if m.start() not in boundaries or m.end() not in boundaries: continue
+            if inflected and posseg.dt.word_tag_tab.get(m.group()[1:],'') in ('n','ng','nz','ns','nt'): continue
             # A second segmentation from the noun prevents overlapping dictionary
             # words from accepting a fragment of a longer, different object.
             tail=text[m.end()-len(noun):] if noun else ''
@@ -2252,13 +2608,23 @@ def _inc_saying_used(saying, excerpt):
             return True
         return False
     if matched(re.escape(key),key[1:]): return True
-    # Keep every lexical character and its order. Only one grammatical insertion,
-    # single initial-verb reduplication, or a demonstrative question is allowed.
+    # Keep lexical characters and order. Light duration/aspect insertions
+    # require a dictionary verb; no unrestricted gaps or semantic synonyms.
     if not re.fullmatch(r'[\u4e00-\u9fff]{2,8}',key) or key[0] in '不没无非别未': return False
     verb,noun=key[0],key[1:]
-    inflection=r'(?:[的了着过]|(?:[一两三]?['+_INC_CLASSIFIERS+r'])|'+re.escape(verb)+r'|一'+re.escape(verb)+r')?'
-    if matched(re.escape(verb)+inflection+re.escape(noun),noun): return True
+    light=r'一下下?|一会儿?|' if posseg.dt.word_tag_tab.get(verb,'').startswith('v') else ''
+    inflection=r'(?:'+light+r'[的了着过]|(?:[一两三]?['+_INC_CLASSIFIERS+r'])|'+re.escape(verb)+r'|一'+re.escape(verb)+r')?'
+    if matched(re.escape(verb)+inflection+re.escape(noun),noun,inflected=True): return True
     return matched(r'[这那](?:一)?['+_INC_CLASSIFIERS+r']?'+re.escape(noun)+r'还'+re.escape(verb)+r'着?[吗呢]?')
+
+
+def _inc_use_independent(a,b,category,messages,saying):
+    if category!='saying': return _memory_independent(a,b,category,messages)
+    at,bt=_instant(a['message']['occurred_at']),_instant(b['message']['occurred_at'])
+    if abs((at-bt).total_seconds())<60 or at.replace(second=0,microsecond=0)==bt.replace(second=0,microsecond=0): return False
+    if a['speaker']==b['speaker'] and abs((at-bt).total_seconds())<1800: return False
+    if _inc_short_saying_use(saying,a['excerpt']) and _inc_short_saying_use(saying,b['excerpt']): return True
+    return _memory_independent(a,b,category,messages)
 
 
 def _inc_entity_terms(body):
@@ -2277,14 +2643,26 @@ def _inc_entity_terms(body):
     result+=re.findall(r'(?<![a-zA-Z0-9_.])\d+(?:\.\d+)?(?:%|％)?',body)
     identifiers=re.findall(r'(?<![a-zA-Z0-9])[a-zA-Z][a-zA-Z0-9]*(?:[-_][a-zA-Z0-9]+)*(?![a-zA-Z0-9])',body)
     result.extend(term for term in identifiers if any(c.isupper() or c.isdigit() for c in term))
+    # Explicit measured quantities, not arbitrary numeral prefixes in words
+    # such as indefinite classifiers. Units are grammatical, not topic terms.
+    result.extend(re.findall(r'[零〇一二两三四五六七八九十百千万]+(?:毫米|厘米|公里|千米|米|千克|公斤|克|毫升|升|摄氏度|度|元|秒|分钟|小时|天|周|个月|年)',body))
     for word,flag in posseg.cut(body,HMM=False):
-        if flag.startswith(('nr','ns','nt')) and len(word)>=2:
+        if flag=='ns' and len(word)>=2 and re.search(r'[省市县区州国镇乡村]$',word):
             result.append(word)
         elif flag=='m':
-            quantity=re.match(r'[零〇一二两三四五六七八九十百千万]+',word)
-            if quantity: result.append(quantity[0])
+            quantity=re.fullmatch(r'[零〇一二两三四五六七八九十百千万]+',word)
+            if quantity and word!='一': result.append(quantity[0])
     return list(dict.fromkeys(result))
 
+
+
+def _inc_entity_hints(body):
+    # Dictionary POS is a hint, not an identity decision (common nouns may be
+    # tagged nr/nt). The final point proof must establish any actual referent.
+    from jieba import posseg
+    hard=set(_inc_entity_terms(body))
+    return list(dict.fromkeys(w for w,f in posseg.cut(body,HMM=False)
+        if f in ('nr','nt','ns') and len(w)>1 and w not in hard))[:24]
 
 def _inc_missing_entities(body, evidence):
     texts=[unicodedata.normalize('NFKC',x).casefold() for x in evidence]
@@ -2293,6 +2671,8 @@ def _inc_missing_entities(body, evidence):
         term=unicodedata.normalize('NFKC',term).casefold()
         if re.fullmatch(r'\d+(?:\.\d+)?%?',term):
             found=any(re.search(r'(?<![\d.])'+re.escape(term)+r'(?![\d.])',x) for x in texts)
+        elif re.match(r'[零〇一二两三四五六七八九十百千万]',term):
+            found=any(re.search(r'(?<![零〇一二两三四五六七八九十百千万])'+re.escape(term)+r'(?![零〇一二两三四五六七八九十百千万])',x) for x in texts)
         elif re.search(r'[a-z]',term):
             found=any(re.search(r'(?<![a-z0-9])'+re.escape(term)+r'(?![a-z0-9])',x) for x in texts)
         else: found=any(term in x for x in texts)
@@ -2320,6 +2700,7 @@ def _inc_original(source, category, saying):
     quote=message.get('quote') or {}
     if quote and _memory_observation_text(source['excerpt']) in _memory_observation_text(quote.get('content','')):
         return False
+    if category=='topic' and _inc_explicit_continuation(message['content']): return False
     return category!='saying' or _inc_saying_used(saying,source['excerpt'])
 
 
@@ -2404,7 +2785,7 @@ def _inc_groups(sources, category, saying=''):
             selected_roots.add(identity)
         elif any(source['evidence_identity']==prior['evidence_identity'] or
                  source.get('burst_id') and source.get('burst_id')==prior.get('burst_id') or
-                 not _memory_independent(source,prior,category,messages) for prior in selected): continue
+                 not _inc_use_independent(source,prior,category,messages,saying) for prior in selected): continue
         selected.append(source)
     return selected
 
@@ -2412,6 +2793,22 @@ def _inc_groups(sources, category, saying=''):
 def _inc_enough(sources, category, saying=''):
     chosen=_inc_groups(sources,category,saying)
     return bool(chosen) if category in ('rule',None) else len(chosen)>=2
+
+
+def _inc_approved_proof_valid(conn, row, admission, sources):
+    if not admission or not admission['signature']: return True
+    work=conn.execute('SELECT payload_json,parsed_json FROM entry_profile_incremental_work WHERE work_key=?',(admission['signature'],)).fetchone()
+    if not work or not work['parsed_json']: return True  # Legacy publication.
+    payload=json.loads(work['payload_json'])
+    if payload.get('review_contract')!='semantic_v8': return True
+    value=json.loads(work['parsed_json'])
+    try:
+        value['safe_sources']=_inc_resolve_safe(value['safe_sources'],payload['memory'])
+        value['safe_sources']=[ref for ref in value['safe_sources'] if any(ref['message_id']==s['message']['position']
+            and ref['field']==s['field'] and whitespace(ref['excerpt'])==whitespace(s['excerpt']) for s in sources)]
+        validate_incremental_admission(value,_inc_public_payload(payload))
+    except (ValueError,KeyError,TypeError): return False
+    return True
 
 
 def _inc_candidate_sources(conn, row, admission, as_of):
@@ -2436,7 +2833,7 @@ def _refresh_incremental_admissions(conn):
         saying=row['content'].partition('：')[0] if row['category']=='saying' else ''
         groups=_inc_groups(all_sources,row['category'],saying)
         days=len({s['message']['date'] for s in groups})
-        valid=admission['body_revision']==row['revision'] and _inc_enough(approved,row['category'],saying)
+        valid=admission['body_revision']==row['revision'] and _inc_enough(approved,row['category'],saying) and _inc_approved_proof_valid(conn,row,admission,approved)
         state=admission['state']
         if state=='accepted' and not _profile_manual(conn,row) and not valid:
             state='candidate'
@@ -2527,7 +2924,7 @@ class IncrementalProfileTask:
                     if reply.finish_reason!='stop': raise ValueError('incomplete_output')
                     parsed=json_object(reply.content)
                     if stage=='observe': validate_incremental_observations(parsed,self.limits)
-                    else: validate_incremental_admission(parsed,payload,previous)
+                    else: parsed=validate_incremental_admission(parsed,payload,previous)
                 except ValueError as error:
                     invalid=str(error);call['validation_error']=invalid
                 if monotonic()>=deadline: raise ModelError('retryable','deadline',reason='timeout')
@@ -2552,6 +2949,16 @@ class IncrementalProfileTask:
                 '上次输出结构无效：'+invalid+'。仅修正JSON格式、必填字段和类型；不新增事实/来源，不把语义拒绝改成通过。输出完整JSON。'}]
             if sum(estimate_tokens(x['content']) for x in messages)>self.limits.repair_request_tokens:
                 raise ModelError('invalid_output','repair material limit',reason='repair_budget_exceeded')
+
+    def _fit_observation(self, payload):
+        def cost(): return estimate_tokens(self.prompts['observe']['text'])+estimate_tokens(dumps(_inc_public_payload(payload)))
+        while cost()>self.limits.observe_request_tokens and payload['profiles']:
+            payload['profiles'].pop()
+            payload['_snapshot']['omitted_profiles']+=1
+        while cost()>self.limits.observe_request_tokens and payload.get('feedback'):
+            payload['feedback'].pop()
+        if cost()>self.limits.observe_request_tokens: raise MemoryProfileUnavailable('observation_metadata_budget')
+        return payload
 
     def _freeze_chunk(self, entry_id):
         now=_instant(self.clock());stamp=now.isoformat();limit=self.limits
@@ -2589,9 +2996,10 @@ class IncrementalProfileTask:
                 if value: messages.append(value);used+=cost
             if not positions: return None
             directory,omitted=_inc_directory(conn,entry_id,messages,limit)
-            payload=dict(entry_id=entry_id,timezone=zone,as_of=stamp,messages=messages,profiles=directory,
+            payload=dict(entry_id=entry_id,timezone=zone,as_of=stamp,messages=messages,profiles=directory,feedback=_inc_feedback(conn,entry_id),
                 _snapshot=dict(settings_revision=_settings(conn,entry_id)['revision'],cursor_before=state['scan_cursor'],
                     cursor_after=positions[-1],positions=positions,omitted_profiles=omitted,skipped_messages=skipped))
+            self._fit_observation(payload)
             key=_hash([entry_id,state['scan_cursor'],positions[-1],messages,zone])
             wid=conn.execute('''INSERT OR IGNORE INTO entry_profile_incremental_work(entry_id,work_key,kind,cursor_before,cursor_after,
                 local_day,payload_json,attempt_id,created_at) VALUES(?,?,'observe',?,?,?,?,?,?)''',
@@ -2628,9 +3036,10 @@ class IncrementalProfileTask:
         for index,fragment in enumerate(fragments):
             end=original['message_id'] if index==len(fragments)-1 else state['scan_cursor']
             payload=dict(entry_id=entry_id,timezone=_setting(conn,'timezone','Asia/Shanghai'),as_of=_instant(self.clock()).isoformat(),
-                messages=[fragment],profiles=directory,_snapshot=dict(settings_revision=_settings(conn,entry_id)['revision'],
+                messages=[fragment],profiles=directory,feedback=_inc_feedback(conn,entry_id),_snapshot=dict(settings_revision=_settings(conn,entry_id)['revision'],
                 cursor_before=state['scan_cursor'],cursor_after=end,positions=[original['message_id']],
                 omitted_profiles=omitted,fragment_group=group,fragment_index=index,fragment_count=len(fragments)))
+            self._fit_observation(payload)
             wid=conn.execute("""INSERT INTO entry_profile_incremental_work(entry_id,work_key,kind,cursor_before,cursor_after,
                 local_day,fragment_group,payload_json,attempt_id,created_at) VALUES(?,?,'observe',?,?,?,?,?,?,?)""",
                 (entry_id,_hash([group,index]),state['scan_cursor'],end,day,group,dumps(payload),self.attempt_id,_instant(self.clock()).isoformat())).lastrowid
@@ -2660,8 +3069,9 @@ class IncrementalProfileTask:
                                          'burst_id':old.get('burst_id','message:'+str(mid))})
                 if sum(estimate_tokens(dumps(_inc_public_message(m))) for m in messages)>self.limits.message_tokens: continue
                 directory,omitted=_inc_directory(conn,entry_id,messages,self.limits)
-                payload.update(messages=messages,profiles=directory,timezone=zone,as_of=stamp)
+                payload.update(messages=messages,profiles=directory,timezone=zone,as_of=stamp,feedback=_inc_feedback(conn,entry_id))
                 snap.update(settings_revision=settings['revision'],omitted_profiles=omitted)
+                self._fit_observation(payload)
                 _inc_work_persist(conn,work['id'],payload_json=dumps(payload),parsed_json=None,state='queued',reason='resnapshotted')
 
     def _assert_snapshot(self, conn, payload):
@@ -2703,14 +3113,14 @@ class IncrementalProfileTask:
                         if raw.get('action')=='retire':
                             if body or saying or meaning or raw['definition_refs'] or category!=target['category']:
                                 raise ValueError('invalid_retirement')
-                        elif (not body or _MEMORY_GENDERED.search(body) or _ACCOUNT.search(body)):
+                        elif (not (saying if category=='saying' else body) or _inc_gendered(saying+meaning if category=='saying' else body) or _ACCOUNT.search(saying+meaning if category=='saying' else body)):
                             raise ValueError('invalid_or_gendered_body')
                         elif category=='saying':
                             expected=saying+('：'+meaning if meaning else '')
-                            if not saying or body.rstrip('。.!！?？')!=expected.rstrip('。.!！?？') or bool(meaning)!=bool(raw['definition_refs']):
+                            if not saying or bool(meaning)!=bool(raw['definition_refs']):
                                 raise ValueError('unbound_meaning')
                             if body!=expected:
-                                result['normalizations'].append(dict(index=index,reason='saying_terminal_punctuation'))
+                                result['normalizations'].append(dict(index=index,reason='saying_from_fields'))
                             body=expected
                         elif saying or meaning or raw['definition_refs']:
                             raise ValueError('unexpected_meaning')
@@ -2784,108 +3194,118 @@ class IncrementalProfileTask:
         conn.execute('UPDATE entry_profile_memory_state SET cursor=?,rebuild_pending=? WHERE entry_id=?',
             (cursor,int(bool(conn.execute('SELECT 1 FROM messages WHERE entry_id=? AND id>? LIMIT 1',(entry_id,cursor)).fetchone())),entry_id))
 
+    def _proof_payload(self, memory, snapshot, mode, stamp, zone):
+        return dict(entry_id=snapshot['entry_id'],as_of=stamp,timezone=zone,memory=memory,
+            review_contract='semantic_v8',mode=mode,_snapshot=snapshot)
+
+    def _proof_fits(self, memory, snapshot, mode, stamp, zone):
+        payload=self._proof_payload(memory,snapshot,mode,stamp,zone)
+        return (len(memory['sources'])<=self.limits.evidence
+            and estimate_tokens(dumps(memory))<=self.limits.evidence_tokens
+            and estimate_tokens(self.prompts['admit']['text'])+estimate_tokens(dumps(_inc_public_payload(payload)))<=self.limits.admit_request_tokens)
+
+    def _persist_proof_work(self, conn, memory, snapshot, mode, stamp, zone, *, group, index=0, count=1):
+        snap={**snapshot,'admission_prompt_sha256':self.prompts['admit']['sha256']}
+        if mode=='map': snap['bundle']=dict(key=group,index=index,count=count)
+        payload=self._proof_payload(memory,snap,mode,stamp,zone)
+        key=_hash([group,mode,index,memory,self.prompts['admit']['sha256']])
+        if conn.execute('SELECT 1 FROM entry_profile_incremental_work WHERE work_key=?',(key,)).fetchone(): return None
+        return conn.execute('''INSERT INTO entry_profile_incremental_work(entry_id,work_key,kind,memory_id,memory_revision,
+            payload_json,attempt_id,created_at) VALUES(?,?,'admit',?,?,?,?,?)''',
+            (snap['entry_id'],key,memory['memory_id'],memory['revision'],dumps(payload),self.attempt_id,stamp)).lastrowid
+
     def _queue_admission(self, conn, row, sources, *, proposal=None):
         from .memory_ops import _profile_manual
         if _profile_manual(conn,row) or row['lifecycle']!='active': return None
         meta=conn.execute('SELECT * FROM entry_profile_admissions WHERE memory_id=?',(row['id'],)).fetchone()
         if not meta: return None
+        if meta['state']=='accepted' and not proposal and meta['signature'] and meta['body_revision']==row['revision']:
+            previous=conn.execute('SELECT payload_json FROM entry_profile_incremental_work WHERE work_key=?',(meta['signature'],)).fetchone()
+            snap=json.loads(previous[0]).get('_snapshot',{}) if previous else {}
+            if (snap.get('evidence_revision')==meta['evidence_revision'] and
+                    snap.get('admission_prompt_sha256')==self.prompts['admit']['sha256']): return None
         for source in sources:
-            incomplete=conn.execute("""SELECT 1 FROM entry_profile_incremental_work w JOIN purge_record_refs r
+            if conn.execute('''SELECT 1 FROM entry_profile_incremental_work w JOIN purge_record_refs r
                 ON r.table_name='entry_profile_incremental_work' AND r.row_id=CAST(w.id AS TEXT)
                 WHERE r.ref_kind='message' AND r.ref_id=? AND w.fragment_group IS NOT NULL
-                AND w.state NOT IN ('applied','cancelled') LIMIT 1""",(str(source['message']['position']),)).fetchone()
-            if incomplete: return None
-        category=proposal['category'] if proposal else row['category']
-        body=proposal['body'] if proposal else row['content']
+                AND w.state NOT IN ('applied','cancelled') LIMIT 1''',(str(source['message']['position']),)).fetchone(): return None
+        category=proposal['category'] if proposal else row['category'];body=proposal['body'] if proposal else row['content']
         saying=proposal['saying'] if proposal else body.partition('：')[0] if category=='saying' else ''
         retire=proposal and proposal['action']=='retire'
-        selected=_inc_groups(sources,category,saying)
-        if not _inc_enough(selected,category,saying) and not (retire and sources): return None
+        if not _inc_enough(sources,category,saying) and not (retire and sources): return None
         reason=None if retire else _inc_body_reason(category,body,saying,sources)
+        definitions=proposal['definition_refs'] if proposal else json.loads(meta['definition_refs_json'])
+        witnesses=list({_inc_source_key(s):s for s in sources}.values())
+        witnesses.sort(key=lambda s:(_instant(s['message']['occurred_at']),s['message']['position'],s['field'],s['excerpt']))
+        if len(witnesses)>32: reason='proof_gap:source_limit'
         if reason:
             conn.execute('UPDATE entry_profile_admissions SET reason=? WHERE memory_id=?',(reason,row['id']))
             return None
-        definitions=proposal['definition_refs'] if proposal else json.loads(meta['definition_refs_json'])
-        witnesses=[];seen=set()
-        for source in sources:
-            key=_inc_source_key(source)
-            if key not in seen: witnesses.append(source);seen.add(key)
-        # Every input is reviewed. No relevance/sentiment-based omission of remainder.
-        # 32 is the unified writer's existing source limit, not a model context increase.
-        if len(witnesses)>32:
-            conn.execute("UPDATE entry_profile_admissions SET reason='evidence_budget_exceeded' WHERE memory_id=?",(row['id'],))
-            return None
-        core=[]
-        def include(source):
-            if _inc_source_key(source) not in {_inc_source_key(s) for s in core}: core.append(source)
-        for source in selected[:1 if category=='rule' else 2]: include(source)
-        for source in witnesses:
-            if source['message']['position'] in definitions: include(source)
-            if proposal and any(source['message']['position']==r['message_id'] and source['field']==r['field'] for r in proposal['source_refs']): include(source)
-        # Supply explicit announcement / consensus together in every page.
-        if category=='rule' and not retire and _inc_rule_reason(core):
-            for source in witnesses:
-                include(source)
-                if not _inc_rule_reason(core): break
-        prose=body.partition('：')[2] if category=='saying' else body
-        missing=_inc_missing_entities(prose,[s['excerpt'] for s in core]) if not retire else []
-        while missing:
-            best=max(witnesses,key=lambda s:sum(term in s['excerpt'] for term in missing))
-            include(best)
-            after=_inc_missing_entities(prose,[s['excerpt'] for s in core])
-            if after==missing: break
-            missing=after
-        def public_source(s):
-            return dict(message_id=s['message']['position'],field=s['field'],excerpt=s['excerpt'],speaker=s['speaker'],
-                date=s['message']['date'],occurred_at=s['message']['occurred_at'],context=s['message']['content'],message_speaker=s['message']['speaker'],
-                quote=s['message'].get('quote'),burst_id=s.get('burst_id'))
-        memory=dict(memory_id=row['id'],revision=row['revision'],category=category,body=body,saying=saying,
-            meaning=proposal['meaning'] if proposal else body.partition('：')[2] if category=='saying' else '',
-            definition_refs=definitions,sources=[])
-        if proposal: memory.update(action=proposal['action'],old_body=row['content'])
-        def fits(page):
-            return len(page)<=self.limits.evidence and estimate_tokens(dumps({**memory,'sources':[public_source(s) for s in page]}))<=self.limits.evidence_tokens
-        if not fits(core):
-            conn.execute("UPDATE entry_profile_admissions SET reason='evidence_budget_exceeded' WHERE memory_id=?",(row['id'],))
-            return None
-        remaining=[s for s in witnesses if _inc_source_key(s) not in {_inc_source_key(v) for v in core}]
-        pages=[];page=list(core)
-        for source in remaining:
-            if not fits([*page,source]):
-                pages.append(page);page=list(core)
-            if not fits([*page,source]):
-                conn.execute("UPDATE entry_profile_admissions SET reason='evidence_budget_exceeded' WHERE memory_id=?",(row['id'],))
-                return None
-            page.append(source)
-        pages.append(page)
-        if len(pages)>8:
-            conn.execute("UPDATE entry_profile_admissions SET reason='evidence_budget_exceeded' WHERE memory_id=?",(row['id'],))
+        try:
+            memory=_inc_proof_memory(row,witnesses,category,body,saying,definitions,proposal)
+        except ValueError as error:
+            conn.execute('UPDATE entry_profile_admissions SET reason=? WHERE memory_id=?',('proof_gap:'+str(error),row['id']))
             return None
         zone=_setting(conn,'timezone','Asia/Shanghai');stamp=_instant(self.clock()).isoformat()
-        snapshot=dict(settings_revision=_settings(conn,row['owner_entry_id'])['revision'],evidence_revision=meta['evidence_revision'],
-            source_fingerprints={str(s['message']['position']):s['message']['fingerprint'] for s in witnesses},proposal=proposal,
-            # Numeric roots are required by the existing recursive purge index, also
-            # on pages that do not contain a particular message as model evidence.
-            evidence_refs=[dict(message_id=s['message']['position']) for s in witnesses])
-        group=_hash([row['id'],row['revision'],meta['evidence_revision'],memory,[[public_source(s) for s in p] for p in pages],
-                     zone,snapshot['settings_revision'],self.prompts['admit']['sha256']])
+        snapshot=dict(entry_id=row['owner_entry_id'],settings_revision=_settings(conn,row['owner_entry_id'])['revision'],
+            evidence_revision=meta['evidence_revision'],proposal=proposal,
+            source_fingerprints={str(s['message']['position']):s['message']['fingerprint'] for s in witnesses},
+            evidence_sources=memory['sources'],evidence_refs=[dict(message_id=s['message']['position']) for s in witnesses])
+        group=_hash([memory,meta['evidence_revision'],zone,snapshot['settings_revision'],self.prompts['admit']['sha256']])
         first=None
-        for index,page in enumerate(pages):
-            key=_hash([group,index]);page_memory={**memory,'sources':[public_source(s) for s in page]}
-            payload=dict(entry_id=row['owner_entry_id'],as_of=stamp,timezone=zone,memory=page_memory,
-                _snapshot={**snapshot,'bundle':dict(key=group,index=index,count=len(pages))})
-            if conn.execute('SELECT 1 FROM entry_profile_incremental_work WHERE work_key=?',(key,)).fetchone(): continue
-            wid=conn.execute('''INSERT INTO entry_profile_incremental_work(entry_id,work_key,kind,memory_id,memory_revision,
-                payload_json,attempt_id,created_at) VALUES(?,?,'admit',?,?,?,?,?)''',
-                (row['owner_entry_id'],key,row['id'],row['revision'],dumps(payload),self.attempt_id,stamp)).lastrowid
-            first=first or wid
-        if first and meta['state']!='accepted': conn.execute("UPDATE entry_profile_admissions SET state='pending',reason=NULL WHERE memory_id=?",(row['id'],))
+        if self._proof_fits(memory,snapshot,'final',stamp,zone):
+            first=self._persist_proof_work(conn,memory,snapshot,'final',stamp,zone,group=group)
+        else:
+            # Pages only map local contribution. They are not acceptance votes on
+            # a whole body whose proof is split across other pages.
+            pages=[];page=[]
+            for s in memory['sources']:
+                if page and not self._proof_fits(_inc_memory_page(memory,page+[s]),snapshot,'map',stamp,zone):
+                    pages.append(page);page=[]
+                page.append(s)
+                if not self._proof_fits(_inc_memory_page(memory,page),snapshot,'map',stamp,zone):
+                    reason='proof_gap:single_source_budget';break
+            if page: pages.append(page)
+            if len(pages)>8: reason='proof_gap:page_limit'
+            if reason:
+                conn.execute('UPDATE entry_profile_admissions SET reason=? WHERE memory_id=?',(reason,row['id']))
+                return None
+            for index,page in enumerate(pages):
+                wid=self._persist_proof_work(conn,_inc_memory_page(memory,page),snapshot,'map',stamp,zone,
+                    group=group,index=index,count=len(pages))
+                first=first or wid
+        if first and meta['state']!='accepted':
+            conn.execute("UPDATE entry_profile_admissions SET state='pending',reason=NULL WHERE memory_id=?",(row['id'],))
         return first
+
+    def _apply_mapping(self, work, parsed):
+        payload=json.loads(work['payload_json']);memory=payload['memory'];snap=payload['_snapshot'];bundle=snap['bundle']
+        stamp=_instant(self.clock()).isoformat()
+        parsed=validate_incremental_admission(parsed,_inc_public_payload(payload))
+        with self.store.write() as conn:
+            if not self._check_current(conn,work,payload): raise EntryProfileConflict('check_snapshot_changed')
+            _inc_work_persist(conn,work['id'],state='applied',finished_at=stamp,
+                result_json=dumps(dict(semantic_decision=parsed['decision'],admission_complete=False,writeback='not_attempted',mode='map')))
+            siblings=conn.execute("SELECT * FROM entry_profile_incremental_work WHERE memory_id=? AND json_extract(payload_json,'$._snapshot.bundle.key')=? ORDER BY id",
+                (memory['memory_id'],bundle['key'])).fetchall()
+            if len(siblings)!=bundle['count'] or any(s['state']!='applied' for s in siblings): return
+            all_memory=_inc_memory_page(memory,snap['evidence_sources'])
+            votes=[validate_incremental_admission(json.loads(s['parsed_json']),_inc_public_payload(json.loads(s['payload_json']))) for s in siblings]
+            base={k:v for k,v in snap.items() if k!='bundle'}
+            selected,reason=_inc_plan_proof(all_memory,votes,
+                lambda ss:self._proof_fits(_inc_memory_page(all_memory,ss),base,'final',stamp,payload['timezone']))
+            if reason:
+                conn.execute("UPDATE entry_profile_admissions SET state=CASE WHEN state='accepted' THEN state ELSE 'candidate' END,reason=? WHERE memory_id=?",
+                    (reason,memory['memory_id']))
+                _inc_work_persist(conn,work['id'],result_json=dumps(dict(semantic_decision=parsed['decision'],admission_complete=False,
+                    writeback='blocked',proof_gap=reason,required_points=memory['proof_points'])))
+                return
+            self._persist_proof_work(conn,_inc_memory_page(all_memory,selected),base,'final',stamp,payload['timezone'],group=bundle['key'])
 
     def _queue_candidates(self, entry_id):
         with self.store.write() as conn:
             rows=conn.execute('''SELECT m.*,p.category FROM memories m JOIN entry_profile_memories p ON p.memory_id=m.id
-                JOIN entry_profile_admissions a ON a.memory_id=m.id WHERE p.entry_id=? AND a.state!='accepted'
+                JOIN entry_profile_admissions a ON a.memory_id=m.id WHERE p.entry_id=?
                 AND m.lifecycle='active' AND m.purged_at IS NULL ORDER BY m.id''',(entry_id,)).fetchall()
             for row in rows:
                 self._queue_admission(conn,row,_inc_all_sources(conn,row,_instant(self.clock()).isoformat()))
@@ -2893,6 +3313,8 @@ class IncrementalProfileTask:
     def _apply_admission(self, work, parsed):
         from .memory_ops import write_entry_profile_memory, entry_profile_source, _profile_manual
         payload=json.loads(work['payload_json']);memory=payload['memory'];snap=payload['_snapshot'];stamp=_instant(self.clock()).isoformat()
+        if payload.get('mode')!='final': raise ValueError('mapping_cannot_admit')
+        parsed=validate_incremental_admission(parsed,_inc_public_payload(payload))
         with self.store.write() as conn:
             current=conn.execute('''SELECT m.*,p.category FROM memories m JOIN entry_profile_memories p ON p.memory_id=m.id
                 WHERE m.id=? AND m.purged_at IS NULL AND m.lifecycle='active' ''',(memory['memory_id'],)).fetchone()
@@ -2907,10 +3329,7 @@ class IncrementalProfileTask:
             if snap.get('proposal'):
                 snapshot=MemoryProfileSnapshot(work['entry_id'],'','group',payload['timezone'],stamp,0,0,0,False)
                 all_sources=[]
-                values=list(memory['sources'])
-                if snap.get('bundle'):
-                    for sibling in conn.execute("SELECT payload_json FROM entry_profile_incremental_work WHERE memory_id=? AND json_extract(payload_json,'$._snapshot.bundle.key')=?",(current['id'],snap['bundle']['key'])):
-                        values.extend(json.loads(sibling[0])['memory']['sources'])
+                values=list(snap.get('evidence_sources',memory['sources']))
                 for value in values:
                     row=conn.execute('SELECT * FROM messages WHERE id=?',(value['message_id'],)).fetchone()
                     if row:
@@ -2921,11 +3340,7 @@ class IncrementalProfileTask:
             for mid,fingerprint in snap['source_fingerprints'].items():
                 if not any(s['message']['position']==int(mid) and s['message']['fingerprint']==fingerprint for s in all_sources):
                     raise EntryProfileConflict('check_source_changed')
-            bundle=snap.get('bundle')
             if parsed['decision']!='accept':
-                if bundle:
-                    conn.execute("UPDATE entry_profile_incremental_work SET state='cancelled',reason='bundle_rejected',finished_at=? WHERE memory_id=? AND id!=? AND json_extract(payload_json,'$._snapshot.bundle.key')=? AND state IN ('queued','deferred','failed')",
-                        (stamp,current['id'],work['id'],bundle['key']))
                 # A pending revision does not erase an independently valid old body.
                 if not snap.get('proposal') or meta['state']!='accepted':
                     conn.execute("UPDATE entry_profile_admissions SET state=?,reason=? WHERE memory_id=?",('candidate' if meta['signature'] else 'rejected',parsed['decision'],current['id']))
@@ -2951,31 +3366,6 @@ class IncrementalProfileTask:
                 raise ValueError('definition_removed')
             if proposal and not any(s['message_id']==ref['message_id'] and s['field']==ref['field'] for s in safe for ref in proposal['source_refs']):
                 raise ValueError('change_basis_removed')
-            if bundle:
-                # A partial pass is not admission. Save it for restart without
-                # adding sources, changing retention, or exposing any new text.
-                _inc_work_persist(conn,work['id'],state='applied',result_json=dumps(dict(decision='accept',memory_id=current['id'],admission_complete=False)),finished_at=stamp)
-                siblings=conn.execute("SELECT * FROM entry_profile_incremental_work WHERE memory_id=? AND json_extract(payload_json,'$._snapshot.bundle.key')=? ORDER BY id",
-                    (current['id'],bundle['key'])).fetchall()
-                if len(siblings)!=bundle['count'] or any(s['state']!='applied' for s in siblings):
-                    return dict(memory_id=current['id'],decision='accept',admission_complete=False)
-                safe=[];canonical=[];seen=set()
-                for sibling in siblings:
-                    sibling_payload=json.loads(sibling['payload_json'])
-                    sibling_vote=json.loads(sibling['parsed_json'])
-                    if sibling_vote['decision']!='accept': raise ValueError('bundle_not_accepted')
-                    for source in sibling_vote['safe_sources']:
-                        key=(source['message_id'],source['field'],whitespace(source['excerpt']))
-                        if key in seen: continue
-                        seen.add(key)
-                        expected=next((v for v in sibling_payload['memory']['sources'] if v['message_id']==source['message_id'] and v['field']==source['field'] and whitespace(source['excerpt']) in v['excerpt']),None)
-                        bound=next((v for v in all_sources if v['message']['position']==source['message_id'] and v['field']==source['field'] and whitespace(source['excerpt']) in v['excerpt']),None)
-                        if not expected or not bound: raise ValueError('bundle_source_changed')
-                        canonical.append({**bound,'excerpt':whitespace(source['excerpt'])})
-                        safe.append(entry_profile_source(conn,source['message_id'],excerpt=source['excerpt'],field=source['field'],
-                            source_memory_id=int(bound['via_memory']) if bound['via_memory'] else None,
-                            source_revision=bound['memory']['revision'] if bound['memory'] else None))
-                if len(safe)>32: raise ValueError('bundle_source_limit')
             if proposal:
                 receipt=write_entry_profile_memory(self.store,work['entry_id'],op='retire' if retire else 'revise',content=memory['body'],
                     category=memory['category'],importance=current['importance'],sources=safe,memory_id=current['id'],
@@ -2991,7 +3381,7 @@ class IncrementalProfileTask:
             conn.execute("""UPDATE entry_profile_admissions SET state='accepted',body_revision=?,checked_sources_json=?,
                 signature=?,reason=NULL,definition_refs_json=?,checked_at=? WHERE memory_id=?""",
                 (receipt['revision'],dumps(receipt['source_ids']),work['work_key'],dumps(memory['definition_refs']),stamp,current['id']))
-            _inc_work_persist(conn,work['id'],state='applied',result_json=dumps({'decision':'accept','admission_complete':True,**receipt}),finished_at=stamp)
+            _inc_work_persist(conn,work['id'],state='applied',result_json=dumps({'decision':'accept','semantic_decision':'accept','writeback':'applied','admission_complete':True,**receipt}),finished_at=stamp)
             conn.execute("UPDATE entry_profile_incremental_work SET state='cancelled',reason='superseded_check',finished_at=? WHERE memory_id=? AND kind='admit' AND id!=? AND state IN ('queued','deferred','failed')",
                          (stamp,current['id'],work['id']))
             return receipt
@@ -3000,6 +3390,7 @@ class IncrementalProfileTask:
         """Cheap preflight in addition to post-call CAS; never spend on an already stale target."""
         from .memory_ops import _profile_manual
         memory=payload['memory'];snap=payload['_snapshot']
+        if payload.get('review_contract')!='semantic_v8' or snap.get('admission_prompt_sha256')!=self.prompts['admit']['sha256']: return False
         row=conn.execute('SELECT * FROM memories WHERE id=?',(memory['memory_id'],)).fetchone()
         meta=conn.execute('SELECT * FROM entry_profile_admissions WHERE memory_id=?',(memory['memory_id'],)).fetchone()
         if (not row or not meta or row['purged_at'] or row['lifecycle']!='active' or _profile_manual(conn,row)
@@ -3028,6 +3419,7 @@ class IncrementalProfileTask:
                 material=json.loads(conn.execute('SELECT material_json FROM entry_profile_attempts WHERE id=?',(self.attempt_id,)).fetchone()[0])
                 payload=json.loads(work['payload_json']);refs=material.setdefault('evidence_refs',[])
                 refs.extend(dict(message_id=m['message_id']) for m in payload.get('messages',[]))
+                refs.extend(ref for item in payload.get('feedback',[]) for ref in item.get('_refs',[]))
                 refs.extend(dict(memory_id=p['memory_id'],revision=p['revision']) for p in payload.get('profiles',[]))
                 if payload.get('memory'):
                     refs.append(dict(memory_id=payload['memory']['memory_id'],revision=payload['memory']['revision']))
@@ -3054,6 +3446,7 @@ class IncrementalProfileTask:
             else:
                 parsed=json.loads(work['parsed_json'])
             if work['kind']=='observe': self._apply_observations(work,parsed)
+            elif payload.get('mode')=='map': self._apply_mapping(work,parsed)
             else: self._apply_admission(work,parsed)
         except (ModelError,EntryProfileConflict,ValueError) as error:
             reason=(error.reason or error.category) if isinstance(error,ModelError) else str(error)
@@ -3064,6 +3457,10 @@ class IncrementalProfileTask:
                 _inc_work_persist(conn,work['id'],state='deferred' if deferred else 'failed',reason=reason,
                     retry_at=(_instant(self.clock())+timedelta(minutes=5*(2**min(live['attempts'],4)))).isoformat() if deferred else None,
                     finished_at=stamp)
+                if work['kind']=='admit' and live['parsed_json']:
+                    saved=json.loads(live['parsed_json'])
+                    _inc_work_persist(conn,work['id'],result_json=dumps(dict(semantic_decision=saved.get('decision'),
+                        writeback='failed',admission_complete=False,reason=reason)))
                 if work['kind']=='admit' and live['state']!='cancelled':
                     conn.execute("UPDATE entry_profile_admissions SET state=CASE WHEN state='accepted' THEN state ELSE 'candidate' END,reason=? WHERE memory_id=?",
                                  (reason,work['memory_id']))
