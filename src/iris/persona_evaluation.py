@@ -29,7 +29,7 @@ from .memory_ops import setup_role, delete_memory, adjust_retention, lifecycle_s
 from .model_health import ModelHealth
 from .models import Gateway, ModelError, parse_json_object_with_status
 from .persona import (PersonaEngine, admin_edit, current_persona, pending_update, select_evidence,
-                      confirm_candidate, reject_candidate, DEGREES, PUBLISH_MODES, PROMPT_VERSIONS, DEGREE_PROMPT_VERSION, CALL_TIMEOUTS, CALL_MAX_TOKENS, CHECK_BATCH_SIZE, CHECK_BATCH_CLAUSES, MAX_CHECK_STAGE_SECONDS, MAX_CHECK_REQUEST_BYTES, CHECK_TIMEOUT_RETRIES, CHECK_STREAM_IDLE_SECONDS, REPAIR_POLICY, check_transport, _trace, _stale, _settings, split_sentences)
+                      confirm_candidate, reject_candidate, DEGREES, PUBLISH_MODES, PROMPT_VERSIONS, DEGREE_PROMPT_VERSION, CALL_TIMEOUTS, CALL_MAX_TOKENS, CHECK_BATCH_SIZE, CHECK_BATCH_CLAUSES, MAX_CHECK_STAGE_SECONDS, MAX_CHECK_REQUEST_BYTES, CHECK_TIMEOUT_RETRIES, CHECK_STREAM_IDLE_SECONDS, REPAIR_POLICY, check_transport, _trace, _stale, _settings, split_sentences, _structure_diagnostics)
 
 FORMAT_VERSION = 1
 SCORING_VERSION = 'persona_scoring_v1'
@@ -615,6 +615,30 @@ def _call_metrics(calls, outcomes=None):
             'by_purpose':dict(Counter(c['purpose'] for c in calls))}
 
 
+def _check_structure_metrics(rows):
+    """Count canonical stage records once, including failed operations."""
+    initial, repeated, outcomes = Counter(), Counter(), Counter()
+    totals = {key:0 for key in ('conservative_sentence_count', 'conservative_batch_count',
+                               'conservative_degree_count')}
+    stages = 0
+    for row in rows:
+        for attempt in row['attempts']:
+            outputs = json.loads(attempt['outputs_json'])
+            for purpose in ('persona_check', 'persona_recheck'):
+                batches = outputs.get(purpose + '_batches', [])
+                if not batches:
+                    continue
+                stages += 1
+                diagnostic = _structure_diagnostics(batches, purpose)
+                initial.update(diagnostic['initial_failures'])
+                repeated.update(diagnostic['retry_failures'])
+                outcomes.update(diagnostic['retry_results'])
+                for key in totals:
+                    totals[key] += diagnostic[key]
+    return {'stages':stages, 'initial_failures':dict(initial),
+            'retry_failures':dict(repeated), 'retry_results':dict(outcomes), **totals}
+
+
 def _metrics(rows, judgments=None):
     observations = _observations(rows)
     rejected = [o for o in observations if o['candidate']['status']=='rejected']
@@ -632,6 +656,7 @@ def _metrics(rows, judgments=None):
     incomplete_checks = _incomplete_checks(all_versions)
     incomplete_timelines = sum(not r['complete'] or bool(_incomplete_checks(r['observations'])) for r in rows)
     result = {'run_valid':not incomplete_timelines and not invalid_calls,
+              'check_structure':_check_structure_metrics(rows),
               'incomplete_check_count':len(incomplete_checks), 'incomplete_checks':incomplete_checks,
               'invalid_call_count':len(invalid_calls),
               'recovered_call_count':sum(c['recovered'] for c in call_outcomes),
@@ -765,7 +790,7 @@ def _report(report,directory):
     for key in ('run_valid','invalid_call_count','recovered_call_count','stream_stall_aborts','incomplete_check_count',
                 'changes','grounded_change_ratio','generated_candidates','check_rejected_ratio',
                 'deleted_sentences','deleted_sentence_ratio','candidate_deletion_ratio','repaired_sentences',
-                'must_reflect_coverage','must_not_occurrences','incomplete_timelines'):
+                'must_reflect_coverage','must_not_occurrences','incomplete_timelines','check_structure'):
         lines.append(f'| {key} | {metrics[key]} |')
     lines += ['', 'Call metrics: '+dumps(metrics['calls']), '', 'Violation distribution: '+dumps(metrics['violations']),
               '', 'Rejected candidate violations: '+dumps(metrics['rejected_candidate_violations']),

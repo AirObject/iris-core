@@ -44,7 +44,7 @@ def test_interruption_preserves_completed_checkpoint_raw_outputs_and_does_not_re
     assert json.loads(journals[0].read_text())==audit
 
 
-@pytest.mark.parametrize('format_failure', ['coverage', 'degree'])
+@pytest.mark.parametrize('format_failure', ['coverage', 'degree', 'output_limit'])
 def test_only_unrecovered_check_failures_stop_remaining_events_and_timelines(tmp_path, format_failure):
     class Broken(FakeGateway):
         generation=0
@@ -54,14 +54,15 @@ def test_only_unrecovered_check_failures_stop_remaining_events_and_timelines(tmp
             if purpose=='persona_check':
                 value=json.loads(reply.content)
                 if format_failure == 'coverage': value['sentences'] = []
-                else: value['change_degree'] = 'unknown'
+                elif format_failure == 'degree': value['change_degree'] = 'unknown'
+                else: reply.finish_reason = 'length'
                 reply.content=dumps(value)
             return reply
     second=copy.deepcopy(TIMELINE);second['id']='another-format-case'
     _,report=run_persona_eval({},tmp_path,gateway_factory=Broken,runner_identity='missing-check',
         **inputs(tmp_path,[TIMELINE,second]))
     summary=next((tmp_path/'out').glob('persona-*.md')).read_text()
-    if format_failure == 'degree':
+    if format_failure == 'output_limit':
         assert '| run_valid | False |' in summary and '| unexecuted_timelines | 1 |' in summary
         assert Broken.generation == 1 and not report['metrics']['run_valid']
         assert report['executed_timelines'] == report['unexecuted_timelines'] == 1
@@ -77,7 +78,7 @@ def test_only_unrecovered_check_failures_stop_remaining_events_and_timelines(tmp
     assert report['planned_timelines'] == 2
     for path in (tmp_path/'out').glob('.persona/*/timeline-progress-*.json'):
         journal = json.loads(path.read_text())
-        assert journal['state'] == ('invalid' if format_failure == 'degree' else 'complete')
+        assert journal['state'] == ('invalid' if format_failure == 'output_limit' else 'complete')
         assert journal['row'] in report['rows']
         assert any(json.loads(a['outputs_json']).get('persona_check') for a in journal['row']['attempts'])
 

@@ -39,9 +39,7 @@ def gateway_for(failure, *, recovered=True, complete=True, outer_retry=False):
             reply = super().chat(messages, purpose, **kwargs)
             self.record(purpose, 'success')
             if not complete and purpose == 'persona_check':
-                value = json.loads(reply.content)
-                value.pop('change_degree')
-                reply.content = dumps(value)
+                reply.finish_reason = 'length'
             return reply
     return Recorded
 

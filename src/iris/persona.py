@@ -493,6 +493,140 @@ def _adverse_field_verdicts(row):
     return reasons
 
 
+def _structure_failure(error):
+    """Provider/output shape failures are recoverable; infrastructure is not."""
+    return (error.category == 'invalid_output' and not error.paused
+            and error.reason not in ('output_limit', 'check_request_limit'))
+
+
+def _parse_structure_error(error):
+    code = getattr(error, 'structure_code', 'gateway_output')
+    return code + ': invalid model output'
+
+
+def _fact_envelope_errors(answer):
+    errors = []
+    value = answer.get('change_degree')
+    value = {'小':'small', '中':'medium', '大':'large'}.get(value, value) if isinstance(value, str) else None
+    if value not in DEGREES:
+        errors.append('invalid change degree')
+    if not isinstance(answer.get('reason'), str) or not answer['reason'].strip():
+        errors.append('model check reason required')
+    return errors
+
+
+def _sentence_format_errors(row, index):
+    if not isinstance(row, dict):
+        return [f'sentence {index}: invalid model verdict index']
+    errors = []
+    if type(row.get('index')) is not int or row['index'] != index:
+        errors.append(f'sentence {index}: invalid model verdict index')
+    for field in ('supported', 'fabricated', 'scene_qualified'):
+        if type(row.get(field)) is not bool:
+            errors.append(f'sentence {index}: invalid {field} boolean')
+    if not isinstance(row.get('reason'), str) or not row['reason'].strip():
+        errors.append(f'sentence {index}: sentence reason required')
+    if (not isinstance(row.get('violations'), list)
+            or any(not isinstance(v, str) or not v.strip() for v in row['violations'])):
+        errors.append(f'sentence {index}: invalid sentence violations')
+    if not isinstance(row.get('persona_kind'), str) or row['persona_kind'] not in PERSONA_KINDS:
+        errors.append(f'sentence {index}: invalid persona kind')
+    return errors
+
+
+def _proof_format_errors(row, index):
+    errors = []
+    parts = row.get('clauses') if isinstance(row.get('clauses'), list) else []
+    for position, part in enumerate(parts, 1):
+        if not isinstance(part, dict) or not isinstance(part.get('evidence'), list):
+            continue  # The existing clause contract checks this container.
+        for number, proof in enumerate(part['evidence'], 1):
+            if (not isinstance(proof, dict) or not isinstance(proof.get('ref'), str)
+                    or type(proof.get('source_index')) is not int
+                    or ('quote_index' in proof and type(proof['quote_index']) is not int)
+                    or ('quote' in proof and not isinstance(proof['quote'], str))
+                    or not {'quote', 'quote_index'}.intersection(proof)):
+                errors.append(f'sentence {index}: clause {position}: proof {number}: invalid proof shape')
+    return errors
+
+
+def _structure_types(errors, unit):
+    types = []
+    for error in errors:
+        if error.startswith(('json_syntax:', 'json_root:', 'gateway_output:')):
+            code = error.split(':', 1)[0]
+        elif 'invalid change degree' in error:
+            code = 'degree_value' if unit == 'degree' else 'batch_degree'
+        elif 'model check reason required' in error:
+            code = 'degree_reason' if unit == 'degree' else 'batch_reason'
+        elif 'degree: invalid fields' in error:
+            code = 'degree_fields'
+        elif 'degree: sentences must be empty' in error:
+            code = 'degree_sentences'
+        elif 'invalid proof shape' in error:
+            code = 'proof_shape'
+        elif 'activity scope verdict' in error:
+            code = 'scope_fields'
+        elif 'rejection short circuit' in error:
+            code = 'short_circuit'
+        elif 'invalid clause verdict' in error:
+            code = 'clause_fields'
+        elif 'every focus span' in error:
+            code = 'clause_coverage'
+        elif 'boolean' in error:
+            code = 'sentence_bool'
+        elif 'sentence reason required' in error:
+            code = 'sentence_reason'
+        elif 'sentence violations' in error:
+            code = 'sentence_violations'
+        elif 'persona kind' in error:
+            code = 'sentence_kind'
+        elif ('sentence results' in error or 'every sentence' in error
+                or 'invalid model verdict index' in error):
+            code = 'degree_sentences' if unit == 'degree' else 'batch_alignment'
+        else:
+            code = 'sentence_fields' if unit == 'sentence' else 'batch_fields'
+        if code not in types:
+            types.append(code)
+    return types
+
+
+def _structure_event(container, purpose, unit, errors, **fields):
+    event = {'unit':unit, 'errors':list(errors), 'retry_requested':False,
+             'status':'conservative', **fields}
+    container.setdefault(purpose + '_structure_events', []).append(event)
+    return event
+
+
+def _structure_diagnostics(batches, purpose):
+    initial, repeated, outcomes = Counter(), Counter(), Counter()
+    sentences, events, degree_count, batch_count = set(), [], 0, 0
+    for raw in batches:
+        for event in raw.get(purpose + '_structure_events', []):
+            unit = event['unit']
+            (repeated if event.get('covered_by_batch_retry') else initial).update(
+                _structure_types(event['errors'], unit))
+            repeated.update(_structure_types(event.get('retry_errors', []), unit))
+            status = event['status']
+            result = ('corrected' if status == 'corrected' else
+                      'infrastructure_failure' if status == 'infrastructure_failure' else
+                      'salvaged' if status == 'partial' and not event.get('conservative_sentence_indices')
+                      else 'conservative')
+            if event.get('retry_requested'):
+                outcomes[result] += 1
+            sentences.update(event.get('conservative_sentence_indices', []))
+            if result == 'conservative' and unit == 'sentence' and 'sentence_index' in event:
+                sentences.add(event['sentence_index'])
+            degree_count += unit == 'degree' and result == 'conservative'
+            batch_count += unit == 'batch' and result == 'conservative'
+            events.append({k:v for k,v in event.items() if k != 'outputs'})
+    return {'initial_failures':dict(initial), 'retry_failures':dict(repeated),
+            'retry_results':dict(outcomes), 'conservative_sentence_count':len(sentences),
+            'conservative_sentence_indices':sorted(sentences),
+            'conservative_batch_count':batch_count, 'conservative_degree_count':degree_count,
+            'events':events}
+
+
 def _decode(conn, row):
     if row is None:
         return None
@@ -1721,7 +1855,7 @@ class PersonaEngine:
     def regenerate(self, *, expected_version):
         return self._run(expected_version, 'regenerate', only_if_due=False)
 
-    def _call(self, purpose, payload, outputs, *, deadline=None):
+    def _call(self, purpose, payload, outputs, *, deadline=None, json_repair=True):
         """Per-purpose total budget includes HTTP retries and at most one JSON repair."""
         gateway, owned, stream = self.gateway, False, None
         if gateway is None:
@@ -1750,7 +1884,7 @@ class PersonaEngine:
                 gateway.gateway = streamed
         messages = _request_messages(purpose, payload)
         try:
-            for repair in (False, True):
+            for repair in ((False, True) if json_repair else (False,)):
                 if monotonic() >= deadline:
                     raise ModelError('timeout', 'total timeout', reason='timeout')
                 health = getattr(gateway, 'health', None)
@@ -1782,7 +1916,9 @@ class PersonaEngine:
                         outputs[label + '_normalizations'] = ['unwrap_single_answer']
                         result = result['answer']
                     return result
-                except ValueError as error:
+                except (ValueError, AttributeError, TypeError, RecursionError) as error:
+                    if json_repair and not isinstance(error, ValueError):
+                        raise  # Keep the generation/legacy parser contract unchanged.
                     diagnostic = {'kind':type(error).__name__}
                     if isinstance(error, json.JSONDecodeError):
                         diagnostic.update(message=error.msg, line=error.lineno,
@@ -1790,7 +1926,20 @@ class PersonaEngine:
                         hint = f'解析候选 JSON 第 {error.lineno} 行、第 {error.colno} 列：{error.msg}。'
                     else:
                         hint = '没有可解析的根 JSON 对象。'
+                    if not json_repair:
+                        try:
+                            decoded = json.loads(reply.content)
+                        except (ValueError, TypeError, RecursionError):
+                            code = ('json_syntax' if isinstance(reply.content, str)
+                                    and isinstance(error, json.JSONDecodeError) else 'json_root')
+                        else:
+                            code = 'json_root' if not isinstance(decoded, dict) else 'json_syntax'
+                        diagnostic['code'] = code
                     outputs[label + '_json_error'] = diagnostic
+                    if not json_repair:
+                        failure = ModelError('invalid_output', 'invalid check JSON object', reason='json_parse')
+                        failure.structure_code = code
+                        raise failure
                     if repair:
                         raise ModelError('invalid_output', 'JSON parse failed after repair')
                     messages += [{'role':'assistant','content':reply.content},
@@ -1817,7 +1966,7 @@ class PersonaEngine:
         import time
         monotonic = getattr(self.gateway, 'monotonic', time.monotonic)
         try:
-            return self._call(purpose, payload, outputs, deadline=deadline)
+            return self._call(purpose, payload, outputs, deadline=deadline, json_repair=False)
         except ModelError as error:
             if (error.reason != 'timeout' or error.paused
                     or retry_state['timeouts'] >= CHECK_TIMEOUT_RETRIES or monotonic() >= deadline):
@@ -1827,7 +1976,7 @@ class PersonaEngine:
                      'remaining_seconds': max(0, deadline - monotonic()), 'outputs': {}}
             outputs.setdefault(purpose + '_timeout_retries', []).append(retry)
             try:
-                answer = self._call(purpose, payload, retry['outputs'], deadline=deadline)
+                answer = self._call(purpose, payload, retry['outputs'], deadline=deadline, json_repair=False)
             except ModelError as repeated:
                 retry.update(status='failed', retry_error=repeated.reason or repeated.category)
                 raise
@@ -1835,8 +1984,8 @@ class PersonaEngine:
             return answer
 
     def _correct_batch_coverage(self, purpose, payload, batch, outputs, *,
-                                deadline, retry_state, sentence_indices):
-        """Reask this batch once; salvage only rows with unique explicit identities."""
+                                deadline, retry_state, sentence_indices, first_error=None):
+        """One batch retry covers its envelope, JSON and sentence identities."""
         import time
 
         def coverage(answer):
@@ -1849,22 +1998,20 @@ class PersonaEngine:
                 indices.append(index)
                 if type(index) is int and 1 <= index <= len(payload['candidate']):
                     grouped.setdefault(index, []).append(row)
-            # Duplicate identities are ambiguous even if one verdict is positive.
             aligned = {index: rows[0] for index, rows in grouped.items() if len(rows) == 1}
             complete = (len(returned) == len(payload['candidate'])
                 and all(type(index) is int and index == expected
                         for expected, index in enumerate(indices, 1)))
-            errors = [] if complete else ['model check must cover every sentence, in order']
-            return errors, aligned, indices
+            return ([] if complete else ['model check must cover every sentence, in order']), aligned, indices
 
-        errors, original_rows, indices = coverage(batch)
+        alignment, original_rows, indices = coverage(batch)
+        envelope = _fact_envelope_errors(batch)
+        errors = [first_error] if first_error else envelope + alignment
         if not errors:
             return batch, {}, set(), None
-        audit = {'errors': errors, 'returned_indices': indices, 'stage_deadline': deadline,
-                 'status': 'partial', 'retry_requested': False, 'outputs': {}}
+        audit = _structure_event(outputs, purpose, 'batch', errors,
+            returned_indices=indices, stage_deadline=deadline, status='partial', outputs={})
         outputs.setdefault(purpose + '_batch_corrections', []).append(audit)
-        # Keep adverse facts from safely identified original rows. A format
-        # correction cannot erase a negative proof, rule verdict or scope guard.
         adverse = {}
         for index, original in original_rows.items():
             row = copy.deepcopy(original)
@@ -1877,12 +2024,14 @@ class PersonaEngine:
                     'violations': [v for v in original.get('violations', [])
                                    if isinstance(v, str) and v.strip()]
                                   if isinstance(original.get('violations'), list) else []}
-        # Replay the exact request: no new prompt, evidence or quality rule.
+        # The retry reuses the frozen prompt and exactly the same evidence.
         request = payload
         monotonic = getattr(self.gateway, 'monotonic', time.monotonic)
+        reject_batch = bool(first_error or envelope)
         if monotonic() >= deadline:
-            audit['retry_errors'] = ['no stage budget for batch correction']
-        elif _check_request_bytes(purpose, request) > MAX_CHECK_REQUEST_BYTES:
+            audit['status'] = 'infrastructure_failure'
+            raise ModelError('timeout', 'check stage budget exhausted', reason='timeout')
+        if _check_request_bytes(purpose, request) > MAX_CHECK_REQUEST_BYTES:
             audit['retry_errors'] = ['batch correction exceeds material byte limit']
         else:
             audit['retry_requested'] = True
@@ -1890,32 +2039,36 @@ class PersonaEngine:
                 corrected = self._check_call(purpose, request, audit['outputs'],
                                              deadline=deadline, retry_state=retry_state)
             except ModelError as error:
-                if error.category != 'invalid_output' or error.reason == 'output_limit':
+                if not _structure_failure(error):
+                    audit['status'] = 'infrastructure_failure'
                     raise
-                audit['retry_errors'] = ['invalid batch correction: ' + (error.reason or error.summary)]
+                audit['retry_errors'] = [_parse_structure_error(error)]
+                reject_batch = True
             else:
-                errors, aligned, indices = coverage(corrected)
+                alignment, aligned, indices = coverage(corrected)
+                envelope = _fact_envelope_errors(corrected)
                 batch, original_rows = corrected, aligned
                 audit['retry_returned_indices'] = indices
+                reject_batch = bool(envelope)
+                errors = envelope + alignment
                 if errors:
                     audit['retry_errors'] = errors
                 else:
                     audit['status'] = 'corrected'
+        if reject_batch:
+            original_rows = {}
         conservative = set(range(1, len(payload['candidate']) + 1)) - original_rows.keys()
         audit['aligned_sentence_indices'] = [sentence_indices[i - 1] for i in sorted(original_rows)]
         audit['conservative_sentence_indices'] = [sentence_indices[i - 1] for i in sorted(conservative)]
         audit['preserved_adverse_reasons'] = [
             {'sentence_index': sentence_indices[i - 1], 'reasons': value['reasons']}
             for i, value in sorted(adverse.items())]
-        reason = 'unaligned sentence check after batch correction'
+        reason = 'invalid batch structure after correction' if reject_batch else 'unaligned sentence check after batch correction'
         normalized = [copy.deepcopy(original_rows[i]) if i in original_rows else
                       _conservative_check_row(i, reason)
                       for i in range(1, len(payload['candidate']) + 1)]
-        # These are fact-task placeholders, never a model degree assessment.
-        # Keep the malformed envelope in raw outputs and audit any normalization.
         normalized_batch = {**batch, 'sentences': normalized}
-        if (batch.get('change_degree') not in DEGREES
-                or not isinstance(batch.get('reason'), str) or not batch['reason'].strip()):
+        if _fact_envelope_errors(batch):
             audit['normalized_fact_envelope'] = True
             normalized_batch.update(change_degree='small', reason='仅查事实与监管')
         return normalized_batch, adverse, conservative, audit
@@ -1926,8 +2079,13 @@ class PersonaEngine:
         import time
         local = row['index']
         sentence = payload['candidate'][local - 1]
-        audit = {'sentence_index': original_index, 'local_index': local,
-                 'errors': list(errors), 'status': 'conservative_rejection', 'outputs': {}}
+        errors = list(errors)
+        for completion in outputs.get(purpose + '_focus_completions', []):
+            if completion['sentence_index'] == local:
+                errors.extend(completion.get('errors', []))
+        audit = _structure_event(outputs, purpose, 'sentence', errors,
+            sentence_index=original_index, local_index=local,
+            status='conservative_rejection', outputs={})
         outputs.setdefault(purpose + '_field_corrections', []).append(audit)
         adverse = list(issues.get(local, [])) + _adverse_field_verdicts(row)
         for completion in outputs.get(purpose + '_focus_completions', []):
@@ -1942,31 +2100,37 @@ class PersonaEngine:
         correction_errors = []
         corrected, corrected_issues = None, {}
         if monotonic() >= deadline:
-            correction_errors = ['no stage budget for field correction']
+            audit['status'] = 'infrastructure_failure'
+            raise ModelError('timeout', 'check stage budget exhausted', reason='timeout')
         elif _check_request_bytes(purpose, request) > MAX_CHECK_REQUEST_BYTES:
             correction_errors = ['field correction exceeds material byte limit']
         else:
+            audit['retry_requested'] = True
             try:
                 answer = self._check_call(purpose, request, audit['outputs'],
                                           deadline=deadline, retry_state=retry_state)
             except ModelError as error:
-                if error.category != 'invalid_output' or error.reason == 'output_limit':
+                if not _structure_failure(error):
+                    audit['status'] = 'infrastructure_failure'
                     raise
-                correction_errors = ['invalid field correction: ' + (error.reason or error.summary)]
+                correction_errors = [_parse_structure_error(error)]
             else:
                 returned = answer.get('sentences')
-                if (not isinstance(returned, list) or len(returned) != 1
-                        or not _valid_sentence_verdict(returned[0], 1, require_kind=True)
-                        or answer.get('change_degree') not in DEGREES
-                        or not isinstance(answer.get('reason'), str) or not answer['reason'].strip()):
-                    correction_errors = ['invalid sentence correction verdict']
+                correction_errors = _fact_envelope_errors(answer)
+                if not isinstance(returned, list) or len(returned) != 1:
+                    correction_errors.append('sentence results must cover every sentence')
                 else:
-                    corrected = copy.deepcopy(returned[0])
-                    corrected['index'] = local
-                    correction_errors, corrected_issues = _validate_clause_checks(
-                        {'sentences': [corrected]}, {**payload, 'candidate': [sentence]})
+                    correction_errors.extend(_sentence_format_errors(returned[0], 1))
+                    if not correction_errors:
+                        corrected = copy.deepcopy(returned[0])
+                        corrected['index'] = local
+                        correction_errors.extend(_proof_format_errors(corrected, local))
+                        clause_errors, corrected_issues = _validate_clause_checks(
+                            {'sentences': [corrected]}, {**payload, 'candidate': [sentence]})
+                        correction_errors.extend(clause_errors)
         if correction_errors:
             audit['correction_errors'] = correction_errors
+            audit['retry_errors'] = correction_errors
             reason = 'invalid sentence check after correction: ' + '; '.join(errors + correction_errors)
             return _conservative_check_row(local, reason, row), {local: errors + correction_errors + adverse}, audit
         audit['status'] = 'corrected'
@@ -2023,7 +2187,13 @@ class PersonaEngine:
                 'missing_clause_indices': [part['index'] for part in tail],
                 'completed': False, 'outputs': {}}
             outputs.setdefault(purpose + '_focus_completions', []).append(audit)
-            answer = self._check_call(purpose, request, audit['outputs'], deadline=deadline, retry_state=retry_state)
+            try:
+                answer = self._check_call(purpose, request, audit['outputs'], deadline=deadline, retry_state=retry_state)
+            except ModelError as error:
+                if not _structure_failure(error):
+                    raise
+                audit['errors'] = [_parse_structure_error(error)]
+                continue
             completion_rows = answer.get('sentences')
             if (isinstance(completion_rows, list) and len(completion_rows) == 1
                     and isinstance(completion_rows[0], dict) and type(completion_rows[0].get('index')) is int
@@ -2033,14 +2203,16 @@ class PersonaEngine:
                 audit['adverse_reasons'] = _adverse_field_verdicts(completion_rows[0])
                 _, adverse_proofs = _validate_clause_checks(copy.deepcopy(answer), request)
                 audit['adverse_reasons'].extend(adverse_proofs.get(1, []))
-            if (not isinstance(completion_rows, list) or len(completion_rows) != 1
-                    or not _valid_sentence_verdict(completion_rows[0], 1, require_kind=True)
-                    or answer.get('change_degree') not in ('small', 'medium', 'large')
-                    or not isinstance(answer.get('reason'), str) or not answer['reason'].strip()):
-                audit['errors'] = ['invalid focus completion verdict']
-                continue
+            errors = _fact_envelope_errors(answer)
+            if not isinstance(completion_rows, list) or len(completion_rows) != 1:
+                errors.append('sentence results must cover every sentence')
+            else:
+                errors.extend(_sentence_format_errors(completion_rows[0], 1))
+                errors.extend(_proof_format_errors(completion_rows[0], 1)
+                              if isinstance(completion_rows[0], dict) else [])
             checked = copy.deepcopy(answer)
-            errors, problems = _validate_clause_checks(checked, request)
+            clause_errors, problems = _validate_clause_checks(checked, request)
+            errors.extend(clause_errors)
             if errors:
                 audit['errors'] = errors
                 continue
@@ -2130,15 +2302,24 @@ class PersonaEngine:
             raw_batches.append(raw)
             retry_state = {'timeouts': 0}
             try:
-                batch = self._check_call(purpose, payload, raw, deadline=deadline, retry_state=retry_state)
+                first_error = None
+                try:
+                    batch = self._check_call(purpose, payload, raw, deadline=deadline, retry_state=retry_state)
+                except ModelError as error:
+                    if not _structure_failure(error):
+                        raise
+                    batch = {}
+                    first_error = _parse_structure_error(error)
                 original_batch = copy.deepcopy(batch)
-                batch, prior_adverse, conservative, audit = self._correct_batch_coverage(
+                batch, prior_adverse, conservative, batch_audit = self._correct_batch_coverage(
                     purpose, payload, batch, raw, deadline=deadline, retry_state=retry_state,
-                    sentence_indices=[s['_check_sentence'] for s in subset])
-                if audit is not None:
+                    sentence_indices=[s['_check_sentence'] for s in subset], first_error=first_error)
+                if batch_audit is not None:
                     invalid_batches.append({'batch': batch_index + 1,
-                        **{key: value for key, value in audit.items() if key != 'outputs'}})
-                batch = self._complete_positive_focus(purpose, payload, batch, raw, deadline=deadline, retry_state=retry_state)
+                        **{key: value for key, value in batch_audit.items() if key != 'outputs'}})
+                else:
+                    batch = self._complete_positive_focus(purpose, payload, batch, raw,
+                        deadline=deadline, retry_state=retry_state)
             except ModelError as error:
                 if error.reason != 'output_limit':
                     raise
@@ -2147,7 +2328,8 @@ class PersonaEngine:
                 return {'sentences':[], 'change_degree':'large',
                         'reason':'incomplete check: output_limit',
                         'validation_errors':[f'batch {batch_index+1}: output_limit; no complete judgment'],
-                        'batches':batches, 'window_map':window_map}
+                        'batches':batches, 'window_map':window_map,
+                        'structure_diagnostics':_structure_diagnostics(raw_batches, purpose)}
             if batch_index == 0:
                 outputs.update(raw)
             checked_batch = {**batch, 'validation_errors': []}
@@ -2168,14 +2350,26 @@ class PersonaEngine:
                         # It has no proof and can only enter repair/deletion.
                         errors, issues, malformed = [], {local: [row['reason']]}, []
                     else:
+                        malformed = _sentence_format_errors(row, local) + _proof_format_errors(row, local)
                         errors, issues = _validate_clause_checks({'sentences':[row]},
                             {**payload, 'candidate':[payload['candidate'][local-1]]})
-                        malformed = ([] if _valid_sentence_verdict(row,local,require_kind=True)
-                                     else [f'sentence {local}: invalid model verdict']) + errors
+                        malformed.extend(errors)
                     if malformed:
-                        row, issues, audit = self._correct_sentence_fields(
-                            purpose, payload, row, malformed, issues, raw, deadline=deadline,
-                            retry_state=retry_state, original_index=sentence['_check_sentence'])
+                        if batch_audit is not None:
+                            # The one batch reask already covered this row. Never
+                            # cascade another structural retry after a bad retry.
+                            audit = _structure_event(raw, purpose, 'sentence', malformed,
+                                sentence_index=sentence['_check_sentence'], local_index=local,
+                                covered_by_batch_retry=True, status='conservative_rejection')
+                            batch_audit['status'] = 'partial'
+                            batch_audit['conservative_sentence_indices'] = sorted(set(
+                                batch_audit['conservative_sentence_indices'] + [sentence['_check_sentence']]))
+                            row = _conservative_check_row(local, 'invalid sentence in batch retry', row)
+                            issues.setdefault(local, []).extend(malformed)
+                        else:
+                            row, issues, audit = self._correct_sentence_fields(
+                                purpose, payload, row, malformed, issues, raw, deadline=deadline,
+                                retry_state=retry_state, original_index=sentence['_check_sentence'])
                         invalid_fields.append({'batch': batch_index + 1,
                             **{key: value for key, value in audit.items() if key != 'outputs'}})
                     if local in prior_adverse:
@@ -2225,12 +2419,21 @@ class PersonaEngine:
                         row['supported'] = False
                     normalized.append(row)
                 checked_batch['sentences'] = normalized
+                if batch_audit is not None:
+                    invalid_batches[-1].update({key:value for key,value in batch_audit.items() if key != 'outputs'})
             degree, structural, window_problems = _check_verdicts(checked_batch, subset, material=material)
             batches.append(original_batch)  # Preserve even an omitted empty degree-only list.
             if structural:
-                return {'sentences': [], 'change_degree': 'large', 'reason': 'invalid check batch',
-                        'validation_errors': [f'batch {len(batches)}: {e}' for e in structural],
-                        'batches': batches, 'window_map':window_map}
+                # Defensive final invariant: no model schema defect may become
+                # an incomplete check, or move a judgment to another sentence.
+                _structure_event(raw, purpose, 'batch', structural, status='conservative',
+                    conservative_sentence_indices=[s['_check_sentence'] for s in subset],
+                    covered_by_batch_retry=batch_audit is not None)
+                checked_batch = {'change_degree':'small', 'reason':'invalid batch structure',
+                    'sentences':[_conservative_check_row(i, 'invalid batch structure')
+                                 for i in range(1, len(subset) + 1)]}
+                problems = {i:['invalid batch structure'] for i in range(1, len(subset) + 1)}
+                _, _, window_problems = _check_verdicts(checked_batch, subset, material=material)
             for local,(sentence,row) in enumerate(zip(subset,checked_batch['sentences']),1):
                 original = sentence['_check_sentence']
                 if window_problems.get(local):
@@ -2273,41 +2476,62 @@ class PersonaEngine:
             raw = {purpose+'_task':'degree_only', purpose+'_prompt_version':DEGREE_PROMPT_VERSION}
             raw_batches.append(raw)
             window_map.append([])
+            retry_state = {'timeouts': 0}
+            comparison, degree_event = None, None
             try:
-                comparison = self._check_call(purpose, payload, raw, deadline=deadline, retry_state={'timeouts': 0})
+                for attempt in range(2):
+                    comparison, errors = None, []
+                    try:
+                        comparison = self._check_call(purpose, payload, raw if not attempt else degree_event['outputs'],
+                            deadline=deadline, retry_state=retry_state)
+                    except ModelError as error:
+                        if not _structure_failure(error):
+                            raise
+                        errors = [_parse_structure_error(error)]
+                    else:
+                        if set(comparison) not in ({'change_degree','reason'}, {'sentences','change_degree','reason'}):
+                            errors.append('degree: invalid fields')
+                        errors.extend(_fact_envelope_errors(comparison))
+                        if 'sentences' in comparison and (not isinstance(comparison['sentences'], list) or comparison['sentences']):
+                            errors.append('degree: sentences must be empty')
+                    if not errors:
+                        if degree_event is not None:
+                            degree_event['status'] = 'corrected'
+                        degree = {'small':'small','medium':'medium','large':'large',
+                                  '小':'small','中':'medium','大':'large'}[comparison['change_degree']]
+                        reason = comparison['reason']
+                        assessment = {'status':'complete', 'output':comparison}
+                        if 'sentences' not in comparison:
+                            operation = 'degree_only_empty_sentences'
+                            raw.setdefault(purpose+'_normalizations',[]).append(operation)
+                            normalizations.append({'batch':len(batches)+1, 'operation':operation})
+                        break
+                    if not attempt:
+                        degree_event = _structure_event(raw, purpose, 'degree', errors,
+                            retry_requested=True, status='conservative', stage_deadline=deadline, outputs={})
+                    else:
+                        degree_event['retry_errors'] = errors
+                        degree, reason = 'large', 'conservative degree after invalid structure'
+                        assessment = {'status':'conservative', 'output':comparison, 'errors':errors}
+                if comparison is not None:
+                    batches.append(comparison)
             except ModelError as error:
+                if degree_event is not None:
+                    degree_event['status'] = 'infrastructure_failure'
                 if error.reason != 'output_limit':
                     raise
-                comparison = None
                 degree_errors = ['degree: output_limit; no complete judgment']
                 assessment = {'status':'invalid', 'error':'output_limit'}
-            finally:
-                if not batches:
-                    outputs.update(raw)
-            degree_only = not batches
-            if comparison is not None:
-                batches.append(comparison)  # Preserve the exact degree-only object.
-                normalized = comparison
-                if set(comparison)=={'change_degree','reason'}:
-                    normalized = {**comparison, 'sentences':[]}
-                    operation = 'degree_only_empty_sentences'
-                    raw.setdefault(purpose+'_normalizations',[]).append(operation)
-                    normalizations.append({'batch':len(batches), 'operation':operation})
-                if set(comparison) not in ({'change_degree','reason'}, {'sentences','change_degree','reason'}):
-                    degree_errors.append('degree: invalid fields')
-                degree, errors, _ = _check_verdicts(normalized, [], material=material)
-                degree_errors.extend('degree: '+error for error in errors)
-                assessment = {'status':'invalid' if degree_errors else 'complete', 'output':comparison}
-                reason = comparison.get('reason') or 'invalid degree judgment'
-            if degree_only:
-                outputs.update(raw)
-            if degree_errors:
                 degree, reason = 'large', 'incomplete degree judgment'
+            finally:
+                if not batches or not sentences:
+                    outputs.update(raw)
         return {'sentences':[rows[i] for i in sorted(rows)], 'change_degree':degree,
                 'reason':reason, 'batches':batches, 'window_map':window_map,
                 'degree_assessment':assessment, 'validation_errors':degree_errors,
                 'incomplete_checks':[], 'short_circuits':short_circuits,
                 'invalid_sentence_checks':invalid_fields, 'invalid_batch_checks':invalid_batches,
+                'structure_diagnostics':_structure_diagnostics(raw_batches, purpose),
                 'material_rejections':material_rejections,
                 'skipped_windows':skipped, 'normalizations':normalizations}
 
@@ -2509,12 +2733,17 @@ class PersonaEngine:
             manual_removed = _admin_removed(previous, sentences)
             if manual_removed:
                 degree = 'large'
+            conservative_degree = any((checks.get(phase) or {}).get('degree_assessment', {}).get('status') == 'conservative'
+                                      for phase in ('initial_model', 'recheck'))
+            if conservative_degree:
+                degree = 'large'
+                checks['degree_override'] = 'invalid_degree_structure_requires_confirmation'
             passed = deterministic['passed'] and not model_errors
             checks.update(passed=passed, deterministic=deterministic, model=model, model_errors=model_errors,
                           admin_content_removed_or_changed=manual_removed)
             mode = settings['publish_mode']
-            status = 'rejected' if not passed else ('current' if mode == 'all_auto' or (
-                mode == 'small_medium_auto' and degree in ('small','medium')) else 'pending')
+            status = 'rejected' if not passed else ('current' if not conservative_degree and (mode == 'all_auto' or (
+                mode == 'small_medium_auto' and degree in ('small','medium'))) else 'pending')
             with self.store.write() as conn:
                 _expect(conn, expected_version)
                 candidate = {'sentences':sentences, 'material':material}

@@ -201,7 +201,7 @@ def test_batch_reask_does_not_hide_infrastructure_failures(store, reason):
     assert len(model.calls) == 2
 
 
-def test_invalid_json_correction_still_uses_aligned_original_rows(store):
+def test_invalid_json_correction_rejects_the_affected_batch(store):
     class InvalidCorrection(Checks):
         def chat(self, messages, purpose, **kwargs):
             if len(self.calls) == 1:
@@ -214,7 +214,7 @@ def test_invalid_json_correction_still_uses_aligned_original_rows(store):
     model = InvalidCorrection(store, mutate)
     result = run_check(store, model)
     assert len(model.calls) == 2
-    assert [r['supported'] for r in result['sentences']] == [True, False, True]
+    assert [r['supported'] for r in result['sentences']] == [False, False, False]
     assert not result['validation_errors']
 
 
@@ -233,12 +233,12 @@ def test_exhausted_stage_skips_batch_reask_without_renewing_budget(store):
                                   'persona_check', _deadline=360).content)
     damage_coverage(batch, 'missing')
     model.now = 900
-    answer, adverse, conservative, audit = PersonaEngine(store, model)._correct_batch_coverage(
-        'persona_check', payload, batch, outputs, deadline=900,
-        retry_state={'timeouts': 0}, sentence_indices=[1, 2, 3])
-    assert len(model.calls) == 1 and conservative == {2} and not adverse
-    assert [r['supported'] for r in answer['sentences']] == [True, False, True]
-    assert audit['retry_errors'] == ['no stage budget for batch correction']
+    with pytest.raises(ModelError) as error:
+        PersonaEngine(store, model)._correct_batch_coverage(
+            'persona_check', payload, batch, outputs, deadline=900,
+            retry_state={'timeouts': 0}, sentence_indices=[1, 2, 3])
+    assert len(model.calls) == 1 and error.value.reason == 'timeout'
+    assert outputs['persona_check_batch_corrections'][0]['status'] == 'infrastructure_failure'
 
 
 def test_corrected_positive_cannot_erase_original_bound_proof_failure(store):
@@ -338,18 +338,19 @@ def test_batch_envelope_recovery_never_supplies_the_final_change_degree(store):
     model = Checks(store, mutate)
     result = PersonaEngine(store, model)._check_all('persona_check', batch_material(),
         batch_sentences()[:3], full_content='Complete draft', outputs={})
-    assert len(model.calls) == 3
+    assert len(model.calls) == 2
     assert result['invalid_batch_checks'][0]['normalized_fact_envelope']
     assert result['change_degree'] == 'large'
-    assert result['degree_assessment']['status'] == 'complete'
+    assert result['degree_assessment']['status'] == 'deferred_after_rejection'
+    assert all(not row['supported'] for row in result['sentences'])
     assert not result['validation_errors']
 
 
-def test_invalid_degree_without_coverage_error_keeps_existing_failure_behavior(store):
+def test_invalid_degree_without_coverage_error_reasks_and_rejects_the_batch(store):
     def mutate(output, payload, number):
         output['change_degree'] = 'invalid'
     model = Checks(store, mutate)
     result = run_check(store, model)
-    assert len(model.calls) == 1
-    assert any('invalid change degree' in e for e in result['validation_errors'])
-    assert not result.get('invalid_batch_checks')
+    assert len(model.calls) == 2 and not result['validation_errors']
+    assert all(not row['supported'] for row in result['sentences'])
+    assert result['invalid_batch_checks'][0]['conservative_sentence_indices'] == [1, 2, 3]

@@ -1,4 +1,4 @@
-"""An incomplete model judgment invalidates an evaluation, even if it fails closed."""
+"""Infrastructure failures stay invalid; malformed check fields fail conservatively."""
 import copy
 import json
 
@@ -28,6 +28,11 @@ def test_incomplete_checks_are_exported_but_never_reused_as_completed(tmp_path, 
     for _ in range(2):
         materials, report = run_persona_eval({}, tmp_path, corpus=corpus, out=tmp_path/'out',
             judge_mode='external', gateway_factory=Incomplete, runner_identity=failure, scoring_path=scoring)
+        if failure == 'missing_verdict':
+            assert report['metrics']['run_valid'] and report['metrics']['incomplete_check_count'] == 0
+            assert report['rows'][0]['complete'] and report['resumed_cases'] == _
+            assert report['metrics']['check_structure']['conservative_batch_count'] >= 1
+            continue
         assert report['resumed_cases'] == 0
         assert not report['metrics']['run_valid']
         assert report['metrics']['incomplete_check_count'] == 1

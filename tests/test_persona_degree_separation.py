@@ -104,11 +104,12 @@ def test_degree_shares_fixed_stage_budget_after_a_slow_single_window(store):
     {'change_degree':'medium','reason':'非空事实。','sentences':[{'index':1}]},
     {'change_degree':'medium','reason':'未知字段。','extra':True},
 ])
-def test_invalid_degree_does_not_publish_complete_facts(store,degree):
+def test_invalid_degree_requires_confirmation_after_one_reask(store,degree):
     model=SeparateModel(degree=degree);result=check(store,model,sentences=batch_sentences()[:1])
-    assert len(model.calls)==2
-    assert result['validation_errors']
-    assert result['degree_assessment']['status']=='invalid'
+    assert len(model.calls)==3
+    assert not result['validation_errors']
+    assert result['change_degree']=='large'
+    assert result['degree_assessment']['status']=='conservative'
 
 
 def test_degree_output_exhaustion_remains_incomplete_with_raw_record(store):
@@ -145,16 +146,16 @@ def test_failed_degree_after_valid_facts_keeps_current_persona(store, failure):
     model = Gateway(store, {'sentences':[]})
     result = PersonaEngine(store, model).regenerate(expected_version=old['id'])
     assert current_persona(store)['id'] == old['id']
-    assert result['status'] == ('failed' if failure == 'timeout' else 'rejected')
+    assert result['status'] == ('failed' if failure == 'timeout' else 'pending' if failure == 'malformed' else 'rejected')
     assert [p.get('task') for _,p in model.calls] == (
-        ['generate', 'check_facts_and_rules', 'degree_only'] + (['degree_only'] if failure == 'timeout' else []))
+        ['generate', 'check_facts_and_rules', 'degree_only'] + (['degree_only'] if failure in ('timeout', 'malformed') else []))
     with store.read() as conn:
         saved = json.loads(conn.execute('SELECT outputs_json FROM persona_attempts WHERE id=?',
             (result['attempt_id'],)).fetchone()[0])
     assert saved['persona_check_batches'][0]['persona_check']
     assert saved['persona_check_batches'][-1]['persona_check_task'] == 'degree_only'
     if failure != 'timeout':
-        assert result['version']['checks']['model_errors']
+        assert bool(result['version']['checks']['model_errors']) is (failure == 'length')
         assert saved['persona_check_batches'][-1]['persona_check']
 
 

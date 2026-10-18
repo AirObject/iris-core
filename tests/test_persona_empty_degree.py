@@ -58,5 +58,7 @@ def test_omitted_factual_rows_are_reasked_then_rejected_without_a_degree_judgmen
     {'change_degree': 'small', 'reason': '额外内容不能被忽略。', 'unsupported': ['claim']},
 ])
 def test_degree_protocol_does_not_hide_other_malformed_results(store, answer):
-    result, _, _ = check(store, answer)
-    assert result['validation_errors']
+    result, _, model = check(store, answer)
+    assert len(model.requests) == 2 and not result['validation_errors']
+    assert result['change_degree'] == 'large'
+    assert result['degree_assessment']['status'] == 'conservative'
