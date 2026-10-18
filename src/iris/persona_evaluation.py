@@ -29,10 +29,11 @@ from .memory_ops import setup_role, delete_memory, adjust_retention, lifecycle_s
 from .model_health import ModelHealth
 from .models import Gateway, ModelError, parse_json_object_with_status
 from .persona import (PersonaEngine, admin_edit, current_persona, pending_update, select_evidence,
-                      confirm_candidate, reject_candidate, DEGREES, PUBLISH_MODES, PROMPT_VERSIONS, DEGREE_PROMPT_VERSION, CALL_TIMEOUTS, CALL_MAX_TOKENS, CHECK_BATCH_SIZE, CHECK_BATCH_CLAUSES, MAX_CHECK_STAGE_SECONDS, MAX_CHECK_REQUEST_BYTES, CHECK_TIMEOUT_RETRIES, REPAIR_POLICY, check_transport, _trace, _stale, _settings, split_sentences)
+                      confirm_candidate, reject_candidate, DEGREES, PUBLISH_MODES, PROMPT_VERSIONS, DEGREE_PROMPT_VERSION, CALL_TIMEOUTS, CALL_MAX_TOKENS, CHECK_BATCH_SIZE, CHECK_BATCH_CLAUSES, MAX_CHECK_STAGE_SECONDS, MAX_CHECK_REQUEST_BYTES, CHECK_TIMEOUT_RETRIES, CHECK_STREAM_IDLE_SECONDS, REPAIR_POLICY, check_transport, _trace, _stale, _settings, split_sentences)
 
 FORMAT_VERSION = 1
 SCORING_VERSION = 'persona_scoring_v1'
+RUN_VALIDITY_POLICY = 'completed_operation_recovery_v1'
 # The frozen corpus publication contract is independent of product rollout defaults.
 EVAL_PUBLISH_MODE = 'small_medium_auto'
 VIOLATIONS = ('虚构', '设定写成亲历', '他人评价写成特质', '单一日期泛化', '当前状态或待办', '指令', '保留失效依据')
@@ -367,13 +368,15 @@ def _run_timeline(configs,case,directory,gateway_factory):
             with store.read() as conn:
                 attempts = [dict(r) for r in conn.execute('SELECT * FROM persona_attempts ORDER BY id')]
                 calls = [dict(r) for r in conn.execute('SELECT * FROM model_calls ORDER BY id')]
-            invalid_calls = _invalid_model_calls(calls)
+            outcomes = _model_call_outcomes(calls, events, observations)
+            invalid_calls = [c for c in outcomes if not c['recovered']]
+            recovered_calls = [c for c in outcomes if c['recovered']]
             incomplete_checks = _incomplete_checks(observations)
             invalid = not complete or bool(invalid_calls) or bool(incomplete_checks)
             remaining = len(case['events']) - completed_events
             row = _redacted({'case':case, 'complete':finished and not invalid and not remaining,
                 'completed_events':completed_events, 'remaining_events':remaining,
-                'invalid_calls':invalid_calls, 'incomplete_checks':incomplete_checks,
+                'invalid_calls':invalid_calls, 'recovered_calls':recovered_calls, 'incomplete_checks':incomplete_checks,
                 'observations':observations, 'checkpoints':events, 'attempts':attempts,
                 'calls':calls, 'control_operations':control_operations}, configs)
             _write_progress(journal, {'format_version':1, 'evaluation':'persona',
@@ -433,8 +436,14 @@ def _run_timeline(configs,case,directory,gateway_factory):
                     candidate = admin_edit(store,content,expected_version=previous['id'],clock=clock)
                     observations.append(_observation(store,case['id'],{**event,'id':f'admin:{ordinal}'},previous,candidate))
                 else:
+                    # The isolated timeline DB binds every retry to its own
+                    # operation. Frozen timestamps/purposes are not identities.
+                    with store.read() as conn:
+                        before_call = conn.execute('SELECT COALESCE(MAX(id),0) FROM model_calls').fetchone()[0]
                     result = (engine.update if event.get('action','update')=='update' else engine.regenerate)(expected_version=previous['id'])
-                    events.append({'checkpoint':event,'result':result,'current':current_persona(store),
+                    with store.read() as conn:
+                        call_ids = [r[0] for r in conn.execute('SELECT id FROM model_calls WHERE id>? ORDER BY id', (before_call,))]
+                    events.append({'checkpoint':event,'result':result,'call_ids':call_ids,'current':current_persona(store),
                                    'pending_update':pending_update(store)})
                     if result['version'] is not None:
                         observations.append(_observation(store,case['id'],event,previous,result['version']))
@@ -489,19 +498,70 @@ def _is_change(observation):
             and previous is not None and candidate['content'] != previous['content'])
 
 
-def _invalid_model_calls(calls):
-    # A successful retry does not turn a rate-limited/timed-out evaluation into
-    # a valid run. Preserve these records and never reuse that timeline as done.
-    failures = []
+def _model_call_outcomes(calls, checkpoints=(), observations=()):
+    """Recover only owned calls in a complete operation with a later success.
+
+    Missing/ambiguous ownership in older or interrupted exports fails closed.
+    Success elsewhere cannot erase a failed operation; truncation never recovers.
+    """
+    owners = Counter(call_id for checkpoint in checkpoints
+                     for call_id in checkpoint.get('call_ids', []))
+    by_id = {c['id']: c for c in calls if 'id' in c}
+    recovered = {}
+    for checkpoint in checkpoints:
+        ids, result = checkpoint.get('call_ids', []), checkpoint['result']
+        candidate = result.get('version')
+        if (not ids or any(owners[i] != 1 or i not in by_id for i in ids)
+                or result['status'] not in ('current', 'pending', 'rejected') or not candidate):
+            continue
+        matching = [o for o in observations if o['checkpoint_id'] == checkpoint['checkpoint']['id']
+                    and o['candidate']['id'] == candidate['id']]
+        if len(matching) != 1 or _incomplete_checks(matching):
+            continue
+        ordered = [by_id[i] for i in sorted(ids)]
+        for position, call in enumerate(ordered):
+            purpose = call['purpose'].removesuffix('_repair')
+            # Product completion requires all retries/checks within the existing
+            # call/stage deadlines; complete negative verdicts count too.
+            success = next((c for c in ordered[position + 1:]
+                if c['purpose'].removesuffix('_repair') == purpose
+                and c['result_category'] == 'success' and not c.get('timed_out')
+                and c.get('finish_reason') == 'stop'), None)
+            if success is not None:
+                recovered[call['id']] = {'checkpoint_id':checkpoint['checkpoint']['id'],
+                                        'recovered_by_call_id':success['id']}
+    outcomes = []
     for call in calls:
-        reason = ('rate_limited' if call.get('status_code') == 429 else
+        reason = ('output_limit' if call.get('finish_reason') == 'length' else
+                  'rate_limited' if call.get('status_code') == 429 else
                   'timeout' if call.get('timed_out') else
-                  'transport_failure' if call.get('result_category') == 'retryable' else
-                  'output_limit' if call.get('finish_reason') == 'length' else None)
+                  'transport_failure' if call.get('result_category') == 'retryable' else None)
         if reason:
-            failures.append({key:call.get(key) for key in
-                ('id','purpose','created_at','duration_ms','status_code','timed_out')} | {'reason':reason})
-    return failures
+            recovery = recovered.get(call.get('id')) if reason != 'output_limit' else None
+            outcomes.append({key:call.get(key) for key in
+                ('id','purpose','created_at','duration_ms','status_code','timed_out')} |
+                {'reason':reason, 'recovered':bool(recovery), **(recovery or {})})
+    return outcomes
+
+
+def _invalid_model_calls(calls, checkpoints=(), observations=()):
+    return [c for c in _model_call_outcomes(calls, checkpoints, observations) if not c['recovered']]
+
+
+def _stream_attempts(value):
+    """Root aliases of the first batch are not additional transport attempts."""
+    if isinstance(value, list):
+        for item in value:
+            yield from _stream_attempts(item)
+    elif isinstance(value, dict):
+        batched = [p for p in ('persona_check', 'persona_recheck') if p + '_batches' in value]
+        for key, item in value.items():
+            if any(key.startswith(p) and key != p + '_batches' for p in batched):
+                continue
+            if key.endswith('_transport'):
+                yield from item
+            else:
+                yield from _stream_attempts(item)
 
 
 def _incomplete_checks(observations):
@@ -529,22 +589,29 @@ def _incomplete_checks(observations):
     return failures
 
 
-def _call_metrics(calls):
+def _call_metrics(calls, outcomes=None):
+    outcomes = _model_call_outcomes(calls) if outcomes is None else outcomes
     return {'count':len(calls), 'duration_ms_p50':_percentile([c['duration_ms'] for c in calls],50),
             'duration_ms_p95':_percentile([c['duration_ms'] for c in calls],95),
+            'duration_ms_max':max((c['duration_ms'] for c in calls), default=None),
             'prompt_tokens':sum(c['prompt_tokens'] or 0 for c in calls),
             'completion_tokens':sum(c['completion_tokens'] or 0 for c in calls),
             'reasoning_tokens':sum(c['reasoning_tokens'] or 0 for c in calls),
             'reasoning_usage_missing_calls':sum(c['reasoning_tokens'] is None for c in calls),
             'timings_by_purpose':{purpose:{'count':sum(c['purpose']==purpose for c in calls),
                 'p50_ms':_percentile([c['duration_ms'] for c in calls if c['purpose']==purpose],50),
-                'p95_ms':_percentile([c['duration_ms'] for c in calls if c['purpose']==purpose],95)}
+                'p95_ms':_percentile([c['duration_ms'] for c in calls if c['purpose']==purpose],95),
+                'max_ms':max(c['duration_ms'] for c in calls if c['purpose']==purpose)}
                 for purpose in dict.fromkeys(c['purpose'] for c in calls)},
             'usage_missing_calls':sum(c['prompt_tokens'] is None or c['completion_tokens'] is None for c in calls),
             'output_limited_calls':sum(c.get('finish_reason')=='length' for c in calls),
             'output_limits_by_purpose':dict(Counter(c['purpose'] for c in calls if c.get('finish_reason')=='length')),
             'timed_out_calls':sum(bool(c.get('timed_out')) for c in calls),
             'rate_limited_calls':sum(c.get('status_code') == 429 for c in calls),
+            'recovered_timed_out_calls':sum(bool(c['timed_out']) and c['recovered'] for c in outcomes),
+            'unrecovered_timed_out_calls':sum(bool(c['timed_out']) and not c['recovered'] for c in outcomes),
+            'recovered_rate_limited_calls':sum(c['status_code'] == 429 and c['recovered'] for c in outcomes),
+            'unrecovered_rate_limited_calls':sum(c['status_code'] == 429 and not c['recovered'] for c in outcomes),
             'by_purpose':dict(Counter(c['purpose'] for c in calls))}
 
 
@@ -559,12 +626,17 @@ def _metrics(rows, judgments=None):
                        for o in observations]
     deletions = [len(o['candidate']['checks'].get('deleted_sentences',[])) for o in observations]
     repairs = [len(o['candidate']['checks'].get('repaired_sentences',[])) for o in observations]
-    invalid_calls = _invalid_model_calls(calls)
+    call_outcomes = [c for row in rows for c in
+        _model_call_outcomes(row['calls'], row['checkpoints'], row['observations'])]
+    invalid_calls = [c for c in call_outcomes if not c['recovered']]
     incomplete_checks = _incomplete_checks(all_versions)
     incomplete_timelines = sum(not r['complete'] or bool(_incomplete_checks(r['observations'])) for r in rows)
     result = {'run_valid':not incomplete_timelines and not invalid_calls,
               'incomplete_check_count':len(incomplete_checks), 'incomplete_checks':incomplete_checks,
               'invalid_call_count':len(invalid_calls),
+              'recovered_call_count':sum(c['recovered'] for c in call_outcomes),
+              'stream_stall_aborts':sum(bool(a.get('stall_aborted')) for row in rows for attempt in row['attempts']
+                  for a in _stream_attempts(json.loads(attempt['outputs_json']))),
               'timed_out_attempts':sum(a['reason']=='timeout' for row in rows for a in row['attempts']),
               'run_invalid_reasons':sorted({c['reason'] for c in invalid_calls} |
                   ({'incomplete_timeline'} if incomplete_timelines else set()) |
@@ -586,7 +658,7 @@ def _metrics(rows, judgments=None):
               'untriggered_checkpoints':sum(o['operation']=='checkpoint_current' for o in all_versions),
               'grounded_change_ratio':None, 'violations':{}, 'rejected_candidate_violations':{},
               'must_reflect_coverage':None,'must_not_occurrences':None,
-              'calls':_call_metrics(calls), 'incomplete_timelines':incomplete_timelines,
+              'calls':_call_metrics(calls, call_outcomes), 'incomplete_timelines':incomplete_timelines,
               'change_degree_comparison':[], 'checkpoint_expectations':[],
               'level_reasonable_ratio':None, 'scenarios':{key:[] for key in ('S17','S18','S19')}}
     for row in rows:
@@ -690,7 +762,7 @@ def _report(report,directory):
     for key in ('planned_timelines','executed_timelines','unexecuted_timelines'):
         if key in report:
             lines.append(f'| {key} | {report[key]} |')
-    for key in ('run_valid','invalid_call_count','incomplete_check_count',
+    for key in ('run_valid','invalid_call_count','recovered_call_count','stream_stall_aborts','incomplete_check_count',
                 'changes','grounded_change_ratio','generated_candidates','check_rejected_ratio',
                 'deleted_sentences','deleted_sentence_ratio','candidate_deletion_ratio','repaired_sentences',
                 'must_reflect_coverage','must_not_occurrences','incomplete_timelines'):
@@ -725,6 +797,7 @@ def run_persona_eval(configs, root, *, corpus, out, judge_mode='model', gateway_
     identity = {'source_sha256':source_hash, 'cases':cases,
                 'corpus_file_sha256':hashlib.sha256(Path(corpus).read_bytes()).hexdigest(), 'scoring_sha256':hashlib.sha256(scoring.encode()).hexdigest(),
                 'judge_mode':judge_mode, 'runner_identity':runner_identity or 'gateway',
+                'run_validity_policy':RUN_VALIDITY_POLICY,
                 'models':{kind: {'endpoint_sha256':hashlib.sha256(config.base_url.encode()).hexdigest(),
                     'model':config.model,'dimensions':config.dimensions,'reasoning_effort':config.reasoning_effort}
                     for kind,config in configs.items()}}
@@ -742,7 +815,7 @@ def run_persona_eval(configs, root, *, corpus, out, judge_mode='model', gateway_
             saved = _read_json(path)
             if (saved['signature'] != signature or saved['row_sha256'] != _json_sha256(saved['row'])
                     or saved['row']['case'] != case or saved['row']['complete'] is not True
-                    or _invalid_model_calls(saved['row']['calls'])
+                    or _invalid_model_calls(saved['row']['calls'], saved['row']['checkpoints'], saved['row']['observations'])
                     or _incomplete_checks(saved['row']['observations'])):
                 raise ValueError('invalid or incomplete persona checkpoint')
             row,resumed = saved['row'],resumed+1
@@ -757,6 +830,7 @@ def run_persona_eval(configs, root, *, corpus, out, judge_mode='model', gateway_
         if not row['complete']:
             break
     metadata = {'source_sha256':source_hash, 'corpus_sha256':_json_sha256(cases),
+                'run_validity_policy':RUN_VALIDITY_POLICY, 'check_stream_idle_seconds':CHECK_STREAM_IDLE_SECONDS,
                 'corpus_file_sha256':identity['corpus_file_sha256'], 'checkpoint_signature':signature,
                 'scoring_version':SCORING_VERSION,'scoring_sha256':identity['scoring_sha256'],
                 'models':identity['models'],'prompt_versions':sorted({*PROMPT_VERSIONS.values(),DEGREE_PROMPT_VERSION}),

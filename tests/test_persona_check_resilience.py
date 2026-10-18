@@ -283,7 +283,7 @@ def test_degree_timeout_also_retries_without_leaving_check_stage(store):
     assert len(model.calls) == 2 and [d for _, _, d in model.calls] == [360, 720]
 
 
-def test_recovered_timeout_remains_invalid_for_formal_evaluation():
+def test_later_success_without_operation_ownership_does_not_prove_recovery():
     from iris.persona_evaluation import _invalid_model_calls
     assert _invalid_model_calls([{'id': 1, 'purpose':'persona_check', 'timed_out':True},
         {'id':2, 'purpose':'persona_check', 'result_category':'success', 'timed_out':False}])[0]['reason'] == 'timeout'

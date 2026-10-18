@@ -54,6 +54,10 @@ CHECK_BATCH_CLAUSES = 2
 MAX_CHECK_STAGE_SECONDS = 900
 MAX_CHECK_REQUEST_BYTES = 32768
 CHECK_TIMEOUT_RETRIES = 1
+# PE-11b: 80 successful streams had <=2.442 s between data events, including
+# one 99.581 s call. Allow 90 s without bytes for heavier reasoning too.
+# The 360 s total call budget and 900 s stage budget remain unchanged.
+CHECK_STREAM_IDLE_SECONDS = 90
 REPAIR_POLICY = 'first_eligible_bound_memory_v2'
 BOUNDED_SCENE = re.compile(r'(?:这|那|当|某|本|同)(?:一)?(?:次|场|回|天)|\d{4}-\d{2}-\d{2}|[0-9零〇一二三四五六七八九十廿三]+(?:年|月|日|号)')
 CROSS_SCENE_LINK = re.compile(r'^(?:(?:也|又|还|同样)(?:也)?(?:是)?在(?:这|那)(?:一)?(?:次|场|天|回)|'
@@ -1528,7 +1532,10 @@ class _PersonaCheckStreamClient:
             'first_headers_seconds': None, 'first_data_seconds': None,
             'first_reasoning_seconds': None, 'first_content_seconds': None,
             'last_data_seconds': None, 'max_data_gap_seconds': 0,
-            'reasoning_chars': 0, 'content_chars': 0, 'events': []}
+            'reasoning_chars': 0, 'content_chars': 0, 'events': [],
+            'idle_timeout_seconds': CHECK_STREAM_IDLE_SECONDS, 'stall_aborted': False,
+            'receive_chunks': 0, 'received_bytes': 0, 'last_receive_seconds': None,
+            'max_receive_gap_seconds': 0}
         with self._lock:
             self._attempts.append(audit)
             self._finished.clear()
@@ -1542,6 +1549,7 @@ class _PersonaCheckStreamClient:
 
         def guard():
             if self._cancelled.is_set() or self.monotonic() >= self.deadline:
+                mark(abort_reason='total_deadline')
                 raise httpx.ReadTimeout('persona check total deadline')
 
         def trace(name, info):
@@ -1554,7 +1562,41 @@ class _PersonaCheckStreamClient:
 
         content, reasoning, refusal = [], {}, []
         finish, usage, flags = None, None, {}
-        last_data = 0
+        last_data = last_receive = 0
+        # Socket reads enforce the bound even when an iterator never yields.
+        # Preserve connect/write/pool timeouts and the absolute total deadline.
+        timeout = httpx.Timeout(timeout)
+        timeout.read = min(CHECK_STREAM_IDLE_SECONDS, timeout.read) if timeout.read is not None else CHECK_STREAM_IDLE_SECONDS
+
+        def received(chunk):
+            nonlocal last_receive
+            guard()
+            if not chunk:
+                return
+            instant = elapsed()
+            gap = round(instant - last_receive, 3)
+            mark(max_receive_gap_seconds=max(audit['max_receive_gap_seconds'], gap))
+            if gap >= CHECK_STREAM_IDLE_SECONDS:
+                mark(stall_aborted=True, abort_reason='stream_stalled')
+                raise httpx.ReadTimeout('persona check stream stalled')
+            last_receive = instant
+            mark(last_receive_seconds=instant, receive_chunks=audit['receive_chunks'] + 1,
+                 received_bytes=audit['received_bytes'] + len(chunk))
+
+        class ProgressStream(httpx.SyncByteStream):
+            # Count raw bytes before UTF-8/SSE buffering: heartbeats, partial
+            # lines and reasoning all count, regardless of generated content.
+            def __init__(self, source):
+                self.source = source
+
+            def __iter__(self):
+                for chunk in self.source:
+                    received(chunk)
+                    yield chunk
+
+            def close(self):
+                self.source.close()
+
         try:
             guard()
             body = {**json, 'stream': True, 'stream_options': {'include_usage': True}}
@@ -1564,12 +1606,15 @@ class _PersonaCheckStreamClient:
                     self._response = response
                 mark(status_code=response.status_code, first_headers_seconds=elapsed())
                 guard()
+                last_receive = elapsed()
+                mark(max_receive_gap_seconds=last_receive)
                 if response.status_code >= 400:
                     response.read()
                     guard()
                     # Keep the real status and Retry-After for Gateway; provider
                     # prose remains transient and is scrubbed by its recorder.
                     return response
+                response.stream = ProgressStream(response.stream)
                 data_lines = []
                 for line in response.iter_lines():
                     guard()
@@ -1647,6 +1692,11 @@ class _PersonaCheckStreamClient:
                 mark(complete=True, finish_reason=finish)
                 return httpx.Response(response.status_code, json=data)
         except (httpx.HTTPError, ValueError, TypeError, KeyError) as error:
+            if (isinstance(error, httpx.ReadTimeout) and not self._cancelled.is_set()
+                    and self.monotonic() < self.deadline
+                    and timeout.read == CHECK_STREAM_IDLE_SECONDS
+                    and elapsed() - last_receive >= CHECK_STREAM_IDLE_SECONDS - .01):
+                mark(stall_aborted=True, abort_reason='stream_stalled')
             mark(error_type=type(error).__name__)
             raise
         finally:
@@ -1654,6 +1704,8 @@ class _PersonaCheckStreamClient:
                 audit['elapsed_seconds'] = elapsed()
                 audit['max_data_gap_seconds'] = max(
                     audit['max_data_gap_seconds'], round(elapsed() - last_data, 3))
+                audit['max_receive_gap_seconds'] = max(
+                    audit['max_receive_gap_seconds'], round(elapsed() - last_receive, 3))
                 audit['cancelled'] = self._cancelled.is_set()
                 self._response = None
                 self._finished.set()

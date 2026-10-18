@@ -74,7 +74,7 @@ def test_stream_assembles_split_utf8_and_records_only_counts(prepared, purpose, 
         body = json.loads(request.content)
         assert body['stream'] is True and body['stream_options'] == {'include_usage': True}
         assert body['reasoning_effort'] == 'high' and body['max_tokens'] == 16000
-        assert request.extensions['timeout']['read'] == 360
+        assert request.extensions['timeout']['read'] == 90
         raw = b''.join(envelope('{"reason":"中文"}'))
         return response([raw[i:i+7] for i in range(0, len(raw), 7)], now)
     with engine_for(prepared, respond, health=health) as (engine, now, requests, client):
@@ -126,15 +126,16 @@ def test_length_keeps_usage_and_raw_content_but_never_repairs_json(prepared):
 
 
 def test_stream_progress_does_not_extend_total_deadline_or_accept_late_json(prepared):
-    chunks = envelope()
-    with engine_for(prepared, lambda req, now, n: response(chunks, now, [0, 100, 100, 161, 0, 0])) as (engine, now, requests, client):
+    chunks = [event({'reasoning_content':'slow'})] * 3 + envelope()
+    with engine_for(prepared, lambda req, now, n: response(chunks, now, [70,70,70,0,70,70,11,0,0])) as (engine, now, requests, client):
         outputs = {}
         with pytest.raises(ModelError) as failure:
             engine._call('persona_check', {}, outputs)
         assert failure.value.reason == 'timeout' and len(requests) == 1
     audit = outputs['persona_check_transport'][0]
-    assert not audit['complete'] and audit['first_reasoning_seconds'] == 100
-    assert audit['first_content_seconds'] == 200 and audit['max_data_gap_seconds'] == 161
+    assert not audit['complete'] and audit['first_reasoning_seconds'] == 70
+    assert audit['first_content_seconds'] == 350 and audit['max_data_gap_seconds'] == 70
+    assert not audit['stall_aborted']
     assert audit['error_type'] == 'ReadTimeout' and 'persona_check' not in outputs
     with prepared.read() as conn:
         call = conn.execute('SELECT * FROM model_calls').fetchone()
@@ -143,11 +144,15 @@ def test_stream_progress_does_not_extend_total_deadline_or_accept_late_json(prep
 
 def test_json_repair_keeps_same_stream_deadline_and_audits_separate_requests(prepared):
     def respond(req, now, n):
-        return response(envelope('broken' if n == 1 else '{}'), now, [0, 250 if n == 1 else 60, 0, 0, 0, 0])
+        if n == 1:
+            return response([b': heartbeat\n\n'] * 4 + envelope('broken'),
+                            now, [60,60,60,60,0,10,0,0,0,0])
+        return response(envelope(), now, [0,60,0,0,0,0])
     with engine_for(prepared, respond) as (engine, now, requests, client):
         outputs = {}
         assert engine._call('persona_check', {}, outputs) == {}
-        assert [r.extensions['timeout']['read'] for r in requests] == [360, 110]
+        assert [r.extensions['timeout']['read'] for r in requests] == [90, 90]
+        assert [r.extensions['timeout']['write'] for r in requests] == [360, 110]
     assert len(outputs['persona_check_transport']) == len(outputs['persona_check_repair_transport']) == 1
     assert outputs['persona_check'] == 'broken' and outputs['persona_check_repair'] == '{}'
 
@@ -161,7 +166,8 @@ def test_http_retry_after_and_transport_failures_keep_gateway_accounting(prepare
         outputs = {}
         assert engine._call('persona_check', {}, outputs) == {}
         assert now[0] == 7
-        assert [r.extensions['timeout']['read'] for r in requests] == [360, 353]
+        assert [r.extensions['timeout']['read'] for r in requests] == [90, 90]
+        assert [r.extensions['timeout']['write'] for r in requests] == [360, 353]
     assert [a['status_code'] for a in outputs['persona_check_transport']] == [429, 200]
     assert 'PRIVATE_PROVIDER_ERROR' not in json.dumps(outputs)
     with prepared.read() as conn:
@@ -318,3 +324,127 @@ def test_maintenance_wrapper_retains_stop_hook_and_counts_each_http_attempt(prep
             assert len(outputs['persona_check_transport']) == 2
         assert facade.gateway is inner and inner.client is client and inner.health is health
         assert not inner._pool._shutdown and not client.is_closed
+
+
+@pytest.mark.parametrize('purpose', ['persona_check', 'persona_recheck'])
+def test_idle_gap_aborts_and_gateway_retry_recovers_without_partial_output(prepared, purpose):
+    def respond(req, now, n):
+        assert req.extensions['timeout']['read'] == 90
+        if n == 1:
+            return response([event({'reasoning_content':'private'}), event({'content':'WRONG'})],
+                            now, [1, 91])
+        return response(envelope('{"ok":true}'), now)
+    with engine_for(prepared, respond) as (engine, now, requests, client):
+        outputs = {}
+        assert engine._call(purpose, {}, outputs) == {'ok': True}
+        assert len(requests) == 2 and now[0] < 360
+    bad, good = outputs[purpose + '_transport']
+    assert bad['stall_aborted'] and not bad['complete'] and bad['content_chars'] == 0
+    assert bad['abort_reason'] == 'stream_stalled' and bad['max_receive_gap_seconds'] == 91
+    assert good['complete'] and not good['stall_aborted']
+
+
+@pytest.mark.parametrize('heartbeat', [b': heartbeat\n\n', b'data: {"choices":[]}' + b'\n\n'])
+def test_slow_stream_heartbeats_keep_it_alive_even_without_content(prepared, heartbeat):
+    chunks = [event({'reasoning_content':'thinking'}), heartbeat, heartbeat, heartbeat] + envelope()
+    delays = [0, 70, 70, 70] + [0] * len(envelope())
+    with engine_for(prepared, lambda req, now, n: response(chunks, now, delays)) as (engine, now, requests, client):
+        outputs = {}
+        assert engine._call('persona_check', {}, outputs) == {}
+        assert now[0] == 210 and len(requests) == 1
+    audit = outputs['persona_check_transport'][0]
+    assert audit['complete'] and not audit['stall_aborted']
+    assert audit['max_receive_gap_seconds'] == 70
+    assert audit['first_content_seconds'] == 210
+
+
+def test_partial_utf8_and_sse_lines_count_as_received_data(prepared):
+    raw = event({'reasoning_content':'中文推理'}) + b''.join(envelope())
+    chunks = [raw[:5], raw[5:10], raw[10:15], raw[15:20], raw[20:]]
+    with engine_for(prepared, lambda req, now, n: response(chunks, now, [0,70,70,70,0])) as (engine, now, requests, client):
+        outputs = {}
+        assert engine._call('persona_check', {}, outputs) == {}
+    audit = outputs['persona_check_transport'][0]
+    assert audit['first_data_seconds'] == 210 and not audit['stall_aborted']
+    assert audit['receive_chunks'] == 5 and audit['received_bytes'] == len(raw)
+
+
+def test_no_body_progress_uses_the_socket_idle_timeout_not_the_total_budget(prepared):
+    def respond(req, now, n):
+        if n == 1:
+            idle = req.extensions['timeout']['read']
+            assert idle == 90
+            return response([httpx.ReadTimeout('PRIVATE_SOCKET_ERROR')], now, [idle])
+        return response(envelope(), now)
+    with engine_for(prepared, respond) as (engine, now, requests, client):
+        outputs = {}
+        assert engine._call('persona_check', {}, outputs) == {}
+        assert now[0] == 92 and len(requests) == 2
+    audit = outputs['persona_check_transport'][0]
+    assert audit['stall_aborted'] and audit['received_bytes'] == 0
+    assert audit['elapsed_seconds'] == 90
+    assert 'PRIVATE_SOCKET_ERROR' not in json.dumps(outputs)
+
+
+def test_idle_detection_never_extends_a_shorter_stage_deadline(prepared):
+    def respond(req, now, n):
+        assert req.extensions['timeout']['read'] == 30
+        return response([httpx.ReadTimeout('socket timeout')], now, [30])
+    with engine_for(prepared, respond) as (engine, now, requests, client):
+        outputs = {}
+        with pytest.raises(ModelError) as failure:
+            engine._call('persona_check', {}, outputs, deadline=30)
+        assert failure.value.reason == 'timeout' and len(requests) == 1
+    assert not outputs['persona_check_transport'][0]['stall_aborted']
+
+
+def test_socket_stall_is_interrupted_before_total_deadline(prepared, monkeypatch):
+    """A local fake SSE server stops yielding; HTTPX must abort the blocked read."""
+    import threading
+    import time
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from iris import persona
+    release = threading.Event()
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = 'HTTP/1.1'
+
+        def log_message(self, *args):
+            pass
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers['Content-Length']))
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.send_header('Transfer-Encoding', 'chunked')
+            self.end_headers()
+            chunk = event({'reasoning_content':'private'})
+            self.wfile.write(f'{len(chunk):x}\r\n'.encode() + chunk + b'\r\n')
+            self.wfile.flush()
+            release.wait(3)
+            self.close_connection = True
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, kwargs={'poll_interval':.01}, daemon=True)
+    thread.start()
+    monkeypatch.setattr(persona, 'CHECK_STREAM_IDLE_SECONDS', .2)
+    gateway = Gateway({'chat':ModelConfig(f'http://127.0.0.1:{server.server_port}', '', 'glm-5.3-flash')},
+                      prepared, jitter=lambda *args:0)
+    try:
+        outputs = {}
+        started = time.monotonic()
+        with pytest.raises(ModelError) as failure:
+            PersonaEngine(prepared, gateway)._call('persona_check', {}, outputs, deadline=started + 2)
+        assert failure.value.reason == 'timeout'
+        assert time.monotonic() - started < 1.5
+        audit = outputs['persona_check_transport'][0]
+        assert audit['stall_aborted'] and not audit['complete']
+        assert audit['reasoning_chars'] == len('private')
+        assert audit['receive_chunks'] == 1
+        assert audit['max_receive_gap_seconds'] >= .19
+    finally:
+        release.set()
+        gateway.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)

@@ -396,7 +396,7 @@ def test_call_metrics_report_missing_reasoning_usage_separately():
            for t,r in ((10,None),(30,5))]
     metric=_call_metrics(calls)
     assert metric['reasoning_usage_missing_calls']==1
-    assert metric['timings_by_purpose']['persona_generate']=={'count':2,'p50_ms':20.0,'p95_ms':29.0}
+    assert metric['timings_by_purpose']['persona_generate']=={'count':2,'p50_ms':20.0,'p95_ms':29.0,'max_ms':30}
 
 
 @pytest.mark.parametrize('frozen', [False, True])

@@ -65,7 +65,7 @@ def test_relative_time_override_survives_an_approving_model(prepared):
 @pytest.mark.parametrize('status,timed_out,reason', [
     (429,0,'rate_limited'), (None,1,'timeout'), (503,0,'transport_failure'),
 ])
-def test_recovered_operational_error_cannot_be_reused_as_valid_eval(tmp_path,status,timed_out,reason):
+def test_missing_success_record_cannot_be_reused_as_recovered_eval(tmp_path,status,timed_out,reason):
     class Recovered(FakeGateway):
         def __init__(self, configs, store, **kwargs):
             super().__init__(configs,store,**kwargs)
@@ -80,7 +80,7 @@ def test_recovered_operational_error_cannot_be_reused_as_valid_eval(tmp_path,sta
                         VALUES(?, 'fake', 1, 'retryable', ?, ?, ?)''',
                         (purpose,status,timed_out,self.clock().isoformat()))
                 self.recorded = True
-            # The application-level request succeeds after the simulated retry.
+            # A returned fake reply without a recorded successful HTTP call is not proof of recovery.
             return super().chat(messages,purpose,**kwargs)
 
     case = copy.deepcopy(TIMELINE)
