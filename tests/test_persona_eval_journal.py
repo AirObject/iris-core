@@ -44,27 +44,42 @@ def test_interruption_preserves_completed_checkpoint_raw_outputs_and_does_not_re
     assert json.loads(journals[0].read_text())==audit
 
 
-def test_missing_check_stops_remaining_events_and_later_timelines(tmp_path):
+@pytest.mark.parametrize('format_failure', ['coverage', 'degree'])
+def test_only_unrecovered_check_failures_stop_remaining_events_and_timelines(tmp_path, format_failure):
     class Broken(FakeGateway):
         generation=0
         def chat(self,messages,purpose,**kwargs):
             if purpose=='persona_generate':type(self).generation+=1
             reply=super().chat(messages,purpose,**kwargs)
             if purpose=='persona_check':
-                value=json.loads(reply.content);value['sentences']=[];reply.content=dumps(value)
+                value=json.loads(reply.content)
+                if format_failure == 'coverage': value['sentences'] = []
+                else: value['change_degree'] = 'unknown'
+                reply.content=dumps(value)
             return reply
     second=copy.deepcopy(TIMELINE);second['id']='another-format-case'
     _,report=run_persona_eval({},tmp_path,gateway_factory=Broken,runner_identity='missing-check',
         **inputs(tmp_path,[TIMELINE,second]))
     summary=next((tmp_path/'out').glob('persona-*.md')).read_text()
-    assert '| run_valid | False |' in summary and '| unexecuted_timelines | 1 |' in summary
-    assert Broken.generation==1
-    assert not report['metrics']['run_valid']
-    assert report['planned_timelines']==2 and report['executed_timelines']==1 and report['unexecuted_timelines']==1
-    assert report['rows'][0]['completed_events']==2 and report['rows'][0]['remaining_events']==2
-    journal=json.loads(next((tmp_path/'out').glob('.persona/*/timeline-progress-*.json')).read_text())
-    assert journal['state']=='invalid' and journal['row']==report['rows'][0]
-    assert json.loads(journal['row']['attempts'][0]['outputs_json'])['persona_check']
+    if format_failure == 'degree':
+        assert '| run_valid | False |' in summary and '| unexecuted_timelines | 1 |' in summary
+        assert Broken.generation == 1 and not report['metrics']['run_valid']
+        assert report['executed_timelines'] == report['unexecuted_timelines'] == 1
+        assert report['rows'][0]['completed_events'] == 2 and report['rows'][0]['remaining_events'] == 2
+    else:
+        assert '| run_valid | True |' in summary and '| unexecuted_timelines | 0 |' in summary
+        assert Broken.generation == 4 and report['metrics']['run_valid']
+        assert report['executed_timelines'] == 2 and report['unexecuted_timelines'] == 0
+        assert all(row['remaining_events'] == 0 for row in report['rows'])
+        initial = report['rows'][0]['checkpoints'][0]['result']['version']['checks']['initial_model']
+        assert initial['invalid_batch_checks']
+        assert all(not row['supported'] for row in initial['sentences'])
+    assert report['planned_timelines'] == 2
+    for path in (tmp_path/'out').glob('.persona/*/timeline-progress-*.json'):
+        journal = json.loads(path.read_text())
+        assert journal['state'] == ('invalid' if format_failure == 'degree' else 'complete')
+        assert journal['row'] in report['rows']
+        assert any(json.loads(a['outputs_json']).get('persona_check') for a in journal['row']['attempts'])
 
 
 def test_complete_semantic_rejections_do_not_stop_the_timeline(tmp_path):

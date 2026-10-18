@@ -40,9 +40,12 @@ def test_degree_only_two_field_answer_is_complete_and_raw_output_is_preserved(st
     assert json.loads(outputs['persona_recheck']) == answer
 
 
-def test_omitted_factual_rows_remain_invalid_when_a_sentence_was_requested(store):
-    result, outputs, _ = check(store, {'change_degree': 'small', 'reason': '未查句子。'}, with_sentence=True)
-    assert result['validation_errors']
+def test_omitted_factual_rows_are_reasked_then_rejected_without_a_degree_judgment(store):
+    result, outputs, model = check(store, {'change_degree': 'small', 'reason': '未查句子。'}, with_sentence=True)
+    assert not result['validation_errors']
+    assert not result['sentences'][0]['supported'] and len(model.requests) == 2
+    assert result['invalid_batch_checks'][0]['conservative_sentence_indices'] == [1]
+    assert result['degree_assessment']['status'] == 'deferred_after_rejection'
     assert 'degree_only_empty_sentences' not in dumps(outputs)
 
 

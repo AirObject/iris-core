@@ -138,7 +138,10 @@ def test_unknown_sentence_mapping_cannot_inject_diagnostic_fields(store):
             return reply
     result = PersonaEngine(store,Forged())._check_all('persona_check',batch_material(),
         batch_sentences(),full_content='完整稿',outputs={})
-    assert result['validation_errors'] and result['sentences']==[]
+    assert not result['validation_errors']
+    assert [r['index'] for r in result['sentences'] if not r['supported']] == [4, 8, 9]
+    assert all(isinstance(r['clause_errors'], list) for r in result['sentences'])
+    assert len(result['invalid_batch_checks']) == 3
 
 
 def test_three_valid_check_batches_keep_their_request_budget(store):
@@ -149,7 +152,7 @@ def test_three_valid_check_batches_keep_their_request_budget(store):
     assert [c[2] for c in gateway.calls]==[360,490,620,750]
 
 
-def test_empty_fact_check_cannot_be_treated_as_degree_only(prepared):
+def test_empty_fact_check_is_conservatively_repaired_not_degree_only(prepared):
     class EmptyFactCheck(Model):
         def chat(self,messages,purpose,**kwargs):
             reply=super().chat(messages,purpose,**kwargs)
@@ -161,11 +164,15 @@ def test_empty_fact_check_cannot_be_treated_as_degree_only(prepared):
             return reply
     model=EmptyFactCheck(prepared)
     result=PersonaEngine(prepared,model).regenerate(expected_version=1)
-    assert result['status']=='rejected'
-    assert current_persona(prepared)['id']==1
-    assert 'cover every sentence' in ' '.join(result['version']['checks']['model_errors'])
-    assert not any(p in ('persona_sentence_repair','persona_recheck') for p,*_ in model.calls)
-    assert result['version']['checks']['initial_model']['batches'][0]['sentences']==[]
+    checks = result['version']['checks']
+    assert result['status'] in ('current', 'pending') and checks['passed']
+    assert not checks['initial_model']['validation_errors']
+    assert checks['initial_model']['invalid_batch_checks']
+    assert all(not r['supported'] for r in checks['initial_model']['sentences'])
+    assert checks['deleted_sentences'] and checks['repaired_sentences']
+    assert any(p == 'persona_recheck' for p, *_ in model.calls)
+    assert all(r['supported'] for r in checks['model']['sentences'])
+    assert checks['initial_model']['batches'][0]['sentences'] == []
 
 
 def test_single_date_repair_without_explicit_scene_never_reaches_fact_recheck(prepared):

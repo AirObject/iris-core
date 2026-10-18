@@ -170,7 +170,12 @@ def test_duplicate_output_indices_are_not_silently_renumbered(prepared):
                 reply.content = dumps(value)
             return reply
     result = PersonaEngine(prepared, Duplicates(prepared)).regenerate(expected_version=1)
-    assert result['status'] == 'rejected' and current_persona(prepared)['id'] == 1
+    checks = result['version']['checks']
+    assert result['status'] in ('current', 'pending') and checks['passed']
+    assert all(not r['supported'] for r in checks['initial_model']['sentences'])
+    assert checks['initial_model']['invalid_batch_checks']
+    assert checks['repaired_sentences'] and checks['deleted_sentences']
+    assert all(r['supported'] for r in checks['model']['sentences'])
 
 
 @pytest.mark.parametrize('original,allowed', [

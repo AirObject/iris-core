@@ -1834,6 +1834,92 @@ class PersonaEngine:
             retry['status'] = 'complete'
             return answer
 
+    def _correct_batch_coverage(self, purpose, payload, batch, outputs, *,
+                                deadline, retry_state, sentence_indices):
+        """Reask this batch once; salvage only rows with unique explicit identities."""
+        import time
+
+        def coverage(answer):
+            returned = answer.get('sentences')
+            if not isinstance(returned, list):
+                return ['sentence results must be an array'], {}, []
+            indices, grouped = [], {}
+            for row in returned:
+                index = row.get('index') if isinstance(row, dict) else None
+                indices.append(index)
+                if type(index) is int and 1 <= index <= len(payload['candidate']):
+                    grouped.setdefault(index, []).append(row)
+            # Duplicate identities are ambiguous even if one verdict is positive.
+            aligned = {index: rows[0] for index, rows in grouped.items() if len(rows) == 1}
+            complete = (len(returned) == len(payload['candidate'])
+                and all(type(index) is int and index == expected
+                        for expected, index in enumerate(indices, 1)))
+            errors = [] if complete else ['model check must cover every sentence, in order']
+            return errors, aligned, indices
+
+        errors, original_rows, indices = coverage(batch)
+        if not errors:
+            return batch, {}, set(), None
+        audit = {'errors': errors, 'returned_indices': indices, 'stage_deadline': deadline,
+                 'status': 'partial', 'retry_requested': False, 'outputs': {}}
+        outputs.setdefault(purpose + '_batch_corrections', []).append(audit)
+        # Keep adverse facts from safely identified original rows. A format
+        # correction cannot erase a negative proof, rule verdict or scope guard.
+        adverse = {}
+        for index, original in original_rows.items():
+            row = copy.deepcopy(original)
+            _, issues = _validate_clause_checks({'sentences': [row]},
+                {**payload, 'candidate': [payload['candidate'][index - 1]]})
+            reasons = _adverse_field_verdicts(original) + issues.get(index, [])
+            if reasons:
+                adverse[index] = {'reasons': list(dict.fromkeys(reasons)),
+                    'fabricated': original.get('fabricated') is True,
+                    'violations': [v for v in original.get('violations', [])
+                                   if isinstance(v, str) and v.strip()]
+                                  if isinstance(original.get('violations'), list) else []}
+        # Replay the exact request: no new prompt, evidence or quality rule.
+        request = payload
+        monotonic = getattr(self.gateway, 'monotonic', time.monotonic)
+        if monotonic() >= deadline:
+            audit['retry_errors'] = ['no stage budget for batch correction']
+        elif _check_request_bytes(purpose, request) > MAX_CHECK_REQUEST_BYTES:
+            audit['retry_errors'] = ['batch correction exceeds material byte limit']
+        else:
+            audit['retry_requested'] = True
+            try:
+                corrected = self._check_call(purpose, request, audit['outputs'],
+                                             deadline=deadline, retry_state=retry_state)
+            except ModelError as error:
+                if error.category != 'invalid_output' or error.reason == 'output_limit':
+                    raise
+                audit['retry_errors'] = ['invalid batch correction: ' + (error.reason or error.summary)]
+            else:
+                errors, aligned, indices = coverage(corrected)
+                batch, original_rows = corrected, aligned
+                audit['retry_returned_indices'] = indices
+                if errors:
+                    audit['retry_errors'] = errors
+                else:
+                    audit['status'] = 'corrected'
+        conservative = set(range(1, len(payload['candidate']) + 1)) - original_rows.keys()
+        audit['aligned_sentence_indices'] = [sentence_indices[i - 1] for i in sorted(original_rows)]
+        audit['conservative_sentence_indices'] = [sentence_indices[i - 1] for i in sorted(conservative)]
+        audit['preserved_adverse_reasons'] = [
+            {'sentence_index': sentence_indices[i - 1], 'reasons': value['reasons']}
+            for i, value in sorted(adverse.items())]
+        reason = 'unaligned sentence check after batch correction'
+        normalized = [copy.deepcopy(original_rows[i]) if i in original_rows else
+                      _conservative_check_row(i, reason)
+                      for i in range(1, len(payload['candidate']) + 1)]
+        # These are fact-task placeholders, never a model degree assessment.
+        # Keep the malformed envelope in raw outputs and audit any normalization.
+        normalized_batch = {**batch, 'sentences': normalized}
+        if (batch.get('change_degree') not in DEGREES
+                or not isinstance(batch.get('reason'), str) or not batch['reason'].strip()):
+            audit['normalized_fact_envelope'] = True
+            normalized_batch.update(change_degree='small', reason='仅查事实与监管')
+        return normalized_batch, adverse, conservative, audit
+
     def _correct_sentence_fields(self, purpose, payload, row, errors, issues, outputs,
                                  *, deadline, retry_state, original_index):
         """Reask only an identified row once, preserving all prior adverse evidence."""
@@ -1990,13 +2076,13 @@ class PersonaEngine:
         """Check small focus windows, then AND facts and union failures per sentence."""
         import time
         subsets = _check_batches(sentences, material=material, purpose=purpose) if sentences else []
-        # One fixed stage ceiling includes size splitting, field correction, timeout
+        # One fixed stage ceiling includes size splitting, batch/field correction, timeout
         # retry and degree. Even one fact window can retry within this same ceiling.
         stage_seconds = MAX_CHECK_STAGE_SECONDS
         deadline = getattr(self.gateway, 'monotonic', time.monotonic)() + stage_seconds
         raw_batches = outputs.setdefault(purpose + '_batches', [])
         rows, batches, short_circuits = {}, [], []
-        invalid_fields, material_rejections = [], []
+        invalid_fields, invalid_batches, material_rejections = [], [], []
         outputs[purpose + '_material_rejections'] = material_rejections
         rejected, skipped, normalizations = set(), [], []
         outputs[purpose + '_skipped_windows'] = skipped
@@ -2046,6 +2132,12 @@ class PersonaEngine:
             try:
                 batch = self._check_call(purpose, payload, raw, deadline=deadline, retry_state=retry_state)
                 original_batch = copy.deepcopy(batch)
+                batch, prior_adverse, conservative, audit = self._correct_batch_coverage(
+                    purpose, payload, batch, raw, deadline=deadline, retry_state=retry_state,
+                    sentence_indices=[s['_check_sentence'] for s in subset])
+                if audit is not None:
+                    invalid_batches.append({'batch': batch_index + 1,
+                        **{key: value for key, value in audit.items() if key != 'outputs'}})
                 batch = self._complete_positive_focus(purpose, payload, batch, raw, deadline=deadline, retry_state=retry_state)
             except ModelError as error:
                 if error.reason != 'output_limit':
@@ -2071,16 +2163,27 @@ class PersonaEngine:
                 normalized = []
                 for local,(sentence,row) in enumerate(zip(subset,returned),1):
                     row = {**copy.deepcopy(row), 'clause_errors': []}  # Preserve the raw model output.
-                    errors, issues = _validate_clause_checks({'sentences':[row]},
-                        {**payload, 'candidate':[payload['candidate'][local-1]]})
-                    malformed = ([] if _valid_sentence_verdict(row,local,require_kind=True)
-                                 else [f'sentence {local}: invalid model verdict']) + errors
+                    if local in conservative:
+                        # This row was created here, not supplied by the model.
+                        # It has no proof and can only enter repair/deletion.
+                        errors, issues, malformed = [], {local: [row['reason']]}, []
+                    else:
+                        errors, issues = _validate_clause_checks({'sentences':[row]},
+                            {**payload, 'candidate':[payload['candidate'][local-1]]})
+                        malformed = ([] if _valid_sentence_verdict(row,local,require_kind=True)
+                                     else [f'sentence {local}: invalid model verdict']) + errors
                     if malformed:
                         row, issues, audit = self._correct_sentence_fields(
                             purpose, payload, row, malformed, issues, raw, deadline=deadline,
                             retry_state=retry_state, original_index=sentence['_check_sentence'])
                         invalid_fields.append({'batch': batch_index + 1,
                             **{key: value for key, value in audit.items() if key != 'outputs'}})
+                    if local in prior_adverse:
+                        prior = prior_adverse[local]
+                        row['supported'] = False
+                        row['fabricated'] = row['fabricated'] or prior['fabricated']
+                        row['violations'] = list(dict.fromkeys(row['violations'] + prior['violations']))
+                        issues.setdefault(local, []).extend(prior['reasons'])
                     if row.get('additional_clause_checks'):
                         full_sequence = sorted({part['index'] for part in row['clauses'] + row['additional_clause_checks']}) == [
                             part['index'] for part in _clause_parts(sentence['text'])]
@@ -2204,7 +2307,8 @@ class PersonaEngine:
                 'reason':reason, 'batches':batches, 'window_map':window_map,
                 'degree_assessment':assessment, 'validation_errors':degree_errors,
                 'incomplete_checks':[], 'short_circuits':short_circuits,
-                'invalid_sentence_checks':invalid_fields, 'material_rejections':material_rejections,
+                'invalid_sentence_checks':invalid_fields, 'invalid_batch_checks':invalid_batches,
+                'material_rejections':material_rejections,
                 'skipped_windows':skipped, 'normalizations':normalizations}
 
     def _recover_sentences(self, original, initial_model, problems, material, previous, checks, outputs):

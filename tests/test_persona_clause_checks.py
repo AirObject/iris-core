@@ -169,11 +169,15 @@ def test_batches_keep_local_indices_deadlines_final_degree_and_all_raw_outputs(s
     assert all('persona_check' in batch for batch in outputs['persona_check_batches'])
 
 
-def test_bad_local_index_is_not_silently_renumbered(store):
+def test_bad_local_index_reasks_the_batch_without_silently_renumbering(store):
     gateway = BatchGateway(broken=2)
     result = PersonaEngine(store, gateway)._check_all('persona_check', batch_material(), batch_sentences(), full_content='整稿', outputs={})
     from iris.persona import _check_verdicts
-    assert _check_verdicts(result, batch_sentences())[1]
+    assert not _check_verdicts(result, batch_sentences())[1]
+    assert len(gateway.calls) == 5
+    assert result['invalid_batch_checks'][0]['batch'] == 2
+    assert result['invalid_batch_checks'][0]['status'] == 'corrected'
+    assert gateway.calls[1][1]['candidate'] == gateway.calls[2][1]['candidate']
 
 
 def test_whole_stage_timeout_preserves_partial_outputs_without_resetting_budget(store):

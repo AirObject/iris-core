@@ -122,12 +122,14 @@ def test_field_correction_never_erases_an_existing_adverse_verdict(store, advers
     assert not result['incomplete_checks']
 
 
-def test_unmapped_sentence_still_fails_without_guessing_its_identity(store):
+def test_unmapped_sentence_is_reasked_then_conservatively_rejected(store):
     material, sentence = general_case()
     def mutate(output, payload, number): output['sentences'][0]['index'] = 99
     model = Checks(store, mutate)
     result = check(store, model, material, [sentence])
-    assert result['validation_errors'] and len(model.calls) == 1
+    assert not result['validation_errors'] and len(model.calls) == 2
+    assert not result['sentences'][0]['supported']
+    assert result['invalid_batch_checks'][0]['conservative_sentence_indices'] == [1]
 
 
 def large_pair():

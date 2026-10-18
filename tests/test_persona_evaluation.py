@@ -527,3 +527,33 @@ def test_local_invalid_fields_do_not_abort_later_timeline_checkpoints(tmp_path, 
     checks = row['checkpoints'][0]['result']['version']['checks']['initial_model']
     assert not checks['incomplete_checks']
     assert checks['invalid_sentence_checks']
+
+
+@pytest.mark.parametrize('persistent', [False, True])
+def test_local_batch_coverage_errors_do_not_abort_later_timeline_checkpoints(tmp_path, persistent):
+    class InvalidCoverage(FakeGateway):
+        damaged = False
+        def chat(self, messages, purpose, **kwargs):
+            reply = super().chat(messages, purpose, **kwargs)
+            payload = json.loads(messages[-1]['content'])
+            if purpose in ('persona_check', 'persona_recheck') and payload['task'] == 'check_facts_and_rules':
+                if persistent or not self.damaged:
+                    value = json.loads(reply.content)
+                    value['sentences'][-1]['index'] = 99
+                    self.damaged = True
+                    reply.content = dumps(value)
+            return reply
+    corpus = tmp_path/'coverage.jsonl'
+    corpus.write_text(dumps(TIMELINE)+'\n', encoding='utf-8')
+    scoring = tmp_path/'scoring.md'
+    scoring.write_text('Format-only test', encoding='utf-8')
+    materials, report = run_persona_eval({}, tmp_path, corpus=corpus, out=tmp_path/'out',
+        judge_mode='external', gateway_factory=InvalidCoverage,
+        runner_identity='fake-batch-coverage-recovery', scoring_path=scoring)
+    assert report['metrics']['run_valid']
+    row = report['rows'][0]
+    assert [c['checkpoint']['id'] for c in row['checkpoints']] == ['c1', 'c2']
+    assert (materials.parent/'run.json').is_file()
+    checks = row['checkpoints'][0]['result']['version']['checks']['initial_model']
+    assert not checks['incomplete_checks'] and not checks['validation_errors']
+    assert checks['invalid_batch_checks']
