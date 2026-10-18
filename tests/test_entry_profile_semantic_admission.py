@@ -6,7 +6,7 @@ import pytest
 from iris import entry_profile as ep
 from iris.db import dumps
 from test_entry_profile_incremental import NOW, Gateway, add, profiles, projection, propose, run, source
-from test_entry_profile_incremental_quality import seed, check_seed
+from test_entry_profile_incremental_quality import seed, check_seed, small_evidence_budget
 
 
 def payload(category='topic', body='比较容器的密封性；比较容器的清洗难度。'):
@@ -236,7 +236,7 @@ def test_source_loss_cannot_replace_reviewed_use_with_a_mention(store):
     assert profiles(store)[0]['admission_state']=='candidate'
 
 
-def test_mapping_and_final_requests_are_bounded_and_first_pass_cannot_publish(store):
+def test_mapping_and_final_requests_are_bounded_and_first_pass_cannot_publish(store, small_evidence_budget):
     from test_entry_profile_incremental import accept
     texts=[(1,'甲','讨论容器的密封性能。'),(2,'乙','另一个容器的密封值得比较。'),
            (3,'丙','补充容器壁厚。'),(4,'丁','补充材料颜色。'),(5,'戊','补充包装标记。'),

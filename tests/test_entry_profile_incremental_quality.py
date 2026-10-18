@@ -69,6 +69,14 @@ def seed(store, texts, *, body='讨论望远镜的支架。',category='topic'):
     return mid,ids
 
 
+@pytest.fixture
+def small_evidence_budget(monkeypatch):
+    # Exercise real token-based pages, independent of the nomination's six-source cap.
+    original = ep.IncrementalProfileLimits
+    monkeypatch.setattr(ep, 'IncrementalProfileLimits',
+        lambda **kwargs: original(**{'evidence_tokens': 1000, **kwargs}))
+
+
 def check_seed(store,gateway=None,*,one_round=False):
     g=gateway or Gateway(store,lambda p:{'observations':[]})
     task=ep.IncrementalProfileTask(store,g,clock=lambda:NOW)
@@ -210,7 +218,7 @@ EVIDENCE=[
 ]
 
 
-def test_over_six_sources_are_checked_in_bounded_pages_before_admission(store):
+def test_over_token_budget_sources_are_checked_in_bounded_pages_before_admission(store, small_evidence_budget):
     mid,ids=seed(store,EVIDENCE)
     g=Gateway(store)
     check_seed(store,g,one_round=True)
@@ -228,7 +236,7 @@ def test_over_six_sources_are_checked_in_bounded_pages_before_admission(store):
     assert checked==set(ids), 'No old or apparently adverse evidence may be silently omitted.'
 
 
-def test_later_page_rejection_does_not_publish_a_partially_approved_memory(store):
+def test_later_page_rejection_does_not_publish_a_partially_approved_memory(store, small_evidence_budget):
     seed(store,EVIDENCE)
     def check(p):
         if any('软垫' in x['excerpt'] for x in p['memory']['sources']):
@@ -241,7 +249,7 @@ def test_later_page_rejection_does_not_publish_a_partially_approved_memory(store
     assert profiles(store)[0]['importance']==30
 
 
-def test_restart_reuses_accepted_pages_and_cas_still_protects_the_bundle(store):
+def test_restart_reuses_accepted_pages_and_cas_still_protects_the_bundle(store, small_evidence_budget):
     mid,ids=seed(store,EVIDENCE)
     g=Gateway(store)
     check_seed(store,g,one_round=True)
@@ -254,7 +262,7 @@ def test_restart_reuses_accepted_pages_and_cas_still_protects_the_bundle(store):
         assert c.execute('SELECT importance FROM memories WHERE id=?',(mid,)).fetchone()[0]==30
 
 
-def test_clear_between_pages_erases_every_page_and_never_calls_again(store):
+def test_clear_between_pages_erases_every_page_and_never_calls_again(store, small_evidence_budget):
     mid,_=seed(store,EVIDENCE)
     g=Gateway(store)
     check_seed(store,g,one_round=True)
@@ -280,7 +288,7 @@ def test_effective_date_of_permanent_rule_is_not_a_one_day_arrangement(store):
     assert projection(store)
 
 
-def test_later_page_timeout_cannot_promote_partial_acceptance(store):
+def test_later_page_timeout_cannot_promote_partial_acceptance(store, small_evidence_budget):
     seed(store,EVIDENCE)
     g=Gateway(store)
     check_seed(store,g,one_round=True)
@@ -291,7 +299,7 @@ def test_later_page_timeout_cannot_promote_partial_acceptance(store):
     assert profiles(store)[0]['importance']==30
 
 
-def test_passed_page_is_not_recalled_after_restart(store):
+def test_passed_page_is_not_recalled_after_restart(store, small_evidence_budget):
     seed(store,EVIDENCE)
     g=Gateway(store)
     check_seed(store,g,one_round=True)
@@ -312,7 +320,7 @@ def test_saying_terminal_punctuation_does_not_drop_a_valid_candidate(store):
     assert profiles(store)[0]['body']=='搭桥：把双方的句子接起来'
 
 
-def test_eval_checked_stage_never_reports_a_partial_page_as_admitted(store):
+def test_eval_checked_stage_never_reports_a_partial_page_as_admitted(store, small_evidence_budget):
     import sys
     from pathlib import Path
     sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
@@ -337,7 +345,7 @@ def test_saying_does_not_match_a_fragment_of_a_different_noun(saying,excerpt):
     assert not ep._inc_saying_used(saying,excerpt)
 
 
-def test_admin_progress_identifies_bounded_check_pages(store):
+def test_admin_progress_identifies_bounded_check_pages(store, small_evidence_budget):
     from iris.admin_data import entry_profile_snapshot
     seed(store,EVIDENCE)
     run(store,Gateway(store,lambda p:{'observations':[]}))

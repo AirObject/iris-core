@@ -2071,6 +2071,10 @@ def _execute_memory_task(engine, entry_id, attempt, gateway, repository, due):
 
 
 # EF-22: bounded, typed proof contracts. These helpers do not make model calls.
+# Admission may carry the already bounded accumulated set; nominations remain six.
+_INC_ADMISSION_SOURCE_LIMIT = 32
+
+
 def _inc_segments(text):
     """Lossless contiguous clauses, indexed by the producer instead of regenerated."""
     return [x for x in re.findall(r'[^，,；;。.!！？?\n]*[，,；;。.!！？?\n]|[^，,；;。.!！？?\n]+$',text) if x]
@@ -2098,19 +2102,41 @@ def _inc_gendered(text):
     return any(word in {'他','她','妳','祂','他们','她们','妳们','祂们'} for word,flag in posseg.cut(text,HMM=False))
 
 
+def _inc_whole_sentences(original, excerpt):
+    """Conservative sentence edges; commas/colons are not semantic boundaries.
+
+    Never expand a model-approved quote after checking it. Ambiguous mixed
+    sentences must be kept whole for review or omitted, not silently restored.
+    """
+    original=whitespace(original);excerpt=whitespace(excerpt)
+    offset=0
+    while excerpt and (start:=original.find(excerpt,offset))>=0:
+        end=start+len(excerpt)
+        before=original[:start].rstrip();through=original[:end].rstrip()
+        if (not before or before[-1] in '。！？!?；;') and (end==len(original) or through[-1] in '。！？!?；;'):
+            return True
+        offset=start+1
+    return False
+
+
 def _inc_resolve_safe(value, memory):
     resolved=[]
     for ref in value:
-        if isinstance(ref,dict) and set(ref)=={'source_id','start_segment','end_segment'}:
+        if isinstance(ref,dict) and set(ref) in ({'source_id'},{'source_id','start_segment','end_segment'}):
             original=next((s for s in memory['sources'] if s['source_id']==ref['source_id']),None)
             if not original: raise ValueError('checker_unbound_interval')
             ref=dict(message_id=original['message_id'],field=original['field'],
-                excerpt=_inc_segment_excerpt(original['excerpt'],ref['start_segment'],ref['end_segment']))
+                excerpt=original['excerpt'] if set(ref)=={'source_id'} else
+                    _inc_segment_excerpt(original['excerpt'],ref['start_segment'],ref['end_segment']))
         _inc_source_shape(ref)
         if set(ref)!={'message_id','field','excerpt'}: raise ValueError('invalid_safe_source')
         if not any(ref['message_id']==s['message_id'] and ref['field']==s['field']
                 and whitespace(ref['excerpt']) in whitespace(s['excerpt']) for s in memory['sources']):
             raise ValueError('checker_unbound_excerpt')
+        if memory['category']=='saying' and not any(
+                ref['message_id']==s['message_id'] and ref['field']==s['field']
+                and _inc_whole_sentences(s['excerpt'],ref['excerpt']) for s in memory['sources']):
+            raise ValueError('incomplete_saying_sentence')
         if ref in resolved: raise ValueError('duplicate_safe_source')
         resolved.append(ref)
     return resolved
@@ -2133,7 +2159,7 @@ def _inc_validate_proof(value, payload, previous=None):
     reviews=value['group_reviews'];usages=value['usage_reviews'];points=value['point_support'];rule=value['rule_support']
     if any(not isinstance(x,list) for x in (reviews,usages,points)) or not isinstance(rule,dict):
         raise ValueError('invalid_proof_fields')
-    if len(reviews)>6 or len(usages)>6 or len(points)>24: raise ValueError('proof_array_limit')
+    if len(reviews)>_INC_ADMISSION_SOURCE_LIMIT or len(usages)>_INC_ADMISSION_SOURCE_LIMIT or len(points)>24: raise ValueError('proof_array_limit')
     def ids(values, *, empty=True):
         if (not isinstance(values,list) or any(not isinstance(x,str) or x not in source_by_id for x in values)
                 or len(values)!=len(set(values)) or not empty and not values): raise ValueError('unbound_proof_sources')
@@ -2195,6 +2221,15 @@ def _inc_validate_proof(value, payload, previous=None):
             raise ValueError('unrelated_group_retained')
     elif category=='saying' and not retire:
         if set(roles)!=set(source_by_id): raise ValueError('missing_usage_reviews')
+        # A definition can contain the spelling without being an actual use.
+        # If the input also has a deterministically recognized bare-use sentence,
+        # trimming it away must not keep that source's 'use' classification.
+        for sid,retained in safe_by_id.items():
+            if roles[sid] not in ('use','use_and_definition'): continue
+            bare=[part.strip() for part in re.split(r'(?<=[。！？!?；;])',source_by_id[sid]['excerpt'])
+                if _inc_short_saying_use(memory['saying'],part)]
+            if bare and not any(whitespace(part) in whitespace(retained['excerpt']) for part in bare):
+                raise ValueError('use_sentence_removed')
         if final:
             uses=[_inc_public_canonical(s) for sid,s in safe_by_id.items() if roles[sid] in ('use','use_and_definition')]
             if not _inc_enough(uses,'saying',memory['saying']): raise ValueError('reviewed_uses_insufficient')
@@ -2412,7 +2447,7 @@ def incremental_prompts():
     from importlib.resources import files
     import hashlib
     result={}
-    for stage,name in (('observe','entry_profile_observe_v8'),('admit','entry_profile_admit_v8')):
+    for stage,name in (('observe','entry_profile_observe_v9'),('admit','entry_profile_admit_v9')):
         value=files('iris').joinpath('prompts',name+'.md').read_text(encoding='utf-8')
         result[stage]=dict(name=name,text=value,sha256=hashlib.sha256(value.encode()).hexdigest())
     return result
@@ -2484,7 +2519,8 @@ def validate_incremental_admission(value, payload, previous=None):
             or not isinstance(value['violations'],list) or any(v not in MEMORY_PROFILE_VIOLATIONS for v in value['violations'])
             or value['violations']!=sorted(set(value['violations']),key=MEMORY_PROFILE_VIOLATIONS.index)
             or not isinstance(value['reason'],str) or not value['reason'].strip() or len(value['reason'])>1000
-            or not isinstance(value['safe_sources'],list) or len(value['safe_sources'])>6):
+            or not isinstance(value['safe_sources'],list) or len(value['safe_sources'])>
+                (_INC_ADMISSION_SOURCE_LIMIT if payload.get('review_contract')=='semantic_v8' else 6)):
         raise ValueError('invalid_admission')
     if value['decision']=='accept' and (value['violations'] or not value['safe_sources'] and payload.get('mode')!='map'):
         raise ValueError('invalid_accepted_admission')
@@ -2497,6 +2533,37 @@ def validate_incremental_admission(value, payload, previous=None):
         raise ValueError('repair_changed_semantic_rejection')
     if payload.get('review_contract')=='semantic_v8': _inc_validate_proof(value,payload,previous)
     return value
+
+
+def _inc_validate_observation_intervals(value, payload):
+    # Bounds are a format failure while the original request is still available,
+    # not a reason to silently lose the whole nominated rule during writeback.
+    messages={m['message_id']:m for m in payload.get('messages',[])}
+    for item in value['observations']:
+        for ref in item['source_refs']:
+            if 'start_segment' not in ref: continue
+            message=messages.get(ref['message_id'])
+            if not message: raise ValueError('unbound_source_interval')
+            original=message['content'] if ref['field']=='content' else (message.get('quote') or {}).get('content','')
+            _inc_segment_excerpt(original,ref['start_segment'],ref['end_segment'])
+
+
+def _inc_repair_instruction(stage, payload, invalid):
+    text='上次输出结构无效：'+invalid+'。仅修正JSON格式、必填字段和类型；不新增事实/来源，不把语义拒绝改成通过。输出完整JSON。'
+    if stage=='observe':
+        sizes=[dict(message_id=m['message_id'],content=len(_inc_segments(m['content'])),
+            quote=len(_inc_segments((m.get('quote') or {}).get('content','')))) for m in payload.get('messages',[])]
+        return text+' source_refs的start_segment/end_segment是半开区间，0<=start_segment<end_segment<=该field的段数；不能使用字符位置或越界。各message_id的段数：'+dumps(sizes)
+    if payload.get('review_contract')!='semantic_v8': return text
+    memory=payload['memory'];category=memory['category']
+    text+=' 八个必填字段不得漏掉：decision、violations、reason、safe_sources、point_support、group_reviews、usage_reviews、rule_support。'
+    text+=' 当前category='+category+'，mode='+payload.get('mode','final')+'。'
+    if category!='saying': text+='usage_reviews=[]（此类别不做说法使用角色判断）。'
+    if category!='topic': text+='group_reviews=[]（此类别不做话题讨论组判断）。'
+    if category!='rule': text+='rule_support={}（此类别不做群规判断）。'
+    text+=' accept时point_support逐一保留point_id '+dumps([p['point_id'] for p in memory['proof_points']])+'；map无本页支持可填source_ids=[]，不能删除point_support。'
+    text+=' safe_sources可用{"source_id":"输入ID"}原样保留该来源；说法缩引须保留完整使用句/释义句，不许只保留逗号后半句。所有支持仍以实际保留原话为准。'
+    return text
 
 
 def _inc_bound(conn, entry_id, refs, messages, *, target=None, repairs=None):
@@ -2939,7 +3006,9 @@ class IncrementalProfileTask:
                 try:
                     if reply.finish_reason!='stop': raise ValueError('incomplete_output')
                     parsed=json_object(reply.content)
-                    if stage=='observe': validate_incremental_observations(parsed,self.limits)
+                    if stage=='observe':
+                        validate_incremental_observations(parsed,self.limits)
+                        _inc_validate_observation_intervals(parsed,payload)
                     else: parsed=validate_incremental_admission(parsed,payload,previous)
                 except ValueError as error:
                     invalid=str(error);call['validation_error']=invalid
@@ -2962,7 +3031,7 @@ class IncrementalProfileTask:
                     _inc_work_persist(conn,work['id'],outputs_json=dumps(outputs),calls_json=dumps(calls))
             previous=parsed
             messages += [{'role':'assistant','content':reply.content},{'role':'user','content':
-                '上次输出结构无效：'+invalid+'。仅修正JSON格式、必填字段和类型；不新增事实/来源，不把语义拒绝改成通过。输出完整JSON。'}]
+                _inc_repair_instruction(stage,payload,invalid)}]
             if sum(estimate_tokens(x['content']) for x in messages)>self.limits.repair_request_tokens:
                 raise ModelError('invalid_output','repair material limit',reason='repair_budget_exceeded')
 
@@ -3216,7 +3285,7 @@ class IncrementalProfileTask:
 
     def _proof_fits(self, memory, snapshot, mode, stamp, zone):
         payload=self._proof_payload(memory,snapshot,mode,stamp,zone)
-        return (len(memory['sources'])<=self.limits.evidence
+        return (len(memory['sources'])<=_INC_ADMISSION_SOURCE_LIMIT
             and estimate_tokens(dumps(memory))<=self.limits.evidence_tokens
             and estimate_tokens(self.prompts['admit']['text'])+estimate_tokens(dumps(_inc_public_payload(payload)))<=self.limits.admit_request_tokens)
 
@@ -3253,7 +3322,7 @@ class IncrementalProfileTask:
         definitions=proposal['definition_refs'] if proposal else json.loads(meta['definition_refs_json'])
         witnesses=list({_inc_source_key(s):s for s in sources}.values())
         witnesses.sort(key=lambda s:(_instant(s['message']['occurred_at']),s['message']['position'],s['field'],s['excerpt']))
-        if len(witnesses)>32: reason='proof_gap:source_limit'
+        if len(witnesses)>_INC_ADMISSION_SOURCE_LIMIT: reason='proof_gap:source_limit'
         if reason:
             conn.execute('UPDATE entry_profile_admissions SET reason=? WHERE memory_id=?',(reason,row['id']))
             return None
