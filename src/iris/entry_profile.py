@@ -26,7 +26,7 @@ from .persona import split_sentences
 from .queue import estimate_tokens, truncate_material
 from .profile_common import evidence_hash, setting, whitespace, excerpt, json_object, ChatHealthGate, load_profile_prompts, profile_prompt_metadata
 
-DEFAULTS = dict(enabled=True, publish_mode='check_auto', window_days=14,
+DEFAULTS = dict(enabled=True, union_nomination=False, publish_mode='check_auto', window_days=14,
                 message_tokens=6000, memory_tokens=2000, min_messages=50,
                 update_days=7, min_chars=150, max_chars=500,
                 generate_timeout_seconds=120, check_timeout_seconds=120)
@@ -82,7 +82,8 @@ def _setting(conn, key, default):
 
 def _runtime(conn):
     config = {**DEFAULTS, **_setting(conn, 'entry_profile', {})}
-    if type(config['enabled']) is not bool or config['publish_mode'] not in PUBLISH_MODES:
+    if (type(config['enabled']) is not bool or type(config['union_nomination']) is not bool
+            or config['publish_mode'] not in PUBLISH_MODES):
         raise ValueError('invalid entry profile settings')
     for key in ('window_days','message_tokens','memory_tokens','min_messages','update_days',
                 'min_chars','max_chars','generate_timeout_seconds','check_timeout_seconds'):
@@ -2153,6 +2154,44 @@ def validate_incremental_observations(value, limits=None):
     return value
 
 
+def merge_observation_nominations(rounds, profiles):
+    """Union validated observations, without inferring semantic equivalence.
+
+    Source identity is message/field/excerpt; repeating a nomination is not new
+    evidence. Conflicting edits leave the old body intact. Admission is untouched.
+    """
+    items=[copy.deepcopy(item) for result in rounds for item in result['observations']]
+    directory=defaultdict(set)
+    for p in profiles: directory[(p['category'],whitespace(p['body']))].add(p['memory_id'])
+    changes=defaultdict(list);keeps=set()
+    for item in items:
+        if item['op']=='change': changes[item['memory_id']].append(item)
+        elif item['op']=='confirm': keeps.add(item['memory_id'])
+        else:
+            keeps.update(directory.get((item['category'],whitespace(item['body'])),()))
+    conflicts=[];blocked=set()
+    for mid,edits in changes.items():
+        intents={dumps({k:x[k] for k in sorted(x) if k not in ('source_refs','definition_refs')}) for x in edits}
+        if len(intents)>1 or mid in keeps:
+            blocked.add(mid)
+            conflicts.append(dict(memory_id=mid,reason='incompatible_changes' if len(intents)>1 else 'keep_existing'))
+    merged=[];by_intent={}
+    for item in items:
+        if item['op']=='change' and item['memory_id'] in blocked: continue
+        key=dumps({k:item[k] for k in sorted(item) if k not in ('source_refs','definition_refs')})
+        if key not in by_intent:
+            by_intent[key]=dict(item,source_refs=[],**({'definition_refs':[]} if 'definition_refs' in item else {}))
+            merged.append(by_intent[key])
+        target=by_intent[key]
+        seen={(r['message_id'],r['field'],r['excerpt']) for r in target['source_refs']}
+        for ref in item['source_refs']:
+            identity=(ref['message_id'],ref['field'],ref['excerpt'])
+            if identity not in seen: target['source_refs'].append(ref);seen.add(identity)
+        if 'definition_refs' in target:
+            target['definition_refs']=list(dict.fromkeys(target['definition_refs']+item['definition_refs']))
+    return dict(observations=merged),dict(rounds=len(rounds),input_items=len(items),merged_items=len(merged),conflicts=conflicts)
+
+
 def validate_incremental_admission(value, payload, previous=None):
     if (not isinstance(value,dict) or set(value)!={'decision','violations','reason','safe_sources'}
             or value['decision'] not in ('accept','reject','insufficient')
@@ -2501,13 +2540,14 @@ class IncrementalProfileTask:
         self.prompts=incremental_prompts();self.attempt_id=attempt_id;self.source=source
         self.trace=[]
 
-    def _call(self, work, stage, payload):
+    def _call(self, work, stage, payload, *, nomination_round=None):
         prompt=self.prompts[stage];messages=[{'role':'system','content':prompt['text']},{'role':'user','content':dumps(payload)}]
         budget=self.limits.observe_request_tokens if stage=='observe' else self.limits.admit_request_tokens
         if sum(estimate_tokens(x['content']) for x in messages)>budget:
             raise ModelError('invalid_output','request material limit',reason='request_budget_exceeded')
         monotonic=getattr(self.gateway,'monotonic',time.monotonic);deadline=monotonic()+self.limits.timeout_seconds
         outputs=json.loads(work['outputs_json']);calls=json.loads(work['calls_json']);previous=None
+        output_key=stage+(f'_nomination_{nomination_round}' if nomination_round is not None else '')
         for repair in range(2):
             if self.store._lock._is_owned() and self.store._writer.in_transaction:
                 raise RuntimeError('model call in write transaction')
@@ -2518,6 +2558,7 @@ class IncrementalProfileTask:
             purpose='consolidation_entry_profile_'+stage+('_repair' if repair else '')
             call=dict(purpose=purpose,prompt_version=prompt['name'],prompt_sha256=prompt['sha256'],
                       timeout_seconds=self.limits.timeout_seconds,result='success')
+            if nomination_round is not None: call['nomination_round']=nomination_round
             started=monotonic();reply=None;invalid=None;parsed=None
             try:
                 reply=self.gateway.chat(messages,purpose,max_tokens=16000,_deadline=deadline)
@@ -2542,7 +2583,7 @@ class IncrementalProfileTask:
                 raise
             finally:
                 if reply is not None:
-                    outputs[stage+('_repair' if repair else '')+('_attempt_'+str(work['attempts']) if work['attempts']>1 else '')]=reply.content
+                    outputs[output_key+('_repair' if repair else '')+('_attempt_'+str(work['attempts']) if work['attempts']>1 else '')]=reply.content
                     call['finish_reason']=reply.finish_reason
                 calls.append({**call,'duration_ms':round((monotonic()-started)*1000),'usage':reply.usage if reply else {}})
                 with self.store.write() as conn:
@@ -2552,6 +2593,30 @@ class IncrementalProfileTask:
                 '上次输出结构无效：'+invalid+'。仅修正JSON格式、必填字段和类型；不新增事实/来源，不把语义拒绝改成通过。输出完整JSON。'}]
             if sum(estimate_tokens(x['content']) for x in messages)>self.limits.repair_request_tokens:
                 raise ModelError('invalid_output','repair material limit',reason='repair_budget_exceeded')
+
+    def _observe_union(self, work, public):
+        payload=json.loads(work['payload_json']);cached=json.loads(work['parsed_json']) if work['parsed_json'] else {}
+        if 'observations' in cached: return cached
+        rounds=cached.get('_union_rounds',[])
+        if (not isinstance(rounds,list) or len(rounds)>2
+                or rounds and cached.get('_union_payload_sha256')!=_hash(public)):
+            raise ValueError('nomination_cache_mismatch')
+        for result in rounds: validate_incremental_observations(result,self.limits)
+        while len(rounds)<2:
+            with self.store.read() as conn:
+                self._assert_snapshot(conn,payload)
+                live=dict(conn.execute('SELECT * FROM entry_profile_incremental_work WHERE id=?',(work['id'],)).fetchone())
+                if live['state']=='cancelled': raise EntryProfileConflict('purged')
+            # No assistant output from the other nomination is lent to this call.
+            result=self._call(live,'observe',public,nomination_round=len(rounds)+1)
+            rounds.append(result)
+            with self.store.write() as conn:
+                self._assert_snapshot(conn,payload)
+                if conn.execute('SELECT state FROM entry_profile_incremental_work WHERE id=?',(work['id'],)).fetchone()[0]=='cancelled':
+                    raise EntryProfileConflict('purged')
+                _inc_work_persist(conn,work['id'],parsed_json=dumps(dict(_union_rounds=rounds,_union_payload_sha256=_hash(public))))
+        merged,diagnostics=merge_observation_nominations(rounds,payload['profiles'])
+        return {**merged,'_nomination_union':diagnostics}
 
     def _freeze_chunk(self, entry_id):
         now=_instant(self.clock());stamp=now.isoformat();limit=self.limits
@@ -2592,6 +2657,7 @@ class IncrementalProfileTask:
             payload=dict(entry_id=entry_id,timezone=zone,as_of=stamp,messages=messages,profiles=directory,
                 _snapshot=dict(settings_revision=_settings(conn,entry_id)['revision'],cursor_before=state['scan_cursor'],
                     cursor_after=positions[-1],positions=positions,omitted_profiles=omitted,skipped_messages=skipped))
+            if _runtime(conn)['union_nomination']: payload['_snapshot']['union_nomination']=True
             key=_hash([entry_id,state['scan_cursor'],positions[-1],messages,zone])
             wid=conn.execute('''INSERT OR IGNORE INTO entry_profile_incremental_work(entry_id,work_key,kind,cursor_before,cursor_after,
                 local_day,payload_json,attempt_id,created_at) VALUES(?,?,'observe',?,?,?,?,?,?)''',
@@ -2631,6 +2697,7 @@ class IncrementalProfileTask:
                 messages=[fragment],profiles=directory,_snapshot=dict(settings_revision=_settings(conn,entry_id)['revision'],
                 cursor_before=state['scan_cursor'],cursor_after=end,positions=[original['message_id']],
                 omitted_profiles=omitted,fragment_group=group,fragment_index=index,fragment_count=len(fragments)))
+            if _runtime(conn)['union_nomination']: payload['_snapshot']['union_nomination']=True
             wid=conn.execute("""INSERT INTO entry_profile_incremental_work(entry_id,work_key,kind,cursor_before,cursor_after,
                 local_day,fragment_group,payload_json,attempt_id,created_at) VALUES(?,?,'observe',?,?,?,?,?,?,?)""",
                 (entry_id,_hash([group,index]),state['scan_cursor'],end,day,group,dumps(payload),self.attempt_id,_instant(self.clock()).isoformat())).lastrowid
@@ -2662,13 +2729,16 @@ class IncrementalProfileTask:
                 directory,omitted=_inc_directory(conn,entry_id,messages,self.limits)
                 payload.update(messages=messages,profiles=directory,timezone=zone,as_of=stamp)
                 snap.update(settings_revision=settings['revision'],omitted_profiles=omitted)
+                snap.pop('union_nomination',None)
+                if _runtime(conn)['union_nomination']: snap['union_nomination']=True
                 _inc_work_persist(conn,work['id'],payload_json=dumps(payload),parsed_json=None,state='queued',reason='resnapshotted')
 
     def _assert_snapshot(self, conn, payload):
         entry_id=payload['entry_id'];snap=payload['_snapshot']
         settings=_settings(conn,entry_id)
         if (not settings['enabled'] or not _runtime(conn)['enabled'] or settings['revision']!=snap['settings_revision']
-                or _setting(conn,'timezone','Asia/Shanghai')!=payload['timezone'] or _entry(conn,entry_id)['kind'] not in ('group','live')):
+                or _setting(conn,'timezone','Asia/Shanghai')!=payload['timezone'] or _entry(conn,entry_id)['kind'] not in ('group','live')
+                or bool(snap.get('union_nomination',False))!=_runtime(conn)['union_nomination']):
             raise EntryProfileConflict('settings_changed')
         for message in payload.get('messages',[]):
             live=conn.execute('SELECT * FROM messages WHERE id=?',(message['message_id'],)).fetchone()
@@ -2679,6 +2749,7 @@ class IncrementalProfileTask:
         from .memory_ops import entry_profile_source, write_entry_profile_memory, _profile_manual
         payload=json.loads(work['payload_json']);entry_id=work['entry_id'];now=_instant(self.clock())
         result=dict(generated=parsed['observations'],deterministic=[],removed=[],applied=[],normalizations=[])
+        if '_nomination_union' in parsed: result['nomination_union']=parsed['_nomination_union']
         with self.store.write() as conn:
             self._assert_snapshot(conn,payload)
             if conn.execute('SELECT state FROM entry_profile_incremental_work WHERE id=?',(work['id'],)).fetchone()[0]=='cancelled':
@@ -3047,7 +3118,11 @@ class IncrementalProfileTask:
                     conn.execute("UPDATE entry_profile_admissions SET state=CASE WHEN state='accepted' THEN state ELSE 'candidate' END,reason='stale_check' WHERE memory_id=?",(work['memory_id'],))
                 return
             public=_inc_public_payload(payload)
-            if work['parsed_json'] is None:
+            if work['kind']=='observe' and payload['_snapshot'].get('union_nomination') and payload.get('messages'):
+                parsed=self._observe_union(work,public)
+                with self.store.write() as conn:
+                    _inc_work_persist(conn,work['id'],parsed_json=dumps(parsed))
+            elif work['parsed_json'] is None:
                 parsed={'observations':[]} if work['kind']=='observe' and not payload.get('messages') else self._call(work,work['kind'],public)
                 with self.store.write() as conn:
                     _inc_work_persist(conn,work['id'],parsed_json=dumps(parsed))

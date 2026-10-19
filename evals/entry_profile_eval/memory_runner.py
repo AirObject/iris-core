@@ -548,7 +548,7 @@ def _replay_arrivals(store, case, messages, remaining_memories, ids):
             del remaining_memories[index]
 
 
-def run_sqlite(corpus, out, *, gateway_factory=None, configs=None):
+def run_sqlite(corpus, out, *, gateway_factory=None, configs=None, union_nomination=False):
     """Pre-registered daily_plus_final_flush, through production SQLite admission."""
     from datetime import timedelta
     from zoneinfo import ZoneInfo
@@ -561,6 +561,7 @@ def run_sqlite(corpus, out, *, gateway_factory=None, configs=None):
     from .runner import _load_case, _model_metadata, _redacted
     if (gateway_factory is None)==(configs is None):
         raise ValueError('provide exactly one real configuration or fake gateway factory')
+    if type(union_nomination) is not bool: raise ValueError('union_nomination must be boolean')
     root=Path(out);root.mkdir(parents=True,exist_ok=False)
     materials=root/'judging-materials';cases=load_corpus(corpus)
     entries=[];traces=[];invalid=None
@@ -582,6 +583,10 @@ def run_sqlite(corpus, out, *, gateway_factory=None, configs=None):
             _load_case(store,{**case,'messages':[],'memories':[],'initial_profile':''})
             store.set_setting('consolidation',{'enabled':False})
             store.set_setting('scheduled_backup',{'enabled':False})
+            if union_nomination:
+                from iris.profile_common import setting
+                with store.read() as conn: runtime=setting(conn,'entry_profile',{})
+                store.set_setting('entry_profile',{**runtime,'union_nomination':True})
             clock=lambda:current
             if case.get('initial_profile'):
                 with patch('iris.entry_profile.utc_now',clock):
@@ -657,6 +662,7 @@ def run_sqlite(corpus, out, *, gateway_factory=None, configs=None):
         corpus_sha256=hashlib.sha256(Path(corpus).read_bytes()).hexdigest(),source_sha256=_source_hash(),
         scoring_sha256=hashlib.sha256(scoring.encode()).hexdigest(),prompt_versions=list(hashes),prompt_sha256=hashes,
         models=_model_metadata(configs or {}))
+    if union_nomination: metadata['entry_profile_union_nomination']=True
     _write(root/'run.json',_redacted(dict(metadata=metadata,cases=traces),configs or {}))
     manifest=dict(metadata=metadata,cases=entries,run_sha256=hashlib.sha256((root/'run.json').read_bytes()).hexdigest())
     manifest['materials_sha256']=evidence_hash(manifest)
@@ -665,25 +671,223 @@ def run_sqlite(corpus, out, *, gateway_factory=None, configs=None):
     return manifest
 
 
+def _sealed(value, field):
+    return {**value,field:evidence_hash(value)}
+
+
+def _check_seal(value, field):
+    if value.get(field)!=evidence_hash({k:v for k,v in value.items() if k!=field}):
+        raise ValueError('summary/series fingerprint mismatch')
+
+
+def _repeat_usage(root):
+    run=_read(Path(root)/'run.json')
+    calls=[call for case in run['cases'] for call in case.get('model_calls',[])]
+    recorded=bool(calls)
+    if not calls:
+        # Fake gateways do not write provider call rows. Durable work traces
+        # retain attempts without counting the same work again at each checkpoint.
+        for case in run['cases']:
+            unique={w['id']:w for w in case.get('work',[])}
+            calls.extend(call for work in unique.values() for call in json.loads(work['calls_json']))
+    return dict(calls=len(calls),provider_recorded=recorded,
+        observe_calls=sum('observe' in c['purpose'] and 'repair' not in c['purpose'] for c in calls),
+        admit_calls=sum('admit' in c['purpose'] and 'repair' not in c['purpose'] for c in calls),
+        repair_calls=sum('repair' in c['purpose'] for c in calls),
+        request_seconds=sum(c.get('duration_ms') or 0 for c in calls)/1000,
+        prompt_tokens=sum(c.get('prompt_tokens') or c.get('usage',{}).get('prompt_tokens') or 0 for c in calls),
+        completion_tokens=sum(c.get('completion_tokens') or c.get('usage',{}).get('completion_tokens') or 0 for c in calls))
+
+
+def run_repeated(corpus, out, *, runs, union_nomination=False, gateway_factory=None, configs=None):
+    """Independent complete replays, no automatic retry or selection of cases."""
+    import time
+    from .runner import _source_hash, _model_metadata
+    if type(runs) is not int or runs<1: raise ValueError('runs must be a positive integer')
+    if type(union_nomination) is not bool: raise ValueError('union_nomination must be boolean')
+    if (gateway_factory is None)==(configs is None): raise ValueError('provide exactly one gateway/configuration')
+    corpus=Path(corpus);root=Path(out);root.mkdir(parents=True,exist_ok=False)
+    metadata=dict(corpus_sha256=hashlib.sha256(corpus.read_bytes()).hexdigest(),source_sha256=_source_hash(),
+        scoring_sha256=hashlib.sha256((HERE/'scoring_v3.md').read_bytes()).hexdigest(),
+        replay_mode='daily_plus_final_flush',models=_model_metadata(configs or {}))
+    result=dict(format_version=1,evaluation='entry_profile_repeated',metadata=metadata,
+        requested_runs=runs,settings=dict(union_nomination=union_nomination),runs=[],invalidated=None,gate_eligible=False)
+    def save(): _write(root/'series.json',_sealed(result,'series_sha256'))
+    save()
+    for index in range(1,runs+1):
+        if (hashlib.sha256(corpus.read_bytes()).hexdigest()!=metadata['corpus_sha256'] or _source_hash()!=metadata['source_sha256']):
+            result['invalidated']=dict(run_index=index,reason='input_changed');save();break
+        directory=f'run-{index:04d}';started=time.monotonic()
+        try:
+            manifest=run_sqlite(corpus,root/directory,gateway_factory=gateway_factory,configs=configs,union_nomination=union_nomination)
+        except Exception as error:
+            result['invalidated']=dict(run_index=index,reason='runner_error',error_type=type(error).__name__);save();raise
+        result['runs'].append(dict(index=index,directory=directory,materials_sha256=manifest['materials_sha256'],
+            gate_eligible=manifest['metadata']['gate_eligible'],invalidated=manifest['metadata']['invalidated'],
+            usage=_repeat_usage(root/directory),wall_seconds=time.monotonic()-started))
+        if manifest['metadata']['invalidated']:
+            result['invalidated']=dict(run_index=index,**manifest['metadata']['invalidated']);save();break
+        if (hashlib.sha256(corpus.read_bytes()).hexdigest()!=metadata['corpus_sha256']
+                or _source_hash()!=metadata['source_sha256']
+                or any(manifest['metadata'][k]!=metadata[k] for k in ('corpus_sha256','source_sha256','scoring_sha256','replay_mode','models'))):
+            result['invalidated']=dict(run_index=index,reason='input_changed');save();break
+        result['gate_eligible']=len(result['runs'])==runs and all(r['gate_eligible'] for r in result['runs'])
+        save()
+    return _sealed(result,'series_sha256')
+
+
+def _repeat_inputs(root, record):
+    materials=root/record['directory']/'judging-materials';manifest=_read(materials/'manifest.json')
+    if (manifest.get('materials_sha256')!=record['materials_sha256']
+            or manifest['materials_sha256']!=evidence_hash({k:v for k,v in manifest.items() if k!='materials_sha256'})
+            or hashlib.sha256((root/record['directory']/'run.json').read_bytes()).hexdigest()!=manifest['run_sha256']
+            or hashlib.sha256((materials/'scoring.md').read_bytes()).hexdigest()!=manifest['metadata']['scoring_sha256']):
+        raise ValueError('run material fingerprint mismatch')
+    values=[]
+    for index,case in enumerate(manifest['cases'],1):
+        if case['file']!=f'cases/{index:04d}.json': raise ValueError('invalid case filename')
+        path=materials/case['file']
+        if not path.resolve().is_relative_to(materials.resolve()): raise ValueError('material outside directory')
+        doc=_read(path)
+        if evidence_hash(doc)!=case['sha256'] or doc['case_id']!=case['case_id']: raise ValueError('case fingerprint mismatch')
+        values.append((case['case_id'],doc['input']))
+    if len({key for key,_ in values})!=len(values): raise ValueError('duplicate case ID')
+    return manifest,values
+
+
+def _case_statistics(case_id, payload, vote):
+    rows=list(zip(payload['memories'],vote['memory_results'],strict=True))
+    model=[v for m,v in rows if m['author']!='admin']
+    return dict(case_id=case_id,label_sha256=evidence_hash(dict(must_cover=payload['must_cover'],forbidden=payload['forbidden'])),
+        coverage=sum(vote['must_cover']),coverage_total=len(vote['must_cover']),
+        model_items=len(model),grounded_items=sum(v['supported'] for v in model),
+        violation_memory_items=sum(bool(v['violations']) for _,v in rows),
+        model_violation_memory_items=sum(bool(v['violations']) for v in model),
+        violation_occurrences=sum(len(v['violations']) for _,v in rows)+len(vote['projection_violations']),
+        projection_violations=len(vote['projection_violations']),forbidden_occurrences=sum(vote['forbidden']),
+        stage_coverage={key:sum(vote['stage_coverage'][key]) for key in STAGES})
+
+
+_REPEAT_TOTALS=('coverage','coverage_total','model_items','grounded_items','violation_memory_items',
+                'model_violation_memory_items','violation_occurrences','projection_violations','forbidden_occurrences')
+
+
+def summarize_repeated(series, scores):
+    """Describe existing independent scores; never grade or change vote merging."""
+    from statistics import mean
+    root=Path(series);description=_read(root/'series.json');_check_seal(description,'series_sha256')
+    if (description['invalidated'] or len(description['runs'])!=description['requested_runs']
+            or len(scores)!=description['requested_runs']):
+        raise ValueError('incomplete/invalid series or missing scores; no runs may be omitted')
+    runs=[];case_order=None;labels={}
+    for index,(record,score_path) in enumerate(zip(description['runs'],scores,strict=True),1):
+        if record['index']!=index or record['directory']!=f'run-{index:04d}' or record['invalidated']:
+            raise ValueError('invalid repeated run order')
+        manifest,inputs=_repeat_inputs(root,record);score=_read(Path(score_path))
+        if (score['materials_sha256']!=manifest['materials_sha256'] or score['scoring_status']!=SCORING_STATUS
+                or score['judge_runs'] not in (1,2) or len(score['judgments'])!=len(inputs)):
+            raise ValueError('score fingerprint/format mismatch')
+        if any(manifest['metadata'][k]!=description['metadata'][k] for k in ('corpus_sha256','source_sha256','scoring_sha256','replay_mode','models')):
+            raise ValueError('repeated inputs changed')
+        cases=[_case_statistics(key,payload,validate_vote(vote,payload))
+            for (key,payload),vote in zip(inputs,score['judgments'],strict=True)]
+        order=[c['case_id'] for c in cases]
+        if case_order is not None and case_order!=order: raise ValueError('case pairing mismatch')
+        case_order=order
+        for case in cases:
+            if case['case_id'] in labels and labels[case['case_id']]!=case['label_sha256']: raise ValueError('case labels changed')
+            labels[case['case_id']]=case['label_sha256']
+        totals={key:sum(c[key] for c in cases) for key in _REPEAT_TOTALS}
+        if (totals['coverage']!=score['metrics']['must_cover_covered'] or totals['coverage_total']!=score['metrics']['must_cover_total']
+                or totals['model_items']!=score['metrics']['model_items'] or totals['grounded_items']!=score['metrics']['grounded_items']
+                or totals['forbidden_occurrences']!=score['metrics']['forbidden_occurrences']):
+            raise ValueError('score metrics disagree with votes')
+        totals['grounded_ratio']=totals['grounded_items']/totals['model_items'] if totals['model_items'] else None
+        runs.append(dict(index=index,**totals,usage=_repeat_usage(root/record['directory']),
+            wall_seconds=record['wall_seconds'],judge_model=score['judge_model'],judge_runs=score['judge_runs'],
+            gate_eligible=score['gate_eligible'],cases=cases))
+    means={key:mean(r[key] for r in runs) for key in _REPEAT_TOTALS}
+    means.update(calls=mean(r['usage']['calls'] for r in runs),request_seconds=mean(r['usage']['request_seconds'] for r in runs),
+                 wall_seconds=mean(r['wall_seconds'] for r in runs),
+                 grounded_ratio=mean(r['grounded_ratio'] for r in runs) if all(r['grounded_ratio'] is not None for r in runs) else None)
+    per_case=[]
+    for offset,key in enumerate(case_order or []):
+        values=[r['cases'][offset]['coverage'] for r in runs]
+        per_case.append(dict(case_id=key,label_sha256=labels[key],coverage_counts=values,coverage_mean=mean(values),
+            coverage_min=min(values),coverage_max=max(values),coverage_total=runs[0]['cases'][offset]['coverage_total']))
+    return _sealed(dict(format_version=1,evaluation='entry_profile_repeated_summary',metadata=description['metadata'],
+        settings=description['settings'],runs=runs,means=means,per_case=per_case,descriptive_only=True,gate_eligible=False),'summary_sha256')
+
+
+def compare_repeated(left, right):
+    """Paired by run ordinal and stable case ID, with no selection of good runs."""
+    from statistics import mean
+    for value in (left,right): _check_seal(value,'summary_sha256')
+    for key in ('corpus_sha256','scoring_sha256','source_sha256','replay_mode','models'):
+        if left['metadata'][key]!=right['metadata'][key]: raise ValueError('paired '+key+' mismatch')
+    if not left['runs'] or len(left['runs'])!=len(right['runs']): raise ValueError('paired run count mismatch')
+    pairs=[];run_pairs=[]
+    for a,b in zip(left['runs'],right['runs'],strict=True):
+        if a['index']!=b['index']: raise ValueError('paired run index mismatch')
+        ac={c['case_id']:c for c in a['cases']};bc={c['case_id']:c for c in b['cases']}
+        if ac.keys()!=bc.keys(): raise ValueError('paired case mismatch')
+        for key,x in ac.items():
+            y=bc[key]
+            if x['label_sha256']!=y['label_sha256']: raise ValueError('paired labels mismatch')
+            pairs.append(dict(index=a['index'],case_id=key,left_coverage=x['coverage'],right_coverage=y['coverage'],
+                coverage_delta=y['coverage']-x['coverage'],
+                left_violation_memory_items=x['violation_memory_items'],right_violation_memory_items=y['violation_memory_items'],
+                left_forbidden_occurrences=x['forbidden_occurrences'],right_forbidden_occurrences=y['forbidden_occurrences']))
+        run_pairs.append(dict(index=a['index'],coverage_delta=b['coverage']-a['coverage'],
+            calls_delta=b['usage']['calls']-a['usage']['calls'],request_seconds_delta=b['usage']['request_seconds']-a['usage']['request_seconds'],
+            wall_seconds_delta=b['wall_seconds']-a['wall_seconds']))
+    per_case=[]
+    for key in dict.fromkeys(p['case_id'] for p in pairs):
+        values=[p['coverage_delta'] for p in pairs if p['case_id']==key]
+        per_case.append(dict(case_id=key,coverage_deltas=values,coverage_delta_mean=mean(values)))
+    totals={name:{**{key:sum(r[key] for r in value['runs']) for key in _REPEAT_TOTALS},
+        'calls':sum(r['usage']['calls'] for r in value['runs']),
+        'request_seconds':sum(r['usage']['request_seconds'] for r in value['runs']),
+        'wall_seconds':sum(r['wall_seconds'] for r in value['runs'])} for name,value in (('left',left),('right',right))}
+    return dict(format_version=1,evaluation='entry_profile_paired_comparison',descriptive_only=True,gate_eligible=False,
+        left_summary_sha256=left['summary_sha256'],right_summary_sha256=right['summary_sha256'],
+        left_settings=left['settings'],right_settings=right['settings'],pairs=pairs,run_pairs=run_pairs,per_case=per_case,totals=totals,
+        means={key:mean(r[key] for r in run_pairs) for key in ('coverage_delta','calls_delta','request_seconds_delta','wall_seconds_delta')})
+
+
 def main():
     import argparse
-    parser=argparse.ArgumentParser(description='Entry-profile memory execution / offline scoring')
+    parser=argparse.ArgumentParser(description='Entry-profile memory execution / offline scoring / repeated paired comparison')
     sub=parser.add_subparsers(dest='command',required=True)
     run=sub.add_parser('run');run.add_argument('--corpus',required=True);run.add_argument('--out',required=True)
+    run.add_argument('--union-nomination',action='store_true')
+    repeat=sub.add_parser('repeat');repeat.add_argument('--corpus',required=True);repeat.add_argument('--out',required=True)
+    repeat.add_argument('--runs',type=int,required=True);repeat.add_argument('--union-nomination',action='store_true')
     score=sub.add_parser('score');score.add_argument('--materials',required=True)
     score.add_argument('--judgments',action='append',required=True);score.add_argument('--judge-model',required=True);score.add_argument('--out',required=True)
+    summary=sub.add_parser('summarize');summary.add_argument('--series',required=True);summary.add_argument('--score',action='append',required=True);summary.add_argument('--out',required=True)
+    compare=sub.add_parser('compare');compare.add_argument('--left',required=True);compare.add_argument('--right',required=True);compare.add_argument('--out',required=True)
     args=parser.parse_args()
-    if args.command=='run':
+    if args.command in ('run','repeat'):
         from iris.models import load_test_models
-        manifest=run_sqlite(args.corpus,args.out,configs=load_test_models())
-        print(json.dumps(dict(cases=len(manifest['cases']),gate_eligible=manifest['metadata']['gate_eligible'],
-                              invalidated=manifest['metadata']['invalidated']),ensure_ascii=False))
-        if manifest['metadata']['invalidated']:
-            raise SystemExit(2)
-    else:
+        if args.command=='repeat':
+            result=run_repeated(args.corpus,args.out,runs=args.runs,union_nomination=args.union_nomination,configs=load_test_models())
+            print(json.dumps(dict(runs=len(result['runs']),invalidated=result['invalidated']),ensure_ascii=False))
+            if result['invalidated']: raise SystemExit(2)
+        else:
+            manifest=run_sqlite(args.corpus,args.out,configs=load_test_models(),union_nomination=args.union_nomination)
+            print(json.dumps(dict(cases=len(manifest['cases']),gate_eligible=manifest['metadata']['gate_eligible'],
+                                  invalidated=manifest['metadata']['invalidated']),ensure_ascii=False))
+            if manifest['metadata']['invalidated']: raise SystemExit(2)
+    elif args.command=='score':
         result=score_draft(args.materials,args.judgments,judge_model=args.judge_model)
-        _write(Path(args.out),result)
-        print(json.dumps(result['metrics'],ensure_ascii=False))
+        _write(Path(args.out),result);print(json.dumps(result['metrics'],ensure_ascii=False))
+    elif args.command=='summarize':
+        result=summarize_repeated(args.series,args.score);_write(Path(args.out),result)
+        print(json.dumps(result['means'],ensure_ascii=False))
+    else:
+        result=compare_repeated(_read(Path(args.left)),_read(Path(args.right)));_write(Path(args.out),result)
+        print(json.dumps(result['means'],ensure_ascii=False))
 
 
 if __name__=='__main__':
