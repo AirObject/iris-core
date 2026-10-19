@@ -67,7 +67,11 @@ class FakeGateway:
         if self.callback:
             callback, self.callback = self.callback, None
             callback()
-        if purpose == 'persona_generate':
+        if self.calls[-1][1].get('task') == 'handwritten_review':
+            decision = getattr(self,'handwritten_decision','keep')
+            value = {'decision':decision,'reason':'假模型的手写语义结论。','evidence':[],
+                     'instruction_quote':self.calls[-1][1]['handwritten']['text'] if decision=='reply_instruction' else ''}
+        elif purpose == 'persona_generate':
             value = self.generated
         elif purpose == 'persona_sentence_repair':
             value = {'repairs':[{'index':s['index'],'text':None} for s in self.calls[-1][1]['problems']]}
@@ -186,12 +190,13 @@ def test_s18_single_date_requires_scene(store, clock):
     assert result['version']['sentences'][-1]['date_count'] == 1
 
 
-def test_s19_admin_removal_forces_large_and_pending(store, clock):
+def test_s19_unauthorized_admin_omission_is_restored(store, clock):
     manual = admin_edit(store, '我喜欢简短的表达。', expected_version=1, clock=clock)
     result, _ = generate(store, clock)
-    assert result['version']['change_degree'] == 'large'
-    assert result['version']['status'] == 'pending'
-    assert current_persona(store)['id'] == manual['id']
+    assert manual['content'] in result['version']['content']
+    assert not result['version']['checks']['admin_content_removed_or_changed']
+    assert result['version']['status'] == 'current'
+    assert current_persona(store)['id'] == result['version']['id']
 
 
 def test_pending_replacement_confirmation_and_rejection(store, clock):
@@ -298,7 +303,9 @@ def test_admin_marker_cannot_be_forged_and_exact_carry_is_protected(store, clock
     assert kept['status'] == 'current'
     assert kept['sentences'][-1]['origin'] == 'admin'
     next_result, _ = generate(store, clock)
-    assert next_result['version']['status'] == 'pending'
+    assert next_result['version']['status'] == 'current'
+    assert manual['content'] in next_result['version']['content']
+    assert not next_result['version']['checks']['admin_content_removed_or_changed']
 
 
 def test_trace_deduplicates_dates_and_samples_oldest_and_last_three(store):

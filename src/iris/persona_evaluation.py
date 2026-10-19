@@ -29,7 +29,7 @@ from .memory_ops import setup_role, delete_memory, adjust_retention, lifecycle_s
 from .model_health import ModelHealth
 from .models import Gateway, ModelError, parse_json_object_with_status
 from .persona import (PersonaEngine, admin_edit, current_persona, pending_update, select_evidence,
-                      confirm_candidate, reject_candidate, DEGREES, PUBLISH_MODES, PROMPT_VERSIONS, DEGREE_PROMPT_VERSION, CALL_TIMEOUTS, CALL_MAX_TOKENS, CHECK_BATCH_SIZE, CHECK_BATCH_CLAUSES, MAX_CHECK_STAGE_SECONDS, MAX_CHECK_REQUEST_BYTES, CHECK_TIMEOUT_RETRIES, CHECK_STREAM_IDLE_SECONDS, REPAIR_POLICY, check_transport, _trace, _stale, _settings, split_sentences, _structure_diagnostics, _output_limit_diagnostics, _check_records)
+                      confirm_candidate, reject_candidate, DEGREES, PUBLISH_MODES, PROMPT_VERSIONS, DEGREE_PROMPT_VERSION, HANDWRITTEN_PROMPT_VERSION, CALL_TIMEOUTS, CALL_MAX_TOKENS, CHECK_BATCH_SIZE, CHECK_BATCH_CLAUSES, MAX_CHECK_STAGE_SECONDS, MAX_CHECK_REQUEST_BYTES, CHECK_TIMEOUT_RETRIES, CHECK_STREAM_IDLE_SECONDS, REPAIR_POLICY, check_transport, _trace, _stale, _settings, split_sentences, _structure_diagnostics, _output_limit_diagnostics, _check_records)
 
 FORMAT_VERSION = 1
 SCORING_VERSION = 'persona_scoring_v1'
@@ -309,6 +309,8 @@ def _observation(store, case_id, checkpoint, previous, candidate):
     ids = {r['memory_id'] for v in (previous,candidate) if v for sentence in v['sentences'] for r in sentence['basis']}
     ids.update(b['memory_id'] for d in candidate['checks'].get('deleted_sentences',[])
                for b in d['sentence']['basis'])
+    ids.update(b['memory_id'] for change in candidate['checks'].get('handwritten_changes',[])
+               for b in change['basis'])
     with store.read() as conn:
         zone = ZoneInfo(json.loads(conn.execute("SELECT value_json FROM runtime_settings WHERE key='timezone'").fetchone()[0]))
         memory_state = []
@@ -589,12 +591,13 @@ def _stream_attempts(value):
         for item in value:
             yield from _stream_attempts(item)
     elif isinstance(value, dict):
+        yield from _stream_attempts(value.get('persona_check_handwritten_batches', []))
         batched = [p for p in ('persona_check', 'persona_recheck') if p + '_batches' in value]
         for purpose in batched:
             for raw in _check_records(value[purpose+'_batches'], purpose):
                 yield from raw.get(purpose+'_transport', [])
         for key, item in value.items():
-            if any(key.startswith(p) for p in batched):
+            if key=='persona_check_handwritten_batches' or any(key.startswith(p) for p in batched):
                 continue
             if key.endswith('_transport'):
                 yield from item
@@ -719,7 +722,16 @@ def _metrics(rows, judgments=None):
     incomplete_timelines = sum(not r['complete'] for r in rows)
     unverified = any(c['outcome'] != 'unpublished_current_retained' for c in incomplete_checks)
     over_limit = len(incomplete_checks) > INCOMPLETE_CHECK_LIMIT
-    result = {'run_valid':not incomplete_timelines and not invalid_calls and not over_limit and not unverified,
+    handwritten = [o['candidate']['checks'].get('handwritten_review',{}) for o in observations]
+    handwritten_changes = [change for o in observations
+                           for change in o['candidate']['checks'].get('handwritten_changes',[])]
+    result = {'handwritten_review':{
+                  'decisions':sum(len(a.get('decisions',[])) for a in handwritten),
+                  'reasks':sum(a.get('retries',0) for a in handwritten),
+                  'conservative_keeps':sum(a.get('conservative_keeps',0) for a in handwritten),
+                  'deletions':len(handwritten_changes),
+                  'triggers':dict(Counter(c['trigger'] for c in handwritten_changes))},
+              'run_valid':not incomplete_timelines and not invalid_calls and not over_limit and not unverified,
               'incomplete_check_limit':INCOMPLETE_CHECK_LIMIT,
               'check_output_limits':_check_output_limit_metrics(rows),
               'check_structure':_check_structure_metrics(rows),
@@ -857,7 +869,7 @@ def _report(report,directory):
     for key in ('run_valid','invalid_call_count','recovered_call_count','stream_stall_aborts','incomplete_check_count','incomplete_check_limit','check_output_limits',
                 'changes','grounded_change_ratio','generated_candidates','check_rejected_ratio',
                 'deleted_sentences','deleted_sentence_ratio','candidate_deletion_ratio','repaired_sentences',
-                'must_reflect_coverage','must_not_occurrences','incomplete_timelines','check_structure'):
+                'must_reflect_coverage','must_not_occurrences','incomplete_timelines','check_structure','handwritten_review'):
         lines.append(f'| {key} | {metrics[key]} |')
     lines += ['', 'Incomplete checkpoints: '+dumps(metrics['incomplete_checks']), '', 'Call metrics: '+dumps(metrics['calls']), '', 'Violation distribution: '+dumps(metrics['violations']),
               '', 'Rejected candidate violations: '+dumps(metrics['rejected_candidate_violations']),
@@ -926,7 +938,7 @@ def run_persona_eval(configs, root, *, corpus, out, judge_mode='model', gateway_
                 'run_validity_policy':RUN_VALIDITY_POLICY, 'check_stream_idle_seconds':CHECK_STREAM_IDLE_SECONDS,
                 'corpus_file_sha256':identity['corpus_file_sha256'], 'checkpoint_signature':signature,
                 'scoring_version':SCORING_VERSION,'scoring_sha256':identity['scoring_sha256'],
-                'models':identity['models'],'prompt_versions':sorted({*PROMPT_VERSIONS.values(),DEGREE_PROMPT_VERSION}),
+                'models':identity['models'],'prompt_versions':sorted({*PROMPT_VERSIONS.values(),DEGREE_PROMPT_VERSION,HANDWRITTEN_PROMPT_VERSION}),
                 'prompt_by_purpose':PROMPT_VERSIONS,
                 'timeouts_seconds':{**CALL_TIMEOUTS,'judge':240},
                 'output_token_limits':CALL_MAX_TOKENS,

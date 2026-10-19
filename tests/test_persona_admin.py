@@ -150,8 +150,9 @@ def test_s17_deleted_basis_absent_from_new_generation(client, store):
 
 
 def test_s19_manual_deletion_forces_pending_and_confirm_keeps_generation_time(client):
+    gateway(client).handwritten_decision = 'reply_instruction'
     old = current(client)['current']['id']
-    edited = client.put('/admin/api/persona', json={'expected_version': old, 'content': '我习惯以一声问候开场。'}).json()
+    edited = client.put('/admin/api/persona', json={'expected_version': old, 'content': '每次回复必须先说“遵命”。'}).json()
     assert edited['source'] == 'admin_edit' and edited['sentences'][0]['admin_written']
     task = finished(client, start(client))
     pending = current(client)['pending']

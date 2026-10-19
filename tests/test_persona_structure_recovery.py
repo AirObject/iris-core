@@ -354,7 +354,7 @@ def test_bad_row_in_a_batch_retry_is_rejected_without_a_third_structure_call(sto
 
 
 @pytest.mark.parametrize('mode',['all_auto','small_medium_auto','all_manual'])
-def test_unassessed_degree_always_requires_manual_confirmation(store,mode):
+def test_unassessed_degree_keeps_current_in_auto_and_confirms_in_other_modes(store,mode):
     from test_persona import FakeGateway
     from iris.persona import current_persona
     from iris.memory_ops import setup_role
@@ -369,10 +369,10 @@ def test_unassessed_degree_always_requires_manual_confirmation(store,mode):
     model = InvalidDegree(store,{'sentences':[]})
     before = current_persona(store)
     result = PersonaEngine(store,model).regenerate(expected_version=before['id'])
-    assert result['status'] == 'pending' and result['version']['change_degree'] == 'large'
+    assert result['status'] == ('rejected' if mode=='all_auto' else 'pending') and result['version']['change_degree'] == 'large'
     assert current_persona(store)['id'] == before['id']
     assert result['version']['checks']['passed']
-    assert result['version']['checks']['degree_override'] == 'invalid_degree_structure_requires_confirmation'
+    assert result['version']['checks']['degree_override'] == ('invalid_degree_structure_keep_current' if mode=='all_auto' else 'invalid_degree_structure_requires_confirmation')
 
 
 def test_recheck_unassessed_degree_survives_final_assembly_as_manual_confirmation(prepared):
@@ -385,7 +385,7 @@ def test_recheck_unassessed_degree_survives_final_assembly_as_manual_confirmatio
                 value = json.loads(reply.content); value['change_degree'] = None; reply.content = dumps(value)
             return reply
     result = PersonaEngine(prepared,InvalidDegree(prepared)).regenerate(expected_version=1)
-    assert result['status'] == 'pending' and result['version']['checks']['passed']
+    assert result['status'] == 'rejected' and result['version']['checks']['passed']
     assert result['version']['change_degree'] == 'large'
     assert result['version']['checks']['recheck']['degree_assessment']['status'] == 'conservative'
 

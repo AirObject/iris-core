@@ -51,7 +51,7 @@ def test_schema_recovery_and_incomplete_checkpoints_execute_remaining_events_and
         def chat(self,messages,purpose,**kwargs):
             if purpose=='persona_generate':type(self).generation+=1
             reply=super().chat(messages,purpose,**kwargs)
-            if purpose=='persona_check':
+            if purpose=='persona_check' and json.loads(messages[-1]['content']).get('task')!='handwritten_review':
                 value=json.loads(reply.content)
                 if format_failure == 'coverage': value['sentences'] = []
                 elif format_failure == 'degree': value['change_degree'] = 'unknown'
