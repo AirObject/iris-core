@@ -758,32 +758,82 @@ def _instant(value):
         return None
 
 
-def _handwritten_snapshot(conn, previous):
-    """Find each exact occurrence's last introduction along its current lineage.
+def _handwritten_links(version, parent):
+    """Map surviving items to exact parent references, never a shifted occurrence.
 
-    Unchanged sentences carried through edits/generations and rollback keep
-    their original time; uncertain lineage licenses no correction.
+    Admin edits consume existing matches before appending new ones. Automatic
+    assembly preserves survivors in per-text order after the recorded deletions.
+    Missing/inconsistent history cannot establish an item's introduction.
     """
-    result, occurrences = {}, Counter()
+    current = _admin_sentences(version)
+    previous = _admin_sentences(parent) if parent else {}
+    def grouped(items):
+        result = {}
+        for ref, sentence in items.items():
+            result.setdefault(sentence['text'], []).append(ref)
+        return result
+    after, before = grouped(current), grouped(previous)
+    links, introduced = {}, set()
+    source = version['source']
+    if source == 'rollback':
+        if parent is not None and version['sentences'] == parent['sentences']:
+            links = {ref:ref for ref in current}
+    elif source == 'admin_edit':
+        for text, refs in after.items():
+            matches = before.get(text, [])
+            # Removing an unlabelled duplicate cannot identify the survivor.
+            if len(refs) < len(matches):
+                continue
+            for index, ref in enumerate(refs):
+                if index < len(matches):
+                    links[ref] = matches[index]
+                else:
+                    introduced.add(ref)
+    elif parent is not None and source in ('periodic', 'regenerate'):
+        material = version.get('material') or {}
+        if 'handwritten_changes' not in material:
+            # Older versions have no deletion ledger. Only a unique exact
+            # match establishes a correspondence without guessing an item.
+            links = {refs[0]:before[text][0] for text,refs in after.items()
+                     if len(refs)==1 and len(before.get(text, []))==1}
+        else:
+            changes, deleted = material['handwritten_changes'], set()
+            if not isinstance(changes, list):
+                return {}, set()
+            for change in changes:
+                if (not isinstance(change, dict) or not isinstance(change.get('ref'), str)
+                        or change['ref'] not in previous or change['ref'] in deleted
+                        or change.get('action') != 'delete'
+                        or change.get('sentence') != previous[change['ref']]):
+                    return {}, set()
+                deleted.add(change['ref'])
+            for text, refs in after.items():
+                survivors = [ref for ref in before.get(text, []) if ref not in deleted]
+                if len(refs) == len(survivors):
+                    links.update(zip(refs, survivors))
+    return links, introduced
+
+
+def _handwritten_snapshot(conn, previous):
+    """Follow immutable version/deletion references back to each introduction."""
+    result = {}
     for ref, sentence in _admin_sentences(previous).items():
-        text = sentence['text']
-        occurrences[text] += 1
-        rank, version, seen = occurrences[text], previous, set()
-        written_at = version['created_at']
-        while True:
-            parent_id = version['rollback_of'] if version['source']=='rollback' else version.get('base_version_id')
-            if not parent_id:
-                break
-            if version['id'] in seen:
-                written_at = None
-                break
+        cursor, version, seen, written_at = ref, previous, set(), None
+        while version['id'] not in seen:
             seen.add(version['id'])
-            parent = _get(conn, parent_id)
-            matching = sum(s['origin']=='admin' and s['text']==text for s in parent['sentences'])
-            if matching < rank:
+            parent_id = version['rollback_of'] if version['source']=='rollback' else version.get('base_version_id')
+            try:
+                parent = _get(conn, parent_id) if parent_id else None
+            except ValueError:
                 break
-            written_at, version = parent['created_at'], parent
-        result[ref] = {'ref':ref, 'text':text, 'written_at':written_at}
+            links, introduced = _handwritten_links(version, parent)
+            if cursor in introduced:
+                written_at = version['created_at'] if _instant(version['created_at']) else None
+                break
+            if cursor not in links or parent is None:
+                break
+            cursor, version = links[cursor], parent
+        result[ref] = {'ref':ref, 'text':sentence['text'], 'written_at':written_at}
     return result
 
 
@@ -813,28 +863,26 @@ def _handwritten_answer(answer, evidence, sentence):
 
 
 def _assemble_handwritten(sentences, material, previous):
-    """Only reviewed deletions may remove an admin occurrence, regardless of generation."""
+    """Carry each protected item once, preserving per-text parent order."""
     deleted = {c['ref'] for c in material.get('handwritten_changes',[])}
     manual = _admin_sentences(previous)
     removed_text = {manual[ref]['text'] for ref in deleted}
-    protected = [s for ref,s in manual.items() if ref not in deleted]
-    remaining = Counter(s['text'] for s in protected)
+    protected = {ref:s for ref,s in manual.items() if ref not in deleted}
+    remaining = {}
+    for ref, sentence in protected.items():
+        remaining.setdefault(sentence['text'], []).append(ref)
     assembled = []
     for sentence in sentences:
         if sentence['text'] in removed_text:
             continue
         if sentence['text'] in remaining:
-            # An automatic attribution cannot erase administrative provenance.
-            if remaining[sentence['text']] > 0:
-                original = next(s for s in protected if s['text']==sentence['text'])
-                assembled.append(original)
-                remaining[sentence['text']] -= 1
+            # Consume the actual surviving occurrence, not the first equal text.
+            if remaining[sentence['text']]:
+                ref = remaining[sentence['text']].pop(0)
+                assembled.append(protected.pop(ref))
             continue
         assembled.append(sentence)
-    for sentence in protected:
-        if remaining[sentence['text']] > 0:
-            assembled.append(sentence)
-            remaining[sentence['text']] -= 1
+    assembled.extend(protected.values())
     return assembled
 
 
