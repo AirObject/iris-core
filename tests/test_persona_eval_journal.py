@@ -45,7 +45,7 @@ def test_interruption_preserves_completed_checkpoint_raw_outputs_and_does_not_re
 
 
 @pytest.mark.parametrize('format_failure', ['coverage', 'degree', 'output_limit'])
-def test_only_unrecovered_check_failures_stop_remaining_events_and_timelines(tmp_path, format_failure):
+def test_schema_recovery_and_incomplete_checkpoints_execute_remaining_events_and_timelines(tmp_path, format_failure):
     class Broken(FakeGateway):
         generation=0
         def chat(self,messages,purpose,**kwargs):
@@ -63,10 +63,12 @@ def test_only_unrecovered_check_failures_stop_remaining_events_and_timelines(tmp
         **inputs(tmp_path,[TIMELINE,second]))
     summary=next((tmp_path/'out').glob('persona-*.md')).read_text()
     if format_failure == 'output_limit':
-        assert '| run_valid | False |' in summary and '| unexecuted_timelines | 1 |' in summary
-        assert Broken.generation == 1 and not report['metrics']['run_valid']
-        assert report['executed_timelines'] == report['unexecuted_timelines'] == 1
-        assert report['rows'][0]['completed_events'] == 2 and report['rows'][0]['remaining_events'] == 2
+        assert '| run_valid | False |' in summary and '| unexecuted_timelines | 0 |' in summary
+        assert Broken.generation == 4 and not report['metrics']['run_valid']
+        assert report['executed_timelines'] == 2 and report['unexecuted_timelines'] == 0
+        assert all(row['remaining_events'] == 0 and row['complete'] for row in report['rows'])
+        assert report['metrics']['incomplete_check_count'] == 4
+        assert 'incomplete_check_limit_exceeded' in report['metrics']['run_invalid_reasons']
     else:
         assert '| run_valid | True |' in summary and '| unexecuted_timelines | 0 |' in summary
         assert Broken.generation == 4 and report['metrics']['run_valid']
@@ -78,7 +80,7 @@ def test_only_unrecovered_check_failures_stop_remaining_events_and_timelines(tmp
     assert report['planned_timelines'] == 2
     for path in (tmp_path/'out').glob('.persona/*/timeline-progress-*.json'):
         journal = json.loads(path.read_text())
-        assert journal['state'] == ('invalid' if format_failure == 'output_limit' else 'complete')
+        assert journal['state'] == 'complete'
         assert journal['row'] in report['rows']
         assert any(json.loads(a['outputs_json']).get('persona_check') for a in journal['row']['attempts'])
 

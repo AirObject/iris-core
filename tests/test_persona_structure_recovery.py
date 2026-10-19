@@ -440,7 +440,7 @@ def test_structure_reask_never_swallows_infrastructure_errors(store,purpose,unit
     def run():
         return engine._check_all(purpose,material,[] if unit=='degree' else [sentence],
             full_content=sentence['text'],outputs={},assess_degree=unit=='degree')
-    if reason == 'output_limit' and unit != 'sentence':
+    if reason == 'output_limit':
         assert 'output_limit' in ' '.join(run()['validation_errors'])
     else:
         with pytest.raises(ModelError) as error:

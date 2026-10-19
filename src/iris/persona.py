@@ -598,10 +598,30 @@ def _structure_event(container, purpose, unit, errors, **fields):
     return event
 
 
+def _check_records(batches, purpose):
+    for raw in batches:
+        yield raw
+        for key in ('_timeout_retries', '_structure_events', '_focus_completions'):
+            for event in raw.get(purpose + key, []):
+                if isinstance(event.get('outputs'), dict):
+                    yield from _check_records([event['outputs']], purpose)
+        for split in raw.get(purpose + '_output_splits', []):
+            yield from _check_records([child['outputs'] for child in split['children']], purpose)
+
+
+def _output_limit_diagnostics(batches, purpose):
+    records = list(_check_records(batches, purpose))
+    truncations = [event for raw in records for event in raw.get(purpose + '_output_limits', [])]
+    splits = [event for raw in records for event in raw.get(purpose + '_output_splits', [])]
+    return {'truncations':len(truncations), 'splits':len(splits),
+            'split_results':dict(Counter(event['status'] for event in splits)),
+            'terminal_truncations':sum(event['candidate_count'] <= 1 for event in truncations)}
+
+
 def _structure_diagnostics(batches, purpose):
     initial, repeated, outcomes = Counter(), Counter(), Counter()
     sentences, events, degree_count, batch_count = set(), [], 0, 0
-    for raw in batches:
+    for raw in _check_records(batches, purpose):
         for event in raw.get(purpose + '_structure_events', []):
             unit = event['unit']
             (repeated if event.get('covered_by_batch_retry') else initial).update(
@@ -1909,7 +1929,12 @@ class PersonaEngine:
                 if reply.finish_reason == 'length':
                     # Exhausted reasoning/output is not malformed JSON to retry.
                     # Keep the raw result; no partial or parseable fragment passes.
-                    raise ModelError('invalid_output', 'output budget exhausted', reason='output_limit')
+                    outputs.setdefault(purpose + '_output_limits', []).append({
+                        'candidate_count':len(payload.get('candidate', [])),
+                        'request_bytes':request_bytes, 'finish_reason':reply.finish_reason})
+                    failure = ModelError('invalid_output', 'output budget exhausted', reason='output_limit')
+                    failure.check_sentence_count = len(payload.get('candidate', []))
+                    raise failure
                 try:
                     result, _ = parse_json_object_with_status(reply.content)
                     if set(result) == {'answer'} and isinstance(result['answer'], dict):
@@ -1947,6 +1972,10 @@ class PersonaEngine:
                          '检查对象／数组闭合、逗号和字符串转义，不重新判断事实或变化程度。'
                          '不要原样重复错误文本，只输出修正后的完整根 JSON 对象，不要解释。'}]
         except ModelError as error:
+            if error.reason == 'output_limit' and not hasattr(error, 'check_sentence_count'):
+                error.check_sentence_count = len(payload.get('candidate', []))
+                outputs.setdefault(purpose + '_output_limits', []).append({
+                    'candidate_count':error.check_sentence_count, 'signal':'output_limit'})
             # The gateway's late-response path records timed_out but may omit the
             # reason. Keep the attempt diagnostic consistent with that call record.
             if error.reason is None and error.summary in {
@@ -2244,7 +2273,242 @@ class PersonaEngine:
             audit['completed'] = True
         return merged
 
+    @staticmethod
+    def _remember_check_adverse(batch, payload, adverse):
+        # A truncation during a later correction must not erase an earlier
+        # aligned negative verdict or a failed literal evidence guard.
+        returned = batch.get('sentences')
+        if not isinstance(returned, list):
+            return
+        grouped = {}
+        for row in returned:
+            index = row.get('index') if isinstance(row, dict) else None
+            if type(index) is int and 1 <= index <= len(payload['candidate']):
+                grouped.setdefault(index, []).append(row)
+        for index, rows in grouped.items():
+            if len(rows) != 1:
+                continue
+            row = rows[0]
+            _, problems = _validate_clause_checks({'sentences':[copy.deepcopy(row)]},
+                {**payload, 'candidate':[payload['candidate'][index-1]]})
+            reasons = _adverse_field_verdicts(row) + problems.get(index, [])
+            if reasons:
+                previous = adverse.get(index, {})
+                adverse[index] = {
+                    'reasons':list(dict.fromkeys(previous.get('reasons', []) + reasons)),
+                    'fabricated':previous.get('fabricated', False) or row.get('fabricated') is True,
+                    'violations':list(dict.fromkeys(previous.get('violations', []) +
+                        [v for v in row.get('violations', []) if isinstance(v, str) and v.strip()]))
+                        if isinstance(row.get('violations', []), list) else previous.get('violations', [])}
+
+    def _check_fact_batch(self, purpose, material, subset, raw, *, deadline, retry_state,
+                          batch_index, diagnostics):
+        adverse = {}
+        try:
+            return self._check_fact_batch_once(purpose, material, subset, raw, deadline=deadline,
+                retry_state=retry_state, batch_index=batch_index, diagnostics=diagnostics, adverse=adverse)
+        except ModelError as error:
+            if error.reason != 'output_limit':
+                raise
+            # A single-sentence field/focus retry cannot be recovered by asking
+            # a larger enclosing batch again. No truncated fragment is parsed.
+            if len(subset) <= 1 or getattr(error, 'check_sentence_count', len(subset)) <= 1:
+                raise
+            split = {'sentence_indices':[s['_check_sentence'] for s in subset],
+                     'stage_deadline':deadline, 'status':'splitting', 'children':[]}
+            raw.setdefault(purpose + '_output_splits', []).append(split)
+            combined, originals, problems, window_problems = [], [], {}, {}
+            middle = len(subset) // 2
+            try:
+                for offset, child in ((0, subset[:middle]), (middle, subset[middle:])):
+                    child_raw = {purpose+'_task':'check_facts_and_rules',
+                                 purpose+'_prompt_version':PROMPT_VERSIONS[purpose],
+                                 'sentence_indices':[s['_check_sentence'] for s in child]}
+                    split['children'].append({'outputs':child_raw})
+                    checked, original, child_problems, issues = self._check_fact_batch(
+                        purpose, material, child, child_raw, deadline=deadline, retry_state=retry_state,
+                        batch_index=batch_index, diagnostics=diagnostics)
+                    originals.append(original)
+                    for row in checked['sentences']:
+                        index = row['index'] + offset
+                        row = {**row, 'index':index}
+                        if index in adverse:
+                            prior = adverse[index]
+                            row['supported'] = False
+                            row['fabricated'] = row['fabricated'] or prior['fabricated']
+                            row['violations'] = list(dict.fromkeys(row['violations'] + prior['violations']))
+                            row['clause_errors'] = list(dict.fromkeys(
+                                row.get('clause_errors', []) + prior['reasons']))
+                            problems.setdefault(index, []).extend(prior['reasons'])
+                            window_problems.setdefault(index, []).extend(prior['reasons'])
+                        combined.append(row)
+                    for target, source in ((window_problems, child_problems), (problems, issues)):
+                        for index, reasons in source.items():
+                            target.setdefault(index + offset, []).extend(reasons)
+            except ModelError as repeated:
+                split['status'] = 'incomplete_' + (repeated.reason or repeated.category)
+                raise
+            split['status'] = 'recovered'
+            for event in raw.get(purpose + '_structure_events', []):
+                if event['status'] == 'infrastructure_failure':
+                    event.update(status='partial', recovered_by_output_split=True)
+            split['preserved_adverse_sentence_indices'] = [subset[i-1]['_check_sentence'] for i in sorted(adverse)]
+            batch = {'sentences':combined, 'change_degree':'small',
+                     'reason':'complete sentence checks after output split'}
+            return batch, {'output_split_batches':originals}, window_problems, problems
+
+    def _check_fact_batch_once(self, purpose, material, subset, raw, *, deadline, retry_state,
+                               batch_index, diagnostics, adverse):
+        payload = _fact_payload(material, subset)
+        invalid_batches = diagnostics['invalid_batches']
+        invalid_fields = diagnostics['invalid_fields']
+        normalizations = diagnostics['normalizations']
+        short_circuits = diagnostics['short_circuits']
+        first_error = None
+        try:
+            batch = self._check_call(purpose, payload, raw, deadline=deadline, retry_state=retry_state)
+        except ModelError as error:
+            if not _structure_failure(error):
+                raise
+            batch = {}
+            first_error = _parse_structure_error(error)
+        original_batch = copy.deepcopy(batch)
+        self._remember_check_adverse(batch, payload, adverse)
+        batch, prior_adverse, conservative, batch_audit = self._correct_batch_coverage(
+            purpose, payload, batch, raw, deadline=deadline, retry_state=retry_state,
+            sentence_indices=[s['_check_sentence'] for s in subset], first_error=first_error)
+        if batch_audit is not None:
+            invalid_batches.append({'batch': batch_index + 1,
+                **{key: value for key, value in batch_audit.items() if key != 'outputs'}})
+        else:
+            self._remember_check_adverse(batch, payload, adverse)
+            batch = self._complete_positive_focus(purpose, payload, batch, raw,
+                deadline=deadline, retry_state=retry_state)
+        checked_batch = {**batch, 'validation_errors': []}
+        returned = batch.get('sentences')
+        if isinstance(returned,list):
+            checked_batch['sentences'] = [{**row,'clause_errors':[]} if isinstance(row,dict) else row
+                                          for row in returned]
+        mapped = (isinstance(returned, list) and len(returned) == len(subset)
+            and all(isinstance(row, dict) and type(row.get('index')) is int and row['index'] == i
+                    for i,row in enumerate(returned,1)))
+        problems = {}
+        if mapped:
+            normalized = []
+            for local,(sentence,row) in enumerate(zip(subset,returned),1):
+                row = {**copy.deepcopy(row), 'clause_errors': []}  # Preserve the raw model output.
+                if local in conservative:
+                    # This row was created here, not supplied by the model.
+                    # It has no proof and can only enter repair/deletion.
+                    errors, issues, malformed = [], {local: [row['reason']]}, []
+                else:
+                    malformed = _sentence_format_errors(row, local) + _proof_format_errors(row, local)
+                    errors, issues = _validate_clause_checks({'sentences':[row]},
+                        {**payload, 'candidate':[payload['candidate'][local-1]]})
+                    malformed.extend(errors)
+                if malformed:
+                    if batch_audit is not None:
+                        # The one batch reask already covered this row. Never
+                        # cascade another structural retry after a bad retry.
+                        audit = _structure_event(raw, purpose, 'sentence', malformed,
+                            sentence_index=sentence['_check_sentence'], local_index=local,
+                            covered_by_batch_retry=True, status='conservative_rejection')
+                        batch_audit['status'] = 'partial'
+                        batch_audit['conservative_sentence_indices'] = sorted(set(
+                            batch_audit['conservative_sentence_indices'] + [sentence['_check_sentence']]))
+                        row = _conservative_check_row(local, 'invalid sentence in batch retry', row)
+                        issues.setdefault(local, []).extend(malformed)
+                    else:
+                        row, issues, audit = self._correct_sentence_fields(
+                            purpose, payload, row, malformed, issues, raw, deadline=deadline,
+                            retry_state=retry_state, original_index=sentence['_check_sentence'])
+                    invalid_fields.append({'batch': batch_index + 1,
+                        **{key: value for key, value in audit.items() if key != 'outputs'}})
+                if local in prior_adverse:
+                    prior = prior_adverse[local]
+                    row['supported'] = False
+                    row['fabricated'] = row['fabricated'] or prior['fabricated']
+                    row['violations'] = list(dict.fromkeys(row['violations'] + prior['violations']))
+                    issues.setdefault(local, []).extend(prior['reasons'])
+                if row.get('additional_clause_checks'):
+                    full_sequence = sorted({part['index'] for part in row['clauses'] + row['additional_clause_checks']}) == [
+                        part['index'] for part in _clause_parts(sentence['text'])]
+                    normalizations.append({'batch':batch_index+1, 'sentence_index':sentence['_check_sentence'],
+                        'operation':('full_sentence_focus_checks' if full_sequence else 'additional_focus_checks'),
+                        'requested_clause_indices':[part['index'] for part in row['clauses']],
+                        'additional_clause_indices':[part['index'] for part in row['additional_clause_checks']]})
+                if row.get('repeated_clause_checks'):
+                    normalizations.append({'batch':batch_index+1, 'sentence_index':sentence['_check_sentence'],
+                        'operation':'repeated_focus_checks',
+                        'requested_clause_indices':[part['index'] for part in row['clauses']],
+                        'repeated_clause_indices':[part['index'] for part in row['repeated_clause_checks']]})
+                if row.get('unchecked_scope_check'):
+                    normalizations.append({'batch':batch_index+1,
+                        'sentence_index':sentence['_check_sentence'],
+                        'operation':'scope_omitted_after_evidence_rejection',
+                        'checked_clause_indices':[part['index'] for part in row['clauses']]})
+                if row.get('unchecked_clause_indices'):
+                    if row.get('guard_rejected_prefix'):
+                        normalizations.append({'batch':batch_index+1,
+                            'sentence_index':sentence['_check_sentence'],
+                            'operation':'positive_prefix_rejected_by_evidence_guard',
+                            'checked_clause_indices':[part['index'] for part in row['clauses']],
+                            'unchecked_clause_indices':list(row['unchecked_clause_indices'])})
+                    elif 'stop_after_failure' not in returned[local-1]:
+                        normalizations.append({'batch':batch_index+1,
+                            'sentence_index':sentence['_check_sentence'],
+                            'operation':'negative_prefix_without_stop_marker',
+                            'checked_clause_indices':[part['index'] for part in row['clauses']],
+                            'unchecked_clause_indices':list(row['unchecked_clause_indices'])})
+                    short_circuits.append({'batch':batch_index+1,
+                        'sentence_index':sentence['_check_sentence'],
+                        'unchecked_clause_indices':list(row['unchecked_clause_indices'])})
+                if isinstance(row.get('persona_kind'), str) and row['persona_kind'] in EXCLUDED_KINDS:
+                    issues.setdefault(local, []).append(EXCLUDED_KINDS[row['persona_kind']])
+                problems.update(issues)
+                # A false/invalid proof cannot be overridden by a true row flag.
+                if _valid_sentence_verdict(row,local) and problems.get(local):
+                    row['supported'] = False
+                normalized.append(row)
+            checked_batch['sentences'] = normalized
+            if batch_audit is not None:
+                invalid_batches[-1].update({key:value for key,value in batch_audit.items() if key != 'outputs'})
+        degree, structural, window_problems = _check_verdicts(checked_batch, subset, material=material)
+        if structural:
+            # Defensive final invariant: no model schema defect may become
+            # an incomplete check, or move a judgment to another sentence.
+            _structure_event(raw, purpose, 'batch', structural, status='conservative',
+                conservative_sentence_indices=[s['_check_sentence'] for s in subset],
+                covered_by_batch_retry=batch_audit is not None)
+            checked_batch = {'change_degree':'small', 'reason':'invalid batch structure',
+                'sentences':[_conservative_check_row(i, 'invalid batch structure')
+                             for i in range(1, len(subset) + 1)]}
+            problems = {i:['invalid batch structure'] for i in range(1, len(subset) + 1)}
+            _, _, window_problems = _check_verdicts(checked_batch, subset, material=material)
+        return checked_batch, original_batch, window_problems, problems
+
     def _check_all(self, purpose, material, sentences, *, full_content, outputs, assess_degree=True):
+        try:
+            result = self._check_all_stage(purpose, material, sentences, full_content=full_content,
+                                          outputs=outputs, assess_degree=assess_degree)
+        except ModelError as error:
+            if error.reason != 'output_limit':
+                if error.reason == 'timeout':
+                    outputs[purpose + '_incomplete'] = 'timeout'
+                raise
+            result = {'sentences':[], 'change_degree':'large', 'reason':'incomplete check: output_limit',
+                      'validation_errors':['output_limit; no complete judgment'],
+                      'incomplete_checks':[]}
+        raw_batches = outputs.get(purpose + '_batches', [])
+        if raw_batches and purpose not in outputs:
+            outputs.update(raw_batches[0])
+        result['output_limit_diagnostics'] = _output_limit_diagnostics(
+            outputs.get(purpose + '_batches', []), purpose)
+        if result.get('validation_errors'):
+            outputs[purpose + '_incomplete'] = 'output_limit'
+        return result
+
+    def _check_all_stage(self, purpose, material, sentences, *, full_content, outputs, assess_degree=True):
         """Check small focus windows, then AND facts and union failures per sentence."""
         import time
         subsets = _check_batches(sentences, material=material, purpose=purpose) if sentences else []
@@ -2301,139 +2565,14 @@ class PersonaEngine:
                    purpose+'_prompt_version':PROMPT_VERSIONS[purpose]}
             raw_batches.append(raw)
             retry_state = {'timeouts': 0}
-            try:
-                first_error = None
-                try:
-                    batch = self._check_call(purpose, payload, raw, deadline=deadline, retry_state=retry_state)
-                except ModelError as error:
-                    if not _structure_failure(error):
-                        raise
-                    batch = {}
-                    first_error = _parse_structure_error(error)
-                original_batch = copy.deepcopy(batch)
-                batch, prior_adverse, conservative, batch_audit = self._correct_batch_coverage(
-                    purpose, payload, batch, raw, deadline=deadline, retry_state=retry_state,
-                    sentence_indices=[s['_check_sentence'] for s in subset], first_error=first_error)
-                if batch_audit is not None:
-                    invalid_batches.append({'batch': batch_index + 1,
-                        **{key: value for key, value in batch_audit.items() if key != 'outputs'}})
-                else:
-                    batch = self._complete_positive_focus(purpose, payload, batch, raw,
-                        deadline=deadline, retry_state=retry_state)
-            except ModelError as error:
-                if error.reason != 'output_limit':
-                    raise
-                if batch_index == 0:
-                    outputs.update(raw)
-                return {'sentences':[], 'change_degree':'large',
-                        'reason':'incomplete check: output_limit',
-                        'validation_errors':[f'batch {batch_index+1}: output_limit; no complete judgment'],
-                        'batches':batches, 'window_map':window_map,
-                        'structure_diagnostics':_structure_diagnostics(raw_batches, purpose)}
+            checked_batch, original_batch, window_problems, problems = self._check_fact_batch(
+                purpose, material, subset, raw, deadline=deadline, retry_state=retry_state,
+                batch_index=batch_index, diagnostics={
+                    'invalid_batches':invalid_batches, 'invalid_fields':invalid_fields,
+                    'normalizations':normalizations, 'short_circuits':short_circuits})
             if batch_index == 0:
                 outputs.update(raw)
-            checked_batch = {**batch, 'validation_errors': []}
-            returned = batch.get('sentences')
-            if isinstance(returned,list):
-                checked_batch['sentences'] = [{**row,'clause_errors':[]} if isinstance(row,dict) else row
-                                              for row in returned]
-            mapped = (isinstance(returned, list) and len(returned) == len(subset)
-                and all(isinstance(row, dict) and type(row.get('index')) is int and row['index'] == i
-                        for i,row in enumerate(returned,1)))
-            problems = {}
-            if mapped:
-                normalized = []
-                for local,(sentence,row) in enumerate(zip(subset,returned),1):
-                    row = {**copy.deepcopy(row), 'clause_errors': []}  # Preserve the raw model output.
-                    if local in conservative:
-                        # This row was created here, not supplied by the model.
-                        # It has no proof and can only enter repair/deletion.
-                        errors, issues, malformed = [], {local: [row['reason']]}, []
-                    else:
-                        malformed = _sentence_format_errors(row, local) + _proof_format_errors(row, local)
-                        errors, issues = _validate_clause_checks({'sentences':[row]},
-                            {**payload, 'candidate':[payload['candidate'][local-1]]})
-                        malformed.extend(errors)
-                    if malformed:
-                        if batch_audit is not None:
-                            # The one batch reask already covered this row. Never
-                            # cascade another structural retry after a bad retry.
-                            audit = _structure_event(raw, purpose, 'sentence', malformed,
-                                sentence_index=sentence['_check_sentence'], local_index=local,
-                                covered_by_batch_retry=True, status='conservative_rejection')
-                            batch_audit['status'] = 'partial'
-                            batch_audit['conservative_sentence_indices'] = sorted(set(
-                                batch_audit['conservative_sentence_indices'] + [sentence['_check_sentence']]))
-                            row = _conservative_check_row(local, 'invalid sentence in batch retry', row)
-                            issues.setdefault(local, []).extend(malformed)
-                        else:
-                            row, issues, audit = self._correct_sentence_fields(
-                                purpose, payload, row, malformed, issues, raw, deadline=deadline,
-                                retry_state=retry_state, original_index=sentence['_check_sentence'])
-                        invalid_fields.append({'batch': batch_index + 1,
-                            **{key: value for key, value in audit.items() if key != 'outputs'}})
-                    if local in prior_adverse:
-                        prior = prior_adverse[local]
-                        row['supported'] = False
-                        row['fabricated'] = row['fabricated'] or prior['fabricated']
-                        row['violations'] = list(dict.fromkeys(row['violations'] + prior['violations']))
-                        issues.setdefault(local, []).extend(prior['reasons'])
-                    if row.get('additional_clause_checks'):
-                        full_sequence = sorted({part['index'] for part in row['clauses'] + row['additional_clause_checks']}) == [
-                            part['index'] for part in _clause_parts(sentence['text'])]
-                        normalizations.append({'batch':batch_index+1, 'sentence_index':sentence['_check_sentence'],
-                            'operation':('full_sentence_focus_checks' if full_sequence else 'additional_focus_checks'),
-                            'requested_clause_indices':[part['index'] for part in row['clauses']],
-                            'additional_clause_indices':[part['index'] for part in row['additional_clause_checks']]})
-                    if row.get('repeated_clause_checks'):
-                        normalizations.append({'batch':batch_index+1, 'sentence_index':sentence['_check_sentence'],
-                            'operation':'repeated_focus_checks',
-                            'requested_clause_indices':[part['index'] for part in row['clauses']],
-                            'repeated_clause_indices':[part['index'] for part in row['repeated_clause_checks']]})
-                    if row.get('unchecked_scope_check'):
-                        normalizations.append({'batch':batch_index+1,
-                            'sentence_index':sentence['_check_sentence'],
-                            'operation':'scope_omitted_after_evidence_rejection',
-                            'checked_clause_indices':[part['index'] for part in row['clauses']]})
-                    if row.get('unchecked_clause_indices'):
-                        if row.get('guard_rejected_prefix'):
-                            normalizations.append({'batch':batch_index+1,
-                                'sentence_index':sentence['_check_sentence'],
-                                'operation':'positive_prefix_rejected_by_evidence_guard',
-                                'checked_clause_indices':[part['index'] for part in row['clauses']],
-                                'unchecked_clause_indices':list(row['unchecked_clause_indices'])})
-                        elif 'stop_after_failure' not in returned[local-1]:
-                            normalizations.append({'batch':batch_index+1,
-                                'sentence_index':sentence['_check_sentence'],
-                                'operation':'negative_prefix_without_stop_marker',
-                                'checked_clause_indices':[part['index'] for part in row['clauses']],
-                                'unchecked_clause_indices':list(row['unchecked_clause_indices'])})
-                        short_circuits.append({'batch':batch_index+1,
-                            'sentence_index':sentence['_check_sentence'],
-                            'unchecked_clause_indices':list(row['unchecked_clause_indices'])})
-                    if isinstance(row.get('persona_kind'), str) and row['persona_kind'] in EXCLUDED_KINDS:
-                        issues.setdefault(local, []).append(EXCLUDED_KINDS[row['persona_kind']])
-                    problems.update(issues)
-                    # A false/invalid proof cannot be overridden by a true row flag.
-                    if _valid_sentence_verdict(row,local) and problems.get(local):
-                        row['supported'] = False
-                    normalized.append(row)
-                checked_batch['sentences'] = normalized
-                if batch_audit is not None:
-                    invalid_batches[-1].update({key:value for key,value in batch_audit.items() if key != 'outputs'})
-            degree, structural, window_problems = _check_verdicts(checked_batch, subset, material=material)
-            batches.append(original_batch)  # Preserve even an omitted empty degree-only list.
-            if structural:
-                # Defensive final invariant: no model schema defect may become
-                # an incomplete check, or move a judgment to another sentence.
-                _structure_event(raw, purpose, 'batch', structural, status='conservative',
-                    conservative_sentence_indices=[s['_check_sentence'] for s in subset],
-                    covered_by_batch_retry=batch_audit is not None)
-                checked_batch = {'change_degree':'small', 'reason':'invalid batch structure',
-                    'sentences':[_conservative_check_row(i, 'invalid batch structure')
-                                 for i in range(1, len(subset) + 1)]}
-                problems = {i:['invalid batch structure'] for i in range(1, len(subset) + 1)}
-                _, _, window_problems = _check_verdicts(checked_batch, subset, material=material)
+            batches.append(original_batch)
             for local,(sentence,row) in enumerate(zip(subset,checked_batch['sentences']),1):
                 original = sentence['_check_sentence']
                 if window_problems.get(local):

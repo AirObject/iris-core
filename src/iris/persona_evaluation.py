@@ -29,11 +29,12 @@ from .memory_ops import setup_role, delete_memory, adjust_retention, lifecycle_s
 from .model_health import ModelHealth
 from .models import Gateway, ModelError, parse_json_object_with_status
 from .persona import (PersonaEngine, admin_edit, current_persona, pending_update, select_evidence,
-                      confirm_candidate, reject_candidate, DEGREES, PUBLISH_MODES, PROMPT_VERSIONS, DEGREE_PROMPT_VERSION, CALL_TIMEOUTS, CALL_MAX_TOKENS, CHECK_BATCH_SIZE, CHECK_BATCH_CLAUSES, MAX_CHECK_STAGE_SECONDS, MAX_CHECK_REQUEST_BYTES, CHECK_TIMEOUT_RETRIES, CHECK_STREAM_IDLE_SECONDS, REPAIR_POLICY, check_transport, _trace, _stale, _settings, split_sentences, _structure_diagnostics)
+                      confirm_candidate, reject_candidate, DEGREES, PUBLISH_MODES, PROMPT_VERSIONS, DEGREE_PROMPT_VERSION, CALL_TIMEOUTS, CALL_MAX_TOKENS, CHECK_BATCH_SIZE, CHECK_BATCH_CLAUSES, MAX_CHECK_STAGE_SECONDS, MAX_CHECK_REQUEST_BYTES, CHECK_TIMEOUT_RETRIES, CHECK_STREAM_IDLE_SECONDS, REPAIR_POLICY, check_transport, _trace, _stale, _settings, split_sentences, _structure_diagnostics, _output_limit_diagnostics, _check_records)
 
 FORMAT_VERSION = 1
 SCORING_VERSION = 'persona_scoring_v1'
-RUN_VALIDITY_POLICY = 'completed_operation_recovery_v1'
+RUN_VALIDITY_POLICY = 'retained_incomplete_checkpoints_v2'
+INCOMPLETE_CHECK_LIMIT = 2
 # The frozen corpus publication contract is independent of product rollout defaults.
 EVAL_PUBLISH_MODE = 'small_medium_auto'
 VIOLATIONS = ('虚构', '设定写成亲历', '他人评价写成特质', '单一日期泛化', '当前状态或待办', '指令', '保留失效依据')
@@ -369,10 +370,11 @@ def _run_timeline(configs,case,directory,gateway_factory):
                 attempts = [dict(r) for r in conn.execute('SELECT * FROM persona_attempts ORDER BY id')]
                 calls = [dict(r) for r in conn.execute('SELECT * FROM model_calls ORDER BY id')]
             outcomes = _model_call_outcomes(calls, events, observations)
-            invalid_calls = [c for c in outcomes if not c['recovered']]
+            invalid_calls = [c for c in outcomes if not c['recovered'] and not c.get('tolerated')]
             recovered_calls = [c for c in outcomes if c['recovered']]
-            incomplete_checks = _incomplete_checks(observations)
-            invalid = not complete or bool(invalid_calls) or bool(incomplete_checks)
+            incomplete_checks = _incomplete_checks(observations, events)
+            invalid = not complete or bool(invalid_calls) or any(
+                c['outcome'] != 'unpublished_current_retained' for c in incomplete_checks)
             remaining = len(case['events']) - completed_events
             row = _redacted({'case':case, 'complete':finished and not invalid and not remaining,
                 'completed_events':completed_events, 'remaining_events':remaining,
@@ -452,14 +454,20 @@ def _run_timeline(configs,case,directory,gateway_factory):
                         observation = _observation(store,case['id'],{**event,'op':'checkpoint_current'},previous,current_persona(store))
                         observation['evidence'] = select_evidence(store)
                         observation['skip_reason'] = result['reason']
+                        with store.read() as conn:
+                            attempt = conn.execute('SELECT outputs_json FROM persona_attempts WHERE id=?',
+                                                   (result['attempt_id'],)).fetchone()
+                        raw_outputs = json.loads(attempt[0]) if attempt else {}
+                        observation['check_failure'] = {p:[raw_outputs[p+'_incomplete']]
+                            for p in ('persona_check', 'persona_recheck') if p+'_incomplete' in raw_outputs}
                         observations.append(observation)
                     if result['status'] in ('failed','conflict') or (result['status']=='skipped' and result['reason'] not in ('not_due','no_self_evidence')):
                         complete = False
                 completed_events = ordinal + 1
                 progress = snapshot()
-                if not complete or progress['invalid_calls'] or progress['incomplete_checks']:
-                    # No further model calls in a run already disqualified by a
-                    # technical failure. Complete negative judgments continue.
+                if not complete or progress['invalid_calls']:
+                    # Unrecovered infrastructure failures still stop execution.
+                    # Unpublished incomplete checks retain the current version and continue.
                     break
             return snapshot(finished=True)
         except BaseException as error:
@@ -498,16 +506,28 @@ def _is_change(observation):
             and previous is not None and candidate['content'] != previous['content'])
 
 
-def _model_call_outcomes(calls, checkpoints=(), observations=()):
-    """Recover only owned calls in a complete operation with a later success.
+def _retained_current(checkpoint, observation):
+    candidate, previous = observation['candidate'], observation.get('previous')
+    current = checkpoint.get('current') or {}
+    return (checkpoint['result']['status'] == 'rejected'
+        and candidate.get('status') == 'rejected' and not candidate.get('is_current')
+        and candidate.get('checks', {}).get('passed') is False
+        and previous is not None and candidate.get('base_version_id') == previous['id']
+        and current.get('id') == previous['id'] and current.get('is_current')
+        and current.get('content') == previous['content']
+        and current.get('sentences') == previous['sentences'])
 
-    Missing/ambiguous ownership in older or interrupted exports fails closed.
-    Success elsewhere cannot erase a failed operation; truncation never recovers.
+
+def _model_call_outcomes(calls, checkpoints=(), observations=()):
+    """Recover owned calls only; tolerate truncation only at retained checkpoints.
+
+    Timeout/429/call-error recovery still requires a complete product operation.
+    A later unrelated checkpoint cannot recover or tolerate an earlier failure.
     """
     owners = Counter(call_id for checkpoint in checkpoints
                      for call_id in checkpoint.get('call_ids', []))
     by_id = {c['id']: c for c in calls if 'id' in c}
-    recovered = {}
+    recovered, tolerated = {}, {}
     for checkpoint in checkpoints:
         ids, result = checkpoint.get('call_ids', []), checkpoint['result']
         candidate = result.get('version')
@@ -516,36 +536,51 @@ def _model_call_outcomes(calls, checkpoints=(), observations=()):
             continue
         matching = [o for o in observations if o['checkpoint_id'] == checkpoint['checkpoint']['id']
                     and o['candidate']['id'] == candidate['id']]
-        if len(matching) != 1 or _incomplete_checks(matching):
+        if len(matching) != 1:
             continue
+        incomplete = bool(_incomplete_checks(matching))
+        retained = incomplete and _retained_current(checkpoint, matching[0])
+        checks = candidate['checks']
+        split_recovered = any((checks.get(phase) or {}).get(
+            'output_limit_diagnostics', {}).get('split_results', {}).get('recovered', 0)
+            for phase in ('initial_model', 'model', 'recheck'))
         ordered = [by_id[i] for i in sorted(ids)]
         for position, call in enumerate(ordered):
             purpose = call['purpose'].removesuffix('_repair')
-            # Product completion requires all retries/checks within the existing
-            # call/stage deadlines; complete negative verdicts count too.
+            limited = (call.get('finish_reason') == 'length' and purpose in ('persona_check', 'persona_recheck')
+                       and not call.get('timed_out') and call.get('status_code') != 429
+                       and call.get('result_category') == 'success')
+            if retained and limited:
+                tolerated[call['id']] = {'checkpoint_id':checkpoint['checkpoint']['id'],
+                    'outcome':'unpublished_current_retained'}
+            if incomplete:
+                continue
             success = next((c for c in ordered[position + 1:]
                 if c['purpose'].removesuffix('_repair') == purpose
                 and c['result_category'] == 'success' and not c.get('timed_out')
                 and c.get('finish_reason') == 'stop'), None)
-            if success is not None:
+            if success is not None and (call.get('finish_reason') != 'length' or (limited and split_recovered)):
                 recovered[call['id']] = {'checkpoint_id':checkpoint['checkpoint']['id'],
                                         'recovered_by_call_id':success['id']}
     outcomes = []
     for call in calls:
-        reason = ('output_limit' if call.get('finish_reason') == 'length' else
-                  'rate_limited' if call.get('status_code') == 429 else
+        reason = ('rate_limited' if call.get('status_code') == 429 else
                   'timeout' if call.get('timed_out') else
-                  'transport_failure' if call.get('result_category') == 'retryable' else None)
+                  'transport_failure' if call.get('result_category') == 'retryable' else
+                  'output_limit' if call.get('finish_reason') == 'length' else None)
         if reason:
-            recovery = recovered.get(call.get('id')) if reason != 'output_limit' else None
+            recovery = recovered.get(call.get('id'))
+            tolerance = tolerated.get(call.get('id')) if reason == 'output_limit' else None
             outcomes.append({key:call.get(key) for key in
                 ('id','purpose','created_at','duration_ms','status_code','timed_out')} |
-                {'reason':reason, 'recovered':bool(recovery), **(recovery or {})})
+                {'reason':reason, 'recovered':bool(recovery), 'tolerated':bool(tolerance),
+                 **(recovery or tolerance or {})})
     return outcomes
 
 
 def _invalid_model_calls(calls, checkpoints=(), observations=()):
-    return [c for c in _model_call_outcomes(calls, checkpoints, observations) if not c['recovered']]
+    return [c for c in _model_call_outcomes(calls, checkpoints, observations)
+            if not c['recovered'] and not c['tolerated']]
 
 
 def _stream_attempts(value):
@@ -555,8 +590,11 @@ def _stream_attempts(value):
             yield from _stream_attempts(item)
     elif isinstance(value, dict):
         batched = [p for p in ('persona_check', 'persona_recheck') if p + '_batches' in value]
+        for purpose in batched:
+            for raw in _check_records(value[purpose+'_batches'], purpose):
+                yield from raw.get(purpose+'_transport', [])
         for key, item in value.items():
-            if any(key.startswith(p) and key != p + '_batches' for p in batched):
+            if any(key.startswith(p) for p in batched):
                 continue
             if key.endswith('_transport'):
                 yield from item
@@ -564,7 +602,7 @@ def _stream_attempts(value):
                 yield from _stream_attempts(item)
 
 
-def _incomplete_checks(observations):
+def _incomplete_checks(observations, checkpoints=()):
     """Separate missing model verdicts from complete negative quality verdicts.
 
     Recompute from frozen versions too: earlier reports may have called a safely
@@ -583,9 +621,15 @@ def _incomplete_checks(observations):
         for index, repair in enumerate(checks.get('repair_outputs', []), 1):
             if isinstance(repair, dict) and repair.get('error') == 'output_limit':
                 details[f'repair_{index}'] = ['output_limit']
+        if observation.get('check_failure'):
+            details.update(observation['check_failure'])
         if details:
-            failures.append({'timeline_id': observation['timeline_id'],
-                'checkpoint_id': observation['checkpoint_id'], 'details': details})
+            matching = [c for c in checkpoints if c['checkpoint']['id'] == observation['checkpoint_id']]
+            retained = len(matching) == 1 and _retained_current(matching[0], observation)
+            failures.append({'timeline_id':observation['timeline_id'],
+                'checkpoint_id':observation['checkpoint_id'], 'details':details,
+                'outcome':'unpublished_current_retained' if retained else 'unverified_incomplete_checkpoint',
+                'current_version_id':matching[0]['current']['id'] if len(matching) == 1 else None})
     return failures
 
 
@@ -605,6 +649,10 @@ def _call_metrics(calls, outcomes=None):
                 for purpose in dict.fromkeys(c['purpose'] for c in calls)},
             'usage_missing_calls':sum(c['prompt_tokens'] is None or c['completion_tokens'] is None for c in calls),
             'output_limited_calls':sum(c.get('finish_reason')=='length' for c in calls),
+            'recovered_output_limited_calls':sum(c['reason']=='output_limit' and c['recovered'] for c in outcomes),
+            'tolerated_output_limited_calls':sum(c['reason']=='output_limit' and c.get('tolerated', False) for c in outcomes),
+            'unrecovered_output_limited_calls':sum(c['reason']=='output_limit' and not c['recovered']
+                and not c.get('tolerated', False) for c in outcomes),
             'output_limits_by_purpose':dict(Counter(c['purpose'] for c in calls if c.get('finish_reason')=='length')),
             'timed_out_calls':sum(bool(c.get('timed_out')) for c in calls),
             'rate_limited_calls':sum(c.get('status_code') == 429 for c in calls),
@@ -639,6 +687,20 @@ def _check_structure_metrics(rows):
             'retry_failures':dict(repeated), 'retry_results':dict(outcomes), **totals}
 
 
+def _check_output_limit_metrics(rows):
+    totals = {'truncations':0, 'splits':0, 'terminal_truncations':0}
+    results = Counter()
+    for row in rows:
+        for attempt in row['attempts']:
+            outputs = json.loads(attempt['outputs_json'])
+            for purpose in ('persona_check', 'persona_recheck'):
+                diagnostic = _output_limit_diagnostics(outputs.get(purpose+'_batches', []), purpose)
+                for key in totals:
+                    totals[key] += diagnostic[key]
+                results.update(diagnostic['split_results'])
+    return {**totals, 'split_results':dict(results)}
+
+
 def _metrics(rows, judgments=None):
     observations = _observations(rows)
     rejected = [o for o in observations if o['candidate']['status']=='rejected']
@@ -652,10 +714,14 @@ def _metrics(rows, judgments=None):
     repairs = [len(o['candidate']['checks'].get('repaired_sentences',[])) for o in observations]
     call_outcomes = [c for row in rows for c in
         _model_call_outcomes(row['calls'], row['checkpoints'], row['observations'])]
-    invalid_calls = [c for c in call_outcomes if not c['recovered']]
-    incomplete_checks = _incomplete_checks(all_versions)
-    incomplete_timelines = sum(not r['complete'] or bool(_incomplete_checks(r['observations'])) for r in rows)
-    result = {'run_valid':not incomplete_timelines and not invalid_calls,
+    invalid_calls = [c for c in call_outcomes if not c['recovered'] and not c.get('tolerated')]
+    incomplete_checks = [c for row in rows for c in _incomplete_checks(row['observations'], row['checkpoints'])]
+    incomplete_timelines = sum(not r['complete'] for r in rows)
+    unverified = any(c['outcome'] != 'unpublished_current_retained' for c in incomplete_checks)
+    over_limit = len(incomplete_checks) > INCOMPLETE_CHECK_LIMIT
+    result = {'run_valid':not incomplete_timelines and not invalid_calls and not over_limit and not unverified,
+              'incomplete_check_limit':INCOMPLETE_CHECK_LIMIT,
+              'check_output_limits':_check_output_limit_metrics(rows),
               'check_structure':_check_structure_metrics(rows),
               'incomplete_check_count':len(incomplete_checks), 'incomplete_checks':incomplete_checks,
               'invalid_call_count':len(invalid_calls),
@@ -665,7 +731,8 @@ def _metrics(rows, judgments=None):
               'timed_out_attempts':sum(a['reason']=='timeout' for row in rows for a in row['attempts']),
               'run_invalid_reasons':sorted({c['reason'] for c in invalid_calls} |
                   ({'incomplete_timeline'} if incomplete_timelines else set()) |
-                  ({'incomplete_model_check'} if incomplete_checks else set())),
+                  ({'incomplete_check_limit_exceeded'} if over_limit else set()) |
+                  ({'unverified_incomplete_checkpoint'} if unverified else set())),
               'proposed_sentences':sum(sentence_counts), 'deleted_sentences':sum(deletions),
               'deleted_sentence_ratio':sum(deletions)/sum(sentence_counts) if sum(sentence_counts) else None,
               'candidates_with_deletions':sum(bool(n) for n in deletions),
@@ -787,12 +854,12 @@ def _report(report,directory):
     for key in ('planned_timelines','executed_timelines','unexecuted_timelines'):
         if key in report:
             lines.append(f'| {key} | {report[key]} |')
-    for key in ('run_valid','invalid_call_count','recovered_call_count','stream_stall_aborts','incomplete_check_count',
+    for key in ('run_valid','invalid_call_count','recovered_call_count','stream_stall_aborts','incomplete_check_count','incomplete_check_limit','check_output_limits',
                 'changes','grounded_change_ratio','generated_candidates','check_rejected_ratio',
                 'deleted_sentences','deleted_sentence_ratio','candidate_deletion_ratio','repaired_sentences',
                 'must_reflect_coverage','must_not_occurrences','incomplete_timelines','check_structure'):
         lines.append(f'| {key} | {metrics[key]} |')
-    lines += ['', 'Call metrics: '+dumps(metrics['calls']), '', 'Violation distribution: '+dumps(metrics['violations']),
+    lines += ['', 'Incomplete checkpoints: '+dumps(metrics['incomplete_checks']), '', 'Call metrics: '+dumps(metrics['calls']), '', 'Violation distribution: '+dumps(metrics['violations']),
               '', 'Rejected candidate violations: '+dumps(metrics['rejected_candidate_violations']),
               '', 'Change degree distribution: '+dumps(metrics['change_degree_distribution']),
               '', 'Candidate degree distribution: '+dumps(metrics['candidate_degree_distribution']),
@@ -841,7 +908,8 @@ def run_persona_eval(configs, root, *, corpus, out, judge_mode='model', gateway_
             if (saved['signature'] != signature or saved['row_sha256'] != _json_sha256(saved['row'])
                     or saved['row']['case'] != case or saved['row']['complete'] is not True
                     or _invalid_model_calls(saved['row']['calls'], saved['row']['checkpoints'], saved['row']['observations'])
-                    or _incomplete_checks(saved['row']['observations'])):
+                    or any(c['outcome'] != 'unpublished_current_retained' for c in
+                           _incomplete_checks(saved['row']['observations'], saved['row']['checkpoints']))):
                 raise ValueError('invalid or incomplete persona checkpoint')
             row,resumed = saved['row'],resumed+1
         else:

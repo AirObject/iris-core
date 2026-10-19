@@ -189,16 +189,17 @@ def test_correction_material_limit_falls_back_without_another_call(store, monkey
 @pytest.mark.parametrize('reason', ['rate_limited', 'output_limit'])
 def test_batch_reask_does_not_hide_infrastructure_failures(store, reason):
     def mutate(output, payload, number):
-        damage_coverage(output, 'missing')
+        if number == 1: damage_coverage(output, 'missing')
     model = Checks(store, mutate, fail=(None, reason))
     if reason == 'output_limit':
         result = run_check(store, model)
-        assert 'output_limit' in ' '.join(result['validation_errors'])
+        assert not result['validation_errors']
+        assert result['output_limit_diagnostics']['split_results'] == {'recovered':1}
     else:
         with pytest.raises(ModelError) as error:
             run_check(store, model)
         assert error.value.reason == reason
-    assert len(model.calls) == 2
+    assert len(model.calls) == (4 if reason == 'output_limit' else 2)
 
 
 def test_invalid_json_correction_rejects_the_affected_batch(store):

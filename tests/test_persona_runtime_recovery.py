@@ -74,7 +74,7 @@ def test_recovered_calls_continue_timeline_and_are_reusable(tmp_path, failure):
         assert metrics['calls']['unrecovered_rate_limited_calls'] == 0
         first, second = (c['call_ids'] for c in row['checkpoints'])
         assert first and second and not set(first).intersection(second)
-        assert report['run_validity_policy'] == 'completed_operation_recovery_v1'
+        assert report['run_validity_policy'] == 'retained_incomplete_checkpoints_v2'
         assert report['check_stream_idle_seconds'] == 90
 
 
@@ -106,7 +106,7 @@ def test_a_successful_response_with_incomplete_checks_is_not_recovery(tmp_path, 
     assert metrics['recovered_call_count'] == 0 and metrics['invalid_call_count'] == 1
 
 
-def test_output_truncation_is_never_recovered_by_a_later_success(tmp_path):
+def test_truncation_without_product_split_recovery_is_not_erased_by_later_success(tmp_path):
     _, report = evaluate(tmp_path, gateway_for('output_limit'))
     assert not report['metrics']['run_valid']
     assert report['metrics']['calls']['output_limited_calls'] == 1
