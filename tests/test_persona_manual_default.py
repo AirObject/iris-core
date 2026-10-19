@@ -39,7 +39,7 @@ def manual_client(store):
         client.app.state.scheduler.stop()
         login_admin(client)
         client.app.state.persona_jobs.engine.gateway = FakeGateway(store, {
-            'sentences': [{'text': '初始设定中，我来自云城。', 'basis': ['M1']}]})
+            'sentences': []})
         yield client
 
 
@@ -63,7 +63,7 @@ def test_default_keeps_checked_candidate_pending_until_admin_confirmation(manual
     assert current(client)['current'] == before and pending_count(client) == 1
     detail = client.get(f"/admin/api/persona/versions/{first['version_id']}").json()
     assert detail['checks']['deterministic']['passed'] and detail['checks']['model']['sentences']
-    assert detail['sentences'][0]['basis'][0]['revision'] == 1
+    assert detail['sentences'][-1]['basis'][0]['revision'] == 1
     assert detail['settings']['publish_mode'] == 'all_manual'
     second = finished(client, start(client))
     assert second['state'] == 'pending' and pending_count(client) == 1

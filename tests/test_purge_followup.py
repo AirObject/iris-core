@@ -115,7 +115,9 @@ def test_empty_purge_persona_is_due_and_regenerates_as_manual_candidate(store):
     model = FakeGateway(store, {'sentences': [{'text': '在这次交流中，我介绍了新的灯具。', 'basis': [ref]}]})
     result = persona.PersonaEngine(store, model).update(expected_version=current['id'])
     assert result['status'] == 'pending'
-    assert result['version']['content'] and len(model.calls) == 2
+    assert result['version']['content'] and len(model.calls) == 3
+    assert [payload['task'] for purpose,payload in model.calls if purpose=='persona_check'] == [
+        'check_facts_and_rules', 'degree_only']
     assert persona.current_persona(store)['id'] == current['id']
 
 

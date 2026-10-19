@@ -30,7 +30,7 @@ def test_fresh_persona_with_purged_trace_reference_keeps_content(store):
     setup_role(store, 'Iris')
     parent = put(store, PROSE)
     target = derived(store, parent)
-    safe = put(store, '新的独立自我依据', kind='自我')
+    safe = put(store, '在这次交流中，我提出了独立的推断。', kind='自我')
     purge_memory(store, parent, 1, confirm=True)
     store.set_setting('persona_publish_mode', 'all_auto')
     for _ in range(2):

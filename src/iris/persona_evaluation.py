@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import tempfile
 import time
 from collections import Counter
@@ -28,10 +29,12 @@ from .memory_ops import setup_role, delete_memory, adjust_retention, lifecycle_s
 from .model_health import ModelHealth
 from .models import Gateway, ModelError, parse_json_object_with_status
 from .persona import (PersonaEngine, admin_edit, current_persona, pending_update, select_evidence,
-                      confirm_candidate, reject_candidate, DEGREES, PUBLISH_MODES, _trace, _stale, _settings, split_sentences)
+                      confirm_candidate, reject_candidate, DEGREES, PUBLISH_MODES, PROMPT_VERSIONS, DEGREE_PROMPT_VERSION, CALL_TIMEOUTS, CALL_MAX_TOKENS, CHECK_BATCH_SIZE, CHECK_BATCH_CLAUSES, MAX_CHECK_STAGE_SECONDS, MAX_CHECK_REQUEST_BYTES, CHECK_TIMEOUT_RETRIES, CHECK_STREAM_IDLE_SECONDS, REPAIR_POLICY, check_transport, _trace, _stale, _settings, split_sentences, _structure_diagnostics, _output_limit_diagnostics, _check_records)
 
 FORMAT_VERSION = 1
 SCORING_VERSION = 'persona_scoring_v1'
+RUN_VALIDITY_POLICY = 'retained_incomplete_checkpoints_v2'
+INCOMPLETE_CHECK_LIMIT = 2
 # The frozen corpus publication contract is independent of product rollout defaults.
 EVAL_PUBLISH_MODE = 'small_medium_auto'
 VIOLATIONS = ('虚构', '设定写成亲历', '他人评价写成特质', '单一日期泛化', '当前状态或待办', '指令', '保留失效依据')
@@ -304,6 +307,8 @@ def _mutate(store, event, keys, clock):
 
 def _observation(store, case_id, checkpoint, previous, candidate):
     ids = {r['memory_id'] for v in (previous,candidate) if v for sentence in v['sentences'] for r in sentence['basis']}
+    ids.update(b['memory_id'] for d in candidate['checks'].get('deleted_sentences',[])
+               for b in d['sentence']['basis'])
     with store.read() as conn:
         zone = ZoneInfo(json.loads(conn.execute("SELECT value_json FROM runtime_settings WHERE key='timezone'").fetchone()[0]))
         memory_state = []
@@ -339,11 +344,48 @@ def _observation(store, case_id, checkpoint, previous, candidate):
             'timezone':str(zone),'settings':settings,'subjects':subjects,'memory_state':memory_state,'role_settings':role_settings}
 
 
+def _write_progress(path, value):
+    """Atomic diagnostic only, never a resumable timeline checkpoint."""
+    temporary = path.with_name(path.name + '.' + uuid4().hex + '.tmp')
+    try:
+        with temporary.open('x', encoding='utf-8') as stream:
+            stream.write(json.dumps(value, ensure_ascii=False, indent=2) + '\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def _run_timeline(configs,case,directory,gateway_factory):
     clock = TimelineClock(case['start_at'])
     with tempfile.TemporaryDirectory(prefix='timeline-',dir=directory) as temporary:
         store = Store(Path(temporary)/'iris.db')
         gateway = None
+        observations, events, control_operations = [], [], []
+        complete, completed_events = True, 0
+        journal = Path(directory)/('timeline-progress-' + uuid4().hex + '.json')
+        def snapshot(*, finished=False, interruption=None):
+            with store.read() as conn:
+                attempts = [dict(r) for r in conn.execute('SELECT * FROM persona_attempts ORDER BY id')]
+                calls = [dict(r) for r in conn.execute('SELECT * FROM model_calls ORDER BY id')]
+            outcomes = _model_call_outcomes(calls, events, observations)
+            invalid_calls = [c for c in outcomes if not c['recovered'] and not c.get('tolerated')]
+            recovered_calls = [c for c in outcomes if c['recovered']]
+            incomplete_checks = _incomplete_checks(observations, events)
+            invalid = not complete or bool(invalid_calls) or any(
+                c['outcome'] != 'unpublished_current_retained' for c in incomplete_checks)
+            remaining = len(case['events']) - completed_events
+            row = _redacted({'case':case, 'complete':finished and not invalid and not remaining,
+                'completed_events':completed_events, 'remaining_events':remaining,
+                'invalid_calls':invalid_calls, 'recovered_calls':recovered_calls, 'incomplete_checks':incomplete_checks,
+                'observations':observations, 'checkpoints':events, 'attempts':attempts,
+                'calls':calls, 'control_operations':control_operations}, configs)
+            _write_progress(journal, {'format_version':1, 'evaluation':'persona',
+                'state':'interrupted' if interruption else 'invalid' if invalid else 'complete' if finished else 'running',
+                'interruption':interruption, 'inflight_usage_unknown':bool(interruption),
+                'row_sha256':_json_sha256(row), 'row':row})
+            return row
         try:
             role = case.get('role',{})
             setup_role(store,role.get('name','Iris'),role.get('background',''),role.get('timezone','Asia/Shanghai'),current=clock())
@@ -366,13 +408,14 @@ def _run_timeline(configs,case,directory,gateway_factory):
                 keys = {f'initial:{i+1}':r[0] for i,r in enumerate(conn.execute('SELECT id FROM memories ORDER BY id'))}
             health = ModelHealth(store,configs,clock=clock) if gateway_factory is Gateway else None
             gateway = gateway_factory(configs,store,health=health,clock=clock)
-            engine, events = PersonaEngine(store,gateway,clock=clock),[]
-            control_operations = []
-            complete = True
+            engine = PersonaEngine(store,gateway,clock=clock)
+            snapshot()
             for ordinal,event in enumerate(case['events']):
                 clock.value = _instant(event['at'])
                 if event['op'] in ('add','edit','delete','forget'):
                     _mutate(store,event,keys,clock)
+                    completed_events = ordinal + 1
+                    snapshot()
                     continue
                 previous = current_persona(store)
                 if event['op'] in ('persona_confirm','persona_reject'):
@@ -381,18 +424,28 @@ def _run_timeline(configs,case,directory,gateway_factory):
                     if pending is None:
                         control_operations.append({'event':event,'status':'noop','reason':'no_pending_candidate',
                                                    'current_version_id':previous['id'],'version':None})
+                        completed_events = ordinal + 1
+                        snapshot()
                         continue
                     action = confirm_candidate if event['op']=='persona_confirm' else reject_candidate
                     version = action(store,pending[0],expected_version=previous['id'],clock=clock)
                     control_operations.append({'event':event,'status':'applied','version':version})
+                    completed_events = ordinal + 1
+                    snapshot()
                     continue
                 if event['op']=='persona_edit':
                     content = event['content'] if 'content' in event else previous['content']+''.join(event['append'])
                     candidate = admin_edit(store,content,expected_version=previous['id'],clock=clock)
                     observations.append(_observation(store,case['id'],{**event,'id':f'admin:{ordinal}'},previous,candidate))
                 else:
+                    # The isolated timeline DB binds every retry to its own
+                    # operation. Frozen timestamps/purposes are not identities.
+                    with store.read() as conn:
+                        before_call = conn.execute('SELECT COALESCE(MAX(id),0) FROM model_calls').fetchone()[0]
                     result = (engine.update if event.get('action','update')=='update' else engine.regenerate)(expected_version=previous['id'])
-                    events.append({'checkpoint':event,'result':result,'current':current_persona(store),
+                    with store.read() as conn:
+                        call_ids = [r[0] for r in conn.execute('SELECT id FROM model_calls WHERE id>? ORDER BY id', (before_call,))]
+                    events.append({'checkpoint':event,'result':result,'call_ids':call_ids,'current':current_persona(store),
                                    'pending_update':pending_update(store)})
                     if result['version'] is not None:
                         observations.append(_observation(store,case['id'],event,previous,result['version']))
@@ -401,14 +454,30 @@ def _run_timeline(configs,case,directory,gateway_factory):
                         observation = _observation(store,case['id'],{**event,'op':'checkpoint_current'},previous,current_persona(store))
                         observation['evidence'] = select_evidence(store)
                         observation['skip_reason'] = result['reason']
+                        with store.read() as conn:
+                            attempt = conn.execute('SELECT outputs_json FROM persona_attempts WHERE id=?',
+                                                   (result['attempt_id'],)).fetchone()
+                        raw_outputs = json.loads(attempt[0]) if attempt else {}
+                        observation['check_failure'] = {p:[raw_outputs[p+'_incomplete']]
+                            for p in ('persona_check', 'persona_recheck') if p+'_incomplete' in raw_outputs}
                         observations.append(observation)
                     if result['status'] in ('failed','conflict') or (result['status']=='skipped' and result['reason'] not in ('not_due','no_self_evidence')):
                         complete = False
-            with store.read() as conn:
-                attempts = [dict(r) for r in conn.execute('SELECT * FROM persona_attempts ORDER BY id')]
-                calls = [dict(r) for r in conn.execute('SELECT * FROM model_calls ORDER BY id')]
-            return {'case':case,'complete':complete,'observations':observations,'checkpoints':events,
-                    'attempts':attempts,'calls':calls,'control_operations':control_operations}
+                completed_events = ordinal + 1
+                progress = snapshot()
+                if not complete or progress['invalid_calls']:
+                    # Unrecovered infrastructure failures still stop execution.
+                    # Unpublished incomplete checks retain the current version and continue.
+                    break
+            return snapshot(finished=True)
+        except BaseException as error:
+            # SIGINT used to delete the only copy of the current timeline. Save
+            # completed calls/raw attempts before TemporaryDirectory cleanup.
+            try:
+                snapshot(interruption=type(error).__name__)
+            except Exception as journal_error:
+                error.add_note('persona progress snapshot failed: ' + type(journal_error).__name__)
+            raise
         finally:
             if gateway:
                 gateway.close()
@@ -437,20 +506,199 @@ def _is_change(observation):
             and previous is not None and candidate['content'] != previous['content'])
 
 
-def _call_metrics(calls):
+def _retained_current(checkpoint, observation):
+    candidate, previous = observation['candidate'], observation.get('previous')
+    current = checkpoint.get('current') or {}
+    return (checkpoint['result']['status'] == 'rejected'
+        and candidate.get('status') == 'rejected' and not candidate.get('is_current')
+        and candidate.get('checks', {}).get('passed') is False
+        and previous is not None and candidate.get('base_version_id') == previous['id']
+        and current.get('id') == previous['id'] and current.get('is_current')
+        and current.get('content') == previous['content']
+        and current.get('sentences') == previous['sentences'])
+
+
+def _model_call_outcomes(calls, checkpoints=(), observations=()):
+    """Recover owned calls only; tolerate truncation only at retained checkpoints.
+
+    Timeout/429/call-error recovery still requires a complete product operation.
+    A later unrelated checkpoint cannot recover or tolerate an earlier failure.
+    """
+    owners = Counter(call_id for checkpoint in checkpoints
+                     for call_id in checkpoint.get('call_ids', []))
+    by_id = {c['id']: c for c in calls if 'id' in c}
+    recovered, tolerated = {}, {}
+    for checkpoint in checkpoints:
+        ids, result = checkpoint.get('call_ids', []), checkpoint['result']
+        candidate = result.get('version')
+        if (not ids or any(owners[i] != 1 or i not in by_id for i in ids)
+                or result['status'] not in ('current', 'pending', 'rejected') or not candidate):
+            continue
+        matching = [o for o in observations if o['checkpoint_id'] == checkpoint['checkpoint']['id']
+                    and o['candidate']['id'] == candidate['id']]
+        if len(matching) != 1:
+            continue
+        incomplete = bool(_incomplete_checks(matching))
+        retained = incomplete and _retained_current(checkpoint, matching[0])
+        checks = candidate['checks']
+        split_recovered = any((checks.get(phase) or {}).get(
+            'output_limit_diagnostics', {}).get('split_results', {}).get('recovered', 0)
+            for phase in ('initial_model', 'model', 'recheck'))
+        ordered = [by_id[i] for i in sorted(ids)]
+        for position, call in enumerate(ordered):
+            purpose = call['purpose'].removesuffix('_repair')
+            limited = (call.get('finish_reason') == 'length' and purpose in ('persona_check', 'persona_recheck')
+                       and not call.get('timed_out') and call.get('status_code') != 429
+                       and call.get('result_category') == 'success')
+            if retained and limited:
+                tolerated[call['id']] = {'checkpoint_id':checkpoint['checkpoint']['id'],
+                    'outcome':'unpublished_current_retained'}
+            if incomplete:
+                continue
+            success = next((c for c in ordered[position + 1:]
+                if c['purpose'].removesuffix('_repair') == purpose
+                and c['result_category'] == 'success' and not c.get('timed_out')
+                and c.get('finish_reason') == 'stop'), None)
+            if success is not None and (call.get('finish_reason') != 'length' or (limited and split_recovered)):
+                recovered[call['id']] = {'checkpoint_id':checkpoint['checkpoint']['id'],
+                                        'recovered_by_call_id':success['id']}
+    outcomes = []
+    for call in calls:
+        reason = ('rate_limited' if call.get('status_code') == 429 else
+                  'timeout' if call.get('timed_out') else
+                  'transport_failure' if call.get('result_category') == 'retryable' else
+                  'output_limit' if call.get('finish_reason') == 'length' else None)
+        if reason:
+            recovery = recovered.get(call.get('id'))
+            tolerance = tolerated.get(call.get('id')) if reason == 'output_limit' else None
+            outcomes.append({key:call.get(key) for key in
+                ('id','purpose','created_at','duration_ms','status_code','timed_out')} |
+                {'reason':reason, 'recovered':bool(recovery), 'tolerated':bool(tolerance),
+                 **(recovery or tolerance or {})})
+    return outcomes
+
+
+def _invalid_model_calls(calls, checkpoints=(), observations=()):
+    return [c for c in _model_call_outcomes(calls, checkpoints, observations)
+            if not c['recovered'] and not c['tolerated']]
+
+
+def _stream_attempts(value):
+    """Root aliases of the first batch are not additional transport attempts."""
+    if isinstance(value, list):
+        for item in value:
+            yield from _stream_attempts(item)
+    elif isinstance(value, dict):
+        batched = [p for p in ('persona_check', 'persona_recheck') if p + '_batches' in value]
+        for purpose in batched:
+            for raw in _check_records(value[purpose+'_batches'], purpose):
+                yield from raw.get(purpose+'_transport', [])
+        for key, item in value.items():
+            if any(key.startswith(p) for p in batched):
+                continue
+            if key.endswith('_transport'):
+                yield from item
+            else:
+                yield from _stream_attempts(item)
+
+
+def _incomplete_checks(observations, checkpoints=()):
+    """Separate missing model verdicts from complete negative quality verdicts.
+
+    Recompute from frozen versions too: earlier reports may have called a safely
+    rejected but technically incomplete check a completed timeline.
+    """
+    failures = []
+    for observation in observations:
+        checks = observation['candidate']['checks']
+        details = {}
+        for phase in ('initial_model', 'model', 'recheck'):
+            result = checks.get(phase)
+            if isinstance(result, dict):
+                errors = result.get('validation_errors', []) + result.get('incomplete_checks', [])
+                if errors:
+                    details[phase] = errors
+        for index, repair in enumerate(checks.get('repair_outputs', []), 1):
+            if isinstance(repair, dict) and repair.get('error') == 'output_limit':
+                details[f'repair_{index}'] = ['output_limit']
+        if observation.get('check_failure'):
+            details.update(observation['check_failure'])
+        if details:
+            matching = [c for c in checkpoints if c['checkpoint']['id'] == observation['checkpoint_id']]
+            retained = len(matching) == 1 and _retained_current(matching[0], observation)
+            failures.append({'timeline_id':observation['timeline_id'],
+                'checkpoint_id':observation['checkpoint_id'], 'details':details,
+                'outcome':'unpublished_current_retained' if retained else 'unverified_incomplete_checkpoint',
+                'current_version_id':matching[0]['current']['id'] if len(matching) == 1 else None})
+    return failures
+
+
+def _call_metrics(calls, outcomes=None):
+    outcomes = _model_call_outcomes(calls) if outcomes is None else outcomes
     return {'count':len(calls), 'duration_ms_p50':_percentile([c['duration_ms'] for c in calls],50),
             'duration_ms_p95':_percentile([c['duration_ms'] for c in calls],95),
+            'duration_ms_max':max((c['duration_ms'] for c in calls), default=None),
             'prompt_tokens':sum(c['prompt_tokens'] or 0 for c in calls),
             'completion_tokens':sum(c['completion_tokens'] or 0 for c in calls),
             'reasoning_tokens':sum(c['reasoning_tokens'] or 0 for c in calls),
             'reasoning_usage_missing_calls':sum(c['reasoning_tokens'] is None for c in calls),
             'timings_by_purpose':{purpose:{'count':sum(c['purpose']==purpose for c in calls),
                 'p50_ms':_percentile([c['duration_ms'] for c in calls if c['purpose']==purpose],50),
-                'p95_ms':_percentile([c['duration_ms'] for c in calls if c['purpose']==purpose],95)}
+                'p95_ms':_percentile([c['duration_ms'] for c in calls if c['purpose']==purpose],95),
+                'max_ms':max(c['duration_ms'] for c in calls if c['purpose']==purpose)}
                 for purpose in dict.fromkeys(c['purpose'] for c in calls)},
             'usage_missing_calls':sum(c['prompt_tokens'] is None or c['completion_tokens'] is None for c in calls),
+            'output_limited_calls':sum(c.get('finish_reason')=='length' for c in calls),
+            'recovered_output_limited_calls':sum(c['reason']=='output_limit' and c['recovered'] for c in outcomes),
+            'tolerated_output_limited_calls':sum(c['reason']=='output_limit' and c.get('tolerated', False) for c in outcomes),
+            'unrecovered_output_limited_calls':sum(c['reason']=='output_limit' and not c['recovered']
+                and not c.get('tolerated', False) for c in outcomes),
+            'output_limits_by_purpose':dict(Counter(c['purpose'] for c in calls if c.get('finish_reason')=='length')),
             'timed_out_calls':sum(bool(c.get('timed_out')) for c in calls),
+            'rate_limited_calls':sum(c.get('status_code') == 429 for c in calls),
+            'recovered_timed_out_calls':sum(bool(c['timed_out']) and c['recovered'] for c in outcomes),
+            'unrecovered_timed_out_calls':sum(bool(c['timed_out']) and not c['recovered'] for c in outcomes),
+            'recovered_rate_limited_calls':sum(c['status_code'] == 429 and c['recovered'] for c in outcomes),
+            'unrecovered_rate_limited_calls':sum(c['status_code'] == 429 and not c['recovered'] for c in outcomes),
             'by_purpose':dict(Counter(c['purpose'] for c in calls))}
+
+
+def _check_structure_metrics(rows):
+    """Count canonical stage records once, including failed operations."""
+    initial, repeated, outcomes = Counter(), Counter(), Counter()
+    totals = {key:0 for key in ('conservative_sentence_count', 'conservative_batch_count',
+                               'conservative_degree_count')}
+    stages = 0
+    for row in rows:
+        for attempt in row['attempts']:
+            outputs = json.loads(attempt['outputs_json'])
+            for purpose in ('persona_check', 'persona_recheck'):
+                batches = outputs.get(purpose + '_batches', [])
+                if not batches:
+                    continue
+                stages += 1
+                diagnostic = _structure_diagnostics(batches, purpose)
+                initial.update(diagnostic['initial_failures'])
+                repeated.update(diagnostic['retry_failures'])
+                outcomes.update(diagnostic['retry_results'])
+                for key in totals:
+                    totals[key] += diagnostic[key]
+    return {'stages':stages, 'initial_failures':dict(initial),
+            'retry_failures':dict(repeated), 'retry_results':dict(outcomes), **totals}
+
+
+def _check_output_limit_metrics(rows):
+    totals = {'truncations':0, 'splits':0, 'terminal_truncations':0}
+    results = Counter()
+    for row in rows:
+        for attempt in row['attempts']:
+            outputs = json.loads(attempt['outputs_json'])
+            for purpose in ('persona_check', 'persona_recheck'):
+                diagnostic = _output_limit_diagnostics(outputs.get(purpose+'_batches', []), purpose)
+                for key in totals:
+                    totals[key] += diagnostic[key]
+                results.update(diagnostic['split_results'])
+    return {**totals, 'split_results':dict(results)}
 
 
 def _metrics(rows, judgments=None):
@@ -460,7 +708,37 @@ def _metrics(rows, judgments=None):
     calls = [c for row in rows for c in row['calls']]
     outcomes = [item['result'] for row in rows for item in row['checkpoints']]
     all_versions = [o for row in rows for o in row['observations']]
-    result = {'checkpoint_outcomes':dict(Counter(item['status'] for item in outcomes)),
+    sentence_counts = [o['candidate']['checks'].get('original_sentence_count',len(o['candidate']['sentences']))
+                       for o in observations]
+    deletions = [len(o['candidate']['checks'].get('deleted_sentences',[])) for o in observations]
+    repairs = [len(o['candidate']['checks'].get('repaired_sentences',[])) for o in observations]
+    call_outcomes = [c for row in rows for c in
+        _model_call_outcomes(row['calls'], row['checkpoints'], row['observations'])]
+    invalid_calls = [c for c in call_outcomes if not c['recovered'] and not c.get('tolerated')]
+    incomplete_checks = [c for row in rows for c in _incomplete_checks(row['observations'], row['checkpoints'])]
+    incomplete_timelines = sum(not r['complete'] for r in rows)
+    unverified = any(c['outcome'] != 'unpublished_current_retained' for c in incomplete_checks)
+    over_limit = len(incomplete_checks) > INCOMPLETE_CHECK_LIMIT
+    result = {'run_valid':not incomplete_timelines and not invalid_calls and not over_limit and not unverified,
+              'incomplete_check_limit':INCOMPLETE_CHECK_LIMIT,
+              'check_output_limits':_check_output_limit_metrics(rows),
+              'check_structure':_check_structure_metrics(rows),
+              'incomplete_check_count':len(incomplete_checks), 'incomplete_checks':incomplete_checks,
+              'invalid_call_count':len(invalid_calls),
+              'recovered_call_count':sum(c['recovered'] for c in call_outcomes),
+              'stream_stall_aborts':sum(bool(a.get('stall_aborted')) for row in rows for attempt in row['attempts']
+                  for a in _stream_attempts(json.loads(attempt['outputs_json']))),
+              'timed_out_attempts':sum(a['reason']=='timeout' for row in rows for a in row['attempts']),
+              'run_invalid_reasons':sorted({c['reason'] for c in invalid_calls} |
+                  ({'incomplete_timeline'} if incomplete_timelines else set()) |
+                  ({'incomplete_check_limit_exceeded'} if over_limit else set()) |
+                  ({'unverified_incomplete_checkpoint'} if unverified else set())),
+              'proposed_sentences':sum(sentence_counts), 'deleted_sentences':sum(deletions),
+              'deleted_sentence_ratio':sum(deletions)/sum(sentence_counts) if sum(sentence_counts) else None,
+              'candidates_with_deletions':sum(bool(n) for n in deletions),
+              'candidate_deletion_ratio':sum(bool(n) for n in deletions)/len(observations) if observations else None,
+              'repaired_sentences':sum(repairs),
+              'checkpoint_outcomes':dict(Counter(item['status'] for item in outcomes)),
               'skip_reasons':dict(Counter(item['reason'] for item in outcomes if item['status']=='skipped')),
               'changes':len(changes), 'changes_by_source':dict(Counter(observations[i]['candidate']['source'] for i in changes)),
               'change_degree_distribution':dict(Counter(observations[i]['candidate']['change_degree'] for i in changes)),
@@ -472,7 +750,7 @@ def _metrics(rows, judgments=None):
               'untriggered_checkpoints':sum(o['operation']=='checkpoint_current' for o in all_versions),
               'grounded_change_ratio':None, 'violations':{}, 'rejected_candidate_violations':{},
               'must_reflect_coverage':None,'must_not_occurrences':None,
-              'calls':_call_metrics(calls), 'incomplete_timelines':sum(not r['complete'] for r in rows),
+              'calls':_call_metrics(calls, call_outcomes), 'incomplete_timelines':incomplete_timelines,
               'change_degree_comparison':[], 'checkpoint_expectations':[],
               'level_reasonable_ratio':None, 'scenarios':{key:[] for key in ('S17','S18','S19')}}
     for row in rows:
@@ -573,10 +851,15 @@ def _report(report,directory):
     lines = ['# Persona evaluation', '', f"Judge mode: {report['judge_mode']}; rounds: {report.get('judge_runs',0)}.",
         'Public/dev diagnostics only; this report does not establish the M3 hidden gate.', '',
         '| Metric | Value |','| --- | --- |']
-    for key in ('changes','grounded_change_ratio','generated_candidates','check_rejected_ratio',
-                'must_reflect_coverage','must_not_occurrences','incomplete_timelines'):
+    for key in ('planned_timelines','executed_timelines','unexecuted_timelines'):
+        if key in report:
+            lines.append(f'| {key} | {report[key]} |')
+    for key in ('run_valid','invalid_call_count','recovered_call_count','stream_stall_aborts','incomplete_check_count','incomplete_check_limit','check_output_limits',
+                'changes','grounded_change_ratio','generated_candidates','check_rejected_ratio',
+                'deleted_sentences','deleted_sentence_ratio','candidate_deletion_ratio','repaired_sentences',
+                'must_reflect_coverage','must_not_occurrences','incomplete_timelines','check_structure'):
         lines.append(f'| {key} | {metrics[key]} |')
-    lines += ['', 'Call metrics: '+dumps(metrics['calls']), '', 'Violation distribution: '+dumps(metrics['violations']),
+    lines += ['', 'Incomplete checkpoints: '+dumps(metrics['incomplete_checks']), '', 'Call metrics: '+dumps(metrics['calls']), '', 'Violation distribution: '+dumps(metrics['violations']),
               '', 'Rejected candidate violations: '+dumps(metrics['rejected_candidate_violations']),
               '', 'Change degree distribution: '+dumps(metrics['change_degree_distribution']),
               '', 'Candidate degree distribution: '+dumps(metrics['candidate_degree_distribution']),
@@ -606,6 +889,7 @@ def run_persona_eval(configs, root, *, corpus, out, judge_mode='model', gateway_
     identity = {'source_sha256':source_hash, 'cases':cases,
                 'corpus_file_sha256':hashlib.sha256(Path(corpus).read_bytes()).hexdigest(), 'scoring_sha256':hashlib.sha256(scoring.encode()).hexdigest(),
                 'judge_mode':judge_mode, 'runner_identity':runner_identity or 'gateway',
+                'run_validity_policy':RUN_VALIDITY_POLICY,
                 'models':{kind: {'endpoint_sha256':hashlib.sha256(config.base_url.encode()).hexdigest(),
                     'model':config.model,'dimensions':config.dimensions,'reasoning_effort':config.reasoning_effort}
                     for kind,config in configs.items()}}
@@ -622,7 +906,10 @@ def run_persona_eval(configs, root, *, corpus, out, judge_mode='model', gateway_
         if path.exists():
             saved = _read_json(path)
             if (saved['signature'] != signature or saved['row_sha256'] != _json_sha256(saved['row'])
-                    or saved['row']['case'] != case or saved['row']['complete'] is not True):
+                    or saved['row']['case'] != case or saved['row']['complete'] is not True
+                    or _invalid_model_calls(saved['row']['calls'], saved['row']['checkpoints'], saved['row']['observations'])
+                    or any(c['outcome'] != 'unpublished_current_retained' for c in
+                           _incomplete_checks(saved['row']['observations'], saved['row']['checkpoints']))):
                 raise ValueError('invalid or incomplete persona checkpoint')
             row,resumed = saved['row'],resumed+1
         else:
@@ -633,11 +920,24 @@ def run_persona_eval(configs, root, *, corpus, out, judge_mode='model', gateway_
             else:
                 _write_json(checkpoints/f'{index:04}-incomplete-{uuid4().hex[:8]}.json',record)
         rows.append(row)
+        if not row['complete']:
+            break
     metadata = {'source_sha256':source_hash, 'corpus_sha256':_json_sha256(cases),
+                'run_validity_policy':RUN_VALIDITY_POLICY, 'check_stream_idle_seconds':CHECK_STREAM_IDLE_SECONDS,
                 'corpus_file_sha256':identity['corpus_file_sha256'], 'checkpoint_signature':signature,
                 'scoring_version':SCORING_VERSION,'scoring_sha256':identity['scoring_sha256'],
-                'models':identity['models'],'prompt_versions':['persona_generate_v1','persona_check_v1'],
-                'timeouts_seconds':{'persona_generate':120,'persona_check':120,'judge':240},
+                'models':identity['models'],'prompt_versions':sorted({*PROMPT_VERSIONS.values(),DEGREE_PROMPT_VERSION}),
+                'prompt_by_purpose':PROMPT_VERSIONS,
+                'timeouts_seconds':{**CALL_TIMEOUTS,'judge':240},
+                'output_token_limits':CALL_MAX_TOKENS,
+                'check_transport':{purpose:check_transport(configs.get('chat'))
+                    for purpose in ('persona_check','persona_recheck')},
+                'check_batch_size':CHECK_BATCH_SIZE, 'check_batch_clauses':CHECK_BATCH_CLAUSES,
+                'max_check_stage_seconds':MAX_CHECK_STAGE_SECONDS,
+                'max_check_request_bytes':MAX_CHECK_REQUEST_BYTES, 'check_timeout_retries':CHECK_TIMEOUT_RETRIES,
+                'repair_policy':REPAIR_POLICY,
+                'planned_timelines':len(cases), 'executed_timelines':len(rows),
+                'unexecuted_timelines':len(cases)-len(rows),
                 'resumed_cases':resumed,'elapsed_seconds':round(time.monotonic()-started,3)}
     directory = out/('judging-materials-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')+'-'+uuid4().hex[:8])
     materials,manifest = _export(rows,metadata,scoring,directory)
@@ -646,6 +946,8 @@ def run_persona_eval(configs, root, *, corpus, out, judge_mode='model', gateway_
     if judge_mode=='external':
         _report(report,out)
         return materials,report
+    if not report['metrics']['run_valid']:
+        return _report(report,out),report
     judgments,judge_calls = _preview(configs,rows,scoring,out)
     report.update(judge_runs=1,judge_model=configs['chat'].model,judgments=judgments,
                   judge_calls=_call_metrics(judge_calls),metrics=_metrics(rows,judgments))
