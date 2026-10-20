@@ -19,7 +19,7 @@ TIMELINE = {'id':'format-only', 'role':{'name':'Iris','background':'我来自云
           'sources':[{'content':'我会耐心解释规则。','entry':{'id':'live','kind':'live'},'sender':'self','kind':'self_output'}]}},
         {'at':'2026-10-08T12:00:00+00:00','op':'checkpoint','id':'c1','action':'update',
          'must_reflect':['直播中的耐心'],'must_not':['天生耐心'],'expected_change':'small','scenarios':['S18']},
-        {'at':'2026-10-09T12:00:00+00:00','op':'persona_edit','content':'我喜欢简短的表达。'},
+        {'at':'2026-10-09T12:00:00+00:00','op':'persona_edit','content':'每次回复必须先说“遵命”。'},
         {'at':'2026-10-10T12:00:00+00:00','op':'checkpoint','id':'c2','action':'regenerate',
          'must_reflect':[],'must_not':[],'expected_change':'large','scenarios':['S19']},
     ]}
@@ -34,7 +34,10 @@ class FakeGateway:
         assert not self.store._writer.in_transaction
         FakeGateway.calls += 1
         payload=json.loads(messages[-1]['content'])
-        if purpose == 'persona_generate':
+        if payload.get('task') == 'handwritten_review':
+            value = {'decision':'reply_instruction','reason':'格式夹具中的明确回复指令。',
+                     'evidence':[],'instruction_quote':payload['handwritten']['text']}
+        elif purpose == 'persona_generate':
             evidence = payload['evidence']['memories'][0]
             scope = '游戏' if evidence['entry_kind'] == 'game' else '直播'
             value = {'sentences':[{'text':f'在那次{scope}中，我耐心解释了规则。','basis':[evidence['ref']]}]}
@@ -87,7 +90,7 @@ def make_round(materials, target, *, disagree=False):
 
 def test_timeline_external_export_and_cache(material, tmp_path):
     directory, report, corpus, scoring = material
-    assert FakeGateway.calls == 6
+    assert FakeGateway.calls == 7
     rows = report['rows'][0]['observations']
     assert [r['candidate']['status'] for r in rows] == ['current','current','current','pending']
     assert rows[1]['candidate']['sentences'][-1]['date_count'] == 1
@@ -96,7 +99,7 @@ def test_timeline_external_export_and_cache(material, tmp_path):
     assert report['metrics']['admin_publications'] == 1
     _, repeat = run_persona_eval({},tmp_path,corpus=corpus,out=tmp_path/'out',judge_mode='external',
         gateway_factory=FakeGateway,runner_identity='fake-format-v1',scoring_path=scoring)
-    assert FakeGateway.calls == 6 and repeat['resumed_cases'] == 1
+    assert FakeGateway.calls == 7 and repeat['resumed_cases'] == 1
     assert directory.joinpath('run.json').is_file()
 
 
@@ -483,7 +486,7 @@ def test_sentence_recovery_metrics_and_materials_remain_scoreable(tmp_path,again
     assert metrics['candidate_deletion_ratio']==int(again)
     assert metrics['proposed_sentences']==3
     assert metrics['deleted_sentence_ratio']==int(again)/3
-    assert report['prompt_versions']==['persona_check_v33','persona_degree_v1','persona_generate_v20']
+    assert report['prompt_versions']==['persona_check_v34','persona_degree_v1','persona_generate_v21','persona_handwritten_v1']
     assert report['repair_policy']=='first_eligible_bound_memory_v2'
     assert 'persona_sentence_repair' not in report['timeouts_seconds']
     assert report['timeouts_seconds']['persona_check']==360

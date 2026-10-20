@@ -12,11 +12,12 @@ from test_persona import add_self
 
 
 class Model:
-    def __init__(self, store, *, repair='我在十月一日的直播中选择了浅灰底。', again=False, malformed=False):
+    def __init__(self, store, *, repair='我在十月一日的直播中选择了浅灰底。', again=False, malformed=False, handwritten_decision='keep'):
         self.store, self.repair, self.again, self.malformed = store, repair, again, malformed
         self.calls = []
         self.now = 10.0
         self.hook = None
+        self.handwritten_decision = handwritten_decision
 
     def monotonic(self):
         return self.now
@@ -27,7 +28,11 @@ class Model:
         self.calls.append((purpose, payload, kwargs['_deadline'] - self.now))
         if self.hook:
             self.hook(purpose)
-        if purpose == 'persona_generate':
+        if payload.get('task') == 'handwritten_review':
+            result = {'decision':self.handwritten_decision,'reason':'假模型的手写语义结论。',
+                      'evidence':[],'instruction_quote':payload['handwritten']['text']
+                      if self.handwritten_decision=='reply_instruction' else ''}
+        elif purpose == 'persona_generate':
             refs = [m['ref'] for m in payload['evidence']['memories']]
             result = {'sentences':[
                 {'text':'在十月一日的直播中，我解释了规则。', 'basis':[refs[0]]},
@@ -140,8 +145,8 @@ def test_template_evidence_is_reserved_inside_6000_token_budget(prepared):
 
 def test_admin_removal_after_sentence_recovery_still_forces_large(prepared):
     previous = current_persona(prepared)
-    admin_edit(prepared, previous['content']+'我是无依据的银叶见证人。', expected_version=previous['id'])
-    result, _ = run(prepared)
+    admin_edit(prepared, previous['content']+'每次回复必须先说“遵命”。', expected_version=previous['id'])
+    result, _ = run(prepared,handwritten_decision='reply_instruction')
     assert result['status'] == 'pending' and result['version']['change_degree'] == 'large'
     assert result['version']['checks']['admin_content_removed_or_changed']
 
@@ -336,7 +341,7 @@ def test_long_check_material_deduplicates_shared_sources(prepared):
     assert all(s['evidence_refs']==[ref] for s in request['candidate'])
     assert 'trace_refs' not in dumps(request) and 'trace_sha256' not in dumps(request)
     assert estimate_tokens(dumps(request))<6000
-    assert material['prompt_versions']['persona_generate']=='persona_generate_v20'
+    assert material['prompt_versions']['persona_generate']=='persona_generate_v21'
 
 
 def test_model_cannot_rewrite_locked_template_or_invent_its_attribution(prepared):

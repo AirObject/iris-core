@@ -39,9 +39,10 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v20', 'persona_check': 'persona_check_v33',
-                   'persona_recheck': 'persona_check_v33'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v21', 'persona_check': 'persona_check_v34',
+                   'persona_recheck': 'persona_check_v34'}
 DEGREE_PROMPT_VERSION = 'persona_degree_v1'
+HANDWRITTEN_PROMPT_VERSION = 'persona_handwritten_v1'
 CALL_TIMEOUTS = {'persona_generate': 360, 'persona_check': 360,
                  'persona_recheck': 360}
 CALL_MAX_TOKENS = {'persona_generate':16000, 'persona_check':16000,
@@ -213,6 +214,10 @@ def _select(conn, token_limit=BASIS_TOKENS, *, timezone_name=None, required_ids=
         record['about'] = [r[0] for r in conn.execute('SELECT subject_id FROM memory_subjects WHERE memory_id=? ORDER BY subject_id', (row['id'],))]
         record.update(ref=f'M{len(selected)+1}', memory_id=row['id'], revision=row['revision'],
                       date=_date(row['created_at'], zone), **_trace(conn, row['id'], zone))
+        revision = conn.execute("""SELECT created_at FROM memory_revisions WHERE memory_id=?
+            AND json_extract(before_json,'$.content') IS NOT json_extract(after_json,'$.content')
+            ORDER BY revision_after DESC,id DESC LIMIT 1""", (row['id'],)).fetchone()
+        record['recorded_at'] = revision['created_at'] if revision else row['created_at']
         # Account for metadata and excerpts too, not just memory prose. Never ask
         # a model to compress a large item to make it fit.
         if estimate_tokens(dumps([*selected, record])) <= token_limit:
@@ -297,7 +302,9 @@ def _generation_material(conn, settings, previous, stamp):
         'role_name':_setting(conn, 'role_name', 'Iris'), 'locked_sentences':retained,
         'omitted_template_sentences':omitted, 'previous':previous['content'],
         'previous_sentences':previous['sentences'],
-        'admin_sentences':{k:v['text'] for k,v in _admin_sentences(previous).items()}}
+        'admin_sentences':{k:v['text'] for k,v in _admin_sentences(previous).items()},
+        'handwritten_snapshot':_handwritten_snapshot(conn, previous),
+        'handwritten_prompt_version':HANDWRITTEN_PROMPT_VERSION}
 
 
 def _editable_material(material):
@@ -453,6 +460,8 @@ def _fact_payload(material, sentences):
 def _request_messages(purpose, payload):
     version = (DEGREE_PROMPT_VERSION if purpose in ('persona_check', 'persona_recheck')
                and payload.get('task') == 'degree_only' else PROMPT_VERSIONS[purpose])
+    if purpose in ('persona_check','persona_recheck') and payload.get('task') == 'handwritten_review':
+        version = HANDWRITTEN_PROMPT_VERSION
     prompt = files('iris').joinpath(f'prompts/{version}.md').read_text(encoding='utf-8')
     return [{'role': 'system', 'content': prompt}, {'role': 'user', 'content': dumps(payload)}]
 
@@ -739,6 +748,142 @@ def _text_errors(content):
 
 def _admin_sentences(previous):
     return {f'A{i+1}': sentence for i, sentence in enumerate(previous['sentences']) if sentence['origin'] == 'admin'}
+
+
+def _instant(value):
+    try:
+        parsed = datetime.fromisoformat(value)
+        return parsed if parsed.tzinfo is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _handwritten_links(version, parent):
+    """Map surviving items to exact parent references, never a shifted occurrence.
+
+    Admin edits consume existing matches before appending new ones. Automatic
+    assembly preserves survivors in per-text order after the recorded deletions.
+    Missing/inconsistent history cannot establish an item's introduction.
+    """
+    current = _admin_sentences(version)
+    previous = _admin_sentences(parent) if parent else {}
+    def grouped(items):
+        result = {}
+        for ref, sentence in items.items():
+            result.setdefault(sentence['text'], []).append(ref)
+        return result
+    after, before = grouped(current), grouped(previous)
+    links, introduced = {}, set()
+    source = version['source']
+    if source == 'rollback':
+        if parent is not None and version['sentences'] == parent['sentences']:
+            links = {ref:ref for ref in current}
+    elif source == 'admin_edit':
+        for text, refs in after.items():
+            matches = before.get(text, [])
+            # Removing an unlabelled duplicate cannot identify the survivor.
+            if len(refs) < len(matches):
+                continue
+            for index, ref in enumerate(refs):
+                if index < len(matches):
+                    links[ref] = matches[index]
+                else:
+                    introduced.add(ref)
+    elif parent is not None and source in ('periodic', 'regenerate'):
+        material = version.get('material') or {}
+        if 'handwritten_changes' not in material:
+            # Older versions have no deletion ledger. Only a unique exact
+            # match establishes a correspondence without guessing an item.
+            links = {refs[0]:before[text][0] for text,refs in after.items()
+                     if len(refs)==1 and len(before.get(text, []))==1}
+        else:
+            changes, deleted = material['handwritten_changes'], set()
+            if not isinstance(changes, list):
+                return {}, set()
+            for change in changes:
+                if (not isinstance(change, dict) or not isinstance(change.get('ref'), str)
+                        or change['ref'] not in previous or change['ref'] in deleted
+                        or change.get('action') != 'delete'
+                        or change.get('sentence') != previous[change['ref']]):
+                    return {}, set()
+                deleted.add(change['ref'])
+            for text, refs in after.items():
+                survivors = [ref for ref in before.get(text, []) if ref not in deleted]
+                if len(refs) == len(survivors):
+                    links.update(zip(refs, survivors))
+    return links, introduced
+
+
+def _handwritten_snapshot(conn, previous):
+    """Follow immutable version/deletion references back to each introduction."""
+    result = {}
+    for ref, sentence in _admin_sentences(previous).items():
+        cursor, version, seen, written_at = ref, previous, set(), None
+        while version['id'] not in seen:
+            seen.add(version['id'])
+            parent_id = version['rollback_of'] if version['source']=='rollback' else version.get('base_version_id')
+            try:
+                parent = _get(conn, parent_id) if parent_id else None
+            except ValueError:
+                break
+            links, introduced = _handwritten_links(version, parent)
+            if cursor in introduced:
+                written_at = version['created_at'] if _instant(version['created_at']) else None
+                break
+            if cursor not in links or parent is None:
+                break
+            cursor, version = links[cursor], parent
+        result[ref] = {'ref':ref, 'text':sentence['text'], 'written_at':written_at}
+    return result
+
+
+def _handwritten_answer(answer, evidence, sentence):
+    """Validate bindings only; the model judges explicit correction vs another side."""
+    if (set(answer) != {'decision','reason','evidence','instruction_quote'}
+            or answer.get('decision') not in ('keep','explicit_correction','reply_instruction')
+            or not isinstance(answer.get('reason'),str) or not answer['reason'].strip()
+            or not isinstance(answer.get('evidence'),list)
+            or not isinstance(answer.get('instruction_quote'),str)):
+        return 'invalid handwritten decision fields'
+    decision, proofs, quote = answer['decision'], answer['evidence'], answer['instruction_quote']
+    if decision == 'keep':
+        return None if not proofs and not quote else 'keep must not carry deletion proof'
+    if decision == 'reply_instruction':
+        return (None if not proofs and quote.strip() and quote in sentence['text']
+                else 'instruction must quote this handwritten sentence')
+    if not proofs or quote:
+        return 'explicit correction requires later memory proof'
+    for proof in proofs:
+        if (not isinstance(proof,dict) or set(proof) != {'ref','quote'}
+                or not isinstance(proof.get('ref'),str) or proof['ref'] not in evidence
+                or not isinstance(proof.get('quote'),str) or not proof['quote'].strip()
+                or proof['quote'] not in evidence[proof['ref']]['content']):
+            return 'correction proof must bind an exact quote from an eligible later memory'
+    return None
+
+
+def _assemble_handwritten(sentences, material, previous):
+    """Carry each protected item once, preserving per-text parent order."""
+    deleted = {c['ref'] for c in material.get('handwritten_changes',[])}
+    manual = _admin_sentences(previous)
+    removed_text = {manual[ref]['text'] for ref in deleted}
+    protected = {ref:s for ref,s in manual.items() if ref not in deleted}
+    remaining = {}
+    for ref, sentence in protected.items():
+        remaining.setdefault(sentence['text'], []).append(ref)
+    assembled = []
+    for sentence in sentences:
+        if sentence['text'] in removed_text:
+            continue
+        if sentence['text'] in remaining:
+            # Consume the actual surviving occurrence, not the first equal text.
+            if remaining[sentence['text']]:
+                ref = remaining[sentence['text']].pop(0)
+                assembled.append(protected.pop(ref))
+            continue
+        assembled.append(sentence)
+    assembled.extend(protected.values())
+    return assembled
 
 
 def _deterministic(output, material, previous):
@@ -1373,6 +1518,9 @@ def _check_verdicts(output, sentences, *, material=None):
         if not _valid_sentence_verdict(row, index):
             errors.append(f'sentence {index}: invalid model verdict')
             continue
+        if sentence['origin']=='admin' and material is not None and 'handwritten_changes' in material:
+            # Absence of a licensed deletion is protection, not a fabricated model vote.
+            continue
         issues = _surface_issues(sentence, memories=memories) + row.get('clause_errors', [])
         if isinstance(row.get('persona_kind'), str) and row['persona_kind'] in EXCLUDED_KINDS:
             issues.append(EXCLUDED_KINDS[row['persona_kind']])
@@ -1403,6 +1551,9 @@ def _stale(conn, version, *, check_sources=False):
     problems = {}
     material = {m['memory_id']: m for m in version.get('material', {}).get('evidence', {}).get('memories', [])}
     refs = {b['memory_id']: b['revision'] for s in version['sentences'] for b in s['basis']}
+    for change in version.get('material',{}).get('handwritten_changes',[]):
+        for basis in change['basis']:
+            refs[basis['memory_id']] = basis['revision']
     visibility = Visibility(conn)
     for mid, revision in refs.items():
         traced = material.get(mid, {})
@@ -2487,10 +2638,10 @@ class PersonaEngine:
             _, _, window_problems = _check_verdicts(checked_batch, subset, material=material)
         return checked_batch, original_batch, window_problems, problems
 
-    def _check_all(self, purpose, material, sentences, *, full_content, outputs, assess_degree=True):
+    def _check_all(self, purpose, material, sentences, *, full_content, outputs, assess_degree=True, deadline=None):
         try:
             result = self._check_all_stage(purpose, material, sentences, full_content=full_content,
-                                          outputs=outputs, assess_degree=assess_degree)
+                                          outputs=outputs, assess_degree=assess_degree, deadline=deadline)
         except ModelError as error:
             if error.reason != 'output_limit':
                 if error.reason == 'timeout':
@@ -2508,14 +2659,15 @@ class PersonaEngine:
             outputs[purpose + '_incomplete'] = 'output_limit'
         return result
 
-    def _check_all_stage(self, purpose, material, sentences, *, full_content, outputs, assess_degree=True):
+    def _check_all_stage(self, purpose, material, sentences, *, full_content, outputs, assess_degree=True, deadline=None):
         """Check small focus windows, then AND facts and union failures per sentence."""
         import time
         subsets = _check_batches(sentences, material=material, purpose=purpose) if sentences else []
         # One fixed stage ceiling includes size splitting, batch/field correction, timeout
         # retry and degree. Even one fact window can retry within this same ceiling.
         stage_seconds = MAX_CHECK_STAGE_SECONDS
-        deadline = getattr(self.gateway, 'monotonic', time.monotonic)() + stage_seconds
+        deadline = (getattr(self.gateway, 'monotonic', time.monotonic)() + stage_seconds
+                    if deadline is None else deadline)
         raw_batches = outputs.setdefault(purpose + '_batches', [])
         rows, batches, short_circuits = {}, [], []
         invalid_fields, invalid_batches, material_rejections = [], [], []
@@ -2674,6 +2826,90 @@ class PersonaEngine:
                 'material_rejections':material_rejections,
                 'skipped_windows':skipped, 'normalizations':normalizations}
 
+    def _review_handwritten(self, material, outputs, *, deadline):
+        """One sentence per bounded page; uncertain/invalid semantic permission means keep."""
+        audit = {'policy':'explicit_correction_or_reply_instruction_v1',
+                 'decisions':[], 'retries':0, 'conservative_keeps':0, 'oversized_memories':[]}
+        raw_batches = outputs.setdefault('persona_check_handwritten_batches', [])
+        changes = []
+        as_of = _instant(material['as_of'])
+        for ref,sentence in material['handwritten_snapshot'].items():
+            written = _instant(sentence['written_at'])
+            eligible = [m for m in material['evidence']['memories']
+                        if written is not None and as_of is not None
+                        and _instant(m['recorded_at']) is not None
+                        and written < _instant(m['recorded_at']) <= as_of]
+            def payload(memories):
+                return {'task':'handwritten_review','candidate':[],
+                        'handwritten':sentence,
+                        'evidence_by_ref':{m['ref']:{**_model_memory(m), 'content':m['content'],
+                            'recorded_at':m['recorded_at']} for m in memories}}
+            pages, page = [], []
+            for memory in eligible:
+                if _check_request_bytes('persona_check',payload([*page,memory])) <= MAX_CHECK_REQUEST_BYTES:
+                    page.append(memory)
+                else:
+                    if page:
+                        pages.append(page)
+                        page=[]
+                    if _check_request_bytes('persona_check',payload([memory])) <= MAX_CHECK_REQUEST_BYTES:
+                        page=[memory]
+                    else:
+                        audit['oversized_memories'].append({'sentence_ref':ref,
+                            'memory_id':memory['memory_id'],'revision':memory['revision']})
+            if page or not pages:
+                pages.append(page)
+            decisions = []
+            for page in pages:
+                request = payload(page)
+                raw = {'persona_check_task':'handwritten_review',
+                       'persona_check_prompt_version':HANDWRITTEN_PROMPT_VERSION,
+                       'sentence_ref':ref, 'attempts':[]}
+                raw_batches.append(raw)
+                retry_state = {'timeouts':0}
+                answer, error = None, None
+                for attempt in range(2):
+                    attempt_raw = {}
+                    raw['attempts'].append(attempt_raw)
+                    try:
+                        answer = self._check_call('persona_check',request,attempt_raw,
+                            deadline=deadline,retry_state=retry_state)
+                        error = _handwritten_answer(answer,request['evidence_by_ref'],sentence)
+                    except ModelError as failure:
+                        if not _structure_failure(failure):
+                            raise
+                        error = _parse_structure_error(failure)
+                    if not error:
+                        break
+                    attempt_raw['handwritten_structure_error'] = error
+                    if attempt == 0:
+                        audit['retries'] += 1
+                if error:
+                    audit['conservative_keeps'] += 1
+                    decisions.append({'ref':ref,'decision':'keep','reason':'invalid review after one reask',
+                                      'error':error,'status':'conservative'})
+                    continue
+                decision = {**answer, 'ref':ref, 'status':'complete'}
+                decisions.append(decision)
+            # A positive page supplies its own complete deletion proof; never
+            # combine different corrections into a stronger permission. An instruction is
+            # intrinsic to the exact sentence and needs no memory permission.
+            permitted = next((d for d in decisions if d['decision']=='reply_instruction'),None)
+            corrections = [d for d in decisions if d['decision']=='explicit_correction']
+            if permitted is None and corrections:
+                permitted = corrections[0]
+            audit['decisions'].extend(decisions)
+            if permitted is not None:
+                by_ref = {m['ref']:m for m in eligible}
+                basis = [{'memory_id':by_ref[p['ref']]['memory_id'],
+                          'revision':by_ref[p['ref']]['revision'],'quote':p['quote']}
+                         for p in permitted['evidence']]
+                changes.append({'ref':ref,'sentence':_admin_sentences(
+                    {'sentences':material['previous_sentences']})[ref], 'written_at':sentence['written_at'],
+                    'trigger':permitted['decision'],'action':'delete','basis':basis,
+                    'instruction_quote':permitted['instruction_quote'],'reason':permitted['reason']})
+        return changes, audit
+
     def _recover_sentences(self, original, initial_model, problems, material, previous, checks, outputs):
         repairable = {i:original[i-1] for i in problems if original[i-1]['origin'] != 'initial_template'}
         replacements = {}
@@ -2820,19 +3056,26 @@ class PersonaEngine:
                        'admin_sentences':material['admin_sentences'],
                        'remaining_characters':max(0,MAX_CHARS-sum(len(s['text']) for s in material['locked_sentences']))}
             generated = self._call('persona_generate', payload, outputs)
+            import time
+            check_deadline = getattr(self.gateway,'monotonic',time.monotonic)() + MAX_CHECK_STAGE_SECONDS
+            changes, handwritten_audit = self._review_handwritten(material,outputs,deadline=check_deadline)
+            material['handwritten_changes'] = changes
             _, generated_sentences, checked = _deterministic(generated, editable, previous)
             # An empty extension is valid: the intact template may be the entire candidate.
             if generated.get('sentences') == []:
                 checked = {'passed':True, 'errors':[], 'warnings':[]}
+            generated_sentences = _assemble_handwritten(generated_sentences,material,previous)
             sentences = material['locked_sentences'] + generated_sentences
             content, deterministic = _final_deterministic(sentences, material, previous)
             deterministic['errors'] = checked['errors'] + deterministic['errors']
             deterministic['passed'] = not deterministic['errors']
-            checks = {'original_sentence_count':len(sentences), 'deleted_sentences':[], 'repaired_sentences':[]}
+            checks = {'original_sentence_count':len(sentences), 'deleted_sentences':[], 'repaired_sentences':[],
+                      'handwritten_changes':changes, 'handwritten_review':handwritten_audit}
             model, degree, model_errors = None, 'large', []
             if deterministic['passed']:
                 with self.store.write() as conn:
-                    conn.execute('UPDATE persona_attempts SET outputs_json=? WHERE id=?', (dumps(outputs),attempt))
+                    conn.execute('UPDATE persona_attempts SET outputs_json=?,material_json=? WHERE id=?',
+                                 (dumps(outputs),dumps(material),attempt))
                 # Reject only already-known wording/evidence failures before an
                 # expensive semantic request. Keep these decisions separate from
                 # actual model votes; no unchecked fact receives a fabricated vote.
@@ -2852,7 +3095,7 @@ class PersonaEngine:
                     # Recovery reassesses the final assembled text after any edit.
                     model = self._check_all('persona_check', material, eligible,
                         full_content=''.join(sentence['text'] for sentence in eligible), outputs=outputs,
-                        assess_degree=not bool(problems))
+                        assess_degree=not bool(problems),deadline=check_deadline)
                     degree, structural, semantic_problems = _check_verdicts(model, eligible, material=material)
                 problems.update({positions[i-1]:reasons for i,reasons in semantic_problems.items()})
                 initial_errors = structural + [f'sentence {i}: {reason}'
@@ -2876,12 +3119,13 @@ class PersonaEngine:
                                       for phase in ('initial_model', 'recheck'))
             if conservative_degree:
                 degree = 'large'
-                checks['degree_override'] = 'invalid_degree_structure_requires_confirmation'
+                checks['degree_override'] = ('invalid_degree_structure_keep_current'
+                    if settings['publish_mode']=='all_auto' else 'invalid_degree_structure_requires_confirmation')
             passed = deterministic['passed'] and not model_errors
             checks.update(passed=passed, deterministic=deterministic, model=model, model_errors=model_errors,
                           admin_content_removed_or_changed=manual_removed)
             mode = settings['publish_mode']
-            status = 'rejected' if not passed else ('current' if not conservative_degree and (mode == 'all_auto' or (
+            status = 'rejected' if not passed or (conservative_degree and mode=='all_auto') else ('current' if not conservative_degree and (mode == 'all_auto' or (
                 mode == 'small_medium_auto' and degree in ('small','medium'))) else 'pending')
             with self.store.write() as conn:
                 _expect(conn, expected_version)
