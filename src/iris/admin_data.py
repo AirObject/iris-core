@@ -10,6 +10,7 @@ from .retrieval import Retrieval
 from .state import report_history
 from .goals import goal_list, goal_detail, notification_list
 from .people import list_people, person_detail, canonical_subject
+from .maintenance import abandoned_retry_days
 from .memory_ops import lifecycle_settings, missing_batch_targets
 from .model_health import utc_now, usage_window
 from .media import message_media, SOURCES
@@ -459,15 +460,51 @@ def batch_tree(store, batch_id, *, limit=100, offset=0):
 def memory_gaps(store, *, entry_id=None, time_from=None, time_to=None, limit=30, offset=0):
     where, args = learning_filter(store, entry_id=entry_id, time_from=time_from, time_to=time_to,
                                   entry_column="g.entry_id", start_column="g.started_at", end_column="g.ended_at")
+    instant = utc_now()
+    zone = ZoneInfo(str(store.setting("timezone", "Asia/Shanghai")))
     with store.read() as conn:
+        config = lifecycle_settings(conn)
+        days = abandoned_retry_days(conn)
         total = conn.execute(f"SELECT COUNT(*) FROM memory_gaps g WHERE {where}", args).fetchone()[0]
         items = [dict(r) for r in conn.execute(f"""SELECT g.batch_id,g.entry_id,g.started_at,g.ended_at,g.reason,g.created_at,
-            e.name AS entry_name,b.state AS batch_state
+            e.name AS entry_name,b.state AS batch_state,
+            COALESCE(s.abandoned_at,b.finished_at) AS abandoned_at,COALESCE(s.covered_day,0) AS covered_day,s.closed_reason,
+            (SELECT COUNT(*) FROM maintenance_batch_retries r WHERE r.batch_id=b.id) AS retries,
+            (SELECT MAX(r.local_day) FROM maintenance_batch_retries r WHERE r.batch_id=b.id) AS last_retry_day,
+            EXISTS(SELECT 1 FROM json_each(b.target_ids) j LEFT JOIN messages m ON m.id=j.value
+                WHERE m.id IS NULL) AS targets_missing
             FROM memory_gaps g JOIN entries e ON e.id=g.entry_id JOIN batches b ON b.id=g.batch_id
+            LEFT JOIN batch_retry_schedules s ON s.batch_id=b.id
             WHERE {where} ORDER BY julianday(g.started_at) DESC,g.batch_id DESC LIMIT ? OFFSET ?""", [*args, limit, offset])]
         for item in items:
             item["relearning"] = item["batch_state"] in ("waiting", "running")
+            item["auto_retry"] = gap_auto_retry(item, days, config, zone, instant)
+            for key in ("abandoned_at", "covered_day", "closed_reason", "retries", "last_retry_day", "targets_missing"):
+                item.pop(key)
     return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+
+def gap_auto_retry(gap, days, config, zone, instant):
+    """Progress of the 17.7 schedule, in the terms the gap page displays."""
+    progress = {"attempted": gap["retries"], "total": len(days), "next_date": None}
+    if gap["batch_state"] == "refused":
+        return {**progress, "status": "refused"}
+    if gap["batch_state"] != "abandoned":
+        return {**progress, "status": "in_progress"}
+    if gap["closed_reason"] or gap["targets_missing"]:
+        return {**progress, "status": "targets_cleared"}
+    if not config["abandoned_retry_enabled"]:
+        return {**progress, "status": "disabled"}
+    slot = next((day for day in days if day > gap["covered_day"]), None) if gap["retries"] < len(days) else None
+    if slot is None or not gap["abandoned_at"]:
+        return {**progress, "status": "finished"}
+    local = instant.astimezone(zone)
+    # An overdue slot waits for the next daily run; a batch retries at most once per day.
+    next_run = local.date()
+    if local.strftime("%H:%M") >= config["maintenance_time"] or gap["last_retry_day"] == next_run.isoformat():
+        next_run += timedelta(days=1)
+    scheduled = datetime.fromisoformat(gap["abandoned_at"]).astimezone(zone).date()+timedelta(days=slot)
+    return {**progress, "status": "scheduled", "next_date": max(scheduled, next_run).isoformat()}
 
 
 def upcoming_deletion(store, *, limit=30, offset=0, current=None):

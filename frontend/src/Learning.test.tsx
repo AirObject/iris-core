@@ -51,6 +51,12 @@ const gap = {
   created_at: batch.finished_at,
   batch_state: "abandoned",
   relearning: false,
+  auto_retry: {
+    attempted: 1,
+    total: 3,
+    next_date: "2026-11-13",
+    status: "scheduled",
+  },
 };
 let state: string, conflict: boolean;
 let requests: { url: string; init?: RequestInit }[];
@@ -321,6 +327,16 @@ test("relearn conflict is visible and does not pretend the gap disappeared", asy
   expect(await screen.findByText("批次状态已变化，请刷新")).toBeVisible();
   expect(screen.queryByText("重新学习中")).not.toBeInTheDocument();
 });
+test("gap list shows automatic retry progress and next date", async () => {
+  render(<LearningPage openMemory={openMemory} />);
+  await userEvent.click(
+    await screen.findByRole("button", { name: "记忆缺口" }),
+  );
+  expect(
+    await screen.findByText("已自动重试 1/3，下次 2026-11-13"),
+  ).toBeVisible();
+});
+
 test("gap list sends entry/date filters and reads do not post", async () => {
   render(<LearningPage openMemory={openMemory} />);
   await userEvent.click(
