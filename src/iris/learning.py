@@ -58,6 +58,12 @@ def _validate_output_shape(output: Any, raw: str) -> None:
         raise ValueError("invalid learning output shape (" + "; ".join(errors) + ")")
 
 
+def _dropped_memory(item: dict[str, Any], reason: str) -> dict[str, Any]:
+    # The batch result is JSON; the runtime vector attached before _apply is not.
+    return {"section": "memories", "reason": reason,
+            "item": {key: value for key, value in item.items() if key != "_embedding"}}
+
+
 def _score(value: Any, default: int) -> int:
     try:
         return max(0, min(100, round(float(value))))
@@ -781,7 +787,7 @@ class LearningEngine:
                     "SELECT 1 FROM memories WHERE id=? AND revision=? AND lifecycle='active'", (m['id'],m['revision'] + (m['id'] in updated))).fetchone()
                     for m in derived)
                 if stale:
-                    dropped.append({'section':'memories','item':item,'reason':'derived memory changed or invisible'})
+                    dropped.append(_dropped_memory(item, 'derived memory changed or invisible'))
                     continue
                 incoming_scope = visibility.evidence(item['evidence'], [m['id'] for m in derived])
                 speaker_id = canonical_subject(conn, item["speaker_id"])
@@ -818,8 +824,7 @@ class LearningEngine:
                 if duplicate:
                     if duplicate["id"] not in created:
                         if self_output_only(duplicate, item["evidence"]):
-                            dropped.append({"section": "memories", "reason": SELF_ONLY_CONFIRMATION,
-                                            "item": {k: v for k, v in item.items() if k != "_embedding"}})
+                            dropped.append(_dropped_memory(item, SELF_ONLY_CONFIRMATION))
                         else:
                             confirm_once(duplicate["id"])
                     for message_id in item["evidence"]:
