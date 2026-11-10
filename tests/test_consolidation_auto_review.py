@@ -248,3 +248,82 @@ def test_budget_stop_after_conflict_classification_blocks_merges(store):
     assert model.steps().count('conflict') == 1
     assert all(row(store, mid)['merged_into'] is None for mid in (a, b, c))
     assert report['summary']['skipped']['reasons'].get('unresolved_conflict')
+
+
+# ---- follow-up: decay report and merges never revive a superseded memory -----------
+
+def lowered_thresholds(store):
+    store.set_setting('lifecycle', {**(store.setting('lifecycle') or {}), 'forget_threshold': 3, 'restore_threshold': 5})
+
+
+def maintenance_run(store):
+    engine = Maintenance(store, clock=Clock())
+    rid = engine.request()
+    engine.run(rid)
+    return engine.report(rid)
+
+
+def test_blocked_restore_is_a_skip_not_a_daily_restored_item(store):
+    superseded, plain = seeded(store), seeded_other(store)
+    superseded_at(store, superseded, 10)
+    forget(store, plain, 'insufficient_support')
+    lowered_thresholds(store)
+    for _ in range(2):
+        report = maintenance_run(store)
+        assert superseded not in report['summary']['restored']['memory_ids']
+        assert not [i for i in report['items'] if i['phase'] == 'decay' and i['memory_id'] == superseded]
+        assert report['summary']['skipped']['reasons'].get('superseded') == 1
+        assert row(store, superseded)['lifecycle'] == 'forgotten'
+    assert row(store, plain)['lifecycle'] == 'active'
+
+
+def seeded_other(store):
+    source = message(store, 5, '小红喜欢在河边跑步', sender='小红')
+    return mem(store, '小红喜欢在河边跑步', [source], subject(store, source))
+
+
+def calls_with(model, memory_id):
+    return [c for c in model.calls if memory_id in c[2].get('pair_ids', [])]
+
+
+def skip_item(report):
+    return next((i for i in report['items'] if i['item_key'] == 'skip:superseded_member'), None)
+
+
+@pytest.mark.parametrize('resolution', ['auto_v1', 'report_only_v1'])
+def test_pairs_with_a_superseded_forgotten_member_are_not_planned(store, resolution):
+    auto(store, resolution)
+    a, b, c = three(store)
+    forget(store, a, 'superseded')
+    model = AutoModel(store, pair=merge_answer)
+    _, report = run(store, model)
+    assert calls_with(model, a) == []
+    item = skip_item(report)
+    assert item['outcome'] == 'skipped' and item['reason'] == 'superseded_member' and item['details']['count'] == 2
+    assert row(store, a)['lifecycle'] == 'forgotten' and row(store, a)['merged_into'] is None
+    # The ordinary pair of two active memories is unaffected.
+    assert {row(store, b)['merged_into'], row(store, c)['merged_into']} - {None} <= {b, c}
+    assert any(row(store, mid)['merged_into'] for mid in (b, c))
+
+
+def test_restore_puts_the_pair_back_into_consolidation(store):
+    auto(store)
+    a, b, c = three(store)
+    forget(store, a, 'superseded')
+    model = AutoModel(store)
+    run(store, model)
+    assert calls_with(model, a) == []
+    assert manage_memory(store, a, 1, action='restore')
+    _, report = run(store, model)
+    assert calls_with(model, a) and skip_item(report) is None
+
+
+def test_superseded_but_active_memory_is_still_planned(store):
+    auto(store, 'report_only_v1')
+    a, b, c = three(store)
+    forget(store, a, 'superseded')
+    with store.write() as conn:  # a report-only suggestion on an active memory is not the limit.
+        conn.execute("UPDATE memories SET lifecycle='active',forgotten_at=NULL,retention=50 WHERE id=?", (a,))
+    model = AutoModel(store)
+    run(store, model)
+    assert calls_with(model, a)

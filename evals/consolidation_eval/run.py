@@ -332,6 +332,8 @@ def case_run(case,dbpath,gateway_factory,method,resolution='report_only_v1'):
                 continue
             d=item['details']
             if not d.get('before_memories'):
+                if item['outcome']=='skipped':
+                    continue  # Aggregate planning skips, not an attempted action.
                 actions.append({'action_id':'failed-'+item['item_key'],'kind':item['outcome'],
                     'keys':[reverse[item['memory_id']]] if item['memory_id'] in reverse else [],
                     'status':'failed','before_memories':[],'after_memories':[],'report':(item['reason'] or '')+': '+d.get('rejection','')})

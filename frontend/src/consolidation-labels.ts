@@ -49,6 +49,8 @@ export function consolidationReason(reason: string) {
   const labels: Record<string, string> = {
     disabled: "本次设置已关闭",
     protected: "人工编辑或置顶的记忆，未自动处理",
+    superseded: "已被替代的记忆，等管理员恢复后才恢复有效",
+    superseded_member: "含已被替代且遗忘的记忆，不合并也不建议",
     missing_unique_detail: "合并正文缺少某条独有细节",
     numbers_changed: "合并正文的数字与原文不一致",
     negation_changed: "合并正文的否定与原文不一致",

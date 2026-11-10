@@ -895,6 +895,11 @@ def grounded_reason(text, payload, fallback):
     return text
 
 
+def superseded_member(memory):
+    """Forgotten with an uncleared superseded annotation: no merge or suggestion may revive it."""
+    return memory['lifecycle'] == 'forgotten' and any(a['kind'] == 'superseded' for a in memory.get('annotations', []))
+
+
 def protected_work(payload):
     ids = payload.get('pair_ids', [payload.get('target_id')])
     return any(protected(m) for m in payload['memories'] if m['id'] in ids)
@@ -1185,7 +1190,7 @@ class Consolidation:
         with self.store.read() as conn:
             rows=conn.execute("""SELECT id FROM memories WHERE lifecycle!='deleted' AND id<=?
                 ORDER BY importance DESC,julianday(updated_at) DESC,id""",(run['memory_through'],)).fetchall()
-            seen_pairs,cache=set(),{}
+            seen_pairs,cache,superseded_pairs=set(),{},[]
             def get(mid):
                 if mid not in cache:
                     cache[mid]=attempt(f'plan:memory:{mid}',[mid],lambda:snapshot(conn,mid))
@@ -1229,7 +1234,11 @@ class Consolidation:
                     if n is None:
                         continue
                     payload=attempt(f'plan:pair:{pair[0]}:{pair[1]}',list(pair),lambda:self._plan_pair(get,m,n,settings))
-                    if payload:
+                    if payload and (superseded_member(m) or superseded_member(n)):
+                        # Restore or undo clears the annotation and changes the
+                        # snapshot, which puts the pair back into planning.
+                        superseded_pairs.append(list(pair))
+                    elif payload:
                         candidates.append(('pair',payload))
                 scanned.append((mid,fp))
 
@@ -1254,6 +1263,12 @@ class Consolidation:
         failed_ids={mid for ids in failures.values() for mid in ids}
         scanned=[(mid,fp) for mid,fp in scanned if mid not in failed_ids]
         with self.store.write() as conn:
+            if superseded_pairs:
+                conn.execute("""INSERT INTO maintenance_items
+                    (run_id,phase,item_key,object_id,outcome,reason,details_json,created_at)
+                    VALUES(?,'consolidation','skip:superseded_member',?,'skipped','superseded_member',?,?)
+                    ON CONFLICT(run_id,phase,item_key) DO UPDATE SET details_json=excluded.details_json""",
+                    (run['id'],run['id'],dumps({'count':len(superseded_pairs),'pairs':superseded_pairs[:50]}),self.clock().isoformat()))
             conn.executemany('INSERT OR REPLACE INTO consolidation_scanned VALUES(?,?)',scanned)
             self._trim_pair_backlog(conn,run['id'])
             # A bounded run snapshot; the durable pending queue remains ordered.
