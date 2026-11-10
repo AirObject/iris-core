@@ -24,7 +24,7 @@ from .db import dumps
 from .memory_ops import Visibility
 from .models import Gateway, ModelError, parse_json_object_with_status
 from .queue import estimate_tokens, truncate_material
-from .search_text import words
+from .search_text import QUERY_STOP, words
 
 DEFAULT_GOAL = '维持稳定的发言风格，并充分认识自我'
 DEFAULT_RULES = ('只根据现有的自我记忆提炼，不虚构经历、关系或能力；外部设定的背景不写成亲身经历；'
@@ -39,10 +39,14 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v21', 'persona_check': 'persona_check_v34',
-                   'persona_recheck': 'persona_check_v34'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v22', 'persona_check': 'persona_check_v35',
+                   'persona_recheck': 'persona_check_v35'}
 DEGREE_PROMPT_VERSION = 'persona_degree_v1'
-HANDWRITTEN_PROMPT_VERSION = 'persona_handwritten_v1'
+HANDWRITTEN_PROMPT_VERSION = 'persona_handwritten_v2'
+# Each sentence's review pages are relevance-first, so the bound drops the least related.
+HANDWRITTEN_REVIEW_MAX_PAGES = 2
+# About what two pages hold; also bounds the memories stored with each attempt/version.
+HANDWRITTEN_MAX_OVER_BUDGET = 40
 CALL_TIMEOUTS = {'persona_generate': 360, 'persona_check': 360,
                  'persona_recheck': 360}
 CALL_MAX_TOKENS = {'persona_generate':16000, 'persona_check':16000,
@@ -76,6 +80,10 @@ ENTRY_CONTEXT_TERMS = {'live': ('直播',), 'group': ('群聊',),
                        'private': ('私聊',), 'game': ('游戏', '联机')}
 
 REFERENCE = re.compile(r'(?<![A-Za-z0-9])[MP]\s*#?\s*\d+(?![A-Za-z0-9])', re.I)
+# The closed grammatical class of epistemic modal expressions. It names no topic,
+# activity, person or corpus answer and applies uniformly to every source clause.
+UNCERTAINTY = re.compile(r'(?<!不)可能(?!性)|好像|似乎|大概|大约|也许|或许|恐怕|貌似|兴许|说不定|没准|'
+                         r'不一定|未必|(?:不太?|不能|无法|没法)确定|(?:拿|说)不准|说不好|不好说|不敢肯定|估计|我猜')
 
 
 def utc_now():
@@ -196,9 +204,9 @@ def _self_snapshot(conn):
             WHERE a.subject_id='self' AND (m.speaker_subject_id='self' OR m.stance='设定') ORDER BY m.id''') if visibility.memory_visible(r['id'])}
 
 
-def _select(conn, token_limit=BASIS_TOKENS, *, timezone_name=None, required_ids=()):
+def _select(conn, token_limit=BASIS_TOKENS, *, timezone_name=None, required_ids=(), later_than=None):
     zone = ZoneInfo(timezone_name or _setting(conn, 'timezone', 'Asia/Shanghai'))
-    selected = []
+    selected, over_budget = [], []
     reserved = ",".join("?" for _ in required_ids) or "NULL"
     rows = conn.execute(f'''SELECT m.*,e.kind AS entry_kind FROM memories m
         JOIN memory_subjects a ON a.memory_id=m.id LEFT JOIN entries e ON e.id=m.entry_id
@@ -222,7 +230,12 @@ def _select(conn, token_limit=BASIS_TOKENS, *, timezone_name=None, required_ids=
         # a model to compress a large item to make it fit.
         if estimate_tokens(dumps([*selected, record])) <= token_limit:
             selected.append(record)
-    return {'memories': selected, 'estimated_tokens': estimate_tokens(dumps(selected)), 'token_limit': token_limit}
+        elif later_than is not None and (_instant(record['recorded_at']) or later_than) > later_than:
+            over_budget.append(record)
+    result = {'memories': selected, 'estimated_tokens': estimate_tokens(dumps(selected)), 'token_limit': token_limit}
+    if later_than is not None:
+        result['over_budget'] = over_budget
+    return result
 
 
 def select_evidence(store, *, token_limit=BASIS_TOKENS):
@@ -284,7 +297,13 @@ def _template_snapshot(conn):
 def _generation_material(conn, settings, previous, stamp):
     locked, omitted = _template_snapshot(conn)
     required = sorted({b['memory_id'] for s in locked for b in s['basis']})
-    evidence = _select(conn, timezone_name=settings['timezone'], required_ids=required)
+    handwritten = _handwritten_snapshot(conn, previous)
+    # The generation budget ranks by importance and retention, which tends to
+    # exclude exactly the recent correction a handwritten sentence needs reviewed.
+    written = [t for t in (_instant(s['written_at']) for s in handwritten.values()) if t is not None]
+    evidence = _select(conn, timezone_name=settings['timezone'], required_ids=required,
+                       later_than=min(written, default=None))
+    over_budget = evidence.pop('over_budget', [])
     available = {(m['memory_id'],m['revision']):m for m in evidence['memories']}
     retained = []
     for sentence in locked:
@@ -303,7 +322,8 @@ def _generation_material(conn, settings, previous, stamp):
         'omitted_template_sentences':omitted, 'previous':previous['content'],
         'previous_sentences':previous['sentences'],
         'admin_sentences':{k:v['text'] for k,v in _admin_sentences(previous).items()},
-        'handwritten_snapshot':_handwritten_snapshot(conn, previous),
+        'handwritten_snapshot':handwritten,
+        'handwritten_evidence':{'memories':_handwritten_overflow(over_budget, handwritten, len(evidence['memories']))},
         'handwritten_prompt_version':HANDWRITTEN_PROMPT_VERSION}
 
 
@@ -837,6 +857,33 @@ def _handwritten_snapshot(conn, previous):
     return result
 
 
+def _content_terms(text):
+    # QUERY_STOP is the existing general grammar list; no topic or answer words.
+    return {token.casefold() for token in words(text) if re.search(r'\w', token) and token not in QUERY_STOP}
+
+
+def _handwritten_rank(terms):
+    # Same-topic memories first, newest first. Callers exclude unparseable times.
+    return lambda m: (-len(terms & _content_terms(m['content'])), -_instant(m['recorded_at']).timestamp())
+
+
+def _handwritten_overflow(memories, handwritten, first_index):
+    """Over-budget later memories sharing a content term with a handwritten sentence.
+
+    Only their review needs them, so they are not generation evidence. Later
+    memories without a shared term cannot be recognised as the same fact cheaply.
+    """
+    kept = {}
+    for sentence in handwritten.values():
+        written, terms = _instant(sentence['written_at']), _content_terms(sentence['text'])
+        if written is None:
+            continue
+        related = [m for m in memories if (_instant(m['recorded_at']) or written) > written
+                   and terms & _content_terms(m['content'])]
+        kept.update((m['memory_id'], m) for m in sorted(related, key=_handwritten_rank(terms))[:HANDWRITTEN_MAX_OVER_BUDGET])
+    return [{**memory, 'ref':f'M{first_index+index}'} for index, memory in enumerate(kept.values(), 1)]
+
+
 def _handwritten_answer(answer, evidence, sentence):
     """Validate bindings only; the model judges explicit correction vs another side."""
     if (set(answer) != {'decision','reason','evidence','instruction_quote'}
@@ -859,6 +906,8 @@ def _handwritten_answer(answer, evidence, sentence):
                 or not isinstance(proof.get('quote'),str) or not proof['quote'].strip()
                 or proof['quote'] not in evidence[proof['ref']]['content']):
             return 'correction proof must bind an exact quote from an eligible later memory'
+        if UNCERTAINTY.search(proof['quote']):
+            return 'correction proof must be a definite statement, not an uncertain one'
     return None
 
 
@@ -1135,6 +1184,98 @@ def _resultative_aspect_issues(text, sources):
     return issues
 
 
+def _epistemic_clauses(text):
+    """(clause, uncertain) pairs; a bare hedge fragment governs its neighbours."""
+    clauses = [clause.strip() for clause in _aspect_clauses(text) if clause.strip()]
+    marked = [bool(UNCERTAINTY.search(clause)) for clause in clauses]
+    for index, clause in enumerate(clauses):
+        if marked[index] and not _content_terms(UNCERTAINTY.sub(' ', clause)):
+            for neighbour in (index - 1, index + 1):
+                if 0 <= neighbour < len(clauses):
+                    marked[neighbour] = True
+    return list(zip(clauses, marked))
+
+
+def _link_score(terms, clause):
+    # A necessary lexical link only: it does not establish entailment or attribution.
+    other = _content_terms(UNCERTAINTY.sub(' ', clause))
+    shared = len(terms & other)
+    return shared if shared >= 2 and shared * 2 >= min(len(terms), len(other)) else 0
+
+
+def _witness_uncertain(terms, clauses, *, require_link=True):
+    """None if unrelated, else whether this witness's closest clause is uncertain.
+
+    Equal closeness favours uncertainty: a hedged retelling constrains the claim.
+    """
+    scored = [(_link_score(terms, clause), uncertain) for clause, uncertain in clauses]
+    best = max((score for score, _ in scored), default=0)
+    if require_link and not best:
+        return None
+    return any(uncertain for score, uncertain in scored if score == best)
+
+
+def _hedge_kept(text, focus):
+    # A hedge's scope runs rightwards through the sentence, never backwards.
+    return bool(UNCERTAINTY.search(''.join(
+        part['text'] for part in _clause_parts(text) if part['index'] <= focus['index'])))
+
+
+def _own_words(source):
+    # Another person's hedge, including a quoted one, says nothing about how sure
+    # this speaker was. Metadata-free fallbacks are the memory's own text.
+    if source.get('speaker_subject_id') not in (None, 'self', 'scene'):
+        return ''
+    return source['excerpt'].split('\n引用原话：', 1)[0]
+
+
+UNCERTAINTY_ISSUE = ('uncertainty must be preserved: 依据是不确定说法时，自动句须保留同等的不确定语气，'
+                     '不能写成肯定句或换成更肯定的说法；保留不了就省去该主张')
+
+
+def _uncertainty_issues(sentence, memories):
+    """Applies when every related bound memory is uncertain about this clause.
+
+    One certain, independent memory ends the gate: the semantic check still owns
+    whether its date, scope and attribution actually support the claim.
+    """
+    refs = {(b['memory_id'], b['revision']) for b in sentence.get('basis', [])}
+    bound = [m for m in memories if (m['memory_id'], m['revision']) in refs]
+    for focus in _clause_parts(sentence['text']):
+        if _hedge_kept(sentence['text'], focus):
+            continue
+        terms = _content_terms(focus['text'])
+        verdicts = []
+        for memory in bound:
+            clauses = [pair for source in memory.get('excerpts', [])
+                       for pair in _epistemic_clauses(_own_words(source))]
+            verdict = _witness_uncertain(terms, clauses + _epistemic_clauses(memory['content']))
+            if verdict is not None:
+                verdicts.append(verdict)
+        if verdicts and all(verdicts):
+            return [UNCERTAINTY_ISSUE]
+    return []
+
+
+def _proof_uncertainty_issues(text, focus, cited):
+    """The same rule on the spans the checker actually cited for this focus."""
+    if _hedge_kept(text, focus):
+        return []
+    terms = _content_terms(focus['text'])
+    verdicts = []
+    for memory, source, quote in cited:
+        own = _own_words(source)
+        if quote not in own:
+            continue
+        quoted = [(clause, uncertain) for clause, uncertain in _epistemic_clauses(own)
+                  if clause in quote or quote in clause] or [(quote, bool(UNCERTAINTY.search(quote)))]
+        current = memory.get('current_revision_text')
+        verdicts.append(_witness_uncertain(terms, quoted, require_link=False)
+                        or (current is not None
+                            and _witness_uncertain(terms, _epistemic_clauses(current)) is True))
+    return [UNCERTAINTY_ISSUE] if verdicts and all(verdicts) else []
+
+
 def _bound_source_issues(sentence, tokens, memories):
     if memories is None or sentence['initial_setting']:
         return []
@@ -1197,6 +1338,8 @@ def _surface_issues(sentence, *, memories=None):
         # match; the model must still check all other pending-action semantics.
         issues.append('explicit pending intention is not persona: '
                       '明确仅为打算、计划或承诺的片段须修复或删除；日期与宣布行为不豁免待办')
+    if memories is not None:
+        issues.extend(_uncertainty_issues(sentence, memories))
     issues.extend(_bound_source_issues(sentence, tokens, memories))
     if not sentence['initial_setting'] and sentence['date_count'] < 2:
         # This is the same necessary boundary used by the proof validator. Apply
@@ -1405,7 +1548,7 @@ def _validate_clause_checks(output, payload):
                     or not isinstance(part.get('evidence'), list)):
                 errors.append(f'sentence {index}: {label}: invalid clause verdict')
                 continue
-            dates, valid, context_sources = set(), 0, []
+            dates, valid, context_sources, cited = set(), 0, [], []
             for proof in part['evidence']:
                 ref = proof.get('ref') if isinstance(proof, dict) else None
                 n = proof.get('source_index') if isinstance(proof, dict) else None
@@ -1436,6 +1579,7 @@ def _validate_clause_checks(output, payload):
                     continue
                 valid += 1
                 context_sources.append((memory, source))
+                cited.append((memory, source, quote))
                 if source.get('date'):
                     dates.add(source['date'])
             if not part['supported']:
@@ -1453,6 +1597,8 @@ def _validate_clause_checks(output, payload):
                 issues.extend(f'{label}: {issue}' for issue in
                               _resultative_aspect_issues(expected['text'],
                                   [source['excerpt'] for _, source in context_sources]))
+                issues.extend(f'{label}: {issue}' for issue in
+                              _proof_uncertainty_issues(sentence['text'], expected, cited))
             if part['supported'] and len(dates) < 2:
                 if not part['scene_qualified']:
                     issues.append(f'{label}: general claim needs at least two distinct dates of its own proof')
@@ -1549,7 +1695,9 @@ def _admin_removed(previous, sentences):
 
 def _stale(conn, version, *, check_sources=False):
     problems = {}
-    material = {m['memory_id']: m for m in version.get('material', {}).get('evidence', {}).get('memories', [])}
+    saved = version.get('material', {})
+    material = {m['memory_id']: m for m in (*saved.get('evidence', {}).get('memories', []),
+                                            *saved.get('handwritten_evidence', {}).get('memories', []))}
     refs = {b['memory_id']: b['revision'] for s in version['sentences'] for b in s['basis']}
     for change in version.get('material',{}).get('handwritten_changes',[]):
         for basis in change['basis']:
@@ -2828,17 +2976,23 @@ class PersonaEngine:
 
     def _review_handwritten(self, material, outputs, *, deadline):
         """One sentence per bounded page; uncertain/invalid semantic permission means keep."""
+        extra = material.get('handwritten_evidence', {}).get('memories', [])
         audit = {'policy':'explicit_correction_or_reply_instruction_v1',
-                 'decisions':[], 'retries':0, 'conservative_keeps':0, 'oversized_memories':[]}
+                 'decisions':[], 'retries':0, 'conservative_keeps':0, 'oversized_memories':[],
+                 'over_budget_candidates':len(extra), 'unreviewed_memories':[]}
         raw_batches = outputs.setdefault('persona_check_handwritten_batches', [])
         changes = []
         as_of = _instant(material['as_of'])
         for ref,sentence in material['handwritten_snapshot'].items():
             written = _instant(sentence['written_at'])
-            eligible = [m for m in material['evidence']['memories']
-                        if written is not None and as_of is not None
-                        and _instant(m['recorded_at']) is not None
-                        and written < _instant(m['recorded_at']) <= as_of]
+            terms = _content_terms(sentence['text'])
+            def later(memory):
+                recorded = _instant(memory['recorded_at'])
+                return (written is not None and as_of is not None and recorded is not None
+                        and written < recorded <= as_of)
+            eligible = ([m for m in material['evidence']['memories'] if later(m)]
+                        + [m for m in extra if later(m) and terms & _content_terms(m['content'])])
+            eligible.sort(key=_handwritten_rank(terms))
             def payload(memories):
                 return {'task':'handwritten_review','candidate':[],
                         'handwritten':sentence,
@@ -2859,6 +3013,10 @@ class PersonaEngine:
                             'memory_id':memory['memory_id'],'revision':memory['revision']})
             if page or not pages:
                 pages.append(page)
+            if len(pages) > HANDWRITTEN_REVIEW_MAX_PAGES:
+                audit['unreviewed_memories'].append({'sentence_ref':ref,
+                    'count':sum(len(rest) for rest in pages[HANDWRITTEN_REVIEW_MAX_PAGES:])})
+                pages = pages[:HANDWRITTEN_REVIEW_MAX_PAGES]
             decisions = []
             for page in pages:
                 request = payload(page)
@@ -2871,8 +3029,16 @@ class PersonaEngine:
                 for attempt in range(2):
                     attempt_raw = {}
                     raw['attempts'].append(attempt_raw)
+                    attempted = request
+                    if attempt:
+                        # Name the defect, or the same wording just fails the same way.
+                        attempted = {**request, 'format_retry':{'errors':[error],
+                            'instruction':'上次输出未通过结构或引文核对。只按原任务重新判断这一页，严格返回原定字段；'
+                                          'quote 必须从同一 ref 的 content 连续逐字复制。给不出合格依据就 keep，判定标准不放宽。'}}
+                        if _check_request_bytes('persona_check', attempted) > MAX_CHECK_REQUEST_BYTES:
+                            attempted = request
                     try:
-                        answer = self._check_call('persona_check',request,attempt_raw,
+                        answer = self._check_call('persona_check',attempted,attempt_raw,
                             deadline=deadline,retry_state=retry_state)
                         error = _handwritten_answer(answer,request['evidence_by_ref'],sentence)
                     except ModelError as failure:
