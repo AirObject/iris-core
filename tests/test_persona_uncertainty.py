@@ -6,8 +6,8 @@ import pytest
 from iris.db import Store
 from iris.memory_ops import setup_role
 from iris.persona import (DEFAULT_PUBLISH_MODE, HANDWRITTEN_PROMPT_VERSION, PROMPT_VERSIONS, UNCERTAINTY,
-                          UNCERTAINTY_ISSUE, _clause_parts, _proof_uncertainty_issues, _surface_issues,
-                          _uncertainty_issues)
+                          UNCERTAINTY_ISSUE, _clause_parts, _epistemic_clauses, _proof_uncertainty_issues,
+                          _surface_issues, _uncertainty_issues)
 from test_persona import Clock, add_self, generate
 
 
@@ -129,6 +129,90 @@ def test_proof_gate_skips_another_authors_quote():
     assert cited('我喜欢慢节拍。', 1, proof(excerpt, '好像喜欢慢节拍')) == []
 
 
+def test_doubt_about_a_judgement_does_not_reach_the_request_made_because_of_it():
+    text = '我没看全那段，就请对方把两个人的顺序再说一遍。'
+    utterance = '你把两个人的顺序再说一遍'
+    assert cited(text, 2, proof(utterance, utterance, current='我不确定两个人的顺序，再请对方补上过程')) == []
+
+
+def test_a_cited_doubt_does_not_reach_a_request_either():
+    assert cited('我就请对方把顺序再说一遍。', 1, proof('我不确定谁先换牌', '我不确定谁先换牌')) == []
+
+
+def test_doubt_still_constrains_the_judgement_it_is_about():
+    assert cited('是小舒先换的牌。', 1, proof('是小舒先换的牌', '是小舒先换的牌',
+                                            current='我不确定是小舒先换的牌')) == [UNCERTAINTY_ISSUE]
+
+
+def test_a_request_that_is_itself_doubted_stays_constrained():
+    assert cited('我请对方重说了一遍。', 1, proof('我请对方重说了一遍', '我请对方重说了一遍',
+                                              current='我好像请对方重说了一遍')) == [UNCERTAINTY_ISSUE]
+
+
+def test_saying_one_cannot_tell_already_keeps_the_doubt():
+    text = '我没看全那段，不能直接判谁先换牌，就请对方再说一遍。'
+    utterance = '不能直接判谁先换牌'
+    assert cited(text, 2, proof(utterance, utterance, current='我不确定是谁先换牌')) == []
+
+
+def test_a_doubt_ends_where_its_stated_consequence_begins():
+    assert _epistemic_clauses('我不确定谁先换牌就请对方再说一遍') == [('我不确定谁先换牌', True), ('请对方再说一遍', False)]
+    assert _epistemic_clauses('我因为不确定谁先换牌而请对方重说') == [('我因为不确定谁先换牌', True), ('请对方重说', False)]
+    # 情态词紧跟连接词时还没有内容，后面的整段仍是它修饰的内容。
+    assert _epistemic_clauses('我好像就喜欢慢节拍') == [('我好像就喜欢慢节拍', True)]
+    assert cited('我就请对方把顺序再说一遍。', 1, proof('顺序再说一遍', '顺序再说一遍',
+        current='我因为不确定谁先换牌而请对方把顺序再说一遍')) == []
+
+
+def test_bundled_citation_needs_a_link_to_say_which_clause_supports_the_focus():
+    bundle = '我好像累了，你把顺序再说一遍'
+    assert cited('在那次桌游里，我认真听着。', 2, proof(bundle, bundle)) == []
+    linked = '我好像喜欢慢节拍，你把顺序再说一遍'
+    assert cited('我喜欢慢节拍。', 1, proof(linked, linked)) == [UNCERTAINTY_ISSUE]
+
+
+def test_current_text_clause_must_hold_most_of_the_focus():
+    assert cited('在排练里我把节拍和谱子都重新过了一遍。', 1, proof('都过了一遍', '都过了一遍',
+                                                       current='我好像节拍有点快')) == []
+
+
+@pytest.mark.parametrize('text', ['我好像累了，我喜欢慢节拍。', '我好像累了，不过喜欢慢节拍。',
+                                  '那次我可能累了，那次我喜欢慢节拍。'])
+def test_an_unrelated_hedge_elsewhere_does_not_excuse_a_claim(text):
+    source = memory('我好像喜欢慢节拍。', '我好像喜欢慢节拍')
+    assert flagged(text, source)
+    assert cited(text, 2, proof('我好像喜欢慢节拍', '我好像喜欢慢节拍')) == [UNCERTAINTY_ISSUE]
+
+
+@pytest.mark.parametrize('text', ['我好像喜欢快节奏，也喜欢慢节拍。', '好像吧，我喜欢慢节拍。'])
+def test_a_hedge_still_reaches_its_continuation_and_a_bare_hedge_its_neighbour(text):
+    source = memory('我好像喜欢慢节拍。', '我好像喜欢慢节拍')
+    assert not flagged(text, source)
+
+
+def test_a_clause_restarting_the_claim_stops_the_hedge_for_those_after_it():
+    source = memory('我好像喜欢慢节拍。', '我好像喜欢慢节拍')
+    assert flagged('我好像累了，我喜欢雨天，也喜欢慢节拍。', source)
+
+
+def test_request_beside_a_doubt_is_not_rejected_end_to_end(store):
+    add_self(store, '在这次桌游里，我不确定谁先换牌，再请对方补上过程。')
+    with store.write() as conn:
+        conn.execute("UPDATE messages SET content='这次桌游那段我没看全，不能直接判谁先换牌。你把两个人的顺序再说一遍'")
+    text = '在这次桌游里，我没看全那段，不能直接判谁先换牌，就请对方把两个人的顺序再说一遍。'
+    result, _ = generate(store, Clock(), text=text)
+    checks = result['version']['checks']
+    assert not any('uncertainty must be preserved' in error for error in checks['initial_model_errors'])
+    assert text in result['version']['content']
+
+
+def test_unrelated_hedge_does_not_save_a_flat_claim_end_to_end(store):
+    add_self(store, '在这次合奏中，我好像喜欢慢节拍。')
+    result, _ = generate(store, Clock(), text='在这次合奏中，我好像累了，我喜欢慢节拍。')
+    assert any(UNCERTAINTY_ISSUE in row['reasons'] for row in result['version']['checks']['precheck_rejections'])
+    assert '我好像累了，我喜欢慢节拍' not in result['version']['content']
+
+
 def test_generated_sentence_dropping_the_hedge_is_repaired_from_the_whole_memory(store):
     original = '在这次排练中，我好像更喜欢慢一点的节拍。'
     add_self(store, original)
@@ -151,7 +235,8 @@ def test_sentence_keeping_the_hedge_passes_without_rejection(store):
 
 
 def test_paraphrase_citing_a_hedged_source_is_rejected_by_the_proof_gate(store):
-    add_self(store, '在这次合奏中，我好像喜欢慢节拍。')
+    # The fake cites the whole excerpt, so keep it to one clause: a bundle would need a link.
+    add_self(store, '这次合奏我好像喜欢慢节拍。')
     result, _ = generate(store, Clock(), text='在这次合奏中，我偏爱舒缓的速度。')
     checks = result['version']['checks']
     assert checks['precheck_rejections'] == []
@@ -169,10 +254,10 @@ def test_a_memory_whose_text_already_lost_the_hedge_cannot_repair_itself(store):
 
 
 def test_new_prompt_versions_are_active_and_old_files_remain():
-    assert PROMPT_VERSIONS == {'persona_generate':'persona_generate_v22', 'persona_check':'persona_check_v35',
-                               'persona_recheck':'persona_check_v35'}
+    assert PROMPT_VERSIONS == {'persona_generate':'persona_generate_v23', 'persona_check':'persona_check_v36',
+                               'persona_recheck':'persona_check_v36'}
     assert HANDWRITTEN_PROMPT_VERSION == 'persona_handwritten_v2'
     assert DEFAULT_PUBLISH_MODE == 'all_manual'
-    for name in ('persona_generate_v21', 'persona_generate_v22', 'persona_check_v34', 'persona_check_v35',
-                 'persona_handwritten_v1', 'persona_handwritten_v2'):
+    for name in ('persona_generate_v21', 'persona_generate_v22', 'persona_generate_v23', 'persona_check_v34',
+                 'persona_check_v35', 'persona_check_v36', 'persona_handwritten_v1', 'persona_handwritten_v2'):
         assert files('iris').joinpath(f'prompts/{name}.md').is_file()
