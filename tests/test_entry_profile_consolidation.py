@@ -101,11 +101,11 @@ from profile_legacy import legacy_schema
 @pytest.fixture(autouse=True)
 def legacy_media_phase(monkeypatch, legacy_schema):
     # These historical document-path cases intentionally use schema 031.
-    # Current media retention requires later columns; keep the profile flow intact.
+    # Current media retention and batch retries require later schema; keep the profile flow intact.
     original = Maintenance._candidates
 
     def candidates(self, run, phase):
-        if phase == 'media':
+        if phase in ('media', 'retry'):
             return []
         return original(self, run, phase)
 

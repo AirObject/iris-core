@@ -19,6 +19,16 @@ from .queue import reset_batch
 from .runtime_journal import cleanup, maintenance_span, record
 
 PHASES = ("decay", "expiry", "dependency", "messages", "retry", "consolidation", "persona", "goals", "media", "retention")
+ABANDONED_RETRY_DAYS = [1, 3, 7]
+# Bind the last scheduled day, then the number of scheduled retries. Needs b and s.
+RETRY_PENDING = """b.state='abandoned' AND b.finished_at IS NOT NULL AND s.closed_reason IS NULL
+    AND COALESCE(s.covered_day,0)<?
+    AND (SELECT COUNT(*) FROM maintenance_batch_retries r WHERE r.batch_id=b.id)<?"""
+
+
+def abandoned_retry_days(conn):
+    row = conn.execute("SELECT value_json FROM runtime_settings WHERE key='abandoned_retry_days'").fetchone()
+    return json.loads(row[0]) if row else list(ABANDONED_RETRY_DAYS)
 
 
 class Maintenance:
@@ -113,6 +123,7 @@ class Maintenance:
             else:
                 config = lifecycle_settings(conn)
                 config['media_retention_days'] = media_retention_days(self.store)
+                config['abandoned_retry_days'] = abandoned_retry_days(conn)
                 from .consolidation import consolidation_settings
                 model_config = consolidation_settings(conn)
                 zone_row = conn.execute("SELECT value_json FROM runtime_settings WHERE key='timezone'").fetchone()
@@ -271,12 +282,12 @@ class Maintenance:
         else:
             if not config["abandoned_retry_enabled"]:
                 return []
-            date = current.astimezone(ZoneInfo(run["timezone"])).replace(hour=0, minute=0, second=0, microsecond=0)
-            select = """SELECT id,id AS cursor_id,CAST(id AS TEXT) AS item_key FROM batches b
-                WHERE id>? AND id<=? AND state='abandoned'
-                AND julianday(finished_at)>=julianday(?) AND julianday(finished_at)<julianday(?)
-                AND NOT EXISTS(SELECT 1 FROM maintenance_batch_retries r WHERE r.batch_id=b.id)"""
-            params = [run["cursor_id"], run["batch_through"], (date-timedelta(days=1)).isoformat(), date.isoformat()]
+            days = self._retry_days(config)
+            # Whether a slot has arrived is decided per item, under the write lock.
+            select = f"""SELECT b.id,b.id AS cursor_id,CAST(b.id AS TEXT) AS item_key FROM batches b
+                LEFT JOIN batch_retry_schedules s ON s.batch_id=b.id
+                WHERE b.id>? AND b.id<=? AND {RETRY_PENDING}"""
+            params = [run["cursor_id"], run["batch_through"], days[-1], len(days)]
         with self.store.read() as conn:
             return [dict(r) for r in conn.execute(f"SELECT c.* FROM ({select}) c ORDER BY c.cursor_id LIMIT 128", params)]
 
@@ -416,14 +427,16 @@ class Maintenance:
             if not message or message["learning_state"] not in ("learned", "abandoned", "refused", "filtered") or current-datetime.fromisoformat(message["received_at"]) <= timedelta(days=config["message_retention_days"]):
                 return "skipped", "no_longer_eligible", {}
             if config['abandoned_retry_enabled']:
-                day = current.astimezone(ZoneInfo(run['timezone'])).replace(hour=0, minute=0, second=0, microsecond=0)
-                retry = conn.execute("""SELECT 1 FROM batches b JOIN json_each(b.target_ids) target
-                    WHERE b.state='abandoned' AND b.id<=? AND target.value=?
-                    AND julianday(b.finished_at)>=julianday(?) AND julianday(b.finished_at)<julianday(?)
-                    AND NOT EXISTS(SELECT 1 FROM maintenance_batch_retries r WHERE r.batch_id=b.id) LIMIT 1""",
-                    (run['batch_through'], mid, (day-timedelta(days=1)).isoformat(), day.isoformat())).fetchone()
-                if retry:
-                    return 'skipped', 'batch_retry_pending', {}
+                # Only this run's retry phase is protected: later slots do not extend retention.
+                days = self._retry_days(config)
+                for batch in conn.execute(f"""SELECT COALESCE(s.abandoned_at,b.finished_at) AS abandoned_at,
+                        COALESCE(s.covered_day,0) AS covered_day
+                        FROM batches b JOIN json_each(b.target_ids) target
+                        LEFT JOIN batch_retry_schedules s ON s.batch_id=b.id
+                        WHERE b.id<=? AND target.value=? AND {RETRY_PENDING}""",
+                        (run['batch_through'], mid, days[-1], len(days))).fetchall():
+                    if self._reached_slots(batch, days, run, current):
+                        return 'skipped', 'batch_retry_pending', {}
             references = message_references(conn, mid)
             if references:
                 return "skipped", "referenced", {"references": references}
@@ -431,19 +444,47 @@ class Maintenance:
             conn.execute("DELETE FROM messages WHERE id=?", (mid,))
             mark_unreferenced(conn, media_files, executed_at)
             return "messages_deleted", None, {}
-        batch = conn.execute("SELECT state,finished_at FROM batches WHERE id=?", (mid,)).fetchone()
+        return self._retry_abandoned(conn, run, config, current, mid)
+
+    @staticmethod
+    def _retry_days(config):
+        # A run accepted before this setting existed has no key in its snapshot.
+        return config.get("abandoned_retry_days") or ABANDONED_RETRY_DAYS
+
+    @staticmethod
+    def _reached_slots(batch, days, run, current):
+        zone = ZoneInfo(run["timezone"])
+        elapsed = (current.astimezone(zone).date()-datetime.fromisoformat(batch["abandoned_at"]).astimezone(zone).date()).days
+        return [day for day in days if batch["covered_day"] < day <= elapsed]
+
+    def _retry_abandoned(self, conn, run, config, current, mid):
+        days = self._retry_days(config)
+        today = current.astimezone(ZoneInfo(run["timezone"])).date()
+        batch = conn.execute("""SELECT b.state,COALESCE(s.abandoned_at,b.finished_at) AS abandoned_at,
+            COALESCE(s.covered_day,0) AS covered_day,
+            (SELECT COUNT(*) FROM maintenance_batch_retries r WHERE r.batch_id=b.id) AS retries
+            FROM batches b LEFT JOIN batch_retry_schedules s ON s.batch_id=b.id WHERE b.id=?""", (mid,)).fetchone()
         if batch is None or batch["state"] != "abandoned":
             return "skipped", "batch_state_changed", {}
-        if conn.execute("SELECT 1 FROM maintenance_batch_retries WHERE batch_id=?", (mid,)).fetchone():
+        reached = self._reached_slots(batch, days, run, current)
+        if not reached or batch["retries"] >= len(days):
+            return "checked", None, {}
+        if conn.execute("SELECT 1 FROM maintenance_batch_retries WHERE batch_id=? AND local_day=?",
+                        (mid, today.isoformat())).fetchone():
             return "skipped", "already_retried", {}
-        yesterday = current.astimezone(ZoneInfo(run["timezone"])).date()-timedelta(days=1)
-        if not batch["finished_at"] or datetime.fromisoformat(batch["finished_at"]).astimezone(ZoneInfo(run["timezone"])).date() != yesterday:
-            return "skipped", "batch_date_changed", {}
         if missing_batch_targets(conn, mid):
+            # IDs are never reused, so report this once instead of on every later slot.
+            conn.execute("""INSERT INTO batch_retry_schedules(batch_id,abandoned_at,closed_reason) VALUES(?,?,?)
+                ON CONFLICT(batch_id) DO UPDATE SET closed_reason=excluded.closed_reason""",
+                (mid, batch["abandoned_at"], "target_messages_cleared"))
             return "skipped", "target_messages_cleared", {}
         reset_batch(self.store, mid, _conn=conn)
-        conn.execute("INSERT INTO maintenance_batch_retries VALUES(?,?,?)", (mid, run["id"], self.clock().isoformat()))
-        return "batches_retried", None, {}
+        number = batch["retries"]+1
+        conn.execute("""INSERT INTO maintenance_batch_retries(batch_id,number,run_id,local_day,created_at)
+            VALUES(?,?,?,?,?)""", (mid, number, run["id"], today.isoformat(), self.clock().isoformat()))
+        # Slots missed while the service was down collapse into this one retry.
+        conn.execute("UPDATE batch_retry_schedules SET covered_day=? WHERE batch_id=?", (reached[-1], mid))
+        return "batches_retried", None, {"retry_number": number, "schedule_day": reached[-1], "missed_days": reached[:-1]}
 
     @staticmethod
     def _summary(items, progress):

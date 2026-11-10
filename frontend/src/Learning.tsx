@@ -129,6 +129,19 @@ type Gap = {
   reason: string;
   batch_state: string;
   relearning: boolean;
+  auto_retry: GapAutoRetry;
+};
+type GapAutoRetry = {
+  attempted: number;
+  total: number;
+  next_date: string | null;
+  status:
+    | "scheduled"
+    | "in_progress"
+    | "finished"
+    | "disabled"
+    | "targets_cleared"
+    | "refused";
 };
 type Page<T> = { items: T[]; total: number; offset: number; limit: number };
 const kindLabel = (value: string) =>
@@ -146,6 +159,17 @@ const gapReason = (value: string) =>
     content_rejection: "内容拒绝，未学习",
     interrupted: "学习中断",
   })[value] || value;
+function autoRetryText(value: GapAutoRetry) {
+  const done = `已自动重试 ${value.attempted}/${value.total}`;
+  return {
+    scheduled: `${done}，下次 ${value.next_date}`,
+    in_progress: value.attempted ? done : "",
+    finished: `${done}，不再自动重试，可手动重新学习`,
+    disabled: `${done}，自动重试已关闭`,
+    targets_cleared: `${done}，目标消息已清理，不再自动重试`,
+    refused: "内容拒绝，不自动重试，可手动重新学习",
+  }[value.status];
+}
 const pretty = (value: unknown) =>
   typeof value === "string" ? value : JSON.stringify(value, null, 2);
 
@@ -495,6 +519,9 @@ export default function LearningPage({
                               {time(gap.started_at)} — {time(gap.ended_at)}
                             </p>
                             <p>{gapReason(gap.reason)}</p>
+                            {autoRetryText(gap.auto_retry) && (
+                              <p>{autoRetryText(gap.auto_retry)}</p>
+                            )}
                             {gap.relearning && <Badge>重新学习中</Badge>}
                           </div>
                           <button

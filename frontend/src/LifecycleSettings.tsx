@@ -15,12 +15,27 @@ const numericFields = [
   ["message_retention_days", "消息保留天数", 1, 36500],
 ] as const;
 type NumberKey = (typeof numericFields)[number][0];
-type Draft = Omit<LifecycleConfig, NumberKey> & Record<NumberKey, string>;
+type Draft = Omit<LifecycleConfig, NumberKey | "abandoned_retry_days"> &
+  Record<NumberKey, string> & { abandoned_retry_days: string };
 function draftOf(value: LifecycleConfig): Draft {
   const numbers = Object.fromEntries(
     numericFields.map(([key]) => [key, String(value[key])]),
   ) as Record<NumberKey, string>;
-  return { ...value, ...numbers };
+  return {
+    ...value,
+    ...numbers,
+    abandoned_retry_days: value.abandoned_retry_days.join(","),
+  };
+}
+function parseRetryDays(text: string) {
+  const parts = text.split(/[,，]/).map((part) => part.trim());
+  const days = parts.map(Number);
+  const valid =
+    days.length <= 10 &&
+    parts.every(Boolean) &&
+    days.every((day) => Number.isInteger(day) && day >= 1 && day <= 365) &&
+    days.every((day, index) => index === 0 || day > days[index - 1]);
+  return valid ? days : null;
 }
 
 export function LifecycleSettings({
@@ -73,11 +88,17 @@ export function LifecycleSettings({
       setError("维护时间须为 HH:MM 格式，范围 00:00—23:59");
       return;
     }
+    const retryDays = parseRetryDays(draft.abandoned_retry_days);
+    if (!retryDays) {
+      setError("自动重试日须为严格递增的 1—365 整数，用逗号分隔，最多 10 个");
+      return;
+    }
     const payload = {
       ...draft,
       ...Object.fromEntries(
         numericFields.map(([key]) => [key, Number(draft[key])]),
       ),
+      abandoned_retry_days: retryDays,
     };
     const { maintenance_time, ...lifecyclePayload } = payload;
     setBusy(true);
@@ -169,8 +190,19 @@ export function LifecycleSettings({
             />
             自动重试已放弃批次
           </label>
+          <label>
+            自动重试日
+            <input
+              aria-label="自动重试日"
+              type="text"
+              placeholder="1,3,7"
+              value={draft.abandoned_retry_days}
+              onChange={(e) => change("abandoned_retry_days", e.target.value)}
+            />
+            <small>放弃后第几天重试，逗号分隔</small>
+          </label>
           <p className="lifecycle-help">
-            维护按实际执行次数衰减，遗忘和置顶记忆不衰减。依据失效时每个依据只扣一次，置顶期间暂缓扣减。自动重试仅处理角色时区前一天放弃的批次，每批最多一次；内容拒绝不自动重试。
+            维护按实际执行次数衰减，遗忘和置顶记忆不衰减。依据失效时每个依据只扣一次，置顶期间暂缓扣减。已放弃的批次按上面的日期（角色时区）各自动重试一次，每次使用完整尝试额度；停机错过的日期恢复后最多补一次。用完后缺口只作记录，仍可手动重新学习，手动重新学习不占自动重试次数。内容拒绝不自动重试。
           </p>
           <p className="lifecycle-help">
             关闭自动删除后仍保留天数设置，“即将删除”列表为空。消息只有超过保留期、已结束学习且没有受保护的引用时才清理。新设置用于以后接受的维护，当前运行沿用接受时的设置。

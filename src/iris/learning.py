@@ -34,6 +34,7 @@ PROMPT = files("iris").joinpath("prompts", PROMPT_VERSION + ".md").read_text(enc
 MEMORY_TYPES = {"事件", "事实", "偏好", "关系", "观点", "计划", "自我", "其他"}
 STANCES = {"亲历", "转述", "推断", "观点"}
 RETRY_DELAYS = (60, 300, 900)
+SELF_ONLY_CONFIRMATION = "confirmation only from self output"
 PARTICIPANT_NUMBER = re.compile(r"(?<![A-Za-z0-9_])P[0-9]+(?![A-Za-z0-9_])")
 
 
@@ -700,6 +701,15 @@ class LearningEngine:
                     confirmed_once.add(memory_id)
                     confirmed.append(memory_id)
 
+            def self_output_only(memory: Any, evidence: list[int]) -> bool:
+                # Design 10.2: the role repeating someone else's claim is not new support.
+                in_target = [i for i in evidence if i in target]
+                if memory["speaker_subject_id"] == "self" or not in_target:
+                    return False
+                marks = ",".join("?" for _ in in_target)
+                kinds = {r[0] for r in conn.execute(f"SELECT kind FROM messages WHERE id IN ({marks})", in_target)}
+                return kinds == {"self_output"}
+
             visibility = Visibility(conn)
             row = conn.execute("SELECT state FROM batches WHERE id=?", (batch.id,)).fetchone()
             if not row or row[0] != "running":
@@ -729,7 +739,10 @@ class LearningEngine:
                     dropped.append({'section':'updates','item':item,'reason':'memory visibility changed or differs'})
                     continue
                 if item["action"] == "确认":
-                    confirm_once(current["id"])
+                    if self_output_only(current, item["evidence"]):
+                        dropped.append({"section": "updates", "item": item, "reason": SELF_ONLY_CONFIRMATION})
+                    else:
+                        confirm_once(current["id"])
                 else:
                     # A later confirmation or metadata-only revision must not erase
                     # the last actual content editor. Model-supplied reasons alone
@@ -804,7 +817,11 @@ class LearningEngine:
                                   existing_about.get(m["id"], set()) == about_ids and same_meaning(m)), None)
                 if duplicate:
                     if duplicate["id"] not in created:
-                        confirm_once(duplicate["id"])
+                        if self_output_only(duplicate, item["evidence"]):
+                            dropped.append({"section": "memories", "reason": SELF_ONLY_CONFIRMATION,
+                                            "item": {k: v for k, v in item.items() if k != "_embedding"}})
+                        else:
+                            confirm_once(duplicate["id"])
                     for message_id in item["evidence"]:
                         if message_id in target:
                             self._source(conn, duplicate["id"], message_id)

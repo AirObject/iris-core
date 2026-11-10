@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Literal
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, m
 from .auth import audit, error, local
 from .configuration import CONFIG_LOCK_WAIT_SECONDS, ConfigurationBusy
 from .db import dumps
+from .maintenance import ABANDONED_RETRY_DAYS, abandoned_retry_days
 from .memory_ops import update_role, lifecycle_settings, operation
 from .media import (DEFAULT_LEARNING_IMAGE_LIMIT, DEFAULT_MEDIA_RETENTION_DAYS, learning_image_limit,
                     media_retention_days, native_image_learning_setting)
@@ -173,6 +174,19 @@ class Lifecycle(Input):
     dependency_penalty: int = Field(default=10, ge=0, le=100, strict=True)
 
 
+class LifecycleUpdate(Lifecycle):
+    # Saved with the lifecycle form, stored under its own runtime_settings key.
+    abandoned_retry_days: list[Annotated[int, Field(ge=1, le=365, strict=True)]] = Field(
+        default=ABANDONED_RETRY_DAYS, min_length=1, max_length=10)
+
+    @field_validator('abandoned_retry_days')
+    @classmethod
+    def retry_days_ascend(cls, value):
+        if any(left >= right for left, right in zip(value, value[1:])):
+            raise ValueError('自动重试日必须严格递增')
+        return value
+
+
 class ConsolidationSettings(Input):
     max_calls: int = Field(default=300, ge=0, le=1000, strict=True)
     entry_profile_max_calls: int = Field(default=60, ge=0, le=1000, strict=True)
@@ -202,7 +216,7 @@ def install_settings(app):
             lock_deadline = time.monotonic() + CONFIG_LOCK_WAIT_SECONDS
         store = app.state.store
         with store.read() as conn:
-            lifecycle = lifecycle_settings(conn)
+            lifecycle = {**lifecycle_settings(conn), 'abandoned_retry_days': abandoned_retry_days(conn)}
             stored_consolidation = consolidation_settings(conn)
             consolidation = {key:stored_consolidation[key] for key in ConsolidationSettings.model_fields if key != 'maintenance_time'}
             consolidation['maintenance_time'] = lifecycle['maintenance_time']
@@ -249,13 +263,17 @@ def install_settings(app):
         return {'ok': True}
 
     @router.patch('/settings/lifecycle')
-    def save_lifecycle(payload: Lifecycle):
+    def save_lifecycle(payload: LifecycleUpdate):
+        changes = payload.model_dump(exclude_unset=True)
+        retry_days = changes.pop('abandoned_retry_days', None)
         with app.state.store.write() as conn:
-            values = {**lifecycle_settings(conn), **payload.model_dump(exclude_unset=True)}
+            values = {**lifecycle_settings(conn), **changes}
             # Validate the merged settings: PATCH must not reset unspecified fields.
             if values['restore_threshold'] <= values['forget_threshold']:
                 raise ValueError('恢复阈值 H 必须大于遗忘阈值 F')
             conn.execute("INSERT OR REPLACE INTO runtime_settings VALUES('lifecycle',?)", (dumps(values),))
+            if retry_days is not None:
+                conn.execute("INSERT OR REPLACE INTO runtime_settings VALUES('abandoned_retry_days',?)", (dumps(retry_days),))
             operation(conn, 'lifecycle_saved', 'settings', 'lifecycle', payload.model_dump(exclude_unset=True))
         app.state.scheduler.wake()
         return snapshot()

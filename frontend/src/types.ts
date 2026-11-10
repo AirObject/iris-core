@@ -363,6 +363,7 @@ export type LifecycleConfig = {
   message_retention_days: number;
   maintenance_time: string;
   abandoned_retry_enabled: boolean;
+  abandoned_retry_days: number[];
 };
 export type Operation = {
   id: number;

@@ -302,6 +302,15 @@ def test_old_backup_without_cleanup_columns_or_manifest_imports(store, tmp_path)
         with sqlite3.connect(database) as conn:
             columns = {r[1] for r in conn.execute('PRAGMA table_info(media_files)')}
             if 'bytes_purged_at' in columns:
+                # Migration 036 is newer than the columns removed below; undo it first.
+                conn.executescript('''DROP TRIGGER batch_retry_anchor;
+                    DROP TABLE batch_retry_schedules;
+                    DROP TABLE maintenance_batch_retries;
+                    CREATE TABLE maintenance_batch_retries (
+                        batch_id INTEGER PRIMARY KEY REFERENCES batches(id),
+                        run_id INTEGER NOT NULL REFERENCES maintenance_runs(id),
+                        created_at TEXT NOT NULL);''')
+                conn.execute('DELETE FROM schema_migrations WHERE version=?', (manifest['migrations'].pop(),))
                 conn.execute('DROP INDEX IF EXISTS media_files_retention')
                 conn.execute('ALTER TABLE media_files DROP COLUMN bytes_purged_at')
                 conn.execute('ALTER TABLE media_files DROP COLUMN bytes_purge_pending')

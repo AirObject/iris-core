@@ -249,6 +249,9 @@ test("生命周期全部设置按服务端字段提交，空模型设置不影�
   });
   await userEvent.click(screen.getByLabelText("自动删除遗忘记忆"));
   await userEvent.click(screen.getByLabelText("自动重试已放弃批次"));
+  fireEvent.change(screen.getByLabelText("自动重试日"), {
+    target: { value: "2，5" },
+  });
   await userEvent.click(
     screen.getByRole("button", { name: "保存生命周期设置" }),
   );
@@ -260,6 +263,7 @@ test("生命周期全部设置按服务端字段提交，空模型设置不影�
       restore_threshold: 40,
       auto_delete_enabled: false,
       abandoned_retry_enabled: false,
+      abandoned_retry_days: [2, 5],
     },
   });
   expect(await screen.findByText("生命周期设置已保存")).toBeVisible();
@@ -279,6 +283,12 @@ test.each([
   ["消息保留天数", "1.5"],
   ["维护时间", "3:00"],
   ["维护时间", "24:00"],
+  ["自动重试日", ""],
+  ["自动重试日", "3,1"],
+  ["自动重试日", "1,1"],
+  ["自动重试日", "0,3"],
+  ["自动重试日", "1.5"],
+  ["自动重试日", "366"],
 ])("生命周期输入 %s=%s 与后端边界一致", async (label, value) => {
   settings();
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
