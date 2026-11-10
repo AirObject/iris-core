@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from conftest import FakeGateway, batch, login_admin, msg
 from iris.api import create_app
-from iris.consolidation import (consolidation_settings, lower_tier, merge_detail_decision, run_settings,
+from iris.consolidation import (consolidation_settings, dependency_material, lower_tier, merge_detail_decision, run_settings,
                                 snapshot, undo_auto_action, verify_relation)
 from iris.db import now
 from iris.evidence_trace import independent_origins, trace_origins
@@ -43,6 +43,8 @@ class AutoModel:
             self.hook(step, payload)
         value = self.answers[step]
         value = value(payload) if callable(value) else value
+        if isinstance(value, Exception):
+            raise value
         if value is None:
             value = {'decision': 'separate', 'reason': '不同事实', 'evidence': [], 'updates': [], 'unique_details': {'a': [], 'b': []}}
         return ModelReply(json.dumps(value, ensure_ascii=False), 'stop', {'prompt_tokens': 1, 'completion_tokens': 1})
@@ -728,7 +730,9 @@ def test_undo_merge_redirects_dependents_back(store, mutual):
     assert undo_auto_action(store, rid, _work_id(store), 2)
     with store.read() as conn:
         after = sorted((r['source_memory_id'], r['source_revision']) for r in conn.execute("SELECT * FROM sources WHERE memory_id=? AND kind='memory'", (rid_links,)))
-    assert after == before
+        # Same parents again; the restored body is what the dependent read, so it is not a loss.
+        assert [p for p, _ in after] == [p for p, _ in before]
+        assert dependency_material(conn, snapshot(conn, rid_links)) is None
 
 
 def test_undo_is_refused_when_survivor_changed_after_merge(store, mutual):

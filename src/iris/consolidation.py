@@ -13,13 +13,13 @@ from itertools import groupby
 
 from .claim_sequences import normalize_claim
 from .db import dumps
-from .evidence_trace import independent_origins, trace_origins
+from .evidence_trace import ROLE_SPEECH, direct_origins, independent_origins, trace_origins
 from .learning import LearningEngine, PARTICIPANT_NUMBER, _same_claim_sequences
-from .memory_ops import Visibility, lifecycle_settings, operation, hard_memory_scopes
+from .memory_ops import Visibility, adjust_retention, lifecycle_settings, operation, hard_memory_scopes
 from .model_health import utc_now
 from .models import Gateway, ModelError
 from .people import canonical_subject
-from .search_text import QUERY_STOP, match_query, terms, words
+from .search_text import match_query, terms, words
 
 # Candidate order and parameters are frozen before the first real-model probe.
 METHODS = {'balanced': 0.40, 'strict': 0.65, 'broad': 0.20}
@@ -31,11 +31,11 @@ DEFAULTS = {'enabled': True, 'max_calls': 300,
             'persona_enabled': True, 'goal_review_enabled': True, 'entry_profile_enabled': True, 'person_summary_enabled': True}
 PROMPT_VERSION = 'consolidation_report_only_v2'
 MERGE_PROMPT_VERSION = 'consolidation_pair_v3'
-AUTO_VERSION = 'consolidation_auto_v1'  # In auto_v1 fingerprints; bump with its prompts.
+AUTO_VERSION = 'consolidation_auto_v2'  # In auto_v1 fingerprints; bump with its prompts.
 # Existing purposes only: a new consolidation step gets no new model route.
 AUTO_STEPS = {'conflict_auto': ('consolidation_conflict', 'conflict_auto_v1'),
               'dependency_auto': ('consolidation_dependency', 'dependency_auto_v1'),
-              'mutual_merge': ('consolidation_merge', 'mutual_merge_v1')}
+              'mutual_merge': ('consolidation_merge', 'mutual_merge_v2')}
 RELATIONS = ('supersedes', 'reported_vs_self', 'coexist', 'undecided')
 INFERENCE_CEILING = 49
 MAX_ANCESTORS = 64
@@ -404,9 +404,10 @@ def undo_auto_action(store, run_id, work_id, expected_revision, *, clock=utc_now
         rows={}
         for change in undo['changes']:
             row=conn.execute('SELECT * FROM memories WHERE id=? AND purged_at IS NULL',(change['memory_id'],)).fetchone()
+            # Retention moves without a revision (decay, feedback, M2); it is
+            # restored by difference below, so it is not a later modification.
             if row is None or row['revision']!=change['revision_after'] or any(
-                    row[field]!=value for field,value in change['after'].items()
-                    if not (field=='retention' and change['after'].get('lifecycle')=='active')):
+                    row[field]!=value for field,value in change['after'].items() if field!='retention'):
                 return False
             rows[change['memory_id']]=row
         for mark in undo['annotated']:
@@ -417,8 +418,7 @@ def undo_auto_action(store, run_id, work_id, expected_revision, *, clock=utc_now
         for change in undo['changes']:
             row=rows[change['memory_id']]
             fields=dict(change['before'])
-            if 'retention' in fields and change['after'].get('lifecycle')=='active':
-                # Decay or feedback since the action is not part of what is reversed.
+            if 'retention' in fields:
                 fields['retention']=max(0,min(100,fields['retention']+row['retention']-change['after']['retention']))
             names=tuple(fields)
             if 'merged_into' in fields:
@@ -439,6 +439,26 @@ def undo_auto_action(store, run_id, work_id, expected_revision, *, clock=utc_now
                          (source['source_memory_id'],source['source_revision'],source['note'],source['id']))
         for source in undo.get('bumped',[]):
             conn.execute('UPDATE sources SET source_revision=? WHERE id=?',(source['source_revision'],source['id']))
+        refunded,cancelled=[],[]
+        for change in undo['changes']:
+            row=rows[change['memory_id']]
+            if 'content' in change['before']:
+                # The body is back to what dependents read before the action, so
+                # their edges follow the new revision instead of reading as corrected.
+                conn.execute("UPDATE sources SET source_revision=? WHERE kind='memory' AND source_memory_id=? AND source_revision=?",
+                             (row['revision']+1,row['id'],change['revision_after']-1))
+            # Losses this action caused never happened: cancel pending ones, refund applied ones.
+            for dependent in change.get('losses',[]):
+                loss=conn.execute('SELECT applied_at,amount FROM memory_dependency_losses WHERE memory_id=? AND source_memory_id=?',
+                                  (dependent,row['id'])).fetchone()
+                if loss is None:
+                    continue
+                if loss['applied_at'] is not None and loss['amount']:
+                    adjust_retention(store,dependent,loss['amount'],current=clock(),_conn=conn)
+                    refunded.append(dependent)
+                else:
+                    cancelled.append(dependent)
+                conn.execute('DELETE FROM memory_dependency_losses WHERE memory_id=? AND source_memory_id=?',(dependent,row['id']))
         if undo['annotation_ids']:
             conn.execute("UPDATE consolidation_annotations SET cleared_at=?,cleared_by='admin' WHERE id IN (SELECT value FROM json_each(?)) AND cleared_at IS NULL",
                          (stamp,dumps(undo['annotation_ids'])))
@@ -446,7 +466,8 @@ def undo_auto_action(store, run_id, work_id, expected_revision, *, clock=utc_now
         conn.execute("UPDATE maintenance_items SET details_json=? WHERE run_id=? AND phase='consolidation' AND item_key=?",
                      (dumps(details),run_id,str(work_id)))
         operation(conn,'consolidation_auto_undo','memory',undo['changes'][0]['memory_id'] if undo['changes'] else undo['annotated'][0]['memory_id'],
-                  {'run_id':run_id,'work_id':work_id,'expected_revision':expected_revision},actor='admin',stamp=stamp)
+                  {'run_id':run_id,'work_id':work_id,'expected_revision':expected_revision,
+                   'refunded_dependents':refunded,'cancelled_dependents':cancelled},actor='admin',stamp=stamp)
         return True
 
 
@@ -742,8 +763,9 @@ def time_expressions(text):
     return set(TIME_EXPRESSION.findall(text))
 
 
-def content_words(text):
-    return {w.casefold() for w in words(text) if re.search(r'\w', w) and w not in QUERY_STOP}
+def body_terms(text):
+    """Every word, function words included: 已经, 想, 过 change what is claimed."""
+    return {w.casefold() for w in words(text) if re.search(r'\w', w)} - CONNECTIVES
 
 
 def entity_names(text, names):
@@ -791,9 +813,11 @@ def mutual_merge_rejection(payload, result, content):
         return 'entity_lost'
     if any(name not in source_body for name in entity_names(content, names)):
         return 'entity_added'
-    allowed = content_words(left) | content_words(right)
-    if any(word not in allowed and word not in source_body and word not in CONNECTIVES for word in content_words(content)):
+    union, merged = body_terms(left) | body_terms(right), body_terms(content)
+    if merged - union:
         return 'new_content_word'
+    if union - merged:
+        return 'content_word_lost'
     keep = next(m for m in (a, b) if m['id'] == payload['preferred_keep_id'])
     try:
         check_body_references(content, keep, payload, result.get('evidence', []))
@@ -1395,12 +1419,16 @@ class Consolidation:
                 if not isinstance(result,dict):
                     raise ValueError('invalid_result')
                 if auto:
-                    # Only a real, still-unresolved contradiction blocks merges
-                    # of its shared memories; a failed pair affects itself only.
+                    # Only a contradiction blocks merges of its shared memories: one
+                    # still undecided, or classified as a conflict but not finished
+                    # (budget, failed call). Any other failed pair affects itself only.
                     if work['kind']=='pair' and 'auto_conflict' in result and work['state']=='decided' and work['outcome'] is None:
                         with self.store.read() as conn:
                             if verify_relation(conn,payload,result['auto_conflict'])[0]=='undecided':
                                 blocked.add(frozenset(payload['pair_ids']))
+                    elif (work['kind']=='pair' and result.get('decision')=='conflict' and 'auto_conflict' not in result
+                          and (work['state']=='classified' or work['outcome'] in ('failed','skipped'))):
+                        blocked.add(frozenset(payload['pair_ids']))
                 elif work['kind']=='pair' and (work['state'] in ('pending','classified') or work['outcome']=='failed' or result.get('decision')=='conflict' or result.get('merge_detail_check',{}).get('outcome') in ('mutual_details','invalid_details')):
                     blocked.add(frozenset(payload['pair_ids']))
                 if work['state']=='decided' and work['outcome'] is None:
@@ -1561,10 +1589,13 @@ class Consolidation:
         changes={k:v for k,v in changes.items() if row[k]!=v}
         if not changes:
             return None
+        known={r[0] for r in conn.execute('SELECT memory_id FROM memory_dependency_losses WHERE source_memory_id=?',(old['id'],))}
         self._revision(conn,old,changes,reason)
         self.auto_revisions[old['id']]=old['revision']+1
+        # The lifecycle trigger records a dependency loss per dependent; undo needs exactly these.
+        losses=sorted({r[0] for r in conn.execute('SELECT memory_id FROM memory_dependency_losses WHERE source_memory_id=?',(old['id'],))}-known)
         return {'memory_id':old['id'],'revision_after':old['revision']+1,
-                'before':{k:row[k] for k in changes},'after':dict(changes)}
+                'before':{k:row[k] for k in changes},'after':dict(changes),'losses':losses}
 
     def _forget_fields(self,conn,memory):
         row=conn.execute('SELECT forgotten_at FROM memories WHERE id=?',(memory['id'],)).fetchone()
@@ -1575,7 +1606,8 @@ class Consolidation:
 
     def _annotate(self,conn,work,payload,memory_id,revision,kind,text,evidence,superseded_by=None):
         related=payload.get('pair_ids',[payload.get('target_id')])
-        key=digest(['auto',work['kind'],related,kind,superseded_by,sorted(l['id'] for l in payload.get('losses',[]))])
+        # One key per action: a cleared annotation from an earlier action never absorbs this one.
+        key=digest(['auto',self.run_id,work['id'],kind,superseded_by])
         conn.execute("""INSERT OR IGNORE INTO consolidation_annotations(
             memory_id,work_id,text,evidence_json,created_at,kind,superseded_by,memory_revision,
             related_ids_json,run_id,dedupe_key) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
@@ -1722,6 +1754,8 @@ class Consolidation:
         # Re-read: an earlier item of this run may have forgotten a named support.
         still=[i for i in ids if conn.execute("SELECT 1 FROM memories WHERE id=? AND lifecycle='active'",(i,)).fetchone()]
         origins=independent_origins(conn,still,blocked=losses|{target['id']})
+        # Design 8.7: a message the target cites itself counts unless it is the role's own speech.
+        origins.update((mid,m) for mid,m in direct_origins(conn,target['id']).items() if m['kind']!=ROLE_SPEECH)
         details.update(verdict='keep' if origins else 'forget',independent_messages=sorted(origins))
         if not origins:
             change=self._auto_write(conn,target,self._forget_fields(conn,target),'auto_insufficient_support')

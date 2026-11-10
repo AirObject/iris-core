@@ -58,6 +58,7 @@ export function consolidationReason(reason: string) {
     entity_lost: "合并正文丢失了人名或实体",
     entity_added: "合并正文新增了人名或实体",
     new_content_word: "合并正文出现了原文没有的词",
+    content_word_lost: "合并正文缺少原文的词",
     attribution_differs: "两条的说话人、立场或涉及人不同",
     event_time_differs: "两条的事件时间不同",
     visibility_differs: "两条的可见范围不同",

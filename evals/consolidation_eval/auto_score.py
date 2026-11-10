@@ -10,16 +10,23 @@ uv run python evals/consolidation_eval/auto_score.py --materials <run>/materials
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import itertools
 import json
 from pathlib import Path
 
 from run import AUTO_DETAIL_SCORING, AUTO_DETAIL_VERSION, ROOT, auto_detail_items, run_validity
-from iris.consolidation import INFERENCE_CEILING, lower_tier
+from iris.consolidation import (INFERENCE_CEILING, claim_numbers, lower_tier, negation_scopes, qualifier_details,
+                                time_expressions)
 from iris.evaluation import _json_sha256, _read_json, _verified_material_file, _write_json
 from score import combine, exact, ratio, require, validate_payload
 
-CORRECT, MISSED, WRONG = 'correct', 'missed', 'wrong'
+CORRECT, MISSED, WRONG, UNPROCESSED = 'correct', 'missed', 'wrong', 'unprocessed'
+# Work that reached a valid judgment (or protection). Anything else is reported as unprocessed.
+PROCESSED_OUTCOMES = {'auto_conflict', 'auto_dependency', 'merged', 'mutual_merge_rejected', 'protected', 'checked'}
+BUDGET_REASONS = {'call_budget', 'usage_limit', 'paused', 'temporary_unavailable', 'interrupted'}
+CLAIM_CHECKS = (('numbers', claim_numbers), ('negation', negation_scopes),
+                ('qualifiers', lambda text: set(qualifier_details(text))), ('time', time_expressions))
 JUDGMENT_FIELDS = ('format_version', 'case_id', 'merge_detail_results')
 
 
@@ -90,6 +97,32 @@ def judge_dependency(label, memory, threshold):
     return WRONG if _moved(before, after) or annotated else MISSED
 
 
+def work_status(work):
+    if work['outcome'] in PROCESSED_OUTCOMES:
+        return 'processed'
+    if work['outcome'] == 'failed':
+        return {'invalid_output': 'invalid_output', 'unsafe_write': 'invalid_output', 'model_error': 'call_failed'}.get(work['reason'], 'execution_failed')
+    if work['outcome'] is None or work['reason'] in BUDGET_REASONS:
+        return 'budget'
+    return work['reason'] or 'skipped'
+
+
+def label_status(row, kind, ids):
+    """(status, work) for the work that judged these memories; not_planned when none exists."""
+    works = [w for w in row['work_results'] if w['kind'] == kind and set(w['memory_ids']) == set(ids)]
+    if not works:
+        return 'not_planned', None
+    ranked = sorted(works, key=lambda w: work_status(w) != 'processed')
+    return work_status(ranked[0]), ranked[0]
+
+
+def rewrite_check(merge):
+    """Deterministic claims of a rewritten body against the union of its inputs."""
+    inputs = [m['content'] for m in merge['before_memories']]
+    body = merge['result']['content']
+    return [name for name, extract in CLAIM_CHECKS if extract(body) != set().union(*(extract(t) for t in inputs))]
+
+
 def _destination(payload, key):
     after = {m['id']: m for m in payload['after']['memories']}
     current, seen = payload['before']['key_map'][key], set()
@@ -140,20 +173,35 @@ def score_case(row):
     def memory(key):
         return before[keymap[key]], after[keymap[key]]
 
+    reports = {i['item_key']: i for i in row['report']['items'] if i['phase'] == 'consolidation'}
+
+    def settle(item, result, kind, keys):
+        # Only a valid judgment (or protection) can be correct; a wrong state is wrong regardless.
+        status, work = label_status(row, kind, [keymap[k] for k in keys])
+        if result != WRONG and status != 'processed':
+            result = UNPROCESSED
+            item['unprocessed'] = status
+        elif result == CORRECT and kind == 'dependency' and work['outcome'] == 'auto_dependency':
+            if reports.get(work['check_id'][3:], {}).get('details', {}).get('verdict') == 'undecided':
+                result = MISSED
+        item['result'] = result
+        return item
+
     items, covered = [], set()
     for index, label in enumerate(expected.get('auto_contradictions', [])):
-        items.append({'kind': 'contradiction', 'index': index, 'keys': label['keys'], 'relation': label['relation'],
-                      'result': judge_contradiction(label, memory, threshold)})
+        items.append(settle({'kind': 'contradiction', 'index': index, 'keys': label['keys'], 'relation': label['relation']},
+                            judge_contradiction(label, memory, threshold), 'pair', label['keys']))
         covered.add(label['old'])
     for index, label in enumerate(expected.get('auto_dependencies', [])):
-        items.append({'kind': 'dependency', 'index': index, 'derived': label['derived'], 'expected': label['expected'],
-                      'result': judge_dependency(label, memory, threshold)})
+        items.append(settle({'kind': 'dependency', 'index': index, 'derived': label['derived'], 'expected': label['expected']},
+                            judge_dependency(label, memory, threshold), 'dependency', [label['derived']]))
         covered.add(label['derived'])
     merge_labels = [(tuple(label['pair']), label['expected']) for label in expected.get('mutual_merges', [])]
     labelled = {frozenset(pair) for pair, _ in merge_labels}
     merge_labels += [(tuple(pair), 'merge') for pair in expected.get('merges', []) if frozenset(pair) not in labelled]
     for pair, wanted in merge_labels:
-        items.append({'kind': 'merge', 'pair': list(pair), 'expected': wanted, 'result': judge_merge_label(pair, wanted, memory, payload)})
+        items.append(settle({'kind': 'merge', 'pair': list(pair), 'expected': wanted},
+                            judge_merge_label(pair, wanted, memory, payload), 'pair', pair))
     # Union-find over expected merges: a chain may legitimately pass through several keys.
     component = {key: key for key in keymap}
     def root(key):
@@ -189,15 +237,24 @@ def score_case(row):
             damage.append({'reason': 'belief_raised', 'memory_id': mid})
         if new['lifecycle'] == 'forgotten' and old['lifecycle'] != 'forgotten' and new['retention'] >= threshold:
             damage.append({'reason': 'forgotten_above_threshold', 'memory_id': mid})
+    rewrites = []
+    labelled = [frozenset(label['pair']) for label in expected.get('mutual_merges', []) if label['expected'] == 'merge']
     for merge in payload['actual_merges']:
         damage += [{'reason': reason, 'action_id': merge['action_id']} for reason in _merge_integrity(merge)]
+        if merge['result']['content'] in [m['content'] for m in merge['before_memories']]:
+            continue
+        failed = rewrite_check(merge)
+        rewrites.append({'action_id': merge['action_id'], 'keys': merge['input_keys'], 'failed_checks': failed,
+                         'labelled': any(pair <= set(merge['input_keys']) for pair in labelled)})
+        if failed:
+            damage.append({'reason': 'rewrite_claims_changed', 'action_id': merge['action_id'], 'checks': failed})
     for mid, new in after.items():
         for annotation in _new_annotations(before[mid], new):
             target = annotation['superseded_by']
             if annotation['kind'] == 'superseded' and (target == mid or target not in after or after[target]['lifecycle'] == 'deleted'):
                 damage.append({'reason': 'invalid_superseded_target', 'memory_id': mid})
     return {'case_id': case['id'], 'items': items, 'unexpected_actions': unexpected, 'protection': protection,
-            'write_damage': damage}
+            'write_damage': damage, 'rewritten_merges': rewrites}
 
 
 def validate_detail_judgment(judgment, items, case_id):
@@ -284,6 +341,11 @@ def score(materials, out, *, detail_judgments=(), judge_model=None):
               'materials_sha256': manifest['materials_sha256'], 'valid': all(v['valid'] for v in validity), 'run_validity': validity,
               'call_counts': call_counts(rows),
               'mishandling': ratio(wrong, len(items)+unexpected), 'correct': ratio(sum(item['result'] == CORRECT for item in items), len(items)),
+              'unprocessed': {'count': sum(item['result'] == UNPROCESSED for item in items),
+                              'by_category': dict(sorted(Counter(item['unprocessed'] for item in items if item['result'] == UNPROCESSED).items()))},
+              'rewritten_merges': {'count': sum(len(case['rewritten_merges']) for case in cases),
+                                   'unlabelled': sum(not r['labelled'] for case in cases for r in case['rewritten_merges']),
+                                   'items': [{'case_id': case['case_id'], **r} for case in cases for r in case['rewritten_merges']]},
               'protection': ratio(sum(check['passed'] for check in protection), len(protection)),
               'write_damage': ratio(sum(bool(case['write_damage']) for case in cases), len(cases)),
               'detail_loss': ratio(sum(d['numerator'] for d in details), sum(d['denominator'] for d in details)) if rounds else None,

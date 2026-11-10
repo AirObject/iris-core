@@ -41,6 +41,13 @@ def trace_origins(conn, *, memory_id=None, message_id=None, blocked=(), active_o
     return origins
 
 
+def direct_origins(conn, memory_id):
+    """Messages a memory cites itself, without following derived_from."""
+    return {row['id']: dict(row) for row in conn.execute(
+        '''SELECT m.id,m.kind,m.sender_subject_id,m.occurred_at FROM sources s JOIN messages m ON m.id=s.message_id
+        WHERE s.memory_id=? AND s.kind='message' ''', (memory_id,))}
+
+
 def independent_origins(conn, memory_ids, *, blocked=()):
     """Distinct original messages behind these memories, without the role's own speech.
 

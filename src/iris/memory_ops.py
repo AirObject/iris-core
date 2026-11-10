@@ -114,7 +114,9 @@ def adjust_retention(store: Store, memory_id: int, delta: int = 0, *, value=None
         state = result["lifecycle"]
         if state == "active" and result["retention"] < config["forget_threshold"]:
             conn.execute("UPDATE memories SET lifecycle='forgotten',forgotten_at=? WHERE id=?", (stamp, memory_id))
-        elif state == "forgotten" and result["retention"] >= config["restore_threshold"]:
+        elif (state == "forgotten" and result["retention"] >= config["restore_threshold"]
+              and not superseded_forgotten(conn, memory_id)):
+            # Strength may still grow; only an explicit restore or undo revives a superseded memory.
             conn.execute("UPDATE memories SET lifecycle='active',forgotten_at=NULL WHERE id=?", (memory_id,))
         return dict(conn.execute("SELECT * FROM memories WHERE id=?", (memory_id,)).fetchone())
 
@@ -261,13 +263,12 @@ def manage_memory(store, memory_id, expected_revision, *, action=None, pinned=No
             retention = min(row["retention"], config["forget_threshold"] - 1)
         elif action == "restore":
             retention = max(row["retention"], config["restore_threshold"])
+            # An explicit restore is what lifts the limit in superseded_forgotten.
+            conn.execute("""UPDATE consolidation_annotations SET cleared_at=?,cleared_by='admin'
+                WHERE memory_id=? AND kind='superseded' AND cleared_at IS NULL""", (stamp, memory_id))
         if retention is not None:
             adjust_retention(store, memory_id, value=retention, settings=config, _conn=conn)
         latest = conn.execute("SELECT * FROM memories WHERE id=?", (memory_id,)).fetchone()
-        if row["lifecycle"] == "forgotten" and latest["lifecycle"] == "active":
-            # Restoring by hand lifts the limit in superseded_forgotten.
-            conn.execute("""UPDATE consolidation_annotations SET cleared_at=?,cleared_by='admin'
-                WHERE memory_id=? AND kind='superseded' AND cleared_at IS NULL""", (stamp, memory_id))
         if _record:
             operation(conn, "memory_" + (action or "adjust"), "memory", memory_id,
                       {"before": before, "after": {k: latest[k] for k in before}, "revision": latest["revision"]})

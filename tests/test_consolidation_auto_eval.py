@@ -16,7 +16,7 @@ for name in ('run', 'score', 'auto_score'):
         spec.loader.exec_module(module)
 runner, scorer = sys.modules['run'], sys.modules['auto_score']
 
-from iris.models import ModelReply
+from iris.models import ModelError, ModelReply
 from test_consolidation import Model
 
 CORPUS = runner.ROOT/'evals/consolidation_v2.json'
@@ -160,13 +160,13 @@ def test_reported_and_undecided_scoring(corpus, tmp_path):
 
 
 def test_dependency_scoring_and_protection(corpus, tmp_path):
-    row = contradiction_row(corpus, tmp_path, 'CV012')
-    assert result_for(scorer.score_case(row), kind='dependency') == scorer.MISSED
+    case = corpus['CV012']
+    row = runner.case_run(case, tmp_path/'labels.db', lambda store, clock: LabelModel(store, case), 'broad', 'auto_v1')
+    assert result_for(scorer.score_case(row), kind='dependency') == scorer.CORRECT
     assert all(check['passed'] for check in scorer.score_case(row)['protection'])
     before = next(m for m in row['input']['before']['memories'] if m['id'] == row['input']['before']['key_map']['d'])
-    good = manual_row(row, d={'belief': min(before['belief'], 49), 'lifecycle': 'forgotten', 'retention': min(before['retention'], 19),
-                              'annotations': [annotation('insufficient_support')]})
-    assert result_for(scorer.score_case(good), kind='dependency') == scorer.CORRECT
+    kept = manual_row(row, d={key: before[key] for key in ('belief', 'lifecycle', 'retention', 'annotations')})
+    assert result_for(scorer.score_case(kept), kind='dependency') == scorer.MISSED
     touched = manual_row(row, x={'belief': 1})
     assert not all(check['passed'] for check in scorer.score_case(touched)['protection'])
 
@@ -176,6 +176,67 @@ def test_unexpected_changes_count_against_handling(corpus, tmp_path):
     edited = manual_row(row, c={'belief': 1})
     result = scorer.score_case(edited)
     assert [item['kind'] for item in result['unexpected_actions']] == ['unexpected_change']
+
+
+def inject_merge(row, tail):
+    """CV001 c+d merged into d with body c + tail, as the runner would export it."""
+    merged = copy.deepcopy(row)
+    p = merged['input']
+    keymap = p['before']['key_map']
+    before = {m['id']: m for m in p['before']['memories']}
+    c, d = before[keymap['c']], before[keymap['d']]
+    result = {**d, 'content': c['content']+tail, 'original_keys': ['c', 'd'], 'sources': c['sources']+d['sources']}
+    absorbed = {**c, 'lifecycle': 'deleted', 'merged_into': d['id'], 'is_placeholder': True}
+    p['actual_merges'] = [{'action_id': 'co-1', 'input_keys': ['c', 'd'], 'input_ids': [d['id'], c['id']],
+                           'before_memories': [c, d], 'result': result, 'absorbed_memories': [absorbed]}]
+    for memory in p['after']['memories']:
+        if memory['id'] == d['id']:
+            memory.update(content=result['content'], original_keys=['c', 'd'], sources=result['sources'])
+        if memory['id'] == c['id']:
+            memory.update(lifecycle='deleted', merged_into=d['id'], is_placeholder=True)
+    p['merge_checks'] = []
+    merged['work_results'] = []
+    return merged
+
+
+class Broken:
+    health = None
+
+    def chat(self, *args, **kwargs):
+        raise ModelError('item_error', 'bad request')
+
+
+def test_unprocessed_items_are_never_counted_as_correct(corpus, tmp_path):
+    case = corpus['CV010']  # coexist x/y and dependency d=keep: unchanged either way.
+    answered = scorer.score_case(execute(case, tmp_path))
+    assert result_for(answered, kind='contradiction') == scorer.CORRECT  # classification judged them separate.
+    dependency = next(i for i in answered['items'] if i['kind'] == 'dependency')
+    assert dependency['result'] == scorer.UNPROCESSED  # the fake cannot answer the dependency prompt.
+    failed = runner.case_run(case, tmp_path/'broken.db', lambda store, clock: Broken(), 'broad', 'auto_v1')
+    scored = scorer.score_case(failed)
+    assert {(i['kind'], i['result'], i.get('unprocessed')) for i in scored['items'] if i['kind'] != 'merge'} == {
+        ('contradiction', scorer.UNPROCESSED, 'call_failed'), ('dependency', scorer.UNPROCESSED, 'call_failed')}
+    unplanned = copy.deepcopy(failed)
+    unplanned['work_results'] = []
+    assert {i.get('unprocessed') for i in scorer.score_case(unplanned)['items']} == {'not_planned'}
+    runner.export_auto([failed], tmp_path/'materials', metadata([case]))
+    report = scorer.score(tmp_path/'materials', tmp_path/'out')
+    assert report['unprocessed']['count'] == report['correct']['denominator'] - report['correct']['numerator']
+    assert report['unprocessed']['by_category']['call_failed'] >= 2
+
+
+def test_rewritten_merges_are_listed_and_checked(corpus, tmp_path):
+    row = execute(corpus['CV001'], tmp_path)
+    labelled = scorer.score_case(inject_merge(row, '，在北门等'))
+    assert [(r['labelled'], r['failed_checks']) for r in labelled['rewritten_merges']] == [(True, [])]
+    assert labelled['write_damage'] == []
+    unlabelled = inject_merge(row, '，在北门等19点')
+    unlabelled['input']['case']['expected']['mutual_merges'] = []
+    scored = scorer.score_case(unlabelled)
+    assert [(r['labelled'], r['failed_checks']) for r in scored['rewritten_merges']] == [(False, ['numbers', 'time'])]
+    assert [d['reason'] for d in scored['write_damage']] == ['rewrite_claims_changed']
+    negated = inject_merge(row, '，不在北门等')
+    assert scorer.score_case(negated)['rewritten_merges'][0]['failed_checks'] == ['negation']
 
 
 def test_materials_detail_rounds_and_gates(corpus, tmp_path):
@@ -188,22 +249,8 @@ def test_materials_detail_rounds_and_gates(corpus, tmp_path):
     assert report['detail_loss'] is None and report['gates']['detail_loss_zero'] is None
     assert report['call_counts']['calls'] == len(row['calls'])
     # A merge item with labels: inject a real one and re-export so the rounds have work.
-    merged = copy.deepcopy(row)
+    merged = inject_merge(row, '，在北门等')
     p = merged['input']
-    keymap = p['before']['key_map']
-    before = {m['id']: m for m in p['before']['memories']}
-    c, d = before[keymap['c']], before[keymap['d']]
-    result = {**d, 'content': c['content']+'，在北门等', 'original_keys': ['c', 'd'], 'sources': c['sources']+d['sources']}
-    absorbed = {**c, 'lifecycle': 'deleted', 'merged_into': d['id'], 'is_placeholder': True}
-    p['actual_merges'] = [{'action_id': 'co-1', 'input_keys': ['c', 'd'], 'input_ids': [d['id'], c['id']],
-                           'before_memories': [c, d], 'result': result, 'absorbed_memories': [absorbed]}]
-    for memory in p['after']['memories']:
-        if memory['id'] == d['id']:
-            memory.update(content=result['content'], original_keys=['c', 'd'], sources=result['sources'])
-        if memory['id'] == c['id']:
-            memory.update(lifecycle='deleted', merged_into=d['id'], is_placeholder=True)
-    p['merge_checks'] = []
-    merged['work_results'] = []
     runner.export_auto([merged], tmp_path/'m2', metadata([case]))
     items = runner.auto_detail_items(p)
     assert len(items) == 1 and items[0]['pair'] == ['c', 'd'] and items[0]['must_keep']
