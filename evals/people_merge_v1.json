@@ -1,0 +1,1569 @@
+{
+  "format_version": 1,
+  "name": "people_merge_v1",
+  "timezone": "Asia/Shanghai",
+  "role_name": "Iris",
+  "cases": [
+  {
+    "id": "PM001",
+    "split": "dev",
+    "category": "true_same",
+    "now": "2026-09-05T09:00:00+08:00",
+    "entries": [{"id": "e1", "kind": "group", "name": "周三饭搭子"}],
+    "subjects": [
+      {"id": "p1", "name": "许闻", "aliases": ["饭团"], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-02-01T10:00:00+08:00"},
+      {"id": "p2", "name": "山窗", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-09-02T18:00:00+08:00"},
+      {"id": "p3", "name": "罗叶", "aliases": ["一片叶"], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-02-03T12:00:00+08:00"},
+      {"id": "p4", "name": "半杯", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-09-02T19:00:00+08:00"},
+      {"id": "p5", "name": "安禾", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-02-01T10:05:00+08:00"},
+      {"id": "p6", "name": "橘白", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-03-10T10:00:00+08:00"},
+      {"id": "p7", "name": "小橘", "aliases": [], "parent": null, "merged_into": null, "account": "a7", "created_at": "2026-09-01T10:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 72, "source": "m4", "created_at": "2026-09-03T11:03:00+08:00"},
+      {"key": "l2", "a": "p3", "b": "p4", "kind": "same_as", "status": "possible", "belief": 69, "source": "m6", "created_at": "2026-09-03T11:05:00+08:00"},
+      {"key": "l3", "a": "p6", "b": "p7", "kind": "same_as", "status": "possible", "belief": 55, "source": "m8", "created_at": "2026-09-03T11:08:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "山窗自称许闻，原来群里叫饭团；旧号收不到验证码，欠的六块饭钱会从山窗号补，并提醒别往旧号发红包。", "speaker": "p2", "stance": "self", "about": ["p1", "p2"], "sources": ["m4"], "created_at": "2026-09-03T11:20:00+08:00"},
+      {"key": "k2", "content": "安禾猜小橘可能是橘白的小号。", "speaker": "p5", "stance": "hearsay", "about": ["p6", "p7"], "sources": ["m8"], "created_at": "2026-09-03T11:21:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "上回的饭钱我还欠安禾六块，记着呢。", "at": "2026-09-01T12:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "店里的充电线别忘了拿，白色那根是我的。", "at": "2026-09-01T12:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "今天还去巷口吗，菜单又换纸了。", "at": "2026-09-03T11:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "我许闻，原来群里叫饭团的。旧号收不到验证码了，六块饭钱从这个山窗号补，别往旧号发红包。", "at": "2026-09-03T11:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "巷口那家今天有南瓜汤。", "at": "2026-09-03T11:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "我也换过来了，罗叶那个一片叶号留在旧平板上。这边叫半杯，充电线先帮我放柜台吧。", "at": "2026-09-03T11:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "线还在袋子里，我十二点才能下楼。", "at": "2026-09-03T11:06:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "小橘的头像也是那只歪头猫，会不会是橘白的小号呀，我随口猜的。", "at": "2026-09-03T11:07:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "这家能单点土豆丝吗？套餐太多了。", "at": "2026-09-03T11:09:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "我今天带饭，冰箱第二层的酸奶可以拿。", "at": "2026-09-03T11:11:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "南瓜汤要一份，汤别跟饭装一起。", "at": "2026-09-03T11:13:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "许闻昨天当面把六块结了，还拿山窗这个新号扫的我。饭团和山窗我都备注许闻了，省得下次催重。", "at": "2026-09-04T10:30:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "昨天汤洒了半袋，今天还是带个饭盒。", "at": "2026-09-04T10:32:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e1", "kind": "message", "sender": "self", "content": "饭盒盖上的密封圈也检查一下。", "at": "2026-09-04T10:34:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "半杯就是罗叶，我刚把那根线交到罗叶手里，看着把一片叶的群消息迁到半杯了。线头有点松，回去试试。", "at": "2026-09-04T12:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "线能充，得垫一本书。", "at": "2026-09-04T12:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "土豆丝比我想的辣，明天换一家吧。", "at": "2026-09-04T12:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "有人把保温袋落冰箱上面了。", "at": "2026-09-04T12:13:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m19", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "我的，下午顺手带上楼就行。", "at": "2026-09-04T12:15:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m20", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "袋口已经夹好了。", "at": "2026-09-04T12:16:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "merge", "target": "p1", "evidence": ["m4", "m12"], "notes": "9月3日本人说明，9月4日安禾独立确认；p1创建较早。"},
+      {"key": "l2", "expected": "merge", "target": "p3", "evidence": ["m6", "m15"], "notes": "9月3日本人说明，9月4日安禾当面确认；p3创建较早。"},
+      {"key": "l3", "expected": "keep_possible", "target": null, "evidence": [], "notes": "只有m8的头像推测，小橘和橘白均未接这个话题。"}
+    ]},
+    "reason": "两次换号各有跨日期的本人和熟人依据，可以合并；另一对只有熟人随口猜测和相似头像，仍保留可能联系。"
+  },
+  {
+    "id": "PM002",
+    "split": "dev",
+    "category": "self_twice",
+    "now": "2026-09-12T08:00:00+08:00",
+    "entries": [{"id": "e1", "kind": "group", "name": "旧工位午休"}],
+    "subjects": [
+      {"id": "p1", "name": "柳岑", "aliases": ["蓝格子"], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-01-09T09:00:00+08:00"},
+      {"id": "p2", "name": "岑·通勤", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-09-08T09:00:00+08:00"},
+      {"id": "p3", "name": "顾安", "aliases": ["纸箱"], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-05-01T08:00:00+08:00"},
+      {"id": "p4", "name": "清水", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-05-01T08:00:00+08:00"},
+      {"id": "p5", "name": "乔原", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-01-10T09:00:00+08:00"},
+      {"id": "p6", "name": "晚点再说", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-09-08T10:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 70, "source": "m3", "created_at": "2026-09-09T12:03:00+08:00"},
+      {"key": "l2", "a": "p3", "b": "p4", "kind": "same_as", "status": "possible", "belief": 68, "source": "m8", "created_at": "2026-09-09T12:10:00+08:00"},
+      {"key": "l3", "a": "p5", "b": "p6", "kind": "same_as", "status": "possible", "belief": 66, "source": "m6", "created_at": "2026-09-09T12:07:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "岑·通勤说自己以前用蓝格子号，旧号上的资料尚未搬完。", "speaker": "p2", "stance": "self", "about": ["p1", "p2"], "sources": ["m3"], "created_at": "2026-09-09T12:30:00+08:00"},
+      {"key": "k2", "content": "Iris把晚点再说称作乔原的夜间号。", "speaker": "self", "stance": "self", "about": ["p5", "p6"], "sources": ["m6", "m21"], "created_at": "2026-09-11T12:31:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "旧工位抽屉里还有一包挂耳，没过期。", "at": "2026-09-08T17:30:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "我把小订书机带走了，大的留着。", "at": "2026-09-08T17:32:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "昨天发挂耳的是我柳岑，这个岑·通勤是我换手机后用的号。蓝格子那个旧号资料还没搬完，先别踢。", "at": "2026-09-09T12:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "抽屉钥匙在哪个盒子？", "at": "2026-09-09T12:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "透明盒里还有几张标签纸。", "at": "2026-09-09T12:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "我把乔原的夜间号晚点再说也加进咖啡清单了，免得一份算两次。", "at": "2026-09-09T12:06:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "咖啡这周先不喝，胃有点不舒服。", "at": "2026-09-09T12:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "纸箱那个号是我顾安以前用的，清水是我的备用号，现在拿来常用了。订书机在我包里，下午带回来。", "at": "2026-09-09T12:09:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "大的那台卡钉，别往里继续塞。", "at": "2026-09-09T12:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "这雨像是要下一整天。", "at": "2026-09-09T12:14:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "我窗边已经摆桶了。", "at": "2026-09-09T12:16:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "桶别放电线旁边。", "at": "2026-09-09T12:18:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "小订书机放回透明盒了。", "at": "2026-09-09T15:30:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "今天总算能开窗了。", "at": "2026-09-11T12:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "我柳岑把蓝格子旧号的报销单搬好了，旧号今天退出登录。岑·通勤这个号继续找我就行，别把旧聊天删了。", "at": "2026-09-11T12:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "报销附件压成一个包会不会太大？", "at": "2026-09-11T12:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "可以分成两封发，标题接着编号。", "at": "2026-09-11T12:07:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "别压图片，票面会糊。", "at": "2026-09-11T12:09:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m19", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "顾安在这儿，纸箱号的群文件我刚转存到现在的清水号了。两边都是我自己的，后面补票用这个号收。", "at": "2026-09-11T12:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m20", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "打印机有双面选项，藏在第二页设置里。", "at": "2026-09-11T12:15:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m21", "entry_id": "e1", "kind": "message", "sender": "self", "content": "我昨天找乔原时发给晚点再说了，我一直把这两个号当成同一个人用。", "at": "2026-09-11T12:17:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m22", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "我现在去楼下取件，谁有剪刀？", "at": "2026-09-11T12:19:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m23", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "窗台上，橙色柄那把。", "at": "2026-09-11T12:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m24", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "剪完胶带擦一下，昨天都粘住了。", "at": "2026-09-11T12:22:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "merge", "target": "p1", "evidence": ["m3", "m15"], "notes": "p2在9月9日和11日分别说明两号属于自己。"},
+      {"key": "l2", "expected": "merge", "target": "p3", "evidence": ["m8", "m19"], "notes": "p4跨日期说明；p3、p4创建时间相同，保留ID较小的p3。"},
+      {"key": "l3", "expected": "keep_possible", "target": null, "evidence": [], "notes": "m6是self_output，m21发送者仍为self；这两条角色发言均不能作身份依据。"}
+    ]},
+    "reason": "柳岑和顾安各自在两个日期说明过账号迁移，满足两条独立依据；乔原与晚点再说的对应关系只出现在Iris自己的话里。"
+  },
+  {
+    "id": "PM003",
+    "split": "dev",
+    "category": "two_others",
+    "now": "2026-09-17T09:00:00+08:00",
+    "entries": [{"id": "e1", "kind": "group", "name": "七号自习桌老同学"}],
+    "subjects": [
+      {"id": "p1", "name": "唐栩", "aliases": ["旧车票"], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-01-01T09:00:00+08:00"},
+      {"id": "p2", "name": "麦田", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-09-12T10:00:00+08:00"},
+      {"id": "p3", "name": "温舟", "aliases": ["周末关机"], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-02-01T09:00:00+08:00"},
+      {"id": "p4", "name": "小舟靠岸", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-09-12T11:00:00+08:00"},
+      {"id": "p5", "name": "余墨", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-01-02T09:00:00+08:00"},
+      {"id": "p6", "name": "空格", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-09-12T12:00:00+08:00"},
+      {"id": "p7", "name": "纪然", "aliases": [], "parent": null, "merged_into": null, "account": "a7", "created_at": "2026-01-03T09:00:00+08:00"},
+      {"id": "p8", "name": "岑栗", "aliases": [], "parent": null, "merged_into": null, "account": "a8", "created_at": "2026-01-04T09:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 71, "source": "m3", "created_at": "2026-09-14T19:04:00+08:00"},
+      {"key": "l2", "a": "p3", "b": "p4", "kind": "same_as", "status": "possible", "belief": 70, "source": "m6", "created_at": "2026-09-14T19:10:00+08:00"},
+      {"key": "l3", "a": "p5", "b": "p6", "kind": "same_as", "status": "possible", "belief": 76, "source": "m8", "created_at": "2026-09-14T19:14:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "纪然说麦田是以前用旧车票号的唐栩。", "speaker": "p7", "stance": "hearsay", "about": ["p1", "p2"], "sources": ["m3"], "created_at": "2026-09-14T20:00:00+08:00"},
+      {"key": "k2", "content": "纪然两次把空格称为余墨的新号。", "speaker": "p7", "stance": "hearsay", "about": ["p5", "p6"], "sources": ["m8", "m20"], "created_at": "2026-09-16T20:00:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "旧相册那几张我周末翻一下，硬盘在收纳箱底下。", "at": "2026-09-13T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "相册里别放身份证照，封皮那张风景就挺好。", "at": "2026-09-13T18:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "麦田是唐栩现在的号，旧车票那个不用来传文件了。我今天在唐栩家，直接扫这个号把硬盘照片收过来的。", "at": "2026-09-14T19:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "照片包有点大，等进度条走完再下。", "at": "2026-09-14T19:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "封面可以先留空，排完再选。", "at": "2026-09-14T19:07:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "小舟靠岸就是温舟。我刚跟温舟吃完饭，现场看着把周末关机旧号换下来的，相册邀请发到小舟靠岸吧。", "at": "2026-09-14T19:09:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "相册链接不要设成任何人都能编辑，昨天有一页被拖乱了。", "at": "2026-09-14T19:11:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "还有空格是余墨的新号，这个我熟，今天订的那两本也算在余墨名下。", "at": "2026-09-14T19:13:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "纸张别选反光的，台灯一照看不清。", "at": "2026-09-14T19:15:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "我那两页先空着，照片还在找。", "at": "2026-09-14T19:17:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "不用急着交钱，先看打样。", "at": "2026-09-14T19:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "今天我去给唐栩送打样，唐栩用麦田号给我转了印费。以前那个旧车票联系人也就是唐栩，我把收款备注写全了。", "at": "2026-09-16T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "第六页边上那条白线是裁切位吗？", "at": "2026-09-16T18:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "对，成品会切掉一圈。", "at": "2026-09-16T18:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "我能下周再拿吗，今晚加班。", "at": "2026-09-16T18:07:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "成品先放密封袋里，雨天不容易受潮。", "at": "2026-09-16T18:09:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "小舟靠岸这份我标温舟自取。我下午当面问过温舟，确实是从周末关机换到了小舟靠岸，还让我看了新号的取件消息。", "at": "2026-09-16T18:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "相册盒到了，底下记得加张硬纸。", "at": "2026-09-16T18:14:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m19", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "我留一本样册在自习桌旁边，别都带走。", "at": "2026-09-16T18:16:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m20", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "余墨那栏别漏了空格，我上次说过这就是余墨现在用的号，册子按一个人记就行。", "at": "2026-09-16T18:18:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m21", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "找到了三张运动会的，背景有点歪。", "at": "2026-09-16T18:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m22", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "歪一点没事，别把旗子裁没了。", "at": "2026-09-16T18:22:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m23", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "明天再下载，家里网断断续续。", "at": "2026-09-16T18:25:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m24", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "样册的黄有点偏绿，印之前再调一下吧。", "at": "2026-09-16T18:27:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "merge", "target": "p1", "evidence": ["m3", "m12"], "notes": "纪然9月14日和岑栗9月16日分别有现场接触，均非联系双方或self。"},
+      {"key": "l2", "expected": "merge", "target": "p3", "evidence": ["m6", "m17"], "notes": "岑栗9月14日与纪然9月16日分别明确指认。"},
+      {"key": "l3", "expected": "keep_possible", "target": null, "evidence": ["m8", "m20"], "notes": "日期不同但均出自纪然；双方没有说明身份，也没有第二名他人确认。"}
+    ]},
+    "reason": "唐栩和温舟的换号各有两名熟人在不同日期明确指认；余墨与空格虽被重复指认，指认者始终只有纪然。"
+  },
+  {
+    "id": "PM004",
+    "split": "dev",
+    "category": "cross_entry",
+    "now": "2026-09-24T09:00:00+08:00",
+    "entries": [
+      {"id": "e1", "kind": "group", "name": "小组旧友"},
+      {"id": "e2", "kind": "private", "name": "Iris与水杉"},
+      {"id": "e3", "kind": "private", "name": "Iris与路衡"},
+      {"id": "e4", "kind": "group", "name": "拼桌读书"},
+      {"id": "e5", "kind": "private", "name": "Iris与芦苇"}
+    ],
+    "subjects": [
+      {"id": "p1", "name": "宋青", "aliases": ["青木"], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-03-01T09:00:00+08:00"},
+      {"id": "p2", "name": "水杉", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-09-18T10:00:00+08:00"},
+      {"id": "p3", "name": "游宁", "aliases": ["宁静"], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-03-02T09:00:00+08:00"},
+      {"id": "p4", "name": "可可粒", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-09-18T11:00:00+08:00"},
+      {"id": "p5", "name": "路衡", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-03-03T09:00:00+08:00"},
+      {"id": "p6", "name": "阿芦", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-03-04T09:00:00+08:00"},
+      {"id": "p7", "name": "芦苇", "aliases": [], "parent": null, "merged_into": null, "account": "a7", "created_at": "2026-09-18T12:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 64, "source": "m3", "created_at": "2026-09-20T09:04:00+08:00"},
+      {"key": "l2", "a": "p3", "b": "p4", "kind": "same_as", "status": "possible", "belief": 65, "source": "m6", "created_at": "2026-09-20T10:04:00+08:00"},
+      {"key": "l3", "a": "p6", "b": "p7", "kind": "same_as", "status": "possible", "belief": 78, "source": "m10", "created_at": "2026-09-21T11:04:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "水杉在私聊说自己是青木旧号的宋青。", "speaker": "p2", "stance": "self", "about": ["p1", "p2"], "sources": ["m3"], "created_at": "2026-09-20T09:20:00+08:00"},
+      {"key": "k2", "content": "芦苇与路衡都转贴过阿芦9月20日的换号及取书说明。", "speaker": "p5", "stance": "hearsay", "about": ["p6", "p7"], "sources": ["m8", "m10", "m15"], "created_at": "2026-09-23T10:30:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "借的工具书我周末归还，有一页夹了便利贴。", "at": "2026-09-19T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e4", "kind": "message", "sender": "p3", "content": "读书那张桌子修好了，靠窗腿还是有点晃。", "at": "2026-09-19T18:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "Iris，我是宋青，之前青木号跟你聊过工具书。这次手机搬家换水杉这个号了，借书日期那张图能再给我一下吗？", "at": "2026-09-20T09:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e2", "kind": "self_output", "sender": "self", "content": "日期写的是周日下午，书签也一起带着就好。", "at": "2026-09-20T09:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "周日下午那家书店可能提前关，门口在修路。", "at": "2026-09-20T09:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e4", "kind": "message", "sender": "p4", "content": "游宁来啦，可可粒是我拿来看书的小号，宁静那个旧号现在工作消息太吵。桌脚垫我带一片过去。", "at": "2026-09-20T10:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e4", "kind": "message", "sender": "p5", "content": "桌脚底下有灰，垫之前擦一下。", "at": "2026-09-20T10:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "我这边改用芦苇号，阿芦留作备用，两个都是我。周日两点在书店取书，别跑到旧店。", "at": "2026-09-20T10:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "新店门上有个圆灯，旧店招牌都拆了。", "at": "2026-09-20T10:22:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e5", "kind": "message", "sender": "p7", "content": "转存一条，取书时间看最后一句。", "at": "2026-09-21T11:03:00+08:00", "quote_author": "p6", "quote_content": "我这边改用芦苇号，阿芦留作备用，两个都是我。周日两点在书店取书，别跑到旧店。"},
+      {"key": "m11", "entry_id": "e5", "kind": "self_output", "sender": "self", "content": "两点前还会很晒，书袋记得避水。", "at": "2026-09-21T11:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e3", "kind": "message", "sender": "p5", "content": "我刚和宋青在书店碰上，用水杉新号互扫了，原先青木号那份借书单就是宋青的，我已经把两个联系人都备注好了。", "at": "2026-09-22T15:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e3", "kind": "self_output", "sender": "self", "content": "书店这次书袋够用吗？", "at": "2026-09-22T15:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e3", "kind": "message", "sender": "p5", "content": "够，游宁也来拿了垫片。我亲眼看着游宁把宁静号退出，换到可可粒回了读书群，两个号都是游宁在用。", "at": "2026-09-22T15:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "免得大家翻记录，贴一下阿芦20号那条取书通知。", "at": "2026-09-23T10:00:00+08:00", "quote_author": "p6", "quote_content": "我这边改用芦苇号，阿芦留作备用，两个都是我。周日两点在书店取书，别跑到旧店。"},
+      {"key": "m16", "entry_id": "e5", "kind": "message", "sender": "p7", "content": "书袋下面破了个小洞，用胶带补了。", "at": "2026-09-23T10:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "便利贴粘太紧了，先夹在里面没撕。", "at": "2026-09-23T10:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e2", "kind": "self_output", "sender": "self", "content": "别硬撕，纸边容易带起来。", "at": "2026-09-23T10:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m19", "entry_id": "e4", "kind": "message", "sender": "p4", "content": "垫完稳多了，右边那个位置可以坐。", "at": "2026-09-23T19:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m20", "entry_id": "e4", "kind": "message", "sender": "p5", "content": "下回买杯茶再坐，白占桌子有点不好意思。", "at": "2026-09-23T19:02:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "merge", "target": "p1", "evidence": ["m3", "m12"], "notes": "9月20日水杉私聊自述，9月22日路衡在另一私聊确认；入口不同不妨碍合并。"},
+      {"key": "l2", "expected": "merge", "target": "p3", "evidence": ["m6", "m14"], "notes": "9月20日读书群的本人说明与9月22日私聊的熟人确认相互独立。"},
+      {"key": "l3", "expected": "keep_possible", "target": null, "evidence": ["m8"], "notes": "m10、m15引用的正文均为m8，跨入口、跨日期的转贴仍只有9月20日这一个原始来源。"}
+    ]},
+    "reason": "两组换号的有效依据分散在群聊与私聊，且日期不同；阿芦的说明被多处引用，不能凭三条展示记录凑出两条独立依据。"
+  },
+  {
+    "id": "PM005",
+    "split": "dev",
+    "category": "same_name",
+    "now": "2026-09-27T09:00:00+08:00",
+    "entries": [{"id": "e1", "kind": "group", "name": "毕业后约饭六人群"}],
+    "subjects": [
+      {"id": "p1", "name": "陈澈", "aliases": ["小陈"], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-02-01T09:00:00+08:00"},
+      {"id": "p2", "name": "陈澈·灯", "aliases": ["陈澈"], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-02-02T09:00:00+08:00"},
+      {"id": "p3", "name": "齐予", "aliases": [], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-02-03T09:00:00+08:00"},
+      {"id": "p4", "name": "陆央", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-02-04T09:00:00+08:00"},
+      {"id": "p5", "name": "秦遥", "aliases": ["抽屉"], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-02-05T09:00:00+08:00"},
+      {"id": "p6", "name": "雨停", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-09-23T09:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 81, "source": "m2", "created_at": "2026-09-24T18:04:00+08:00"},
+      {"key": "l2", "a": "p5", "b": "p6", "kind": "same_as", "status": "possible", "belief": 67, "source": "m5", "created_at": "2026-09-24T18:10:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "齐予和陆央曾把排版的陈澈与陈澈·灯记为同一联系人。", "speaker": "p3", "stance": "hearsay", "about": ["p1", "p2"], "sources": ["m2", "m8"], "created_at": "2026-09-25T18:30:00+08:00"},
+      {"key": "k2", "content": "陈澈明确否认自己是陈澈·灯，两人随后分别说明了排版和灯具的事情。", "speaker": "p1", "stance": "self", "about": ["p1", "p2"], "sources": ["m13", "m14", "m15", "m16"], "created_at": "2026-09-25T19:20:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "聚餐那张海报的字我加大了，远一点也能看。", "at": "2026-09-24T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "上周帮排版的小陈就是陈澈·灯，我把这两个号的备注都补成陈澈了，旧表里没写灯字。", "at": "2026-09-24T18:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "桌上那盒彩笔给我留着，周末要用。", "at": "2026-09-24T18:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "菜先按六份点，迟到的自己热。", "at": "2026-09-24T18:07:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "秦遥在这，抽屉那个号登不上了，雨停是我之前留着的备用号。彩笔我明天拿，别当闲置送掉。", "at": "2026-09-24T18:09:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "彩笔盖子都扣上了，有两支有点干。", "at": "2026-09-24T18:11:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "店门口的灯还闪吗？别让人站梯子下面。", "at": "2026-09-24T18:13:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "我这份通讯录也记着，打印店那个陈澈就是陈澈·灯，昨晚把灯具的报销和排版费放一栏了。", "at": "2026-09-25T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "彩笔试过了，蘸一点水还能用。", "at": "2026-09-25T18:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "今天把彩笔交给秦遥了，秦遥现场拿雨停号给我发了试色图。抽屉旧号和雨停确实都是秦遥的，没送错人。", "at": "2026-09-25T18:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "黄色那支别和蓝色泡在一个杯子里。", "at": "2026-09-25T18:06:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "@小陈 灯具报销表也发你了，顺便填一下。", "at": "2026-09-25T18:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "发错了，我不是陈澈·灯。我们只是都叫陈澈，我是做排版的，灯具那笔不在我这里。", "at": "2026-09-25T18:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "灯具表发我，这个带灯的号才是我的。小陈跟我同校不同级，聚餐那天坐我对面。", "at": "2026-09-25T18:14:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "陈澈·灯，你那把卷尺还在我打印店，要下班来取吗？", "at": "2026-09-25T18:16:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "取，我从灯具仓过来要二十分钟，你别先锁门。", "at": "2026-09-25T18:17:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "啊，我把修灯和排版那两次见面串一起了，难怪海报文件一直发错。", "at": "2026-09-25T18:19:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "我旧表同名只留了一行，今晚拆成两行重发。", "at": "2026-09-25T18:21:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m19", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "饭还能热吗，我画完才发现忘吃了。", "at": "2026-09-25T18:23:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m20", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "盒盖掀开一角再热。", "at": "2026-09-25T18:24:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m21", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "店里还有一份米饭，没放辣椒。", "at": "2026-09-25T18:26:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m22", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "路上堵了，卷尺放门边箱子也行。", "at": "2026-09-25T18:28:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "keep_possible", "target": null, "evidence": ["m2", "m8"], "notes": "两名他人的说法虽跨日期，m13本人否认、m14至m16两人互相约取卷尺及m17至m18纠错均构成反证。"},
+      {"key": "l2", "expected": "merge", "target": "p5", "evidence": ["m5", "m10"], "notes": "9月24日秦遥本人说明，9月25日齐予当面确认，保留较早的p5。"}
+    ]},
+    "reason": "两个陈澈被熟人通讯录混为一人，随后本人否认且互相对话，不能合并；同群秦遥的真实换号另有跨日期确认，应单独合并。"
+  },
+  {
+    "id": "PM006",
+    "split": "dev",
+    "category": "single_guess",
+    "now": "2026-10-01T08:00:00+08:00",
+    "entries": [{"id": "e1", "kind": "group", "name": "小院盆栽互助"}],
+    "subjects": [
+      {"id": "p1", "name": "沈简", "aliases": ["早八"], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-04-01T09:00:00+08:00"},
+      {"id": "p2", "name": "白瓷", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-09-26T09:00:00+08:00"},
+      {"id": "p3", "name": "孟溪", "aliases": [], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-04-02T09:00:00+08:00"},
+      {"id": "p4", "name": "季原", "aliases": ["苔痕"], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-04-03T09:00:00+08:00"},
+      {"id": "p5", "name": "小院", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-09-26T10:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 63, "source": "m3", "created_at": "2026-09-28T07:05:00+08:00"},
+      {"key": "l2", "a": "p4", "b": "p5", "kind": "same_as", "status": "possible", "belief": 65, "source": "m6", "created_at": "2026-09-28T07:13:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "孟溪根据发消息时间和阳台照片猜白瓷可能是沈简。", "speaker": "p3", "stance": "hearsay", "about": ["p1", "p2"], "sources": ["m3"], "created_at": "2026-09-28T07:30:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "天刚亮就有人在楼下洗地，跑步回来鞋又湿了。", "at": "2026-09-27T06:40:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "小番茄支架歪了，下午绑一下。", "at": "2026-09-27T07:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "白瓷也天天六点多冒泡，照片里还有蓝色阳台栏杆，八成是沈简换号了吧。不过这一排栏杆都长得一样，我也没问过。", "at": "2026-09-28T07:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "今天打印店几点开？想打几张盆栽标签。", "at": "2026-09-28T07:06:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "门口贴的营业时间是九点。", "at": "2026-09-28T07:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "季原换到这个小院号了，苔痕旧号卡在旧手机里。昨天说的小番茄我还没绑，先问问用棉绳行不行？", "at": "2026-09-28T07:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "棉绳可以，别勒茎，打个活结。", "at": "2026-09-28T07:14:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "好，手边只有快递箱上那根粗的。", "at": "2026-09-28T07:16:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "盆底托盘可以少买一个，那个大盆不用垫。", "at": "2026-09-28T12:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "打印好了，字比想象的小，得重排。", "at": "2026-09-28T12:15:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "标签上留一点空白，以后可以写换盆日期。", "at": "2026-09-28T12:17:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "我是季原，今天终于把苔痕旧号的盆栽记录导到小院这个号了。这两个号都是我的，后面浇水提醒发现在这个就行。", "at": "2026-09-30T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "今晚下雨，靠外面的盆先收一排。", "at": "2026-09-30T18:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "我那盆薄荷可以淋，昨天忘浇了。", "at": "2026-09-30T18:06:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "标签背胶不防水，外面套层透明胶试试。", "at": "2026-09-30T18:09:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "边缘也封住，雨容易从纸边渗。", "at": "2026-09-30T18:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "支架绑好了，风一吹还是像在跳舞。", "at": "2026-09-30T18:15:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "底下再加一根横杆就稳了。", "at": "2026-09-30T18:18:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "keep_possible", "target": null, "evidence": [], "notes": "m3明确是孟溪未核实的单次推测，后续日常发言没有补充身份依据。"},
+      {"key": "l2", "expected": "merge", "target": "p4", "evidence": ["m6", "m12"], "notes": "季原在9月28日和30日两次本人说明换号。"}
+    ]},
+    "reason": "作息与阳台相似让猜测显得可信，但没有第二条独立指认；季原的换号有两天的本人说明，可以合并。"
+  },
+  {
+    "id": "PM007",
+    "split": "dev",
+    "category": "same_day",
+    "now": "2026-10-04T08:00:00+08:00",
+    "entries": [{"id": "e1", "kind": "group", "name": "夜猫备考小群"}],
+    "subjects": [
+      {"id": "p1", "name": "林予", "aliases": ["疏影"], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-04-10T09:00:00+08:00"},
+      {"id": "p2", "name": "雨棚", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-10-02T10:00:00+08:00"},
+      {"id": "p3", "name": "陆听", "aliases": ["栗子"], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-04-11T09:00:00+08:00"},
+      {"id": "p4", "name": "栗子酥", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-10-02T11:00:00+08:00"},
+      {"id": "p5", "name": "白栩", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-04-12T09:00:00+08:00"},
+      {"id": "p6", "name": "江团", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-04-13T09:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 86, "source": "m3", "created_at": "2026-10-03T00:13:00+08:00"},
+      {"key": "l2", "a": "p3", "b": "p4", "kind": "same_as", "status": "possible", "belief": 82, "source": "m5", "created_at": "2026-10-03T00:22:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "雨棚在凌晨和深夜两次说自己是林予、旧号为疏影。", "speaker": "p2", "stance": "self", "about": ["p1", "p2"], "sources": ["m3", "m13"], "created_at": "2026-10-04T00:10:00+08:00"},
+      {"key": "k2", "content": "白栩和江团都把栗子酥指认为陆听的新号。", "speaker": "p5", "stance": "hearsay", "about": ["p3", "p4"], "sources": ["m5", "m10"], "created_at": "2026-10-03T14:00:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "最后一页做不动了，先存个草稿。", "at": "2026-10-03T00:01:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "明早谁去抢靠墙的插座位？", "at": "2026-10-03T00:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "换雨棚号进来了，我林予，疏影旧号没法收资料。刚才那页草稿是我做的，发给这个号吧。", "at": "2026-10-02T16:12:00Z", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "文件名里加上页码，别把草稿和答案覆盖了。", "at": "2026-10-03T00:14:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "栗子酥是陆听新开的号，我晚饭时帮陆听弄的。原来叫栗子的联系人还留着，发座位图用栗子酥就行。", "at": "2026-10-03T00:21:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "插座旁的椅子有点矮，我带个坐垫。", "at": "2026-10-03T00:24:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "先睡吧，明天店里八点半才开。", "at": "2026-10-03T00:26:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "我把剩的饼干装盒了，明天带过去。", "at": "2026-10-03T00:28:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "午饭别订那家盖饭，配送又晚了。", "at": "2026-10-03T12:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "我中午见到陆听了，陆听用栗子酥号把座位图发我手机上，跟之前栗子号确实是同一个人，备注改好了。", "at": "2026-10-03T13:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "座位图最右边漏画了一张小桌。", "at": "2026-10-03T13:22:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "右边靠过道，包放椅子下就好。", "at": "2026-10-03T13:25:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "林予再说一下，我自己的疏影旧号已经退了，后面就雨棚这个号常驻。今天的错题照片收齐了，谢谢。", "at": "2026-10-03T15:51:00Z", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "差九分钟十二点，今天又只复习了两章。", "at": "2026-10-03T23:51:30+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "两章已经不少了，别熬到早饭。", "at": "2026-10-03T23:54:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "可以收书了，闹钟留一份就够。", "at": "2026-10-03T23:58:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "饼干盒盖找不到了，先用保鲜膜。", "at": "2026-10-04T00:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "我多带个饭盒，能装。", "at": "2026-10-04T00:05:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "keep_possible", "target": null, "evidence": ["m3", "m13"], "notes": "两条UTC日期不同，但在Asia/Shanghai分别为10月3日00:12和23:51，仍是同一本地日期；m17无身份信息。"},
+      {"key": "l2", "expected": "keep_possible", "target": null, "evidence": ["m5", "m10"], "notes": "指认者不同，原始消息也不同，但均为10月3日。"}
+    ]},
+    "reason": "两对联系的内容都很明确，但各自的两条依据都落在10月3日这个本地日期；过了午夜的闲聊没有提供新的身份依据。"
+  },
+  {
+    "id": "PM008",
+    "split": "dev",
+    "category": "same_source",
+    "now": "2026-10-09T09:00:00+08:00",
+    "entries": [
+      {"id": "e1", "kind": "group", "name": "四楼周末桌游"},
+      {"id": "e2", "kind": "private", "name": "Iris与周末信箱"}
+    ],
+    "subjects": [
+      {"id": "p1", "name": "许池", "aliases": [], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-05-01T09:00:00+08:00"},
+      {"id": "p2", "name": "灯下", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-10-04T09:00:00+08:00"},
+      {"id": "p3", "name": "汪宁", "aliases": [], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-05-02T09:00:00+08:00"},
+      {"id": "p4", "name": "周末信箱", "aliases": ["顾禾留言板"], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-05-03T09:00:00+08:00"},
+      {"id": "p5", "name": "顾禾", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-05-04T09:00:00+08:00"},
+      {"id": "p6", "name": "小满", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-05-05T09:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 84, "source": "m6", "created_at": "2026-10-06T12:04:00+08:00"},
+      {"key": "l2", "a": "p4", "b": "p5", "kind": "same_as", "status": "possible", "belief": 68, "source": "m4", "created_at": "2026-10-05T19:04:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "汪宁和小满转贴过许池关于灯下新号的说明。", "speaker": "p3", "stance": "hearsay", "about": ["p1", "p2"], "sources": ["m6", "m14"], "created_at": "2026-10-08T12:30:00+08:00"},
+      {"key": "k2", "content": "周末信箱替顾禾转发过报名与车票的原话，由朋友轮流搬消息。", "speaker": "p4", "stance": "self", "about": ["p4", "p5"], "sources": ["m4", "m11", "m12"], "created_at": "2026-10-07T19:30:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "灯下是我准备启用的新号，许池这个号以后只留文件。周六带牌套来，盒子边上又裂了。", "at": "2026-10-05T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "牌套尺寸发一下，买错过一回。", "at": "2026-10-05T18:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "我是顾禾，周末先找这个号，报名表我收。场地订在四楼，别去三楼敲门。", "at": "2026-10-05T18:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e2", "kind": "message", "sender": "p4", "content": "顾禾托我贴这段，原话在下面，路线图还没画完。", "at": "2026-10-05T19:03:00+08:00", "quote_author": "p5", "quote_content": "我是顾禾，周末先找这个号，报名表我收。场地订在四楼，别去三楼敲门。"},
+      {"key": "m5", "entry_id": "e2", "kind": "self_output", "sender": "self", "content": "楼梯口那个箭头贴纸也可以拍一张。", "at": "2026-10-05T19:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "把许池昨天那条顶上来，牌套还缺两包。", "at": "2026-10-06T12:03:00+08:00", "quote_author": "p1", "quote_content": "灯下是我准备启用的新号，许池这个号以后只留文件。周六带牌套来，盒子边上又裂了。"},
+      {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "我包里有一包，多大忘了，晚上量。", "at": "2026-10-06T12:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "把长宽都量一下，厚度也留点余量。", "at": "2026-10-06T12:07:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "盒子我先用胶带绕了一圈，能撑过这周。", "at": "2026-10-06T12:09:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "我顾禾，车票改到下午了，晚点把场地发票发这边。先吃晚饭，不用等我。", "at": "2026-10-07T17:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e2", "kind": "message", "sender": "p4", "content": "再搬一条顾禾的原话，车上信号不好，图片我晚些转。", "at": "2026-10-07T17:10:00+08:00", "quote_author": "p5", "quote_content": "我顾禾，车票改到下午了，晚点把场地发票发这边。先吃晚饭，不用等我。"},
+      {"key": "m12", "entry_id": "e2", "kind": "message", "sender": "p4", "content": "这边只是替顾禾搬消息的周末信箱，汪宁和小满轮着值。以前显示名写顾禾留言板，转账别往这个号发。", "at": "2026-10-07T17:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e2", "kind": "self_output", "sender": "self", "content": "收到，发票图片清楚一点就好。", "at": "2026-10-07T17:14:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "翻出来5号许池那条了，我买的就是里面说的牌套，贴过来省得往上找。", "at": "2026-10-08T12:00:00+08:00", "quote_author": "p1", "quote_content": "灯下是我准备启用的新号，许池这个号以后只留文件。周六带牌套来，盒子边上又裂了。"},
+      {"key": "m15", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "牌盒盖反了，箭头应该朝外。", "at": "2026-10-08T12:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "朝外就扣不上，等见面再研究。", "at": "2026-10-08T12:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "场地有热水，杯子要自己带。", "at": "2026-10-08T12:07:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "带个不漏的，上次包里全湿了。", "at": "2026-10-08T12:09:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m19", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "牌和水杯分两个袋子放。", "at": "2026-10-08T12:11:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "keep_possible", "target": null, "evidence": ["m1"], "notes": "m6与m14虽由不同人在不同日期贴出，引用的都是10月5日m1，没有第二条原始依据。"},
+      {"key": "l2", "expected": "keep_possible", "target": null, "evidence": [], "notes": "m4和m11的第一人称属于被引用的顾禾，m12明确这只是由朋友值守的代发号。"}
+    ]},
+    "reason": "许池的换号说明出现了三次展示却只有一条原文；周末信箱中的顾禾自称则是代转原话，不能把转发账号与原作者合并。"
+  },
+  {
+    "id": "PM009",
+    "split": "dev",
+    "category": "same_other",
+    "now": "2026-10-13T09:00:00+08:00",
+    "entries": [{"id": "e1", "kind": "group", "name": "旧项目散伙后"}],
+    "subjects": [
+      {"id": "p1", "name": "程野", "aliases": ["进度条"], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-05-10T09:00:00+08:00"},
+      {"id": "p2", "name": "木纹", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-10-08T09:00:00+08:00"},
+      {"id": "p3", "name": "余栩", "aliases": [], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-05-11T09:00:00+08:00"},
+      {"id": "p4", "name": "桑言", "aliases": ["回形针"], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-09-02T09:00:00+08:00"},
+      {"id": "p5", "name": "两点半", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-04-01T09:00:00+08:00"},
+      {"id": "p6", "name": "林久", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-05-12T09:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 88, "source": "m3", "created_at": "2026-10-10T20:04:00+08:00"},
+      {"key": "l2", "a": "p4", "b": "p5", "kind": "same_as", "status": "possible", "belief": 70, "source": "m5", "created_at": "2026-10-10T20:08:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "余栩两次说木纹就是旧项目里的程野。", "speaker": "p3", "stance": "hearsay", "about": ["p1", "p2"], "sources": ["m3", "m10"], "created_at": "2026-10-12T20:30:00+08:00"},
+      {"key": "k2", "content": "林久确认桑言启用了两点半小号。", "speaker": "p6", "stance": "hearsay", "about": ["p4", "p5"], "sources": ["m5"], "created_at": "2026-10-10T20:30:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "归档文件别用桌面上那版，少了两张图。", "at": "2026-10-09T17:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "最后一批便签我拿回来了，有需要的自取。", "at": "2026-10-09T17:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "木纹就是程野，原来进度条那个号换过来的。我以前一直跟程野一组，认得，归档图发木纹就行。", "at": "2026-10-10T20:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "图别从聊天里存压缩版，源文件夹里有。", "at": "2026-10-10T20:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "两点半是桑言的小号，上午桑言当着我面登录了。回形针那个工作号静音了，聚餐这边用两点半找桑言。", "at": "2026-10-10T20:07:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "聚餐先别选自助吧，最近吃得少。", "at": "2026-10-10T20:09:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "附近有家小面馆，能单点。", "at": "2026-10-10T20:11:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "面馆桌子拼起来最多坐八个，应该够。", "at": "2026-10-10T20:13:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "归档盘放前台左边柜子了，贴着绿标签。", "at": "2026-10-11T10:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "我今天又问了程野，进度条和木纹都是程野在用，木纹是现在常用的。上次发的归档链接没过期，继续那个。", "at": "2026-10-12T19:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "链接最后那个点号别复制进去，点了会报错。", "at": "2026-10-12T19:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "今晚算钱还是明天店里算？", "at": "2026-10-12T19:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "明天吧。桑言刚用两点半号给我付了订金，我和桑言一起在店里选的座位；回形针旧号也是桑言，我没给记两份。", "at": "2026-10-12T19:06:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "那张桌子空调直吹，吃饭时关一会儿吧。", "at": "2026-10-12T19:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "也可以把出风口往上拨一点。", "at": "2026-10-12T19:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "绿标签那块盘别格式化，里面还有发票扫描件。", "at": "2026-10-12T19:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "我带个读卡器过去，接口不够可以分着用。", "at": "2026-10-12T19:14:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "面条别提前下，我到得可能晚。", "at": "2026-10-12T19:16:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m19", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "到门口再发消息，我留一张椅子。", "at": "2026-10-12T19:18:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "keep_possible", "target": null, "evidence": ["m3", "m10"], "notes": "10月10日和12日均由余栩转述，缺少本人依据或另一名他人的指认。"},
+      {"key": "l2", "expected": "merge", "target": "p5", "evidence": ["m5", "m13"], "notes": "林久10月10日与余栩10月12日各有现场确认；p5的主体创建时间早于p4，保留p5。"}
+    ]},
+    "reason": "程野的同事说得笃定且重复两次，仍只有一名他人来源；桑言的小号有两名不同熟人的跨日期确认，保留系统中更早建立的p5。"
+  },
+  {
+    "id": "PM010",
+    "split": "dev",
+    "category": "role_only",
+    "now": "2026-10-17T09:00:00+08:00",
+    "entries": [{"id": "e1", "kind": "group", "name": "一楼旧邻居"}],
+    "subjects": [
+      {"id": "p1", "name": "叶临", "aliases": ["叶子"], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-01-15T09:00:00+08:00"},
+      {"id": "p2", "name": "慢半拍", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-10-13T09:00:00+08:00"},
+      {"id": "p3", "name": "窗台", "aliases": ["家用平板"], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-03-01T09:00:00+08:00"},
+      {"id": "p4", "name": "宁可", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-01-16T09:00:00+08:00"},
+      {"id": "p5", "name": "宁可的表亲", "aliases": ["豆包"], "parent": "p4", "merged_into": null, "account": "a5", "created_at": "2026-03-02T09:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 78, "source": "m3", "created_at": "2026-10-14T08:05:00+08:00"},
+      {"key": "l2", "a": "p3", "b": "p4", "kind": "same_as", "status": "possible", "belief": 74, "source": "m4", "created_at": "2026-10-14T08:07:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "Iris把慢半拍当作叶临现在使用的账号。", "speaker": "self", "stance": "self", "about": ["p1", "p2"], "sources": ["m3", "m13"], "created_at": "2026-10-16T08:30:00+08:00"},
+      {"key": "k2", "content": "宁可说明窗台是与表亲共用的家用平板号。", "speaker": "p4", "stance": "self", "about": ["p3", "p4", "p5"], "sources": ["m15"], "created_at": "2026-10-16T09:00:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "门口快递架第二层松了，重箱子先放地上。", "at": "2026-10-13T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "谁把折叠凳放楼梯口了，能挪进去一点吗？", "at": "2026-10-14T08:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "叶临现在换成慢半拍这个号了，我昨天还给旧的叶子号发快递照片，发岔了。", "at": "2026-10-14T08:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "我宁可，今天先拿家里窗台这个平板号问一句，快递柜门又弹不开了吗？", "at": "2026-10-14T08:06:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "我到车站了，晚饭前回来取箱子。", "at": "2026-10-14T08:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "柜门旁边有个电话贴纸，可以先拍清楚。", "at": "2026-10-14T08:23:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "折叠凳挪好了，底下有一颗螺丝。", "at": "2026-10-14T08:25:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "平板我下午拿去看教程，充电器留餐桌上吧。", "at": "2026-10-14T08:28:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "那颗螺丝别扔，可能是快递架掉的。", "at": "2026-10-14T08:30:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "充电线放饼干盒上了，不在桌子下面。", "at": "2026-10-14T08:33:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "今天楼下修门，噪声有点大。", "at": "2026-10-16T08:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "宁可出门了，今天是表亲在用窗台。我来拿快递，有个箱子写着易碎，先不拆。", "at": "2026-10-16T08:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e1", "kind": "message", "sender": "self", "content": "我今天给叶临转维修照片用的就是慢半拍，叶子旧号我已经不发了，这两边我一直按一个联系人记。", "at": "2026-10-16T08:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "易碎的是玻璃饭盒，我放餐边柜了。", "at": "2026-10-16T08:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "窗台是家里那台平板的号，我和表亲轮着用。喊宁可的私事还是发我现在这个个人号，平板上谁看到谁回。", "at": "2026-10-16T08:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "对，平板有时放我房间里，晚上基本是我拿着刷菜谱。", "at": "2026-10-16T08:14:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "玻璃饭盒先看一下边角有没有磕碰。", "at": "2026-10-16T08:16:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "维修的人走了，门这回关得上。", "at": "2026-10-16T09:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m19", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "快递架明天才修，大家再凑合一天。", "at": "2026-10-16T09:23:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m20", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "箱子的泡沫我留在门边，有人寄东西可以拿。", "at": "2026-10-16T09:25:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "keep_possible", "target": null, "evidence": [], "notes": "m3是self_output，m13虽然kind为message，发送者仍是self；外部人物没有提供身份确认。"},
+      {"key": "l2", "expected": "keep_possible", "target": null, "evidence": ["m4"], "notes": "m4只表明宁可当时使用平板；m12、m15、m16说明该账号也由表亲使用，不能等同于宁可个人。"}
+    ]},
+    "reason": "Iris跨日期的自述不能替代外部身份依据；窗台虽会以宁可自称，却是家人轮用的账号，不能与宁可的个人主体合并。"
+  },
+  {
+    "id": "PM011",
+    "split": "dev",
+    "category": "self_denial",
+    "now": "2026-10-21T09:00:00+08:00",
+    "entries": [
+      {"id": "e1", "kind": "group", "name": "旧同事午饭"},
+      {"id": "e2", "kind": "private", "name": "Iris与小满格"},
+      {"id": "e3", "kind": "private", "name": "Iris与陶溪"}
+    ],
+    "subjects": [
+      {"id": "p1", "name": "许栖", "aliases": ["栖地"], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-02-10T09:00:00+08:00"},
+      {"id": "p2", "name": "岸线", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-08-01T09:00:00+08:00"},
+      {"id": "p3", "name": "许栖旧档", "aliases": ["窗沿"], "parent": null, "merged_into": "p1", "account": "a3", "created_at": "2026-03-10T09:00:00+08:00"},
+      {"id": "p4", "name": "何予", "aliases": ["棉布"], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-05-01T09:00:00+08:00"},
+      {"id": "p5", "name": "小满格", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-10-16T09:00:00+08:00"},
+      {"id": "p6", "name": "陶溪", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-02-11T09:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l0", "a": "p3", "b": "p2", "kind": "same_as", "status": "denied", "belief": 10, "source": "m1", "created_at": "2026-09-10T18:02:00+08:00"},
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 75, "source": "m5", "created_at": "2026-10-18T11:07:00+08:00"},
+      {"key": "l2", "a": "p4", "b": "p5", "kind": "same_as", "status": "possible", "belief": 68, "source": "m9", "created_at": "2026-10-18T11:31:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "许栖曾用窗沿号否认岸线是自己的账号，现在又用栖地号作了同样说明。", "speaker": "p1", "stance": "self", "about": ["p1", "p2", "p3"], "sources": ["m1", "m6"], "created_at": "2026-10-18T12:00:00+08:00"},
+      {"key": "k2", "content": "小满格私聊说自己是何予，旧号叫棉布。", "speaker": "p5", "stance": "self", "about": ["p4", "p5"], "sources": ["m9"], "created_at": "2026-10-18T11:45:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "岸线不是我的号，桥的头像是网上存的，别把要给许栖的表格发错了。", "at": "2026-09-10T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "上次饭店的折扣券还在，能用到月底。", "at": "2026-10-17T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "新来的先问一下，楼下能停车吗？", "at": "2026-10-18T11:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "能停半小时，再久得去对面。", "at": "2026-10-18T11:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "岸线就是许栖现在的号吧，我旧午饭名单上也是这座桥，先把点菜单发过去了。", "at": "2026-10-18T11:06:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "不是，我许栖一直用栖地这个号，岸线不是我，也不是我借出去的号。窗沿那边上个月已经解释过一次了。", "at": "2026-10-18T11:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "我是隔壁项目刚调来的，昨天才认识许栖，菜单我转回群文件了。", "at": "2026-10-18T11:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "菜单第二页有不辣的菜。", "at": "2026-10-18T11:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e2", "kind": "message", "sender": "p5", "content": "Iris，我何予，棉布旧号的聊天记录还在导，小满格是我新常用的号。饭店那张券我重新拍给你，旧图太糊。", "at": "2026-10-18T11:30:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e2", "kind": "self_output", "sender": "self", "content": "把券背面的使用时段也拍上吧。", "at": "2026-10-18T11:32:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "点菜单放回来了，我要一个小碗汤。", "at": "2026-10-18T11:35:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "我今天不下楼了，手上的表还差两页。", "at": "2026-10-18T11:37:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "停车位只剩最里面那个，倒进去有点难。", "at": "2026-10-18T11:40:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e3", "kind": "message", "sender": "p6", "content": "今天和何予去饭店试券了，何予拿小满格号扫的桌码，原来棉布号上的那张券也在同一部手机里。小满格确实是何予的新号。", "at": "2026-10-20T13:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e3", "kind": "self_output", "sender": "self", "content": "券能抵汤吗，背面那行字很小。", "at": "2026-10-20T13:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e2", "kind": "message", "sender": "p5", "content": "只能抵主食，汤单算，我拍清楚了。", "at": "2026-10-20T13:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "汤不参加折扣，主食今天还多送一小碟菜。", "at": "2026-10-20T13:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "那留张菜单，下周再去。", "at": "2026-10-20T13:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m19", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "停车的时候避开午高峰就行。", "at": "2026-10-20T13:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m20", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "菜单已经夹进透明文件袋了。", "at": "2026-10-20T13:14:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "keep_possible", "target": null, "evidence": [], "notes": "m6为本人明确否认；此外p3已merged_into p1，历史主体p3与p2之间的l0为denied，永久有效。"},
+      {"key": "l2", "expected": "merge", "target": "p4", "evidence": ["m9", "m14"], "notes": "10月18日新号私聊自述，10月20日陶溪在另一个私聊确认，保留较早的p4。"}
+    ]},
+    "reason": "许栖的否认已经很明确，历史主体上的denied也仍然阻止重开；何予在另一组私聊中的真实换号满足跨日期本人加熟人依据。"
+  },
+  {
+    "id": "PM012",
+    "split": "dev",
+    "category": "counter_evidence",
+    "now": "2026-10-24T09:00:00+08:00",
+    "entries": [{"id": "e1", "kind": "group", "name": "实习老同事重聚"}],
+    "subjects": [
+      {"id": "p1", "name": "乔晨", "aliases": ["白杯子"], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-03-01T09:00:00+08:00"},
+      {"id": "p2", "name": "乔晨·北站", "aliases": ["乔晨"], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-09-01T09:00:00+08:00"},
+      {"id": "p3", "name": "许苇", "aliases": [], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-03-02T09:00:00+08:00"},
+      {"id": "p4", "name": "谈溪", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-03-03T09:00:00+08:00"},
+      {"id": "p5", "name": "简平", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-03-04T09:00:00+08:00"}
+    ],
+    "links": [{"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 90, "source": "m2", "created_at": "2026-10-21T19:04:00+08:00"}],
+    "memories": [
+      {"key": "k1", "content": "许苇和谈溪先前都把乔晨·北站当作白杯子乔晨换用的账号。", "speaker": "p3", "stance": "hearsay", "about": ["p1", "p2"], "sources": ["m2", "m7"], "created_at": "2026-10-22T19:30:00+08:00"},
+      {"key": "k2", "content": "重聚当天两名乔晨分别在南门和北站，简平接到其中一人后让另一人留座。", "speaker": "p5", "stance": "self", "about": ["p1", "p2", "p5"], "sources": ["m10", "m11", "m15"], "created_at": "2026-10-23T19:30:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "好久没凑齐了，周五那桌我订在南门。", "at": "2026-10-21T19:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "乔晨·北站是白杯子乔晨后来换的号，都是以前一个办公室的，我把邀请发新号上了。", "at": "2026-10-21T19:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "南门那边修路，从东口进比较顺。", "at": "2026-10-21T19:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "我下班晚，菜单先发我看看。", "at": "2026-10-21T19:07:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "菜单在群文件，第二张有小份菜。", "at": "2026-10-21T19:09:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "我可能赶不上第一轮，先别点太多。", "at": "2026-10-22T19:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "我以前存的联系人也对上了，乔晨和乔晨·北站是同一个人，白杯子旧号留着收照片就好。桌牌少写一张。", "at": "2026-10-22T19:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "桌牌用铅笔吧，每回都有人临时加班。", "at": "2026-10-22T19:06:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "纸夹也带几个，桌上有风。", "at": "2026-10-22T19:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "乔晨·北站你到哪了？我已经在南门这桌，旁边空调太冷，给你留里面的座。", "at": "2026-10-23T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "我还在北站自助机旁，票夹在机器里了。你先吃，简平说来接我。", "at": "2026-10-23T18:01:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "那我替你点小份面，别再买站里的饭团了。", "at": "2026-10-23T18:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "好，你要的票根我带着呢，夹在蓝本子里。", "at": "2026-10-23T18:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "小份面要等十分钟，先上凉菜。", "at": "2026-10-23T18:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "北站这位乔晨我接上了，正坐我副驾。南门的乔晨再留两个位置，我俩二十分钟到。", "at": "2026-10-23T18:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "原来两个乔晨都来了，我把以前前后两批实习名单记成一位了，桌牌得补回去。", "at": "2026-10-23T18:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "我那份旧表电话号码挤到上一行了，难怪备注看着一样，我重存一下。", "at": "2026-10-23T18:14:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "面刚上，我让店里盖着盖子了。", "at": "2026-10-23T18:16:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m19", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "票取出来了，蓝本子有点折，回头压平。", "at": "2026-10-23T18:18:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m20", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "进门左拐就是那桌，别绕到包间去。", "at": "2026-10-23T18:20:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "keep_possible", "target": null, "evidence": ["m2", "m7"], "notes": "两名他人在10月21日、22日明确指认，但m10至m13互相对话、m15现场接人及m16至m17纠错构成反证。"}
+    ]},
+    "reason": "两条看似够格的熟人依据后来被到场情形推翻：两个同名的人在不同地点互相等候，另有接人的熟人当场确认，不能合并。"
+  },
+  {
+    "id": "PM013",
+    "split": "dev",
+    "category": "roleplay",
+    "now": "2026-10-28T09:00:00+08:00",
+    "entries": [{"id": "e1", "kind": "group", "name": "周五小剧社"}],
+    "subjects": [
+      {"id": "p1", "name": "尹遥", "aliases": ["遥控器"], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-04-01T09:00:00+08:00"},
+      {"id": "p2", "name": "阿渡", "aliases": ["车站守夜人"], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-10-20T09:00:00+08:00"},
+      {"id": "p3", "name": "汪岑", "aliases": ["抽屉一号"], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-04-02T09:00:00+08:00"},
+      {"id": "p4", "name": "二号抽屉", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-10-24T09:00:00+08:00"},
+      {"id": "p5", "name": "闻溪", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-04-03T09:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 87, "source": "m5", "created_at": "2026-10-25T18:09:00+08:00"},
+      {"key": "l2", "a": "p3", "b": "p4", "kind": "same_as", "status": "possible", "belief": 80, "source": "m7", "created_at": "2026-10-25T18:13:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "尹遥用阿渡账号扮演剧里的车站守夜人，阿渡的捡票经历属于角色剧情。", "speaker": "p1", "stance": "self", "about": ["p1", "p2"], "sources": ["m3", "m13"], "created_at": "2026-10-27T18:30:00+08:00"},
+      {"key": "k2", "content": "二号抽屉自称汪岑，闻溪当晚也确认了换号。", "speaker": "p4", "stance": "self", "about": ["p3", "p4"], "sources": ["m7", "m10"], "created_at": "2026-10-25T23:50:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "道具伞有根骨架弯了，别真的撑着下楼。", "at": "2026-10-25T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "今晚先走车站那场，最后一段台词我还在改。", "at": "2026-10-25T18:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "阿渡是我尹遥扮的车站守夜人，排练时我切阿渡号念台词。请假找遥控器这个号就好，阿渡那边的经历都是剧里的。", "at": "2026-10-25T18:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "我叫阿渡，今夜这座站只有我守着。最后一班车若不来，我就把灯留到天亮。", "at": "2026-10-25T18:06:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "阿渡号后面就是尹遥，我等尹遥切完号再发提示音，刚刚差点抢台词。", "at": "2026-10-25T18:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "提示音晚半拍，留一点空白会更清楚。", "at": "2026-10-25T18:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "我是汪岑，抽屉一号那个号坏在旧手机上，二号抽屉是我现在的号。音效文件直接发这边，我等会儿接电脑。", "at": "2026-10-25T18:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "文件名带终版的先别删，里面有一段钟声还得用。", "at": "2026-10-25T18:14:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "雨声把脚步盖住了，我在候车室门口捡到一张没有日期的票。", "at": "2026-10-25T18:16:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "散场跟汪岑核对了音效，现场看汪岑用二号抽屉收的文件。抽屉一号旧号也是汪岑的，电脑里的备注已经改了。", "at": "2026-10-25T23:40:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "钟声开头有爆音，我明天剪掉一点。", "at": "2026-10-25T23:42:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "音箱先关，再拔线，楼下已经休息了。", "at": "2026-10-25T23:45:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "今天阿渡账号继续由我尹遥演，25号候车室捡票那段算剧情记录。我本人这两天都在排练室，没去过那个虚构车站。", "at": "2026-10-27T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "我把无日期的票收进口袋，天亮后还得去问问站长。", "at": "2026-10-27T18:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "尹遥带自己的伞，道具那把我放纸箱里了。", "at": "2026-10-27T18:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "爆音剪好了，新文件在最上面，别开旧的。", "at": "2026-10-27T18:06:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "排练室有点冷，我去拿件外套。", "at": "2026-10-27T18:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "门边那排椅子别堆太满，留条过道。", "at": "2026-10-27T18:10:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "keep_possible", "target": null, "evidence": [], "notes": "m3和m13跨日期说明的是尹遥扮演阿渡，27号的m13明确回指25号的捡票剧情；m5也只是指出操作者，候选same_as应保留扮演双方的区分。"},
+      {"key": "l2", "expected": "keep_possible", "target": null, "evidence": ["m7", "m10"], "notes": "本人说明和闻溪现场确认都在10月25日，10月27日的m16只是音效进度。"}
+    ]},
+    "reason": "尹遥27号回指25号的捡票片段，说明的仍是扮演关系，不能把现实人物与剧中角色合成一个主体；汪岑的真实换号只在25号得到两次说明，尚不满足跨日期要求。"
+  },
+  {
+    "id": "PM014",
+    "split": "dev",
+    "category": "forward",
+    "now": "2026-10-31T09:00:00+08:00",
+    "entries": [
+      {"id": "e1", "kind": "group", "name": "老话剧社茶水间"},
+      {"id": "e2", "kind": "private", "name": "Iris与蒲页信箱"}
+    ],
+    "subjects": [
+      {"id": "p1", "name": "蒲页信箱", "aliases": ["江禾留言"], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-05-01T09:00:00+08:00"},
+      {"id": "p2", "name": "江禾", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-05-02T09:00:00+08:00"},
+      {"id": "p3", "name": "许言", "aliases": ["许愿池"], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-05-03T09:00:00+08:00"},
+      {"id": "p4", "name": "旧城邮差", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-10-15T09:00:00+08:00"},
+      {"id": "p5", "name": "白澄", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-05-04T09:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 78, "source": "m2", "created_at": "2026-10-28T10:05:00+08:00"},
+      {"key": "l2", "a": "p3", "b": "p4", "kind": "same_as", "status": "possible", "belief": 83, "source": "m6", "created_at": "2026-10-28T19:07:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "蒲页信箱代江禾转过两次旅途中的留言。", "speaker": "p1", "stance": "self", "about": ["p1", "p2"], "sources": ["m2", "m9"], "created_at": "2026-10-30T10:30:00+08:00"},
+      {"key": "k2", "content": "许言用旧城邮差账号跑团，该角色经历发生在虚构旧城。", "speaker": "p3", "stance": "self", "about": ["p3", "p4"], "sources": ["m4", "m13"], "created_at": "2026-10-30T19:30:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "我是江禾，今天在路上，票据先放我这边，晚上再给你们拍。蓝色文件袋不要扔。", "at": "2026-10-28T10:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e2", "kind": "message", "sender": "p1", "content": "江禾刚发的，我帮忙从社群转来，后面还有一张袋子的图。", "at": "2026-10-28T10:04:00+08:00", "quote_author": "p2", "quote_content": "我是江禾，今天在路上，票据先放我这边，晚上再给你们拍。蓝色文件袋不要扔。"},
+      {"key": "m3", "entry_id": "e2", "kind": "self_output", "sender": "self", "content": "袋口夹一下，票根容易滑出去。", "at": "2026-10-28T10:06:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "旧城邮差号是我许言用来跑团的，签名那句欠三封信也是角色设定。今晚我切那个号接剧情，现实里的票据还发许愿池这边。", "at": "2026-10-28T19:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "我旧城邮差今天收了三封密信，城门关了也得送进去。有人愿意替我照看这匹马吗？", "at": "2026-10-28T19:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "旧城邮差后面是许言在操作，等许言吃完饭再开下一段，我骰子还没找到。", "at": "2026-10-28T19:06:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e2", "kind": "message", "sender": "p1", "content": "图太糊了，我等江禾回旅店重新拍一张，先别抄金额。", "at": "2026-10-28T19:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "我江禾已经到旅店了，之前放我这里的票据都在蓝袋子里，扫描件晚一点补，现在先吃碗面。", "at": "2026-10-30T10:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e2", "kind": "message", "sender": "p1", "content": "又收到江禾一条，我原样转过来，扫描件还得等。", "at": "2026-10-30T10:04:00+08:00", "quote_author": "p2", "quote_content": "我江禾已经到旅店了，之前放我这里的票据都在蓝袋子里，扫描件晚一点补，现在先吃碗面。"},
+      {"key": "m10", "entry_id": "e2", "kind": "self_output", "sender": "self", "content": "面吃完再拍吧，别把汤洒票上。", "at": "2026-10-30T10:06:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "蒲页信箱平时是我跟社里值班的朋友代转通知，江禾在外地才挂了江禾留言这个名，今天我值。", "at": "2026-10-30T12:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e2", "kind": "message", "sender": "p1", "content": "现在是白澄搬消息，约江禾还得等江禾本人回。我先把留言板的显示名改回蒲页信箱，免得大家喊错。", "at": "2026-10-30T12:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "今天还是我许言上旧城邮差号，28号送信到城门那段是角色剧情。我本人连马都没骑过，今晚得先搭末班公交回家。", "at": "2026-10-30T19:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "我把马交给客栈，背着剩下两封信走进旧城。门后有灯，似乎还没打烊。", "at": "2026-10-30T19:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "骰子找到了，在上次道具箱的夹层里。", "at": "2026-10-30T19:06:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "箱盖卡扣先扣一边，别硬压。", "at": "2026-10-30T19:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "扫描件补好了，边角有个手指影子，金额看得清。", "at": "2026-10-30T19:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e2", "kind": "message", "sender": "p1", "content": "江禾那张扫描件转来了，图片在文件页最上面。", "at": "2026-10-30T19:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m19", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "公交赶上了，手机剩一点电，晚点继续。", "at": "2026-10-30T19:14:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m20", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "灯灭前我把最后两封信塞进门缝，今晚就守在这儿。", "at": "2026-10-30T19:16:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "keep_possible", "target": null, "evidence": [], "notes": "m2、m9中的第一人称都属于被引用的江禾；m11、m12说明蒲页信箱由朋友代转消息，显示名变化不改变这一点。"},
+      {"key": "l2", "expected": "keep_possible", "target": null, "evidence": [], "notes": "m4和m13虽跨日期且由许言本人发出，说明的是操纵跑团角色；30号的m13回指28号的送信片段，邮差的经历不能并入现实人物。"}
+    ]},
+    "reason": "蒲页信箱跨日转述江禾的两条原话，不能当成江禾本人；许言30号回指28号的送信片段，说明的是扮演关系，也应保持主体区分。"
+  },
+  {
+    "id": "PM015",
+    "split": "dev",
+    "category": "denied_chain",
+    "now": "2026-11-04T09:00:00+08:00",
+    "entries": [{"id": "e1", "kind": "group", "name": "小巷旧同学"}],
+    "subjects": [
+      {"id": "p1", "name": "唐砚", "aliases": ["小砚"], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-01-01T09:00:00+08:00"},
+      {"id": "p2", "name": "白格", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-05-01T09:00:00+08:00"},
+      {"id": "p3", "name": "晚钟", "aliases": [], "parent": null, "merged_into": "p4", "account": "a3", "created_at": "2026-03-01T09:00:00+08:00"},
+      {"id": "p4", "name": "砚边", "aliases": [], "parent": null, "merged_into": "p1", "account": "a4", "created_at": "2026-02-01T09:00:00+08:00"},
+      {"id": "p5", "name": "禾家平板", "aliases": ["禾家"], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-04-01T09:00:00+08:00"},
+      {"id": "p6", "name": "郑禾", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-04-02T09:00:00+08:00"},
+      {"id": "p7", "name": "郑禾的伴侣", "aliases": ["小陶"], "parent": "p6", "merged_into": null, "account": "a7", "created_at": "2026-04-03T09:00:00+08:00"},
+      {"id": "p8", "name": "江棠", "aliases": [], "parent": null, "merged_into": null, "account": "a8", "created_at": "2026-01-02T09:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l0", "a": "p3", "b": "p2", "kind": "same_as", "status": "denied", "belief": 5, "source": "m1", "created_at": "2026-09-12T10:00:00+08:00"},
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 94, "source": "m4", "created_at": "2026-11-01T10:07:00+08:00"},
+      {"key": "l2", "a": "p5", "b": "p6", "kind": "same_as", "status": "possible", "belief": 76, "source": "m6", "created_at": "2026-11-01T10:11:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "白格自称唐砚，并提及曾用晚钟和砚边账号；江棠另一天当面确认了现在使用的白格号。", "speaker": "p2", "stance": "self", "about": ["p1", "p2", "p3", "p4"], "sources": ["m4", "m13"], "created_at": "2026-11-03T11:00:00+08:00"},
+      {"key": "k2", "content": "禾家平板由郑禾和伴侣共用，不同时候会由不同家人回群消息。", "speaker": "p6", "stance": "self", "about": ["p5", "p6", "p7"], "sources": ["m11", "m15", "m16"], "created_at": "2026-11-03T11:02:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "白格那份通讯录是旧文件里导来的，晚钟那张名单我另放了。纸上有咖啡印，拍照时别把角裁掉。", "at": "2026-09-12T10:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "同学录装箱了，盒底有几张散照片，搬的时候留意一下。", "at": "2026-10-31T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "巷口施工，取箱子从后门走，前门全是沙。", "at": "2026-11-01T10:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "我是唐砚，最近常用白格这个号。以前晚钟、砚边那两个号也都是我的，同学录封面那张巷子照片就是我拍的，箱子先放后门吧。", "at": "2026-11-01T10:06:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "纸箱下面垫块板，后门有点潮。", "at": "2026-11-01T10:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "我郑禾，手机放楼上了，用禾家平板回一下。那盒散照片我晚点带过来，别先封箱。", "at": "2026-11-01T10:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "照片袋找到了，有一张粘在袋底，先别硬拽。", "at": "2026-11-01T10:30:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "平板给我留点电，我晚上要对着菜谱做饭。", "at": "2026-11-01T10:32:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "箱子我垫高了，后门小猫老往上跳。", "at": "2026-11-01T10:35:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "封面别用亮膜，巷子的暗部会反光。", "at": "2026-11-01T10:37:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "今天是郑禾的伴侣在拿禾家平板，我刚做完饭，照片的事等郑禾回来再答。锅还在灶上，先离开一会儿。", "at": "2026-11-03T10:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "先顾灶台，照片不急这一会儿。", "at": "2026-11-03T10:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "刚把箱子交给唐砚，唐砚当面拿白格号给我发了收箱照片。我以前加过的晚钟和砚边也确实都是唐砚的，这次人和号都对上了。", "at": "2026-11-03T10:06:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "箱子边角压扁了，里面没湿，我换个硬一点的盒。", "at": "2026-11-03T10:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "禾家平板是我和伴侣一起用的，谁在客厅谁就回。要问郑禾本人的照片还是发我这个个人号，平板放厨房时多半是小陶看着。", "at": "2026-11-03T10:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "对，刚才提锅的那句是我用平板发的，郑禾那时还没到家。", "at": "2026-11-03T10:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "盒里还有一张旧课表，背面写了菜名，谁夹进去的。", "at": "2026-11-03T10:14:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "先夹回原页，或许跟旁边照片是一套的。", "at": "2026-11-03T10:16:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m19", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "锅关火了，菜名就是照那张旧纸写的，字小得要用平板放大。", "at": "2026-11-03T10:18:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m20", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "新盒子够大，剩了半盒空间，胶带不用绕太多。", "at": "2026-11-03T10:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m21", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "粘住的照片已经分开了，边角有点皱，下午压一压。", "at": "2026-11-03T10:22:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m22", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "压照片的书别拿菜谱，里面有油印。", "at": "2026-11-03T10:24:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "keep_possible", "target": null, "evidence": ["m4", "m13"], "notes": "11月1日本人与11月3日江棠的依据已足够，但p3经p4合并到p1，p3与p2的l0为denied；m1只是名单的聊天背景，历史否认由结构化快照给出，l0本身维持denied。"},
+      {"key": "l2", "expected": "keep_possible", "target": null, "evidence": ["m6"], "notes": "11月1日是郑禾使用平板，11月3日换伴侣发言；m15和m16明确账号共用，不能绑定到郑禾一人。"}
+    ]},
+    "reason": "唐砚与白格已有11月1日、3日的充分依据，但直接构造的历史快照中，两层合并链上的denied仍永久有效，名单聊天本身不提供操作结论；禾家平板由郑禾和伴侣共用，也不能合为郑禾个人。"
+  },
+  {
+    "id": "PM016", "split": "dev", "category": "true_same", "now": "2026-08-18T09:00:00+08:00",
+    "entries": [
+      {"id": "e1", "kind": "group", "name": "QQ·深空摄影千人总群"},
+      {"id": "e2", "kind": "group", "name": "星野论坛·八月叠图楼"},
+      {"id": "e3", "kind": "group", "name": "KOOK·流星雨值班室"}
+    ],
+    "subjects": [
+      {"id": "p1", "name": "青盐", "aliases": [], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-01-02T12:00:00+08:00"},
+      {"id": "p2", "name": "北窗光栅", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-01-06T12:00:00+08:00"},
+      {"id": "p3", "name": "纸鸢", "aliases": [], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-02-01T12:00:00+08:00"},
+      {"id": "p4", "name": "山雀过境", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-02-04T12:00:00+08:00"},
+      {"id": "p5", "name": "眠石", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-01-10T08:00:00+08:00"},
+      {"id": "p6", "name": "一格电量", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-03-10T08:00:00+08:00"},
+      {"id": "p7", "name": "棱镜", "aliases": [], "parent": null, "merged_into": null, "account": "a7", "created_at": "2026-01-01T08:00:00+08:00"},
+      {"id": "p8", "name": "蓝鲸", "aliases": [], "parent": null, "merged_into": null, "account": "a8", "created_at": "2026-01-03T08:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 66, "source": "m2", "created_at": "2026-08-15T19:02:00+08:00"},
+      {"key": "l2", "a": "p3", "b": "p4", "kind": "same_as", "status": "possible", "belief": 62, "source": "m5", "created_at": "2026-08-15T19:08:00+08:00"},
+      {"key": "l3", "a": "p5", "b": "p6", "kind": "same_as", "status": "possible", "belief": 58, "source": "m8", "created_at": "2026-08-15T19:15:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "北窗光栅说青盐是自己在总群的账号，论坛标定表由自己上传。", "speaker": "p2", "stance": "self", "about": ["p1", "p2"], "sources": ["m3"], "created_at": "2026-08-15T20:00:00+08:00"},
+      {"key": "k2", "content": "棱镜和纸鸢调耳机时得知，山雀过境是纸鸢本人使用的语音号。", "speaker": "p7", "stance": "reported", "about": ["p3", "p4"], "sources": ["m19"], "created_at": "2026-08-17T22:00:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "今晚别刷原图了，群相册又满。流星雨排班在置顶第二条。", "at": "2026-08-15T19:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "北窗光栅那份标定表怎么也画了青盐常用的小方框，青盐换地方发了？", "at": "2026-08-15T19:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "群里青盐就是我，论坛一直登着北窗光栅。那张表我刚重传过，右下角的框是留给温度记录的，不是水印。", "at": "2026-08-15T19:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e2", "kind": "message", "sender": "p1", "content": "手机这边总算刷出附件了，第三行别填增益，填曝光秒数。", "at": "2026-08-15T19:06:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "纸鸢，值班室那个山雀过境是你吗，给的机位号和你一样。", "at": "2026-08-15T19:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e3", "kind": "message", "sender": "p4", "content": "是我，纸鸢在这边叫山雀过境，耳机坏了一边才一直打字。把三号机位留着，我去找胶带。", "at": "2026-08-15T19:09:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "胶带找到了，一卷上面粘满猫毛，凑合用。", "at": "2026-08-15T19:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "一格电量发的云图像眠石家那个阳台角度，我是不是又漏看改名通知了。", "at": "2026-08-15T19:15:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "眠石开着直播跟我连线呢，刚才又用一格电量发来云图原图。两个号都是眠石自己在用，云层的时间戳我收到了，西边那片再等十分钟看看。", "at": "2026-08-15T19:16:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "云已经到西边了，今晚怕是只能拍热噪点。", "at": "2026-08-15T19:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e3", "kind": "message", "sender": "p4", "content": "三号机风大，我把脚架降一节。谁的保温杯放电箱上了？", "at": "2026-08-15T20:01:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "相册里别传那个红色预览，白平衡没调，月亮像番茄。", "at": "2026-08-15T20:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e2", "kind": "message", "sender": "p8", "content": "昨天那版文件名少了个8，我下载了两遍才发现。", "at": "2026-08-17T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "群文件上传条走到99就卡，先吃饭，晚点再试。", "at": "2026-08-17T18:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "青盐补的暗场我收到了，北窗光栅是青盐自己在论坛用的号，我俩刚连线一格格核完温度。附件我另存了一份，别再传那张缺一行的。", "at": "2026-08-17T18:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "补的那格写零，不是空着，空着导入会报错。", "at": "2026-08-17T18:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e3", "kind": "message", "sender": "p8", "content": "有人能把背景音乐关了吗，听不清倒数。", "at": "2026-08-17T20:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "我纸鸢排第二轮，山雀过境那边也是我本人，今晚还从那个语音号报数。先值到十点，之后要给相机充电。", "at": "2026-08-17T20:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m19", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "刚才和纸鸢一起调耳机，才知道山雀过境就是纸鸢本人用的语音号，原来值班名单多算了一个名额。", "at": "2026-08-17T20:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m20", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "耳机调好后还有一点电流声，我把旁边风扇拔了试试。", "at": "2026-08-17T20:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m21", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "东边现在开了条缝，我把预览压小点发。", "at": "2026-08-17T20:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m22", "entry_id": "e3", "kind": "message", "sender": "p8", "content": "昨晚给眠石远程调推流，回传设置页的账号是一格电量，那就是眠石自己的群号。码率终于稳住了，云图我放进同一个文件夹了。", "at": "2026-08-17T20:23:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m23", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "预览已发，别问怎么全黑，我忘摘镜头盖了。", "at": "2026-08-17T20:26:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m24", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "这张可以进今年群笑话合集。", "at": "2026-08-17T20:27:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "merge", "target": "p1", "evidence": ["m3", "m15"], "notes": "8月15日本人说明，8月17日棱镜根据另一次连线核表确认；保留创建较早的青盐。"},
+      {"key": "l2", "expected": "merge", "target": "p3", "evidence": ["m6", "m18"], "notes": "8月15日山雀过境和17日纸鸢分别作本人说明，来自两个入口的不同原始消息；m19另有棱镜调耳机时的确认。"},
+      {"key": "l3", "expected": "merge", "target": "p5", "evidence": ["m9", "m22"], "notes": "棱镜8月15日连线收云图、蓝鲸8月17日回述独立的推流调试，两名不同他人明确指认；m22的发送日为17日，存续主体为眠石。"}
+    ]},
+    "reason": "青盐这组是15日本人说明加17日连线核表回执，纸鸢这组是15日和17日的两次本人说明，眠石这组由棱镜和蓝鲸在15日、17日各自明确指认。三种取证方式均跨本地日期且原始来源独立，没有反证或历史否认。"
+  },
+  {
+    "id": "PM017", "split": "dev", "category": "self_twice", "now": "2026-09-06T10:00:00+08:00",
+    "entries": [
+      {"id": "e1", "kind": "group", "name": "微信·社区菜园工具群"},
+      {"id": "e2", "kind": "group", "name": "菜园论坛·滴灌改造楼"},
+      {"id": "e3", "kind": "group", "name": "Discord·菜园轮值频道"}
+    ],
+    "subjects": [
+      {"id": "p1", "name": "扣子", "aliases": [], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-01-18T08:00:00+08:00"},
+      {"id": "p2", "name": "罐头地图", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-02-19T08:00:00+08:00"},
+      {"id": "p3", "name": "麻薯", "aliases": [], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-04-03T08:00:00+08:00"},
+      {"id": "p4", "name": "零号骰", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-01-11T08:00:00+08:00"},
+      {"id": "p5", "name": "漫游电容", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-03-08T08:00:00+08:00"},
+      {"id": "p6", "name": "碎页", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-02-08T08:00:00+08:00"},
+      {"id": "p7", "name": "米尺", "aliases": [], "parent": null, "merged_into": null, "account": "a7", "created_at": "2026-01-01T08:00:00+08:00"},
+      {"id": "p8", "name": "薄饼", "aliases": [], "parent": null, "merged_into": null, "account": "a8", "created_at": "2026-01-02T08:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 52, "source": "m2", "created_at": "2026-09-03T18:01:00+08:00"},
+      {"key": "l2", "a": "p3", "b": "p4", "kind": "same_as", "status": "possible", "belief": 59, "source": "m5", "created_at": "2026-09-04T18:10:00+08:00"},
+      {"key": "l3", "a": "p5", "b": "p6", "kind": "same_as", "status": "possible", "belief": 54, "source": "m8", "created_at": "2026-09-03T18:18:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "扣子说罐头地图是自己的菜园论坛账号，水管图也是自己画的。", "speaker": "p1", "stance": "self", "about": ["p1", "p2"], "sources": ["m3"], "created_at": "2026-09-03T19:00:00+08:00"},
+      {"key": "k2", "content": "碎页称漫游电容是自己的旧论坛账号，土壤传感器的接线图仍放在那里。", "speaker": "p6", "stance": "self", "about": ["p5", "p6"], "sources": ["m9"], "created_at": "2026-09-03T19:00:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "水管接头又渗了，地上那摊不是昨晚下雨留下的。", "at": "2026-09-03T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "罐头地图那张水管图怎么还是扣子那种歪字，尺子肯定放反过。", "at": "2026-09-03T18:01:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "就是我画的，我在菜园论坛用罐头地图这个号。横向那根管标成了八米，实际只有六米，等我晚上改。", "at": "2026-09-03T18:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "带刻度那张先别照着裁管，我把旧附件暂时撤了。", "at": "2026-09-03T18:06:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "碎页发的接线图和漫游电容两年前那帖一样，那个土壤探头是同一款吗？", "at": "2026-09-03T18:18:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "漫游电容那个旧论坛号就是我的，现在群里用碎页。土壤传感器还是那款，接线图放在旧帖里没搬，别把正负极照反了。", "at": "2026-09-03T18:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e2", "kind": "message", "sender": "p5", "content": "探头朝下装，线从旁边绕，不然浇水时总被勾住。", "at": "2026-09-03T18:24:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "最里面那个喷头今天没转，是堵了吗？", "at": "2026-09-03T19:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "水压不够，我刚才只开了一半，怕路过的人被浇一身。", "at": "2026-09-03T19:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e3", "kind": "message", "sender": "p7", "content": "明早开工具房的是零号骰还是麻薯？两边都留了时间，我得知道钥匙给谁。", "at": "2026-09-04T18:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e3", "kind": "message", "sender": "p4", "content": "我在微信叫麻薯，Discord这个零号骰也是我自己的号。明早我来开门，钥匙挂钩别换位置。", "at": "2026-09-04T18:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "水管捋直再卷，别打死结，那个折痕已经有点白了。", "at": "2026-09-04T18:15:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e2", "kind": "message", "sender": "p7", "content": "今天试完了，六米刚够绕到墙角，外面那截不用再买。", "at": "2026-09-05T20:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "我就是群里的扣子，罐头地图是我自己的论坛号。答应改的水管图补好了，保存这版就够，群里那张手机图不用再转。", "at": "2026-09-05T20:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "新图清楚多了，原来墙角画的不是一棵葱。", "at": "2026-09-05T20:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "麻薯早上来开门了，我把值班回执直接发到了麻薯自己的零号骰号，现场让麻薯回了个收到。中午也是我锁的，钥匙还在我手里。", "at": "2026-09-05T20:09:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e3", "kind": "message", "sender": "p4", "content": "最外排那两盆别再加水了，刚才托盘都满出来了。", "at": "2026-09-05T20:11:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "那段阀门我关上了，明天看看是不是喷头偏过去了。", "at": "2026-09-05T20:13:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m19", "entry_id": "e2", "kind": "message", "sender": "p5", "content": "传感器接线图补好了，我是群里的碎页，漫游电容是我早些年注册的论坛号。今天这版加了防水接头，泡水里那截得换掉。", "at": "2026-09-05T20:18:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m20", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "换下的探头先搁着，干了再测一次，外壳没裂。", "at": "2026-09-05T20:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m21", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "鞋底全是泥，门外那块砖给我留着刮一下。", "at": "2026-09-05T20:22:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m22", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "工具房扫完了，扳手少一把，明天各自看看包。", "at": "2026-09-05T20:30:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "merge", "target": "p1", "evidence": ["m3", "m14"], "notes": "9月3日和5日，两个账号各自发出本人说明，均为原始消息。"},
+      {"key": "l2", "expected": "merge", "target": "p4", "evidence": ["m6", "m16"], "notes": "9月4日本人说明账号归属，9月5日米尺根据开门值班回执确认；零号骰创建时间早于麻薯。"},
+      {"key": "l3", "expected": "merge", "target": "p6", "evidence": ["m9", "m19"], "notes": "两日本人说明群号和旧论坛号的归属；碎页主体创建较早。"}
+    ]},
+    "reason": "扣子和碎页在9月3日、5日分别从自己的两个账号说明归属；麻薯这组由4日本人说明与5日米尺独立收到的值班回执共同确认。三组均满足跨日期、不同原始消息的门槛，存续主体按创建时间选择。"
+  },
+  {
+    "id": "PM018", "split": "dev", "category": "two_others", "now": "2026-06-24T09:00:00+08:00",
+    "entries": [
+      {"id": "e1", "kind": "group", "name": "QQ·机械键盘折腾总群"},
+      {"id": "e2", "kind": "group", "name": "键盘论坛·南方聚会返图楼"},
+      {"id": "e3", "kind": "group", "name": "B站·拆轴直播间讨论区"}
+    ],
+    "subjects": [
+      {"id": "p1", "name": "竹荪", "aliases": [], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-01-02T09:00:00+08:00"},
+      {"id": "p2", "name": "键帽游民", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-02-02T09:00:00+08:00"},
+      {"id": "p3", "name": "锈钉", "aliases": [], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-04-03T09:00:00+08:00"},
+      {"id": "p4", "name": "松香雾", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-02-03T09:00:00+08:00"},
+      {"id": "p5", "name": "水母电台", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-03-04T09:00:00+08:00"},
+      {"id": "p6", "name": "模具午睡", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-03-04T09:00:00+08:00"},
+      {"id": "p7", "name": "卡尺", "aliases": [], "parent": null, "merged_into": null, "account": "a7", "created_at": "2026-01-01T09:00:00+08:00"},
+      {"id": "p8", "name": "泡棉", "aliases": [], "parent": null, "merged_into": null, "account": "a8", "created_at": "2026-01-01T10:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 70, "source": "m2", "created_at": "2026-06-20T14:03:00+08:00"},
+      {"key": "l2", "a": "p3", "b": "p4", "kind": "same_as", "status": "possible", "belief": 70, "source": "m5", "created_at": "2026-06-20T14:12:00+08:00"},
+      {"key": "l3", "a": "p5", "b": "p6", "kind": "same_as", "status": "possible", "belief": 68, "source": "m8", "created_at": "2026-06-20T14:20:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "卡尺在聚会现场看到竹荪登录键帽游民账号处理帖子。", "speaker": "p7", "stance": "reported", "about": ["p1", "p2"], "sources": ["m2"], "created_at": "2026-06-20T15:00:00+08:00"},
+      {"key": "k2", "content": "泡棉在另外一次测试中确认锈钉使用松香雾直播账号。", "speaker": "p8", "stance": "reported", "about": ["p3", "p4"], "sources": ["m17"], "created_at": "2026-06-23T21:00:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "聚会返图怎么全是桌子，键盘呢。", "at": "2026-06-20T14:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "我今天坐竹荪旁边，看着竹荪登键帽游民把返图楼编辑完了。键帽游民就是竹荪本人，问照片可以直接在这儿问。", "at": "2026-06-20T14:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "漏了一张角落的塑料壳，晚点补，网太差。", "at": "2026-06-20T14:06:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "午饭排队四十分钟，下午估计得晚开。", "at": "2026-06-20T14:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "松香雾是锈钉自己的直播号。我刚帮锈钉接采集卡，登录、开播都在我面前弄的，今天播的是那把分体。", "at": "2026-06-20T14:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e3", "kind": "message", "sender": "p4", "content": "右手那半没声是线没插到底，大家别调音量了。", "at": "2026-06-20T14:14:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "有根线接触不好，谁包里有备用的短线？", "at": "2026-06-20T14:18:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "水母电台和论坛的模具午睡是同一个人。我上午找水母面交轴座，当面请水母用模具午睡回了我的交易评价，已经收到了。", "at": "2026-06-20T14:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e2", "kind": "message", "sender": "p6", "content": "剩下的轴座缺三个弹片，等我找到再挂。", "at": "2026-06-20T14:23:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "桌子底下那袋海绵不是垃圾，别帮我扔了。", "at": "2026-06-20T14:26:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e3", "kind": "message", "sender": "p8", "content": "好像混进来一段吸尘器声，离麦远点试试。", "at": "2026-06-20T14:30:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "是隔壁在清理桌子，先休息五分钟吧。", "at": "2026-06-20T14:32:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e2", "kind": "message", "sender": "p8", "content": "这几天忙得没看群，照片已经攒到四百张了。", "at": "2026-06-23T19:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e2", "kind": "message", "sender": "p8", "content": "竹荪那张修图回执我收到了，发件的键帽游民就是竹荪自己的论坛号。我昨晚和竹荪连线改过那张图，缺的角落照片已经补进相册，授权邮件刚才差点当广告删了。", "at": "2026-06-23T19:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "新图别再压了，已经能数出像素。", "at": "2026-06-23T19:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e3", "kind": "message", "sender": "p4", "content": "今晚测空格，手边这把没润，声音先别当最终效果。", "at": "2026-06-23T19:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "我今天去锈钉那儿试了分体，锈钉本人在松香雾账号上开测试直播，我坐旁边递键帽。现在认得这两个名字了。", "at": "2026-06-23T19:24:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "有个键帽掉沙发底了，先欠一张全家福。", "at": "2026-06-23T19:27:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m19", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "那袋海绵找到了，原来被我自己塞进外套。", "at": "2026-06-23T19:35:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m20", "entry_id": "e2", "kind": "message", "sender": "p8", "content": "弹片今天收齐了，寄件人水母电台就是论坛的模具午睡。我下午跟水母视频点的数量，水母从自己的模具午睡号发来补件单，这次不用再拆键盘找弹片了。", "at": "2026-06-23T19:40:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m21", "entry_id": "e2", "kind": "message", "sender": "p6", "content": "塑料袋里的小扳手也一起送你了，别漏在包装里。", "at": "2026-06-23T19:42:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m22", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "聚会桌费结了，零钱下次买纸巾，今天用了半包。", "at": "2026-06-23T20:00:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "merge", "target": "p1", "evidence": ["m2", "m14"], "notes": "卡尺6月20日现场接触，泡棉6月23日根据自己的修图回执和连线经历明确指认，未互相引用。"},
+      {"key": "l2", "expected": "merge", "target": "p4", "evidence": ["m5", "m17"], "notes": "来自两名不同旁观者、两个日期的接触经历；松香雾创建更早。"},
+      {"key": "l3", "expected": "merge", "target": "p5", "evidence": ["m8", "m20"], "notes": "卡尺6月20日面交确认，泡棉6月23日独立收到补件并视频点数后确认；创建时间相同时保留编号较小的p5。"}
+    ]},
+    "reason": "三组均由卡尺和泡棉在6月20日、23日独立明确指认，依据分别落在修图回执、锈钉用松香雾开播及交易补件等具体交互中。两名旁观者均非联系双方或Iris，第二个日期的确认没有转引第一个日期的说法。"
+  },
+  {
+    "id": "PM019", "split": "dev", "category": "cross_entry", "now": "2026-10-12T08:00:00+08:00",
+    "entries": [
+      {"id": "e1", "kind": "group", "name": "QQ·城市定向八百人总群"},
+      {"id": "e2", "kind": "group", "name": "豆瓣·周日找路小组活动楼"},
+      {"id": "e3", "kind": "group", "name": "Discord·夜跑地图协作室"},
+      {"id": "e4", "kind": "group", "name": "B站·路线复盘直播间"}
+    ],
+    "subjects": [
+      {"id": "p1", "name": "香茅", "aliases": [], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-01-12T08:00:00+08:00"},
+      {"id": "p2", "name": "绕城一周", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-06-12T08:00:00+08:00"},
+      {"id": "p3", "name": "斑马线", "aliases": [], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-02-12T08:00:00+08:00"},
+      {"id": "p4", "name": "返程箭头", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-05-12T08:00:00+08:00"},
+      {"id": "p5", "name": "白果", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-03-12T08:00:00+08:00"},
+      {"id": "p6", "name": "六码外", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-01-15T08:00:00+08:00"},
+      {"id": "p7", "name": "路书", "aliases": [], "parent": null, "merged_into": null, "account": "a7", "created_at": "2026-01-01T08:00:00+08:00"},
+      {"id": "p8", "name": "石桥", "aliases": [], "parent": null, "merged_into": null, "account": "a8", "created_at": "2026-01-02T08:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 57, "source": "m2", "created_at": "2026-10-08T21:02:00+08:00"},
+      {"key": "l2", "a": "p3", "b": "p4", "kind": "same_as", "status": "possible", "belief": 60, "source": "m5", "created_at": "2026-10-08T21:10:00+08:00"},
+      {"key": "l3", "a": "p5", "b": "p6", "kind": "same_as", "status": "possible", "belief": 56, "source": "m8", "created_at": "2026-10-08T21:18:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "绕城一周在活动楼说明自己在总群用香茅账号。", "speaker": "p2", "stance": "self", "about": ["p1", "p2"], "sources": ["m3"], "created_at": "2026-10-08T22:00:00+08:00"},
+      {"key": "k2", "content": "石桥在直播复盘时，根据当天共同跑图的经历确认白果使用六码外账号。", "speaker": "p8", "stance": "reported", "about": ["p5", "p6"], "sources": ["m21"], "created_at": "2026-10-11T22:00:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "周末路线改了，别跑进施工围栏里。新图等三分钟。", "at": "2026-10-08T21:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "豆瓣绕城一周也发了这张，香茅是你那个号不，连歪掉的北箭头都一样。", "at": "2026-10-08T21:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "总群里的香茅是我，绕城一周是我在这边的名字。地图也是我画的，北箭头歪了不是新玩法，等我改。", "at": "2026-10-08T21:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "施工口我刚去看过，连人行道也封了，确实得绕。", "at": "2026-10-08T21:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e2", "kind": "message", "sender": "p7", "content": "返程箭头的补给表会不会就是斑马线那份，标的便利店是同一家。", "at": "2026-10-08T21:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e3", "kind": "message", "sender": "p4", "content": "我就是总群的斑马线，返程箭头是我常用的协作号。补给表今晚我来维护，那家便利店十点关，别太晚过去。", "at": "2026-10-08T21:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "温水要自己带，店里只剩冰的。", "at": "2026-10-08T21:16:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "六码外的轨迹和白果昨天走的好像，起点还都在面包店。", "at": "2026-10-08T21:18:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e3", "kind": "message", "sender": "p7", "content": "我这会就在白果家帮忙拷轨迹，看白果自己登六码外传文件，两个号都是白果本人的。问过了，开头那圈是在找停车位，不用照着跑。", "at": "2026-10-08T21:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e2", "kind": "message", "sender": "p8", "content": "这算早餐路线还是训练路线，我有点心动。", "at": "2026-10-08T21:23:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "红豆包卖完得很快，跑完再买基本没戏。", "at": "2026-10-08T21:25:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e3", "kind": "message", "sender": "p7", "content": "图层关错了，刚才满屏都是厕所标记，修好了。", "at": "2026-10-08T21:30:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e4", "kind": "message", "sender": "p8", "content": "复盘先讲桥底那段，我在那里原地转了两圈。", "at": "2026-10-11T20:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e3", "kind": "message", "sender": "p7", "content": "集合照原图我收到了，是香茅自己的绕城一周号发的。下午和香茅核集合点时，香茅直接从那个号把相册共享给我，群里的版本被压得太狠，想要清楚的回活动楼。", "at": "2026-10-11T20:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "集合照有个半透明手指挡镜头，别问是谁的。", "at": "2026-10-11T20:07:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e2", "kind": "message", "sender": "p3", "content": "补给账我对完了，刚用我自己的返程箭头号补了收据，斑马线是我在总群的名字。找垫款明细就在这楼留一下，别把那两瓶汽水算进去。", "at": "2026-10-11T20:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "收据里有两瓶汽水是我自己的，没往公账里算。", "at": "2026-10-11T20:14:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e4", "kind": "message", "sender": "p7", "content": "桥下的箭头被贴纸盖住一半，难怪大家都往回走。", "at": "2026-10-11T20:18:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m19", "entry_id": "e3", "kind": "message", "sender": "p6", "content": "原始轨迹传好了，进桥洞那段会漂到河里，实际没下水。", "at": "2026-10-11T20:22:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m20", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "鞋还没干，明天我只能拖鞋出门了。", "at": "2026-10-11T20:24:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m21", "entry_id": "e4", "kind": "message", "sender": "p8", "content": "白果和六码外是同一个人，今天我跟白果一路跑完，收尾时看白果自己登录六码外导出轨迹。群里那张湿鞋照也是刚拍的。", "at": "2026-10-11T20:27:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m22", "entry_id": "e2", "kind": "message", "sender": "p7", "content": "下回集合点挪到有屋檐的地方吧，开场五分钟就淋透了。", "at": "2026-10-11T20:30:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "merge", "target": "p1", "evidence": ["m3", "m14"], "notes": "10月8日豆瓣本人说明与10月11日路书根据独立收到原图、共享相册的协作经历作出的确认相互独立。"},
+      {"key": "l2", "expected": "merge", "target": "p3", "evidence": ["m6", "m16"], "notes": "协作室和活动楼在两日分别由联系一方本人说明，保留创建较早的斑马线。"},
+      {"key": "l3", "expected": "merge", "target": "p6", "evidence": ["m9", "m21"], "notes": "10月8日路书在协作室、10月11日石桥在直播间各自依据现场经历确认；六码外创建更早。"}
+    ]},
+    "reason": "三组联系分别由本人加收图协作回执、两日本人说明、两名不同群友独立确认，依据的发送日期均为10月8日和11日。每组两条依据分散在不同入口，石桥11日的回述只确定当天跑图，不把20:27的发送时间当作跑图发生时段。"
+  },
+  {
+    "id": "PM020", "split": "dev", "category": "same_name", "now": "2026-05-17T09:00:00+08:00",
+    "entries": [
+      {"id": "e1", "kind": "group", "name": "QQ·咖啡豆晒图总群"},
+      {"id": "e2", "kind": "group", "name": "豆瓣·手冲慢慢来小组"},
+      {"id": "e3", "kind": "group", "name": "B站·周末烘焙直播间"}
+    ],
+    "subjects": [
+      {"id": "p1", "name": "晚风", "aliases": [], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-01-05T08:00:00+08:00"},
+      {"id": "p2", "name": "晚风", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-01-07T08:00:00+08:00"},
+      {"id": "p3", "name": "小焙", "aliases": [], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-02-01T08:00:00+08:00"},
+      {"id": "p4", "name": "一口豆", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-02-02T08:00:00+08:00"},
+      {"id": "p5", "name": "细筛", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-01-01T08:00:00+08:00"},
+      {"id": "p6", "name": "纸滤", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-01-02T08:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 80, "source": "m3", "created_at": "2026-05-14T20:04:00+08:00"},
+      {"key": "l2", "a": "p3", "b": "p4", "kind": "same_as", "status": "possible", "belief": 53, "source": "m9", "created_at": "2026-05-16T18:02:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "细筛曾因昵称和头像相同，猜测两处晚风是同一个人。", "speaker": "p5", "stance": "inferred", "about": ["p1", "p2"], "sources": ["m3"], "created_at": "2026-05-14T20:10:00+08:00"},
+      {"key": "k2", "content": "群里的晚风否认自己拥有被误认的豆瓣账号，并说没去过云南。", "speaker": "p1", "stance": "self", "about": ["p1", "p2"], "sources": ["m5"], "created_at": "2026-05-14T20:15:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "新豆排气三天就开了吗，我这包冲出来全是泡。", "at": "2026-05-14T20:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "我放了一周，今天才不顶滤纸，急着喝可以试冰的。", "at": "2026-05-14T20:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "晚风你豆瓣那张豆子山好壮观，头像也是白猫，我刚才差点以为群图同步过去了。", "at": "2026-05-14T20:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "在云南买的，箱子没地方放衣服了，回来慢慢分装。", "at": "2026-05-14T20:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "你找错晚风了，我没有那个豆瓣号，这周一直在宁波上班，云南还没去过。白猫头像是表情包里随手存的。", "at": "2026-05-14T20:07:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "这个猫我手机里也有，盯着杯子的那张吧。", "at": "2026-05-14T20:09:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "评论里问QQ晒图群的晚风，不是我呀，我没加那个群。我这批豆都是线下带回来的，不接拼单。", "at": "2026-05-14T20:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e3", "kind": "message", "sender": "p3", "content": "风机声音有点大，先把麦关了看曲线吧。", "at": "2026-05-16T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "小焙不会是一口豆吧，论坛回帖也总用那个冒烟杯子，烘焙机看着都一样。", "at": "2026-05-16T18:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "今天又有人把一爆听成门铃了，笑死。", "at": "2026-05-16T18:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e2", "kind": "message", "sender": "p4", "content": "曲线附件补了，第一锅忘开记录，只有第二锅。", "at": "2026-05-16T18:07:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "磨豆机下面垫毛巾真有用，楼下终于不敲管子了。", "at": "2026-05-16T18:09:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "旅行照片今晚补，先把衣服从箱底救出来。", "at": "2026-05-16T18:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e3", "kind": "message", "sender": "p3", "content": "下一锅九点，晚饭还没吃，有点饿。", "at": "2026-05-16T18:15:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "你们买滤纸顺便看看运费，单买一包比纸还贵。", "at": "2026-05-16T18:18:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "我先蹲团购，柜子里还有半盒能撑。", "at": "2026-05-16T18:20:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "keep_possible", "target": null, "evidence": [], "notes": "同名、同头像和一条误认后，m5及m7分别出现本人否认。"},
+      {"key": "l2", "expected": "keep_possible", "target": null, "evidence": ["m9"], "notes": "只有细筛一条带猜测的发言，设备和表情相同不能补成第二条身份依据。"}
+    ]},
+    "reason": "两处晚风仅昵称与公共头像相同，双方还各自否认了误认；小焙与一口豆则只有一个群友的一次猜测。两条联系都应保持possible，不自动改成denied。"
+  },
+  {
+    "id": "PM021", "split": "dev", "category": "single_guess", "now": "2026-04-10T08:00:00+08:00",
+    "entries": [
+      {"id": "e1", "kind": "group", "name": "微信·胶片冲扫大群"},
+      {"id": "e2", "kind": "group", "name": "胶片论坛·低温显影交流楼"}
+    ],
+    "subjects": [
+      {"id": "p1", "name": "山径", "aliases": [], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-01-05T08:00:00+08:00"},
+      {"id": "p2", "name": "低温显影", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-02-05T08:00:00+08:00"},
+      {"id": "p3", "name": "潮线", "aliases": [], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-01-06T08:00:00+08:00"},
+      {"id": "p4", "name": "珊瑚桶", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-02-06T08:00:00+08:00"},
+      {"id": "p5", "name": "片基", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-01-01T08:00:00+08:00"},
+      {"id": "p6", "name": "晾夹", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-01-02T08:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 61, "source": "m4", "created_at": "2026-04-08T19:04:00+08:00"},
+      {"key": "l2", "a": "p3", "b": "p4", "kind": "same_as", "status": "possible", "belief": 76, "source": "m6", "created_at": "2026-04-08T19:09:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "片基猜山径可能使用低温显影账号，因为底扫里有相似的门帘。", "speaker": "p5", "stance": "inferred", "about": ["p1", "p2"], "sources": ["m4"], "created_at": "2026-04-08T20:00:00+08:00"},
+      {"key": "k2", "content": "珊瑚桶是潮线用于论坛发片的账号。", "speaker": "p3", "stance": "self", "about": ["p3", "p4"], "sources": ["m7"], "created_at": "2026-04-08T20:00:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "我这卷最后两张全黑，估计是快门线又卡了。", "at": "2026-04-08T19:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "新扫了一卷，窗边那个紫边暂时修不掉，先这样。", "at": "2026-04-08T19:01:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "我也扫到半夜，电脑风扇像要起飞。", "at": "2026-04-08T19:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "低温显影是不是山径的马甲？照片里那条蓝门帘我好像见山径发过，连杯子位置都差不多。", "at": "2026-04-08T19:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "群文件里的压缩包密码谁还记得，我把纸条扔了。", "at": "2026-04-08T19:07:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "潮线，你在论坛用珊瑚桶那个号吗？想问你发片用的边框。", "at": "2026-04-08T19:09:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "对，珊瑚桶是我自己在论坛用的，边框今晚给你。先别拿旧版，横幅会把日期裁掉。", "at": "2026-04-08T19:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e2", "kind": "message", "sender": "p4", "content": "白边版正在导出，老电脑转一个文件要等半天。", "at": "2026-04-08T19:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "压缩包密码在文件描述里，手机得点展开。", "at": "2026-04-08T19:15:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "居然藏在那儿，我一直只看文件名。", "at": "2026-04-08T19:17:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e2", "kind": "message", "sender": "p6", "content": "下午我跟潮线当面传了底片，潮线当时自己登珊瑚桶把这层楼补完了，确实是一个人用的两处账号。边框我已经下好了。", "at": "2026-04-08T23:40:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "终于导完了，睡觉去，别再艾特我问进度。", "at": "2026-04-08T23:45:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "早，昨天那杯咖啡白喝了，照样困。", "at": "2026-04-09T08:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "今天把相册重排了一下，按拍摄顺序看比较顺。", "at": "2026-04-09T08:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "今天下雨，相机放家里了，只带了伞。", "at": "2026-04-09T08:06:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "冲洗桶借到了，周末终于能试那卷过期片。", "at": "2026-04-09T08:10:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "keep_possible", "target": null, "evidence": ["m4"], "notes": "仅一名群友的一次猜测；山径回答压缩包问题不构成对身份问题的确认。"},
+      {"key": "l2", "expected": "keep_possible", "target": null, "evidence": ["m7", "m11"], "notes": "本人和群友都明确说明，但两条发送时间均为上海4月8日，4月9日只有闲聊。"}
+    ]},
+    "reason": "第一组只有一次基于照片背景的猜测，后续相邻回复在谈别的问题；第二组已有清楚身份说明，却都发生在4月8日，仍未达到跨日期的独立依据门槛。"
+  },
+  {
+    "id": "PM022", "split": "dev", "category": "same_day", "now": "2026-07-21T09:00:00+08:00",
+    "entries": [
+      {"id": "e1", "kind": "group", "name": "Discord·配音练习开放大厅"},
+      {"id": "e2", "kind": "group", "name": "QQ·千人配音练习群"}
+    ],
+    "subjects": [
+      {"id": "p1", "name": "竹灯", "aliases": [], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-01-01T08:00:00+08:00"},
+      {"id": "p2", "name": "十二点开麦", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-02-01T08:00:00+08:00"},
+      {"id": "p3", "name": "曲别针", "aliases": [], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-01-02T08:00:00+08:00"},
+      {"id": "p4", "name": "倒带", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-02-02T08:00:00+08:00"},
+      {"id": "p5", "name": "波形", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-01-03T08:00:00+08:00"},
+      {"id": "p6", "name": "回声桶", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-01-04T08:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 88, "source": "m2", "created_at": "2026-07-20T02:00:00+08:00"},
+      {"key": "l2", "a": "p3", "b": "p4", "kind": "same_as", "status": "possible", "belief": 83, "source": "m6", "created_at": "2026-07-20T08:03:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "竹灯在语音平台使用十二点开麦账号。", "speaker": "p2", "stance": "self", "about": ["p1", "p2"], "sources": ["m3"], "created_at": "2026-07-20T03:00:00+08:00"},
+      {"key": "k2", "content": "波形中午现场确认竹灯使用十二点开麦账号。", "speaker": "p5", "stance": "reported", "about": ["p1", "p2"], "sources": ["m11"], "created_at": "2026-07-20T14:00:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "还有人没睡，练完这一轮就散吧，楼下快开始收垃圾了。", "at": "2026-07-19T17:55:00+00:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "十二点开麦的试音文件怎么和竹灯文件名一样，竹灯跑这边来了？", "at": "2026-07-19T18:00:00+00:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "嗯，我是总群的竹灯，这里的十二点开麦也是我自己。刚传的是同一份试音，降噪开太大，尾音都吃了。", "at": "2026-07-19T18:20:00+00:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e2", "kind": "message", "sender": "p1", "content": "开着窗录完才听见鸟叫，我白折腾一小时。", "at": "2026-07-20T02:30:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e2", "kind": "message", "sender": "p5", "content": "早场八点开始，有咖啡也救不了我的困。", "at": "2026-07-20T08:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e2", "kind": "message", "sender": "p6", "content": "曲别针，昨晚倒带是不是你，压缩包也叫针线盒。", "at": "2026-07-20T08:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e2", "kind": "message", "sender": "p3", "content": "倒带是我语音那边的账号，曲别针在群里也还是我。包名瞎起的，里面只有台词和节拍器。", "at": "2026-07-20T08:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "音效别从第三秒放，前面还有半句。", "at": "2026-07-20T08:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e2", "kind": "message", "sender": "p5", "content": "台词纸掉水杯里了，我对着手机念。", "at": "2026-07-20T08:40:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "倒带就是曲别针，上午我在曲别针家接麦，看曲别针本人登录倒带调通道了。现在底噪总算低了。", "at": "2026-07-20T00:55:00-04:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "午饭碰到竹灯，竹灯当着我面用十二点开麦回了大厅消息，确实是竹灯自己的号。我终于知道作业该发哪个窗口了。", "at": "2026-07-20T05:50:00+00:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e2", "kind": "message", "sender": "p1", "content": "午后这一段有空调声，等晚上关空调再重录。", "at": "2026-07-20T14:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e2", "kind": "message", "sender": "p3", "content": "我今晚只练二十分钟，昨天喊得喉咙干。", "at": "2026-07-20T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "剩下的标点修了，下载新包别覆盖旧录音。", "at": "2026-07-20T18:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e2", "kind": "message", "sender": "p6", "content": "群里怎么又在拼耳机，先把作业交了啊。", "at": "2026-07-20T19:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e2", "kind": "message", "sender": "p5", "content": "别催，音轨导到一半电脑睡眠了。", "at": "2026-07-20T19:05:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "keep_possible", "target": null, "evidence": ["m3", "m11"], "notes": "m3为上海7月20日02:20，m11为同日13:50；原始时间字符串的日期不同不能当作两个本地日期。"},
+      {"key": "l2", "expected": "keep_possible", "target": null, "evidence": ["m7", "m10"], "notes": "m7为上海7月20日08:10，m10换算后为同日12:55；仍只有一个本地日期。"}
+    ]},
+    "reason": "两组都有本人说明和另一名群友明确确认，消息也不是重复引用，但所有身份依据换算到Asia/Shanghai后均在7月20日，不能满足不同本地日期的要求。"
+  },
+  {
+    "id": "PM023", "split": "dev", "category": "same_source", "now": "2026-03-08T09:00:00+08:00",
+    "entries": [
+      {"id": "e1", "kind": "group", "name": "QQ·木作与旧物改造总群"},
+      {"id": "e2", "kind": "group", "name": "木作论坛·材料清单楼"},
+      {"id": "e3", "kind": "group", "name": "微信·木作线下活动群"}
+    ],
+    "subjects": [
+      {"id": "p1", "name": "栖木", "aliases": [], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-01-01T08:00:00+08:00"},
+      {"id": "p2", "name": "榫卯小号", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-01-02T08:00:00+08:00"},
+      {"id": "p3", "name": "切片月亮", "aliases": [], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-01-03T08:00:00+08:00"},
+      {"id": "p4", "name": "砂纸星球", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-01-04T08:00:00+08:00"},
+      {"id": "p5", "name": "木屑", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-01-05T08:00:00+08:00"},
+      {"id": "p6", "name": "圆规", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-01-06T08:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 91, "source": "m3", "created_at": "2026-03-03T18:00:00+08:00"},
+      {"key": "l2", "a": "p3", "b": "p4", "kind": "same_as", "status": "possible", "belief": 73, "source": "m8", "created_at": "2026-03-05T19:12:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "栖木说榫卯小号是自己的论坛账号。", "speaker": "p1", "stance": "self", "about": ["p1", "p2"], "sources": ["m2", "m3", "m5"], "created_at": "2026-03-05T20:00:00+08:00"},
+      {"key": "k2", "content": "木屑两次称切片月亮和砂纸星球是同一个人。", "speaker": "p5", "stance": "reported", "about": ["p3", "p4"], "sources": ["m8", "m13"], "created_at": "2026-03-07T20:00:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "材料清单楼找不到了，群太能刷，半天九百条。", "at": "2026-03-02T17:58:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "榫卯小号是我自己在论坛登的账号，清单就发在那楼。我这边栖木号传大附件总失败，大家先拿论坛那份，螺丝数量还得改。", "at": "2026-03-02T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e2", "kind": "message", "sender": "p5", "content": "把栖木3月2日18点在总群那条原话搬到这层，清单入口在楼顶。", "at": "2026-03-03T18:00:00+08:00", "quote_author": "p1", "quote_content": "榫卯小号是我自己在论坛登的账号，清单就发在那楼。我这边栖木号传大附件总失败，大家先拿论坛那份，螺丝数量还得改。"},
+      {"key": "m4", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "附件里的板材厚度写漏了，是十八毫米。", "at": "2026-03-03T18:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e3", "kind": "message", "sender": "p6", "content": "新进来的找清单：这还是栖木3月2日18点那条总群留言，我从原消息重新转了一次，前一张截图太糊。", "at": "2026-03-05T19:00:00+08:00", "quote_author": "p1", "quote_content": "榫卯小号是我自己在论坛登的账号，清单就发在那楼。我这边栖木号传大附件总失败，大家先拿论坛那份，螺丝数量还得改。"},
+      {"key": "m6", "entry_id": "e3", "kind": "message", "sender": "p1", "content": "周末场地有插排，打磨机不用都带电池款。", "at": "2026-03-05T19:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "有人带一把短锯吗，我那把塞不进包。", "at": "2026-03-05T19:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "切片月亮就是砂纸星球，我上回和切片月亮见面时核过论坛名。短锯的借用帖在砂纸星球那层，那里留需求就行。", "at": "2026-03-05T19:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e2", "kind": "message", "sender": "p4", "content": "短锯周六才能还回来，周五场来不及。", "at": "2026-03-05T19:15:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "场地开门是九点半，早点到只能站楼下喂蚊子。", "at": "2026-03-05T19:18:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "那我改周六去，刚好快递也能到。", "at": "2026-03-05T19:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e3", "kind": "message", "sender": "p6", "content": "今天桌面全是木屑，回家包里都倒出一小堆。", "at": "2026-03-07T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e3", "kind": "message", "sender": "p5", "content": "今天又和切片月亮碰到面了，切片月亮用砂纸星球登录给我看了新做的椅子。这两个号确实是同一个人自己的，不是店铺号。", "at": "2026-03-07T18:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e2", "kind": "message", "sender": "p4", "content": "椅子还没上油，照片会发灰，等明天晴了再拍。", "at": "2026-03-07T18:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "忘带手套的来门边拿，买了一整盒。", "at": "2026-03-07T18:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e3", "kind": "message", "sender": "p6", "content": "我把午饭钱转过去了，备注写了桌号。", "at": "2026-03-07T18:15:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "keep_possible", "target": null, "evidence": ["m3", "m5"], "notes": "两位群友在3月3日、5日的消息均明确转引3月2日18点的m2；连同记忆的三个sources，实际只是一条原始身份依据。"},
+      {"key": "l2", "expected": "keep_possible", "target": null, "evidence": ["m8", "m13"], "notes": "3月5日、7日的两条为不同原始消息，但发送者都只是木屑，联系双方没有本人说明。"}
+    ]},
+    "reason": "栖木的身份说明虽被不同群友在不同日期转发，仍同源于m2；另一组虽真有两次见面描述，却始终只由木屑一名旁观者指认。两组均未满足第3条的独立依据要求。"
+  },
+  {
+    "id": "PM024", "split": "dev", "category": "same_other", "now": "2026-08-05T09:00:00+08:00",
+    "entries": [
+      {"id": "e1", "kind": "group", "name": "QQ·沙盒游戏建筑联盟"},
+      {"id": "e2", "kind": "group", "name": "NGA·建筑蓝图分享楼"},
+      {"id": "e3", "kind": "group", "name": "Discord·邮路剧情服大厅"}
+    ],
+    "subjects": [
+      {"id": "p1", "name": "铜钱草", "aliases": [], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-01-01T08:00:00+08:00"},
+      {"id": "p2", "name": "苔藓船", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-02-01T08:00:00+08:00"},
+      {"id": "p3", "name": "薄荷糖", "aliases": [], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-01-02T08:00:00+08:00"},
+      {"id": "p4", "name": "九号邮差", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-02-02T08:00:00+08:00"},
+      {"id": "p5", "name": "青砖", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-01-03T08:00:00+08:00"},
+      {"id": "p6", "name": "巡航便笺", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-01-04T08:00:00+08:00"},
+      {"id": "p7", "name": "圆角螺丝", "aliases": [], "parent": null, "merged_into": null, "account": "a7", "created_at": "2026-01-05T08:00:00+08:00"},
+      {"id": "p8", "name": "存档盒", "aliases": [], "parent": null, "merged_into": null, "account": "a8", "created_at": "2026-01-06T08:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 84, "source": "m2", "created_at": "2026-08-01T18:02:00+08:00"},
+      {"key": "l2", "a": "p3", "b": "p4", "kind": "same_as", "status": "possible", "belief": 83, "source": "m5", "created_at": "2026-08-01T18:12:00+08:00"},
+      {"key": "l3", "a": "p3", "b": "p4", "kind": "roleplay", "status": "possible", "belief": 96, "source": "m4", "created_at": "2026-08-01T18:10:00+08:00"},
+      {"key": "l4", "a": "p6", "b": "p7", "kind": "same_as", "status": "possible", "belief": 74, "source": "m8", "created_at": "2026-08-01T18:24:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "青砖两次确认铜钱草使用苔藓船账号。", "speaker": "p5", "stance": "reported", "about": ["p1", "p2"], "sources": ["m2", "m11"], "created_at": "2026-08-04T20:00:00+08:00"},
+      {"key": "k2", "content": "薄荷糖在剧情服扮演九号邮差，演完把角色号交给下一班，回薄荷糖号做建筑。", "speaker": "p3", "stance": "self", "about": ["p3", "p4"], "sources": ["m4", "m14"], "created_at": "2026-08-04T20:00:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "新区门口那个巨型土豆是谁盖的，传送过去差点卡里面。", "at": "2026-08-01T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "论坛苔藓船就是铜钱草本人，我上次帮铜钱草调贴图时当面认过账号。找土豆蓝图去苔藓船那楼就行。", "at": "2026-08-01T18:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "蓝图二层漏了一排台阶，今晚补。", "at": "2026-08-01T18:06:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e3", "kind": "message", "sender": "p3", "content": "今晚我扮演九号邮差，用那个角色号递三封假信。九号欠的钱是剧情道具账，别真来找我收款。", "at": "2026-08-01T18:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e3", "kind": "message", "sender": "p8", "content": "啊原来九号邮差是薄荷糖，我还以为新来了个特别会迷路的玩家。", "at": "2026-08-01T18:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e3", "kind": "message", "sender": "p4", "content": "各位的信都在我袋里，就是桥还没修完，暂时过不了河。", "at": "2026-08-01T18:16:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "圆角螺丝上不了论坛，投稿先放巡航便笺，这个是公共代投窗口。", "at": "2026-08-01T18:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e2", "kind": "message", "sender": "p6", "content": "圆角螺丝发来的第一份，照原文贴：", "at": "2026-08-01T18:24:00+08:00", "quote_author": "p7", "quote_content": "我就是群里的圆角螺丝，这个桥洞是我熬夜一点点挖的，存档放附件，别把支撑柱拆了。"},
+      {"key": "m9", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "土豆底下留了门，别直接往墙上撞。", "at": "2026-08-01T18:28:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "今天服务器备份慢，先别拖新地图进来。", "at": "2026-08-04T19:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "我今天和铜钱草连线修了贴图，铜钱草自己又登苔藓船上传新包，这两个名确实一直是同一个人用的。现在下载不会缺材质了。", "at": "2026-08-04T19:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "新包一百多兆，手机流量少的等回家再下。", "at": "2026-08-04T19:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e3", "kind": "message", "sender": "p8", "content": "九号邮差真的是薄荷糖，昨晚给我送信的时候又迷路了，跟薄荷糖平时一模一样。", "at": "2026-08-04T19:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e3", "kind": "message", "sender": "p3", "content": "我今天继续演九号，演完把角色号交给下一班，我回薄荷糖号做建筑。邮差明天坐船那段剧情我不在场。", "at": "2026-08-04T19:14:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e3", "kind": "message", "sender": "p4", "content": "船票已经收好，明早天一亮就出发。", "at": "2026-08-04T19:17:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e2", "kind": "message", "sender": "p6", "content": "圆角螺丝今天又交了一段修订说明，还是代贴原话：", "at": "2026-08-04T19:20:00+08:00", "quote_author": "p7", "quote_content": "我这个圆角螺丝号最近收不到论坛验证码，桥洞改好了，多开了个排水口，旧存档别再用了。"},
+      {"key": "m17", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "验证码终于来了十六条，过期得整整齐齐。", "at": "2026-08-04T19:24:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "服务器好了，今晚不用对着加载条吃饭。", "at": "2026-08-04T19:28:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "keep_possible", "target": null, "evidence": ["m2", "m11"], "notes": "8月1日、4日均为青砖一名旁观者发言，双方的日常消息没有确认账号关系。"},
+      {"key": "l2", "expected": "keep_possible", "target": null, "evidence": ["m5", "m13", "m14"], "notes": "跨日说法指向扮演关系；m4、m14及l3明确保留玩家与剧情角色的区别。"},
+      {"key": "l4", "expected": "keep_possible", "target": null, "evidence": ["m8", "m16"], "notes": "两天是不同投稿，但第一人称均属于被代发的圆角螺丝，不属于公共代投账号巡航便笺。"}
+    ]},
+    "reason": "主联系只有青砖一名旁观者跨日确认；另外两组分别是玩家扮演可交班角色、公共账号转贴投稿原话。日期和消息数量看起来充足，也不应把这些不同身份关系合并成人物同一人。"
+  },
+  {
+    "id": "PM025", "split": "dev", "category": "role_only", "now": "2026-06-05T09:00:00+08:00",
+    "entries": [
+      {"id": "e1", "kind": "group", "name": "QQ·卧室音乐制作千人群"},
+      {"id": "e2", "kind": "group", "name": "Discord·采样交换大厅"},
+      {"id": "e3", "kind": "group", "name": "音频论坛·六月作业楼"}
+    ],
+    "subjects": [
+      {"id": "p1", "name": "南橘", "aliases": [], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-01-01T08:00:00+08:00"},
+      {"id": "p2", "name": "柑皮", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-02-01T08:00:00+08:00"},
+      {"id": "p3", "name": "碎拍", "aliases": [], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-01-02T08:00:00+08:00"},
+      {"id": "p4", "name": "低频饼", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-02-02T08:00:00+08:00"},
+      {"id": "p5", "name": "雁尾", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-01-03T08:00:00+08:00"},
+      {"id": "p6", "name": "环形回声", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-02-03T08:00:00+08:00"},
+      {"id": "p7", "name": "磁带", "aliases": [], "parent": null, "merged_into": null, "account": "a7", "created_at": "2026-01-04T08:00:00+08:00"},
+      {"id": "p8", "name": "滑音", "aliases": [], "parent": null, "merged_into": null, "account": "a8", "created_at": "2026-01-05T08:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 87, "source": "m2", "created_at": "2026-06-01T20:02:00+08:00"},
+      {"key": "l2", "a": "p3", "b": "p4", "kind": "same_as", "status": "possible", "belief": 82, "source": "m6", "created_at": "2026-06-02T19:08:00+08:00"},
+      {"key": "l3", "a": "p5", "b": "p6", "kind": "same_as", "status": "possible", "belief": 86, "source": "m5", "created_at": "2026-06-02T19:00:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "Iris曾说南橘与柑皮是同一个人。", "speaker": "self", "stance": "self", "about": ["p1", "p2"], "sources": ["m2", "m11"], "created_at": "2026-06-04T21:00:00+08:00"},
+      {"key": "k2", "content": "雁尾说环形回声是自己的采样账号，该留言随后被搬运到两处。", "speaker": "p5", "stance": "self", "about": ["p5", "p6"], "sources": ["m4", "m5", "m10"], "created_at": "2026-06-04T21:00:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "今晚听作业戴耳机，有人把底鼓推得像敲门。", "at": "2026-06-01T20:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "南橘就是柑皮，两个窗口都能找到这位。要采样包可以去柑皮那边看看，我印象里已经补了低音部分。", "at": "2026-06-01T20:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "我先交十六小节，后半段还没想好怎么接。", "at": "2026-06-01T20:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "环形回声是我自己的采样账号，雁尾这边只聊天。那个雨声包也是我录的，楼上空调滴水混进去一点，先别做正式商用。", "at": "2026-06-01T20:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e2", "kind": "message", "sender": "p7", "content": "搬雁尾6月1日20:08在总群的留言，雨声包的作者介绍在这儿：", "at": "2026-06-02T19:00:00+08:00", "quote_author": "p5", "quote_content": "环形回声是我自己的采样账号，雁尾这边只聊天。那个雨声包也是我录的，楼上空调滴水混进去一点，先别做正式商用。"},
+      {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "self", "content": "碎拍和低频饼是同一个人，我把试听顺序写在这里，低频饼那份放前面，文件短一些。", "at": "2026-06-02T19:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "顺序不急，网页播放器又卡了，点一下得等半分钟。", "at": "2026-06-02T19:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "试听只有单声道，完整版晚点导，电脑在烤面包一样响。", "at": "2026-06-02T19:15:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "我的工程又忘存了，好消息是只少了两个音。", "at": "2026-06-02T19:18:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e3", "kind": "message", "sender": "p8", "content": "这是雁尾6月1日20:08的同一条总群消息，作业楼有人找作者，我把原文也转一遍。", "at": "2026-06-04T20:00:00+08:00", "quote_author": "p5", "quote_content": "环形回声是我自己的采样账号，雁尾这边只聊天。那个雨声包也是我录的，楼上空调滴水混进去一点，先别做正式商用。"},
+      {"key": "m11", "entry_id": "e2", "kind": "self_output", "sender": "self", "content": "柑皮就是大群的南橘，我前两天也提到过。试听列表里这两份挨着放吧，方便来回切换。", "at": "2026-06-04T20:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e3", "kind": "message", "sender": "self", "content": "低频饼就是碎拍，作业楼里这两个名字都在。今晚先听短的，长的那份我留到最后。", "at": "2026-06-04T20:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e2", "kind": "message", "sender": "p4", "content": "长版有三秒空白，导出忘了裁，别以为声卡坏了。", "at": "2026-06-04T20:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e2", "kind": "message", "sender": "p6", "content": "有个鼓点峰值太高，我重新压了一下，第二版已传。", "at": "2026-06-04T20:15:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "我猫把空格踩了，刚才不是故意循环十遍的。", "at": "2026-06-04T20:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "我先把播放器暂停，等你们都准备好再继续。", "at": "2026-06-04T20:22:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "现在行了，耳机线刚被椅子压住。", "at": "2026-06-04T20:25:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e3", "kind": "message", "sender": "p8", "content": "作业楼标题改六月吧，还挂着五月，看着像穿越。", "at": "2026-06-04T20:28:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "keep_possible", "target": null, "evidence": ["m2", "m11"], "notes": "6月1日、4日看似跨日，但两条均为self_output，发送者也都是self。"},
+      {"key": "l2", "expected": "keep_possible", "target": null, "evidence": ["m6", "m12"], "notes": "两条kind虽是message，sender仍为self，角色自己的话不因消息类型变化而成为依据。"},
+      {"key": "l3", "expected": "keep_possible", "target": null, "evidence": ["m5", "m10"], "notes": "两名群友在6月2日、4日转引的均是m4，没有第二条原始身份依据。"}
+    ]},
+    "reason": "前两组的身份说法只出自Iris自己的发言，即使跨日期、跨入口、进入了记忆，也不算人物身份依据；第三组的多日期引用则都回到同一条雁尾原话。"
+  },
+  {
+    "id": "PM026", "split": "dev", "category": "self_denial", "now": "2026-09-13T09:00:00+08:00",
+    "entries": [
+      {"id": "e1", "kind": "group", "name": "QQ·夜景街拍同好总群"},
+      {"id": "e2", "kind": "group", "name": "街拍论坛·九月夜行楼"}
+    ],
+    "subjects": [
+      {"id": "p1", "name": "夜航", "aliases": [], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-01-01T08:00:00+08:00"},
+      {"id": "p2", "name": "夜航", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-02-01T08:00:00+08:00"},
+      {"id": "p3", "name": "散光", "aliases": [], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-01-02T08:00:00+08:00"},
+      {"id": "p4", "name": "软焦", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-01-03T08:00:00+08:00"},
+      {"id": "p5", "name": "焦糖虚像", "aliases": [], "parent": null, "merged_into": "p4", "account": "a5", "created_at": "2026-02-03T08:00:00+08:00"},
+      {"id": "p6", "name": "斜坡", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-01-04T08:00:00+08:00"},
+      {"id": "p7", "name": "路灯罩", "aliases": [], "parent": null, "merged_into": null, "account": "a7", "created_at": "2026-01-05T08:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 90, "source": "m3", "created_at": "2026-09-09T20:02:00+08:00"},
+      {"key": "l2", "a": "p3", "b": "p4", "kind": "same_as", "status": "possible", "belief": 88, "source": "m5", "created_at": "2026-09-09T20:08:00+08:00"},
+      {"key": "l3", "a": "p3", "b": "p5", "kind": "same_as", "status": "denied", "belief": 5, "source": "m1", "created_at": "2026-09-05T19:00:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "斜坡曾把群里的夜航与论坛夜航认作同一人。", "speaker": "p6", "stance": "reported", "about": ["p1", "p2"], "sources": ["m3"], "created_at": "2026-09-09T21:00:00+08:00"},
+      {"key": "k2", "content": "散光早先否认自己使用焦糖虚像账号，并说那天相机还在返修。", "speaker": "p3", "stance": "self", "about": ["p3", "p5"], "sources": ["m1"], "created_at": "2026-09-05T20:00:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "焦糖虚像那张霓虹图不是我拍的，我也没用过那个号。那天我相机还在返修，只有手机。", "at": "2026-09-05T19:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "今晚街上人好多，相机都没法掏出来。", "at": "2026-09-09T20:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "论坛夜航就是咱群的夜航，我今天在活动楼对上名字了。都拍那条霓虹街，照片里还有同一家面馆。", "at": "2026-09-09T20:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "面馆那块招牌坏了一半，拍出来像在卖空气。", "at": "2026-09-09T20:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "软焦是我自己现在登的论坛号，散光这边传图容易糊。夜景原片我放软焦那楼了，有一张忘开防抖，别下载错。", "at": "2026-09-09T20:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e2", "kind": "message", "sender": "p4", "content": "附件名带raw的才是原片，预览别当原片修。", "at": "2026-09-09T20:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "今天背包带断了，器材差点跟我一起滚下台阶。", "at": "2026-09-09T20:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "我借你的快装板先放柜台，明天路过拿。", "at": "2026-09-09T20:15:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e2", "kind": "message", "sender": "p7", "content": "周末活动楼终于刷出来，旧手机加载全靠缘分。", "at": "2026-09-12T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e2", "kind": "message", "sender": "p7", "content": "这边夜航就是总群那个夜航，今天又看见两边发同一段路的图了，夜里十一点还在回帖，肯定没认错。", "at": "2026-09-12T18:03:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "总有人私聊问夜航滤镜包，消息都快被挤没了。", "at": "2026-09-12T18:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "再说一遍，论坛那个夜航不是我，我没有发过滤镜包。我叫夜航是玩航模时起的，街拍只是最近刚学。", "at": "2026-09-12T18:07:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "QQ群那位是另一位夜航，我不玩航模，也没加那个总群。包下载失败在这层留设备型号就行。", "at": "2026-09-12T18:09:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e2", "kind": "message", "sender": "p7", "content": "散光和软焦倒是同一个人，我下午跟散光对图，当面看散光用自己的软焦号补了压缩包，确实收到了。", "at": "2026-09-12T18:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "压缩包密码是四个零，别把字母o输进去。", "at": "2026-09-12T18:14:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "下次群相册分个目录吧，找街灯找到一百张晚饭。", "at": "2026-09-12T18:18:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "keep_possible", "target": null, "evidence": ["m3", "m10"], "notes": "两名群友跨日误认后，m12和m13出现双方本人否认，不能忽略反证。"},
+      {"key": "l2", "expected": "keep_possible", "target": null, "evidence": ["m5", "m14"], "notes": "9月9日本人加9月12日群友的依据本可通过数量门槛，但p5已并入p4，p3与p5的l3为永久denied。"}
+    ]},
+    "reason": "同名夜航的两条跨日指认被双方本人明确否认；散光与软焦虽有独立依据，软焦的历史合并主体焦糖虚像仍带有对散光的否认记录。新的聊天内容不能自动撤销denied。"
+  },
+  {
+    "id": "PM027", "split": "dev", "category": "counter_evidence", "now": "2026-05-13T09:00:00+08:00",
+    "entries": [
+      {"id": "e1", "kind": "group", "name": "QQ·玻璃灯手作千人群"},
+      {"id": "e2", "kind": "group", "name": "手作论坛·五月灯展协作楼"},
+      {"id": "e3", "kind": "group", "name": "微信·灯展现场联络群"}
+    ],
+    "subjects": [
+      {"id": "p1", "name": "海玻璃", "aliases": [], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-01-01T08:00:00+08:00"},
+      {"id": "p2", "name": "潮汐匣", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-02-01T08:00:00+08:00"},
+      {"id": "p3", "name": "暖窝小站", "aliases": [], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-01-02T08:00:00+08:00"},
+      {"id": "p4", "name": "白榆", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-02-02T08:00:00+08:00"},
+      {"id": "p5", "name": "釉面", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-01-03T08:00:00+08:00"},
+      {"id": "p6", "name": "旧砂", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-02-03T08:00:00+08:00"},
+      {"id": "p7", "name": "灯芯", "aliases": [], "parent": null, "merged_into": null, "account": "a7", "created_at": "2026-01-04T08:00:00+08:00"},
+      {"id": "p8", "name": "磨边", "aliases": [], "parent": null, "merged_into": null, "account": "a8", "created_at": "2026-01-05T08:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 92, "source": "m2", "created_at": "2026-05-10T18:02:00+08:00"},
+      {"key": "l2", "a": "p3", "b": "p4", "kind": "same_as", "status": "possible", "belief": 86, "source": "m5", "created_at": "2026-05-10T18:10:00+08:00"},
+      {"key": "l3", "a": "p5", "b": "p6", "kind": "same_as", "status": "possible", "belief": 78, "source": "m8", "created_at": "2026-05-10T18:20:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "灯芯称海玻璃与潮汐匣是同一个人，认为蓝灯不需要两个展位。", "speaker": "p7", "stance": "reported", "about": ["p1", "p2"], "sources": ["m2"], "created_at": "2026-05-10T19:00:00+08:00"},
+      {"key": "k2", "content": "白榆使用暖窝小站账号发过灯罩照片。", "speaker": "p4", "stance": "self", "about": ["p3", "p4"], "sources": ["m6"], "created_at": "2026-05-10T19:00:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "灯展名单八十多页，能不能按桌号分一下，我翻到眼花。", "at": "2026-05-10T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "海玻璃就是论坛的潮汐匣，我上次填报名表时对过名字，两边都是那盏蓝灯。别再给蓝灯留两个展位了。", "at": "2026-05-10T18:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "我的蓝灯还没装线，展位要靠插座，延长线只有一米。", "at": "2026-05-10T18:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "桌布买好了，有点太蓝，摆蓝灯上去怕看不见。", "at": "2026-05-10T18:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "暖窝小站那组灯罩就是白榆发的吧，桌面那个缺角杯子眼熟。", "at": "2026-05-10T18:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "对，暖窝小站也是我在用，昨晚那组图是我发的。平板上传快，我手机白榆这边一传就发热。", "at": "2026-05-10T18:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e2", "kind": "message", "sender": "p3", "content": "灯罩尺寸补在图二，尺子有反光，看不清再问。", "at": "2026-05-10T18:15:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "釉面就是旧砂，我把旧砂交的那张效果图也放到釉面的展台预览旁边，打开两份一起看。", "at": "2026-05-10T18:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "效果图的电线还没藏，成品应该不会那么乱。", "at": "2026-05-10T18:24:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e1", "kind": "message", "sender": "p8", "content": "现场胶带得多备几卷，每年都找不到剪刀。", "at": "2026-05-10T18:28:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e3", "kind": "message", "sender": "p7", "content": "明天布展走北门，南门今天就锁了。", "at": "2026-05-12T17:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e2", "kind": "message", "sender": "p8", "content": "海玻璃和潮汐匣是同一个人，我今天整理作品单也对上了，蓝灯照片一模一样，名字写哪边都能找到。", "at": "2026-05-12T17:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "暖窝小站就是白榆，我昨天收灯罩图时也认出来了，连那只缺角杯子都在。白榆这组排六号桌。", "at": "2026-05-12T17:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e2", "kind": "self_output", "sender": "self", "content": "旧砂就是大群里的釉面，我前天也说过，展台预览两份都在今晚的文件夹里。", "at": "2026-05-12T17:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e2", "kind": "message", "sender": "p6", "content": "文件夹密码今天改了，新密码在楼顶。", "at": "2026-05-12T17:15:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e3", "kind": "message", "sender": "p1", "content": "潮汐匣，你先坐六号桌左边吧，我把右边那把椅子占着。我还堵在北门，你借我的变压器带来没？", "at": "2026-05-12T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e3", "kind": "message", "sender": "p2", "content": "海玻璃，带了，已经摆你右边那份作品旁边。我坐左边，你进来先找我拿钥匙，我要出去取快递。", "at": "2026-05-12T18:00:20+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e3", "kind": "message", "sender": "p1", "content": "好，你等我五分钟。咱俩各摆一盏，别让搬桌子的把你的也挪我箱子里，上回差点带回家。", "at": "2026-05-12T18:01:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m19", "entry_id": "e2", "kind": "message", "sender": "p3", "content": "今天暖窝小站是白榆的表亲在登，家里平板一直共用这个号。白榆出门布展了，我这边补的是我自己做的纸灯，跟昨晚那组玻璃罩不是一件。", "at": "2026-05-12T18:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m20", "entry_id": "e1", "kind": "message", "sender": "p4", "content": "表亲先帮我量下纸灯底座，我在展厅腾不出手。暖窝那条尺寸别删，回家我还得用平板补图。", "at": "2026-05-12T18:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m21", "entry_id": "e3", "kind": "message", "sender": "p8", "content": "六号桌别挡消防通道，地上那条黄线露出来。", "at": "2026-05-12T18:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m22", "entry_id": "e1", "kind": "message", "sender": "p7", "content": "我终于找到剪刀了，在胶带卷的纸芯里。", "at": "2026-05-12T18:15:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "keep_possible", "target": null, "evidence": ["m2", "m12"], "notes": "两名群友5月10日、12日各有指认，但m16—m18两账号互相协调各自座位、作品、变压器和钥匙，构成明确反证。"},
+      {"key": "l2", "expected": "keep_possible", "target": null, "evidence": ["m6", "m13"], "notes": "本人使用过账号不等于账号只对应本人；m19—m20显示白榆与表亲共用暖窝小站。"},
+      {"key": "l3", "expected": "keep_possible", "target": null, "evidence": ["m8", "m14"], "notes": "两日期的身份说法均为self发出的self_output，联系双方没有提供身份说明。"}
+    ]},
+    "reason": "两条跨日指认不能压过海玻璃和潮汐匣互相对话的反证；暖窝小站又被白榆与表亲共用，不能归为白榆单人的另一个身份。釉面与旧砂的联系则只有角色自己的说法。"
+  },
+  {
+    "id": "PM028", "split": "dev", "category": "roleplay", "now": "2026-10-25T09:00:00+08:00",
+    "entries": [
+      {"id": "e1", "kind": "group", "name": "Discord·雾港大型剧情社区"},
+      {"id": "e2", "kind": "group", "name": "QQ·雾港创作与闲聊总群"},
+      {"id": "e3", "kind": "group", "name": "论坛·空站剧情支线楼"}
+    ],
+    "subjects": [
+      {"id": "p1", "name": "柚核", "aliases": [], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-01-01T08:00:00+08:00"},
+      {"id": "p2", "name": "雾港馆长", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-02-01T08:00:00+08:00"},
+      {"id": "p3", "name": "青莓", "aliases": [], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-01-02T08:00:00+08:00"},
+      {"id": "p4", "name": "空站检修员", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-02-02T08:00:00+08:00"},
+      {"id": "p5", "name": "铅字", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-01-03T08:00:00+08:00"},
+      {"id": "p6", "name": "石墨", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-01-04T08:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 91, "source": "m3", "created_at": "2026-10-22T20:04:00+08:00"},
+      {"key": "l2", "a": "p3", "b": "p4", "kind": "same_as", "status": "possible", "belief": 89, "source": "m6", "created_at": "2026-10-22T20:15:00+08:00"},
+      {"key": "l3", "a": "p1", "b": "p2", "kind": "roleplay", "status": "possible", "belief": 98, "source": "m2", "created_at": "2026-10-22T20:02:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "柚核在雾港剧情中扮演馆长，馆长活过百年的说法属于剧情。", "speaker": "p1", "stance": "self", "about": ["p1", "p2"], "sources": ["m2", "m12"], "created_at": "2026-10-24T21:00:00+08:00"},
+      {"key": "k2", "content": "青莓为支线扮演空站检修员，检修员的夜班属于剧情。", "speaker": "p3", "stance": "self", "about": ["p3", "p4"], "sources": ["m5", "m15"], "created_at": "2026-10-24T21:00:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e2", "kind": "message", "sender": "p5", "content": "今晚开团前先测骰子插件，昨天连掷三次都卡。", "at": "2026-10-22T20:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e2", "kind": "message", "sender": "p1", "content": "今晚雾港馆长我来扮，馆长号先给我开场景权限。柚核这个号留在群里收反馈，馆长那段百年往事别剧透。", "at": "2026-10-22T20:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "原来雾港馆长就是柚核，我刚跟柚核测了角色号登录，今晚那张地图会用。", "at": "2026-10-22T20:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "我守着这座馆一百二十年，钟停过三回，唯独东门从未打开。各位请把伞留在门外。", "at": "2026-10-22T20:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e2", "kind": "message", "sender": "p3", "content": "我今晚演空站检修员，支线号的扳手头像别换，是任务里要认的图案。我自己青莓号的头像明天再改。", "at": "2026-10-22T20:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e3", "kind": "message", "sender": "p6", "content": "空站检修员就是青莓，开场前我看青莓切到检修员号了。昨天还猜是谁写这么多工具说明。", "at": "2026-10-22T20:15:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e3", "kind": "message", "sender": "p4", "content": "我在反应炉旁值夜班，别碰第三排开关，外环还有两个人没回来。", "at": "2026-10-22T20:18:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e2", "kind": "message", "sender": "p1", "content": "公交堵住了，我拿手机先回台词，地图操作让铅字帮忙点一下。", "at": "2026-10-22T20:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e2", "kind": "message", "sender": "p6", "content": "今天台词太多，我喝水都得等切场景。", "at": "2026-10-22T21:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e2", "kind": "message", "sender": "p5", "content": "前情提要补了，没赶上的翻群文件，第三页有点长。", "at": "2026-10-24T19:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "馆长就是柚核，我今天排练时又和柚核在馆长号上对过台词了。东门那段听起来比上次顺。", "at": "2026-10-24T19:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e2", "kind": "message", "sender": "p1", "content": "馆长活一百多年是我写的设定，我现实里哪有那种阅历，刚加完班连便利店晚饭都没买。今晚继续用角色号演东门那场。", "at": "2026-10-24T19:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "东门的钥匙一直在我手里，只是开门的代价，我还没想好让谁承担。", "at": "2026-10-24T19:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e3", "kind": "message", "sender": "p5", "content": "检修员就是青莓本人在演，刚才我和青莓连线补完检修员账号的支线，工具清单终于缩成一页。", "at": "2026-10-24T19:16:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e2", "kind": "message", "sender": "p3", "content": "空站检修员的夜班是剧情，我青莓明天还要早起赶车。角色那只断掉的扳手留给下一场，我自己的工具箱没坏。", "at": "2026-10-24T19:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e3", "kind": "message", "sender": "p4", "content": "扳手断了，我只能用备用钳顶住阀门。通讯恢复前，谁都别靠近外环。", "at": "2026-10-24T19:24:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e2", "kind": "message", "sender": "p6", "content": "散场前存一下骰子记录，上次找截图找了两小时。", "at": "2026-10-24T21:30:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e2", "kind": "message", "sender": "p5", "content": "存好了，顺便把我的夜宵拍进去了，别介意。", "at": "2026-10-24T21:32:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "keep_possible", "target": null, "evidence": ["m3", "m11"], "notes": "两名群友10月22日、24日各有指认，但所指为柚核扮演雾港馆长，已有l3的roleplay关系且多条消息区分现实与剧情。"},
+      {"key": "l2", "expected": "keep_possible", "target": null, "evidence": ["m6", "m14"], "notes": "同样满足跨日和不同群友的表面形式，内容却是青莓扮演空站检修员；即使未另存roleplay联系，也不能把角色经历并入玩家。"}
+    ]},
+    "reason": "两组角色号确由玩家操作，群友也在不同日期认出了操作者，但这些都是明确的扮演关系。第一组已有roleplay联系，第二组需要从聊天语义识别，均不应作人物同一人合并。"
+  },
+  {
+    "id": "PM029", "split": "dev", "category": "forward", "now": "2026-02-11T09:00:00+08:00",
+    "entries": [
+      {"id": "e1", "kind": "group", "name": "小红书·独立摄影展映大群"},
+      {"id": "e2", "kind": "group", "name": "摄影论坛·免费展映投稿楼"},
+      {"id": "e3", "kind": "group", "name": "微信·家用暗房交流群"}
+    ],
+    "subjects": [
+      {"id": "p1", "name": "快门接力台", "aliases": [], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-01-01T08:00:00+08:00"},
+      {"id": "p2", "name": "折纸航线", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-01-02T08:00:00+08:00"},
+      {"id": "p3", "name": "像素茶桌", "aliases": [], "parent": null, "merged_into": null, "account": "a3", "created_at": "2026-01-03T08:00:00+08:00"},
+      {"id": "p4", "name": "青点", "aliases": [], "parent": null, "merged_into": null, "account": "a4", "created_at": "2026-01-04T08:00:00+08:00"},
+      {"id": "p5", "name": "反光板", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-01-05T08:00:00+08:00"},
+      {"id": "p6", "name": "白边", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-01-06T08:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 94, "source": "m3", "created_at": "2026-02-07T18:04:00+08:00"},
+      {"key": "l2", "a": "p3", "b": "p4", "kind": "same_as", "status": "possible", "belief": 84, "source": "m6", "created_at": "2026-02-07T18:12:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "折纸航线请快门接力台代贴展映投稿，投稿保留原作者第一人称。", "speaker": "p2", "stance": "reported", "about": ["p1", "p2"], "sources": ["m2", "m3", "m5"], "created_at": "2026-02-07T19:00:00+08:00"},
+      {"key": "k2", "content": "像素茶桌是青点、表亲和家中长辈共用的平板账号。", "speaker": "p4", "stance": "self", "about": ["p3", "p4"], "sources": ["m15", "m16"], "created_at": "2026-02-10T21:00:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "投稿楼今天两百多层，传图记得先缩到十兆，网页太容易崩。", "at": "2026-02-07T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e2", "kind": "message", "sender": "p1", "content": "今晚轮到我值接力台，先代贴没注册成功的投稿。下一条是折纸航线发来的介绍，按原文贴，图也不替作者调色。", "at": "2026-02-07T18:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e2", "kind": "message", "sender": "p1", "content": "我就是折纸航线，这套照片是我去年在旧车站拍的。我把最后一张留白做大了，想给展场的窗影留一点地方，原片另附。", "at": "2026-02-07T18:04:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "最后一张看着真像站台等车，背景有点糊正合适。", "at": "2026-02-07T18:06:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "谢谢接力台帮我发，我论坛注册还卡着审核。说明里提的原片一会单独传给值班的，压缩包太大了。", "at": "2026-02-07T18:09:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e3", "kind": "message", "sender": "p6", "content": "像素茶桌发的那盆绿萝不是青点家的吗，青点你又弄了个平板号？", "at": "2026-02-07T18:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e3", "kind": "message", "sender": "p4", "content": "像素茶桌我也用，昨晚那盆确实是我拍的。我手机青点这边内存满了，就拿家里平板发，文件都在那台上。", "at": "2026-02-07T18:14:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e3", "kind": "message", "sender": "p3", "content": "绿萝后面那个纸袋别当垃圾，我放的是相纸。", "at": "2026-02-07T18:16:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "布展贴纸到了，闻起来像橘子，不知道是不是胶水味。", "at": "2026-02-07T18:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e2", "kind": "message", "sender": "p1", "content": "折纸航线今天又追加了一段，下面还是作者原文，后面两套投稿等我排完版再发。", "at": "2026-02-10T19:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e2", "kind": "message", "sender": "p1", "content": "我折纸航线又补了一张天桥，这回是我今天刚拍的，不是去年那批。我想把它摆在旧车站旁边，两个地方走路只隔五分钟。", "at": "2026-02-10T19:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "那两套小图先别急着发，有张横竖放反了。", "at": "2026-02-10T19:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e2", "kind": "message", "sender": "p1", "content": "我负责接力台排版，天桥怎么选得问原作者折纸航线。今天还有四个人的稿，贴完我就换班，私信别只发一句在吗。", "at": "2026-02-10T19:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e3", "kind": "message", "sender": "p5", "content": "像素茶桌就是青点，我今天收图又看见那盆绿萝了，两个号的桌面连剪刀都在同一边。", "at": "2026-02-10T19:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e3", "kind": "message", "sender": "p3", "content": "现在拿像素茶桌的是青点的表亲，平板放客厅谁都能发。我今天拍的是自己的拼贴，青点去取印好的照片了，绿萝就是家里那盆。", "at": "2026-02-10T19:15:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e3", "kind": "message", "sender": "p4", "content": "家里长辈也用那个号看教程，收藏夹里一半都是修水龙头。我只在手机青点这边回私信，找表亲的拼贴就问平板那边。", "at": "2026-02-10T19:18:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "展映的灯别太冷，上回我的黄墙照出来像青墙。", "at": "2026-02-10T19:22:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e1", "kind": "message", "sender": "p6", "content": "我带两块小色卡，先试十分钟再钉墙。", "at": "2026-02-10T19:25:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "keep_possible", "target": null, "evidence": ["m3", "m11"], "notes": "两条分属2月7日、10日的新投稿，正文均为第一人称且sender为联系一方；m2、m5、m10、m13说明这些话属于被代发的折纸航线，接力台是轮班窗口。"},
+      {"key": "l2", "expected": "keep_possible", "target": null, "evidence": ["m7", "m14"], "notes": "青点确实使用过像素茶桌，另日也有群友指认；m15、m16明确该号由表亲、青点及长辈共用。"}
+    ]},
+    "reason": "接力台跨日贴了两份不同投稿，第一人称和署名都保留自原作者，不能把代发窗口当成作者本人。家中平板账号的相同桌面则来自共同生活环境，账号并非青点独占。"
+  },
+  {
+    "id": "PM030", "split": "dev", "category": "denied_chain", "now": "2026-09-10T09:00:00+08:00",
+    "entries": [
+      {"id": "e1", "kind": "group", "name": "QQ·轻装徒步大群"},
+      {"id": "e2", "kind": "group", "name": "Discord·山路轨迹交流大厅"},
+      {"id": "e3", "kind": "group", "name": "户外论坛·九月路书楼"}
+    ],
+    "subjects": [
+      {"id": "p1", "name": "栗饼", "aliases": [], "parent": null, "merged_into": null, "account": "a1", "created_at": "2026-01-01T08:00:00+08:00"},
+      {"id": "p2", "name": "拖鞋航行", "aliases": [], "parent": null, "merged_into": null, "account": "a2", "created_at": "2026-01-02T08:00:00+08:00"},
+      {"id": "p3", "name": "纸帆旧号", "aliases": [], "parent": null, "merged_into": "p2", "account": "a3", "created_at": "2026-02-02T08:00:00+08:00"},
+      {"id": "p4", "name": "码头小号", "aliases": [], "parent": null, "merged_into": "p3", "account": "a4", "created_at": "2026-03-02T08:00:00+08:00"},
+      {"id": "p5", "name": "半山雾", "aliases": [], "parent": null, "merged_into": null, "account": "a5", "created_at": "2026-01-03T08:00:00+08:00"},
+      {"id": "p6", "name": "云缝", "aliases": [], "parent": null, "merged_into": null, "account": "a6", "created_at": "2026-01-04T08:00:00+08:00"},
+      {"id": "p7", "name": "薄云存档", "aliases": [], "parent": null, "merged_into": "p5", "account": "a7", "created_at": "2026-02-03T08:00:00+08:00"},
+      {"id": "p8", "name": "清风备份", "aliases": [], "parent": null, "merged_into": "p6", "account": "a8", "created_at": "2026-02-04T08:00:00+08:00"},
+      {"id": "p9", "name": "路标", "aliases": [], "parent": null, "merged_into": null, "account": "a9", "created_at": "2026-01-05T08:00:00+08:00"},
+      {"id": "p10", "name": "山溪", "aliases": [], "parent": null, "merged_into": null, "account": "a10", "created_at": "2026-01-06T08:00:00+08:00"}
+    ],
+    "links": [
+      {"key": "l1", "a": "p1", "b": "p2", "kind": "same_as", "status": "possible", "belief": 96, "source": "m4", "created_at": "2026-09-07T19:02:00+08:00"},
+      {"key": "l2", "a": "p5", "b": "p6", "kind": "same_as", "status": "possible", "belief": 95, "source": "m7", "created_at": "2026-09-07T19:10:00+08:00"},
+      {"key": "l3", "a": "p1", "b": "p4", "kind": "same_as", "status": "denied", "belief": 3, "source": "m1", "created_at": "2026-09-01T18:00:00+08:00"},
+      {"key": "l4", "a": "p7", "b": "p8", "kind": "same_as", "status": "denied", "belief": 4, "source": "m2", "created_at": "2026-09-01T18:05:00+08:00"}
+    ],
+    "memories": [
+      {"key": "k1", "content": "栗饼否认使用码头小号，说那天只在山下买饭，见到起雾就回了。", "speaker": "p1", "stance": "self", "about": ["p1", "p4"], "sources": ["m1"], "created_at": "2026-09-01T19:00:00+08:00"},
+      {"key": "k2", "content": "半山雾说云缝也是自己的账号，因当前账号不好传长文件而换到云缝整理手写表。", "speaker": "p5", "stance": "self", "about": ["p5", "p6"], "sources": ["m8"], "created_at": "2026-09-07T20:00:00+08:00"}
+    ],
+    "messages": [
+      {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "码头小号那段登顶记录不是我，我从没用过那个号。那天我只在山下买了饭，看到起雾就回了。", "at": "2026-09-01T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m2", "entry_id": "e3", "kind": "message", "sender": "p7", "content": "清风备份不是我这个薄云存档，我和那位在路口还换过一瓶水，路线都是各自录的。我的后半程断了，别拿另一份问我。", "at": "2026-09-01T18:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p9", "content": "这次别穿新鞋，我上回脚后跟贴了三张创可贴。", "at": "2026-09-07T19:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p9", "content": "拖鞋航行那条轨迹起点怎么也在栗饼家楼下，栗饼是你发的不？", "at": "2026-09-07T19:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m5", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "轨迹开头那一圈是在找停车位，正式线路从桥边开始。", "at": "2026-09-07T19:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "拖鞋航行是我自己用的语音号，群里栗饼也是我。刚才从电脑传轨迹方便，起点确实是我家楼下，桥边才开始爬。", "at": "2026-09-07T19:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m7", "entry_id": "e3", "kind": "message", "sender": "p10", "content": "云缝的补水点表跟半山雾手写那张一样，连错别字都在，莫非是同一份。", "at": "2026-09-07T19:10:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "云缝那个账号也是我自己的，半山雾这边不好传长文件，我换那边整理。手写表是我拍过去的，补水那个水字还真漏了一点。", "at": "2026-09-07T19:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m9", "entry_id": "e2", "kind": "message", "sender": "p6", "content": "补水表更新了，第二家店周二不开门，别白跑。", "at": "2026-09-07T19:15:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m10", "entry_id": "e1", "kind": "message", "sender": "p9", "content": "谁说带三瓶水够的，我还没上坡就喝半瓶了。", "at": "2026-09-07T19:18:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m11", "entry_id": "e1", "kind": "message", "sender": "p10", "content": "你那是出门先吃了一袋咸饼干吧。", "at": "2026-09-07T19:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m12", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "回来了，鞋底的泥比鞋还重，明天再刷。", "at": "2026-09-09T18:00:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m13", "entry_id": "e1", "kind": "message", "sender": "p9", "content": "原始轨迹我收到，手机导入得等一会，山里没信号的部分会连直线。", "at": "2026-09-09T18:02:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m14", "entry_id": "e3", "kind": "message", "sender": "p9", "content": "栗饼和拖鞋航行就是同一个人，我今天和栗饼一起收尾，栗饼当面登拖鞋航行把轨迹发给我了，现在总算知道文件在哪边找。", "at": "2026-09-09T18:05:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m15", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "收尾那段我忘停表，里面还有回家买菜的路，自己裁一下。", "at": "2026-09-09T18:08:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m16", "entry_id": "e2", "kind": "message", "sender": "p10", "content": "云缝就是半山雾本人在用，我下午坐半山雾旁边核补给费，半山雾拿自己的手机登录云缝把账单补全了，没漏那袋饼干。", "at": "2026-09-09T18:12:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m17", "entry_id": "e1", "kind": "message", "sender": "p5", "content": "饼干不贵，主要是我买了两次，忘了包里还有一袋。", "at": "2026-09-09T18:15:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m18", "entry_id": "e2", "kind": "message", "sender": "p6", "content": "账单图片有点歪，放大看，别把小数点看丢。", "at": "2026-09-09T18:18:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m19", "entry_id": "e1", "kind": "message", "sender": "p9", "content": "下周投票先别开，我膝盖想休息两天。", "at": "2026-09-09T18:20:00+08:00", "quote_author": null, "quote_content": null},
+      {"key": "m20", "entry_id": "e1", "kind": "message", "sender": "p10", "content": "那先约个平地吃饭，别又把饭馆选在半山腰。", "at": "2026-09-09T18:22:00+08:00", "quote_author": null, "quote_content": null}
+    ],
+    "expected": {"links": [
+      {"key": "l1", "expected": "keep_possible", "target": null, "evidence": ["m6", "m14"], "notes": "9月7日本人与9月9日群友的依据相互独立；但p4→p3→p2的两层merged_into链上，p1与p4有l3的永久denied。"},
+      {"key": "l2", "expected": "keep_possible", "target": null, "evidence": ["m8", "m16"], "notes": "同样有不同日期的本人及群友依据；p7已并入p5，p8已并入p6，l4否认的是双方各自的历史主体。"}
+    ]},
+    "reason": "栗饼与拖鞋航行的否认位于两层合并链末端，半山雾与云缝的否认连接双方各自已合并的旧主体。两组虽有新的跨日独立依据，遍历历史主体后都能找到永久denied，必须保持possible。"
+  }
+  ]
+}
