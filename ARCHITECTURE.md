@@ -180,7 +180,7 @@ memory_ops 的人工正文编辑与删除都核对预期修订号，并在同一
 
 ## M2 生命周期与确定性维护
 
-迁移 008 添加 maintenance_runs（阶段游标与固定大小的汇总计数）／maintenance_items（仅实际变更与失败）、memory_dependency_losses（每对来源的一次性扣减）、maintenance_batch_retries（每批一次）、batch_message_refs（冻结 JSON 段的引用索引），扩展 admin_operations 的对象字段，并在 memories 保存中等重要度的衰减余数和 purged_at。升级回填批次引用、当前失效依据及人工修订操作标识；在事务内延迟外键检查并原样重建 messages 为 AUTOINCREMENT，防止已清理消息的 ID 被复用。原始记忆与检索排序保持原样。
+迁移 008 添加 maintenance_runs（阶段游标与固定大小的汇总计数）／maintenance_items（仅实际变更与失败）、memory_dependency_losses（每对来源的一次性扣减）、maintenance_batch_retries（迁移 036 起每批在第 1、3、7 天各一次）、batch_message_refs（冻结 JSON 段的引用索引），扩展 admin_operations 的对象字段，并在 memories 保存中等重要度的衰减余数和 purged_at。升级回填批次引用、当前失效依据及人工修订操作标识；在事务内延迟外键检查并原样重建 messages 为 AUTOINCREMENT，防止已清理消息的 ID 被复用。原始记忆与检索排序保持原样。
 
 `adjust_retention(store, id, delta=0, *, value=None, floor=None, expected_revision=None, current=None, settings=None, _conn=None)` 接受原子增量、绝对值或下限；有 _conn 时加入调用者的短事务，否则自行开启 Store.write。缺失／已删除／修订不符返回 None；成功返回最新行。截断、双阈值与 forgotten_at 同事务，不加修订号，不写日常修订。`confirm_retention(..., _conn=conn)` 读取 confirmation_increment 并更新 last_confirmed_at；学习已在 confirm_once 中调用，confirmed_once 保证每批一次，默认 +5；显式确认与写入去重共用同一事务和集合。在途记忆仅转为遗忘且修订号不变时仍可确认，修正／反驳继续要求有效状态。反馈、管理员强度、维护衰减及 M11 已共用此接口。
 

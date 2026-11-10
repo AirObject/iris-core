@@ -1,0 +1,576 @@
+{
+  "format_version": 1,
+  "name": "goal_review_v1",
+  "timezone": "Asia/Shanghai",
+  "role_name": "Iris",
+  "cases": [
+    {
+      "id": "GR001", "split": "dev", "category": "self_done", "now": "2026-11-02T20:20:00+08:00",
+      "entries": [{"id": "e1", "kind": "private", "name": "室友程栗的私聊"}],
+      "subjects": [{"id": "p1", "name": "程栗", "aliases": ["栗子"]}],
+      "goal": {"key": "g", "content": "今晚20点前帮室友程栗取走南门驿站的电热毯快递，放到家里餐桌上", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-02T20:00:00+08:00", "created_at": "2026-11-02T17:13:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "外面风好大，我工位都能听见窗户响。", "at": "2026-11-02T17:08:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "我还在加班，能帮我取一下南门驿站的电热毯吗，取件码7541。八点关门，拿回来放餐桌就行。", "at": "2026-11-02T17:10:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "行，栗子，我八点前取回来，给你放餐桌上。", "at": "2026-11-02T17:12:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "阳台那扇窗我关上了。冰箱还有一盒面。", "at": "2026-11-02T18:05:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "今晚我煮面啊，今天不想切菜。", "at": "2026-11-02T18:40:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "行，酱在冰箱门上。", "at": "2026-11-02T18:41:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "电热毯取回来了，整个纸箱放在餐桌靠窗那边了，没拆。", "at": "2026-11-02T19:04:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "到家了，餐桌上的电热毯收到了，谢谢！", "at": "2026-11-02T19:08:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "completed", "evidence": ["m3", "m4"], "notes": "19:04取回放好的陈述和末条19:08的收件确认均晚于17:13创建。"},
+      "reason": "我在19:04明确说已取回指定快递并放到餐桌，程栗在末条19:08确认收到，两条均晚于17:13创建。取回和放好两个动作都有确认，整项约定已经完成。"
+    },
+    {
+      "id": "GR002", "split": "dev", "category": "self_cancel", "now": "2026-11-03T18:00:00+08:00",
+      "entries": [{"id": "e1", "kind": "private", "name": "家人郁檬的私聊"}],
+      "subjects": [{"id": "p1", "name": "郁檬", "aliases": []}],
+      "goal": {"key": "g", "content": "帮家人郁檬预约11月10日明月社区的常规体检", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-05T18:00:00+08:00", "created_at": "2026-11-03T08:03:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "能给我约一下明月社区11月10日的常规体检吗？五号之前约上就行。", "at": "2026-11-03T08:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "好，五号下班前帮你约好。", "at": "2026-11-03T08:02:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "今早那班车挤得我袋子都扁了，橘子倒没事。", "at": "2026-11-03T11:10:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "橘子皮厚，昨天挑的那袋还挺甜。", "at": "2026-11-03T11:12:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "刚收到单位通知，要统一安排另一场体检。我决定不去明月社区这场了，11月10日的别给我约了。", "at": "2026-11-03T14:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "行，那就不约明月社区了。", "at": "2026-11-03T14:02:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "橘子留三个给我，晚上回来拿。", "at": "2026-11-03T14:08:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "留着呢，装在布袋里了。", "at": "2026-11-03T17:00:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "abandoned", "evidence": ["m3"], "notes": "涉及的人明确取消这一次社区体检预约。"},
+      "reason": "郁檬在创建后明确决定不去并要求别预约，原约定应放弃。单位另有安排不表示这个社区预约已经做完。"
+    },
+    {
+      "id": "GR003", "split": "dev", "category": "action_done", "now": "2026-11-04T20:10:00+08:00",
+      "entries": [{"id": "e1", "kind": "private", "name": "家人傅豆的私聊"}],
+      "subjects": [{"id": "p1", "name": "傅豆", "aliases": ["豆豆"]}],
+      "goal": {"key": "g", "content": "给家人傅豆预约11月6日09:30长松体检中心的常规体检", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-05T18:00:00+08:00", "created_at": "2026-11-04T12:03:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "长松体检中心的常规体检，帮我约11月6日上午九点半吧，我把个人信息发你了。", "at": "2026-11-04T12:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "收到，明天六点前把这个预约办好。", "at": "2026-11-04T12:02:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "按我选的常规项目约就行，不加套餐。对了门口那盆薄荷该浇水了。", "at": "2026-11-04T12:10:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "好，薄荷中午已经浇过。", "at": "2026-11-04T12:12:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "action_result", "sender": "self", "content": "预约成功。体检人：傅豆；机构：长松体检中心；项目：常规体检；到场时间：2026年11月6日09:30；预约号：CS4619；状态：已确认。", "at": "2026-11-04T17:40:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "那个预约号我记到纸上，省得早上翻聊天。", "at": "2026-11-04T17:44:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "薄荷旁边的小碟子别扔，我拿来接水的。", "at": "2026-11-04T19:30:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "completed", "evidence": ["m3"], "notes": "创建后的行动结果确认了指定人、机构、项目和时段的预约。"},
+      "reason": "行动结果明确为预约成功且全部对应原约定，可以完成这个预约目标。目标只要求预约，无须等到实际体检结束。"
+    },
+    {
+      "id": "GR004", "split": "dev", "category": "proxy_done", "now": "2026-11-05T16:00:00+08:00",
+      "entries": [{"id": "e1", "kind": "private", "name": "室友单柏的私聊"}, {"id": "e2", "kind": "private", "name": "马桔的私聊"}],
+      "subjects": [{"id": "p1", "name": "单柏", "aliases": []}, {"id": "p2", "name": "马桔", "aliases": []}],
+      "goal": {"key": "g", "content": "帮室友单柏修好书桌右侧抽屉的滑轨", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-05T21:00:00+08:00", "created_at": "2026-11-05T09:02:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "我书桌右边那个抽屉又卡住了，能帮我修一下滑轨吗？今晚九点前能用就行。", "at": "2026-11-05T09:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "好，今晚九点前给你弄好右边的滑轨。", "at": "2026-11-05T09:01:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "中午饭盒忘带了，估计得排食堂。", "at": "2026-11-05T12:05:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "饭盒还在玄关鞋柜上。", "at": "2026-11-05T12:06:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "单柏桌子右边那个抽屉修好了，我刚过去拿书，拉了两下特别顺。", "at": "2026-11-05T13:40:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e2", "kind": "self_output", "sender": "self", "content": "你借走的是那本绿封面的书吗？", "at": "2026-11-05T13:41:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e2", "kind": "message", "sender": "p2", "content": "对，书签也夹着，周末带回来。", "at": "2026-11-05T13:45:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "我把备用钥匙放外套口袋了，出门别拿错那串。", "at": "2026-11-05T15:10:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m7", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "是门口挂着的灰外套吗？", "at": "2026-11-05T15:12:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "对，就那件，口袋有拉链。", "at": "2026-11-05T15:13:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "open", "notes": "唯一的修好陈述来自不在 people 内的马桔，我和单柏均未确认完成。"},
+      "reason": "唯一的滑轨修好陈述来自不在people中的马桔，发送者不符合关闭依据的要求。创建后单柏和我都没有确认该维修完成，我的后续问题只在聊借书。"
+    },
+    {
+      "id": "GR005", "split": "dev", "category": "vague", "now": "2026-11-06T20:00:00+08:00",
+      "entries": [{"id": "e1", "kind": "private", "name": "家人邵竹的私聊"}],
+      "subjects": [{"id": "p1", "name": "邵竹", "aliases": []}],
+      "goal": {"key": "g", "content": "今天18点前把向家人邵竹借的380元还到邵竹的收款账户", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-06T18:00:00+08:00", "created_at": "2026-11-06T10:03:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "上回借的380今天方便还我吗，六点前转到原来那个收款账户就好。", "at": "2026-11-06T10:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "可以，今天六点前还你380。", "at": "2026-11-06T10:02:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "门口那只狗今天穿了件雨衣，笑死。", "at": "2026-11-06T12:20:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "黄色那件？昨天还拖在地上。", "at": "2026-11-06T12:22:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m7", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "380已经还了。", "at": "2026-11-06T14:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m8", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "等等，刚才说错了，只是把收款人加好了，钱还没转出去。", "at": "2026-11-06T14:05:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "还钱那事差不多了，手机银行也弄好了，马上就好。", "at": "2026-11-06T15:20:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "好，我下楼遛一圈，顺便扔纸箱。", "at": "2026-11-06T15:25:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "那380应该快了，刚才手机又没电了。", "at": "2026-11-06T17:50:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "充电线在沙发缝里，我刚看到了。", "at": "2026-11-06T17:55:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "open", "notes": "兼有retracted：此前还了的说法已更正，后续只有含糊进度，没有转账成功或到账确认。"},
+      "reason": "此前的还款完成表态已撤回，手机银行弄好和差不多、应该快了也都不等于380元已还。即使截止时间已过，也不能据此自动关闭。"
+    },
+    {
+      "id": "GR006", "split": "dev", "category": "intent", "now": "2026-11-06T21:00:00+08:00",
+      "entries": [{"id": "e1", "kind": "private", "name": "室友汪岚的私聊"}],
+      "subjects": [{"id": "p1", "name": "汪岚", "aliases": []}],
+      "goal": {"key": "g", "content": "今晚给汪岚订11月8日14:20东港到柳城的大巴票两张", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-06T22:00:00+08:00", "created_at": "2026-11-06T18:03:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "今晚能帮我订两张大巴票吗，11月8日14:20东港到柳城的，乘车信息我稍后发。", "at": "2026-11-06T18:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "没问题，今晚十点前订这班的两张。", "at": "2026-11-06T18:02:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "冰箱那半袋饺子你先吃，我路上买了饭。", "at": "2026-11-06T18:10:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "两份乘车信息都收到了，我一会儿就订票，打算选前面一点的位置。", "at": "2026-11-06T18:30:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "行，有靠窗的就选靠窗。", "at": "2026-11-06T18:32:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "event", "sender": "scene", "content": "日历事项「订大巴票」的安排时段19:00—20:00已结束。", "at": "2026-11-06T20:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "手机充上电了，等下去把那两张票订掉。", "at": "2026-11-06T20:05:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "open", "notes": "收到资料和计划订票均未表明购票成功；日历时段结束也不是完成结果。"},
+      "reason": "创建后的发言一直是在说将要订票，没有买成的依据。日历事件只说明安排的时间过去了，不能替代实际购票结果。"
+    },
+    {
+      "id": "GR007", "split": "dev", "category": "partial", "now": "2026-11-07T18:30:00+08:00",
+      "entries": [{"id": "e1", "kind": "private", "name": "家人沈柿的私聊"}],
+      "subjects": [{"id": "p1", "name": "沈柿", "aliases": []}],
+      "goal": {"key": "g", "content": "替家人沈柿取齐北门驿站的三件包裹，并放到家里玄关", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-07T21:00:00+08:00", "created_at": "2026-11-07T10:03:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "北门驿站有我三件包裹，取件码都发你了。今天能一起带回来放玄关吗，有一箱比较沉。", "at": "2026-11-07T10:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "行，晚上九点前把三件都带回来，放玄关。", "at": "2026-11-07T10:02:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "今天菜市场的青菜便宜，回来路上可以看看。", "at": "2026-11-07T10:40:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "哦，有个小件是扁纸袋，别以为是发传单的就没拿。", "at": "2026-11-07T10:42:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "快递拿回来了两小件，已经放玄关了。那个大箱子还在驿站，一趟抱不动。", "at": "2026-11-07T11:50:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "大箱是猫砂，难怪重。折叠推车在阳台。", "at": "2026-11-07T11:53:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "嗯，剩下那箱晚饭后推车去取。", "at": "2026-11-07T11:55:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "我买到一把特别嫩的青菜，晚上下汤。", "at": "2026-11-07T17:20:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "那我不买菜了，冰箱还剩半块豆腐。", "at": "2026-11-07T17:22:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "豆腐闻一下，记不清哪天买的了。", "at": "2026-11-07T17:25:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "open", "notes": "取回两件并放好只完成了三件任务的一部分，第三件仍未取回。"},
+      "reason": "看起来像报完成的消息实际限定为两小件，且明确大箱仍在驿站。后续只有取剩余一件的打算，不能关闭整项目标。"
+    },
+    {
+      "id": "GR008", "split": "dev", "category": "other_instance", "now": "2026-11-08T22:00:00+08:00",
+      "entries": [{"id": "e1", "kind": "private", "name": "室友纪朔的私聊"}],
+      "subjects": [{"id": "p1", "name": "纪朔", "aliases": []}],
+      "goal": {"key": "g", "content": "今晚帮室友纪朔换好厨房水槽下漏水的排水软管", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-08T21:00:00+08:00", "created_at": "2026-11-08T09:05:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "厨房水槽下面的排水软管滴水了，今天能帮我换一根吗？盆已经接上了。", "at": "2026-11-08T09:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "好，今晚九点前换好厨房这根。", "at": "2026-11-08T09:04:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "对了，上周浴室洗手盆那根软管是不是已经换过了，我想把那个小盆收起来。", "at": "2026-11-08T11:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "换好了，上周浴室那根排水软管装好后试了半小时，没再漏。小盆可以收起来。", "at": "2026-11-08T11:03:00+08:00", "quote_author": "p1", "quote_content": "上周浴室洗手盆那根软管是不是已经换过了"},
+        {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "那我把小盆放阳台。厨房下面接水的是白色大盆，别弄混了。", "at": "2026-11-08T11:05:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "知道，阳台旁边那袋纸壳也能一起收了。", "at": "2026-11-08T11:07:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "今天天黑得真早，刚五点就得开灯。", "at": "2026-11-08T17:05:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "客厅那盏灯开低档就够了。", "at": "2026-11-08T17:08:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "灯罩顶上积灰了，难怪看着没以前亮。", "at": "2026-11-08T17:10:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "open", "notes": "换好了说的是上周浴室的软管，本次目标是厨房水槽下的另一根。"},
+      "reason": "创建后的完成陈述虽然来自我，但明确回指上周浴室那次维修。厨房这次没有完成依据，截止时间过去也不应关闭。"
+    },
+    {
+      "id": "GR009", "split": "dev", "category": "time_trap", "now": "2026-11-09T20:00:00+08:00",
+      "entries": [{"id": "e1", "kind": "private", "name": "室友章藕的私聊"}],
+      "subjects": [{"id": "p1", "name": "章藕", "aliases": []}],
+      "goal": {"key": "g", "content": "今天帮室友章藕把阳台晾着的两双帆布鞋收进鞋柜", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-09T20:30:00+08:00", "created_at": "2026-11-09T18:00:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "晚上要下雨，我晾阳台的两双帆布鞋帮忙收一下吧，放鞋柜就行，八点半前记得收。", "at": "2026-11-09T17:20:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "行，两双我都收进鞋柜，今晚八点半前弄好。", "at": "2026-11-09T17:21:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "阳台那两双帆布鞋都收好了，放在鞋柜最下面一层。", "at": "2026-11-09T17:45:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "看到了，两双都在，白色那双明天正好穿，谢啦。", "at": "2026-11-09T17:47:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "晚上要不要吃小馄饨，冷冻层还有一包。", "at": "2026-11-09T18:15:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "可以，加点紫菜。", "at": "2026-11-09T18:16:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "沙发上那条围巾是我的，我刚找了半天。", "at": "2026-11-09T19:00:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "open", "notes": "收鞋与确认两双都在的消息分别早于18:00创建15分钟和13分钟，创建后只有闲聊。"},
+      "reason": "17:45的收鞋陈述和17:47的本人确认虽覆盖同一约定，却分别早于18:00创建15分钟和13分钟，不能作为本次关闭的有效依据。创建后没有新的收鞋完成确认。"
+    },
+    {
+      "id": "GR010", "split": "dev", "category": "retracted", "now": "2026-11-10T12:00:00+08:00",
+      "entries": [{"id": "e1", "kind": "private", "name": "家人柴杉的私聊"}],
+      "subjects": [{"id": "p1", "name": "柴杉", "aliases": []}],
+      "goal": {"key": "g", "content": "给家人柴杉买11月12日08:15柳城到东港的高铁二等座一张", "kind": "normal", "origin": "admin", "state": "open", "deadline": "2026-11-10T20:00:00+08:00", "created_at": "2026-11-10T09:03:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "帮我买一张12号早上08:15柳城到东港的高铁票吧，二等座就行，今天买了安心。", "at": "2026-11-10T09:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "好，今晚八点前给你买好这一张。", "at": "2026-11-10T09:02:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "12号08:15那张二等座买好了。", "at": "2026-11-10T10:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "好，我找一下背包，充电器还在里面。", "at": "2026-11-10T10:02:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "刚才看错了，那张其实停在待支付，已经超时取消。票没买成，我还得重新买。", "at": "2026-11-10T10:10:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "那我还是坐这班，你重新买的时候别改时间。", "at": "2026-11-10T10:12:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "找到背包了，在床底那个收纳箱后面。", "at": "2026-11-10T10:30:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "难怪昨天没翻到。", "at": "2026-11-10T10:32:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "里面居然还有上次出门剩的两颗糖。", "at": "2026-11-10T10:33:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "open", "notes": "兼有host_admin，origin为admin，不进入自动复核；对话中也有完成后撤回。内部目标中的撤回另见GR005。"},
+      "reason": "管理员创建的目标不进入自动关闭流程；对话里的买好表态也已被后续消息更正。取消的是未支付订单，柴杉仍要这张票，不能把这理解为放弃原约定。"
+    },
+    {
+      "id": "GR011", "split": "dev", "category": "joke", "now": "2026-11-10T19:30:00+08:00",
+      "entries": [{"id": "e1", "kind": "private", "name": "室友郑桃的私聊"}],
+      "subjects": [{"id": "p1", "name": "郑桃", "aliases": []}],
+      "goal": {"key": "g", "content": "今晚帮室友郑桃修好洗衣机松动的门扣", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-10T22:00:00+08:00", "created_at": "2026-11-10T15:03:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "洗衣机门扣又松了，今晚能帮我修一下吗？衣服先堆着了。", "at": "2026-11-10T15:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "行，今晚十点前修好门扣。", "at": "2026-11-10T15:02:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "今天这风，衣服晾出去估计能直接飞到楼下。", "at": "2026-11-10T17:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "门扣修好了，靠意念修的，螺丝刀还在柜子里没拿出来呢😂", "at": "2026-11-10T17:05:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "哈哈，那麻烦意念顺便把袜子配成双。", "at": "2026-11-10T17:07:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "先吃饭，吃完再拿工具去弄门扣。", "at": "2026-11-10T17:10:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "饭桌上那袋面包别压，里面有两个带奶油的。", "at": "2026-11-10T18:20:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "给你放到架子上层了。", "at": "2026-11-10T18:22:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "open", "notes": "修好了处在明确的意念修理玩笑中，后续仍准备拿工具去修。"},
+      "reason": "结合整句和后续对话，修好了是玩笑而非实际完成陈述。最后放上架子的是面包，也不是洗衣机门扣的结果。"
+    },
+    {
+      "id": "GR012", "split": "dev", "category": "host_admin", "now": "2026-11-10T20:00:00+08:00",
+      "entries": [{"id": "e1", "kind": "private", "name": "家人路漾的私聊"}],
+      "subjects": [{"id": "p1", "name": "路漾", "aliases": []}],
+      "goal": {"key": "g", "content": "给家人路漾还清上周代付的260元水电费", "kind": "normal", "origin": "host", "state": "open", "deadline": "2026-11-10T19:00:00+08:00", "created_at": "2026-11-10T10:05:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": []},
+      "messages": [
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "上周我垫的水电费一共260，你今天有空转我一下吧。", "at": "2026-11-10T09:55:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "好，今晚七点前还你这260。", "at": "2026-11-10T09:58:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "中午的汤我放冰箱了，喝之前热一下。", "at": "2026-11-10T12:10:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "看到汤盒了，等会儿喝。", "at": "2026-11-10T12:12:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "水电费260元已经转给你了，上周那笔还清了。", "at": "2026-11-10T18:05:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "收到260了，金额正好，谢谢。", "at": "2026-11-10T18:08:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "明天可能下雨，门边那把折叠伞能用。", "at": "2026-11-10T19:10:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m8", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "好，我放包里。", "at": "2026-11-10T19:12:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "open", "notes": "宿主创建的目标不进入自动完成或放弃流程。"},
+      "reason": "虽然我和路漾都在创建后明确确认还清，目标的origin为host，仍须保持open。消息充分不能越过目标创建方式的限制。"
+    },
+    {
+      "id": "GR013", "split": "dev", "category": "self_done", "now": "2026-11-11T13:00:00+08:00",
+      "entries": [{"id": "e1", "kind": "private", "name": "家人贺荔的私聊"}],
+      "subjects": [{"id": "p1", "name": "贺荔", "aliases": ["荔子"]}],
+      "goal": {"key": "g", "content": "帮家人贺荔把鞋柜左侧松掉的门把手装牢", "kind": "normal", "origin": "internal", "state": "open", "deadline": null, "created_at": "2026-11-11T08:05:00+08:00", "entry_id": "e1", "people": [], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "鞋柜左边那个门把手掉了，能帮我装牢吗？螺丝都捡起来放鞋盒盖上了。", "at": "2026-11-11T08:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "旁边那卷胶带先别挪，我晚上包个盒子。", "at": "2026-11-11T08:02:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "行，左边那个把手我帮你重新装牢。", "at": "2026-11-11T08:03:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "鞋盒盖和螺丝找到了，工具包也在。", "at": "2026-11-11T09:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "要是袋里有两种螺丝，用原来那颗短的，长的放不进去。", "at": "2026-11-11T09:07:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "左边那个现在拧得很稳，刚开关几回都不晃了，谢啦。", "at": "2026-11-11T11:20:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "剩下的零件还在原来那个小袋子里。", "at": "2026-11-11T11:22:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "午饭的米我泡上了，回来不用再淘。", "at": "2026-11-11T12:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "好，我带个青菜回来。", "at": "2026-11-11T12:05:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "completed", "evidence": ["m3"], "notes": "来源s1/s2保留请求和承诺；people为空，来源发送者贺荔的11:20确认晚于08:05创建。"},
+      "reason": "来源s1保留贺荔的请求、s2保留我的承诺，people为空时贺荔仍由来源发送者回退取得依据资格。11:20的m3晚于08:05创建，明确确认同一把手装牢并试用正常。"
+    },
+    {
+      "id": "GR014", "split": "dev", "category": "self_cancel", "now": "2026-11-11T19:00:00+08:00",
+      "entries": [{"id": "e1", "kind": "private", "name": "室友许椰的私聊"}],
+      "subjects": [{"id": "p1", "name": "许椰", "aliases": []}],
+      "goal": {"key": "g", "content": "给许椰预约11月15日上午客厅两幅窗帘的上门拆洗", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-11T21:00:00+08:00", "created_at": "2026-11-11T10:04:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "客厅两幅窗帘该洗了，能帮我约15号上午上门拆洗吗？今晚问好吧，我那天下午出门。", "at": "2026-11-11T10:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "好，我问楼下那家店，今晚九点前给你约上15号上午。", "at": "2026-11-11T10:03:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "客厅杯子下面那张优惠券你看见没，差点当废纸扔了。", "at": "2026-11-11T12:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "面包券月底才到期，先留着。", "at": "2026-11-11T17:20:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "嗯，没扔，和小票放一起了。", "at": "2026-11-11T17:22:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "物业通知15号上午要换窗，客厅窗帘先别拆洗了，这次我就不预约了。", "at": "2026-11-11T18:30:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "好，这次拆洗不约了，等换窗弄完我再自己找时间洗。", "at": "2026-11-11T18:33:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "abandoned", "evidence": ["m3", "m4"], "notes": "18:30与末条18:33明确取消15日上午这一次拆洗预约，均晚于10:04创建。"},
+      "reason": "来源约定的是15日上午的窗帘拆洗预约，创建后18:30我明确不再预约，许椰在18:33同意取消这次安排。以后另找时间清洗没有延续本次预约目标，应放弃。"
+    },
+    {
+      "id": "GR015", "split": "dev", "category": "action_done", "now": "2026-11-11T21:10:00+08:00",
+      "entries": [{"id": "e1", "kind": "private", "name": "室友杜糯的私聊"}],
+      "subjects": [{"id": "p1", "name": "杜糯", "aliases": []}],
+      "goal": {"key": "g", "content": "今天向室友杜糯还清代付的180元燃气费", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-11T22:00:00+08:00", "created_at": "2026-11-11T14:03:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "燃气费我先垫了，你那份180，今天转我就行，还是原来的账户。", "at": "2026-11-11T14:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "好，今晚十点前还你这180。", "at": "2026-11-11T14:02:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "快递柜旁边开了家小店，门口摆了好多盆栽。", "at": "2026-11-11T15:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "早上路过看到了，还有一排空花盆。", "at": "2026-11-11T15:02:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "收款账户没换，名字还是杜糯，别点到头像一样的那个。", "at": "2026-11-11T16:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "action_result", "sender": "self", "content": "转账成功。收款人：杜糯；金额：180.00元；备注：归还代付燃气费；收款状态：已到账；交易号：RQ11118026。", "at": "2026-11-11T18:40:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "我换了个绿叶头像，有点像楼下那排盆栽。", "at": "2026-11-11T19:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "看到了，比原来那张亮一点。", "at": "2026-11-11T19:02:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "晚饭留了半锅汤，回来还热着。", "at": "2026-11-11T20:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m8", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "我带了烧饼，等会儿一起吃。", "at": "2026-11-11T20:04:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "completed", "evidence": ["m3"], "notes": "创建后的行动结果显示向指定收款人转账180元成功且到账。"},
+      "reason": "行动结果中的收款人、金额和备注均对应这笔代付燃气费，且已到账，足以认定还清。之后的头像和晚饭消息与还款无关。"
+    },
+    {
+      "id": "GR016", "split": "dev", "category": "self_done", "now": "2026-11-09T17:20:00+08:00",
+      "entries": [{"id": "e1", "kind": "group", "name": "北塔项目同步"}],
+      "subjects": [{"id": "p1", "name": "申楠", "aliases": ["阿楠"]}, {"id": "p2", "name": "戴橙", "aliases": []}],
+      "goal": {"key": "g", "content": "把北塔项目11月第二轮访谈的纪要和附件清单提交到项目收件箱", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-09T17:00:00+08:00", "created_at": "2026-11-09T09:03:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "Iris，第二轮访谈的纪要和附件清单都在群文件了，今天17点前帮我一起交到项目收件箱吧。", "at": "2026-11-09T09:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "楼下咖啡机又只出热水，今天靠茶了。", "at": "2026-11-09T09:01:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "收到了，我把这两份一起交。", "at": "2026-11-09T09:02:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "附件清单用文件名带1109的那份，昨晚那份漏了一行。", "at": "2026-11-09T11:05:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "看到了，我提交时用1109这份。", "at": "2026-11-09T11:07:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "两份都交进收件箱了，清单用的1109版，各有一张回执。", "at": "2026-11-09T16:32:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "好，我这边也看到这一轮的两份回执了。", "at": "2026-11-09T16:36:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "谁的透明饭盒还在会议室？我放茶水间了。", "at": "2026-11-09T17:02:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "我的，刚才一路找过去没看见，谢啦。", "at": "2026-11-09T17:06:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "completed", "evidence": ["m4"], "notes": "来源s1/s2约定同轮的两份材料；16:32完整提交的确认晚于09:03创建，末尾仍有饭盒闲聊。"},
+      "reason": "s1提出两份材料一起交，s2明确接下；16:32的self消息晚于09:03创建，结合上下文确认纪要和1109版附件清单均已提交。后续收件确认与闲聊没有撤回完成说法。"
+    },
+    {
+      "id": "GR017", "split": "dev", "category": "self_cancel", "now": "2026-11-10T15:30:00+08:00",
+      "entries": [{"id": "e1", "kind": "group", "name": "周中评审改稿"}],
+      "subjects": [{"id": "p1", "name": "崔沅", "aliases": []}, {"id": "p2", "name": "盛予", "aliases": ["小盛"]}],
+      "goal": {"key": "g", "content": "为11月11日评审把试用引导方案改成三栏对照版并发到评审群", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-10T18:00:00+08:00", "created_at": "2026-11-09T16:12:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "11号评审想看三种引导路线对比，Iris把方案排成三栏，明天18点前发这里行吗？", "at": "2026-11-09T16:08:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "可以，这次评审的三栏对照版我来改，改完发群里。", "at": "2026-11-09T16:11:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "投屏遥控器找到了，在白板槽里。", "at": "2026-11-10T09:05:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "刚开完会，这次评审议程有调整，我把结论敲一下。", "at": "2026-11-10T14:03:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "11号评审已经撤掉试用引导这个议题了。三栏改版整项取消，这次不改也不提交了，Iris不用再做这份。", "at": "2026-11-10T14:12:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "那明早少带一根转接线，包终于能轻点。", "at": "2026-11-10T14:19:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "下个月如果重启引导实验，再按新数据另起一份。", "at": "2026-11-10T14:24:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "窗边那盆绿植缺水了，我下楼接一壶。", "at": "2026-11-10T15:17:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "收到，这次三栏版不用改也不用交了，手头草稿我先收起来。", "at": "2026-11-10T15:22:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "abandoned", "evidence": ["m3", "m4"], "notes": "14:12涉及人取消整项任务，末条15:22的self再次确认；下月另起一份不延续本次约定。"},
+      "reason": "崔沅在11月10日14:12明确撤销本次评审的改稿与提交，self在末条15:22确认，两条均晚于11月9日16:12创建。下月可能另起新稿没有延续本次约定，应放弃。"
+    },
+    {
+      "id": "GR018", "split": "dev", "category": "action_done", "now": "2026-11-10T11:40:00+08:00",
+      "entries": [{"id": "e1", "kind": "group", "name": "采访设备借用角"}],
+      "subjects": [{"id": "p1", "name": "原珂", "aliases": []}, {"id": "p2", "name": "纪闻", "aliases": []}],
+      "goal": {"key": "g", "content": "替原珂把开不了机的R17号录音笔送到青禾维修点，并拿到受理单", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-10T12:00:00+08:00", "created_at": "2026-11-10T08:42:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "那支录音笔又开不了机，机器和保修卡都装袋了。Iris今天中午前帮我送青禾维修点，办好后拿张受理单，机身号R17。", "at": "2026-11-10T08:38:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "行，我带去青禾，办好送修拿到受理单。", "at": "2026-11-10T08:41:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "零食先别买辣的，我这次想保护嗓子。", "at": "2026-11-10T09:02:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "袋子里有根短录音线，是机器原配的，也一起交过去。", "at": "2026-11-10T09:16:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "action_result", "sender": "self", "content": "青禾维修点送修受理成功。客户：原珂；设备：R17号录音笔及原配录音线；故障：无法开机；状态：已收件，待检测；受理单号：QH-1110-024；受理单已领取。", "at": "2026-11-10T10:27:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "中午拿蓝色收纳包行吗？我要装两个充电宝。", "at": "2026-11-10T10:32:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "拿吧，里面那张旧停车票可以扔了。", "at": "2026-11-10T10:34:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "行，旧票都卷成筒了，我顺手收一下。", "at": "2026-11-10T10:35:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "午饭谁去食堂？今天想早点下去。", "at": "2026-11-10T11:28:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "completed", "evidence": ["m3"], "notes": "10:27的行动结果晚于08:42创建，确认指定录音笔已送修且受理单已领取。"},
+      "reason": "来源s1/s2约定把R17号录音笔送到青禾并领取受理单，10:27的self行动结果晚于08:42创建，逐项确认收件和领取。目标只要求办好送修，待检测不妨碍这项约定完成。"
+    },
+    {
+      "id": "GR019", "split": "dev", "category": "proxy_done", "now": "2026-11-10T18:10:00+08:00",
+      "entries": [{"id": "e1", "kind": "group", "name": "课题开题材料站"}],
+      "subjects": [{"id": "p1", "name": "方栎", "aliases": ["阿栎"]}, {"id": "p2", "name": "包柚", "aliases": []}, {"id": "p3", "name": "储青", "aliases": []}],
+      "goal": {"key": "g", "content": "方栎把本次开题报告和参考文献表交到课程平台", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-10T20:00:00+08:00", "created_at": "2026-11-10T09:08:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "我的开题报告和参考文献表今晚20点前交课程平台，Iris帮我记着这件事。", "at": "2026-11-10T09:05:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "记下了，是这次开题的报告和文献表两份。", "at": "2026-11-10T09:07:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "机房空调像不要电似的，带外套了没？", "at": "2026-11-10T14:12:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "我回宿舍拿一下充电器，电脑只剩12%。", "at": "2026-11-10T15:28:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "阿栎那两份开题材料已经交完啦，报告和文献表都交了，我刚在走廊碰到阿栎。", "at": "2026-11-10T17:02:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "好快，我的图还在往外跑，页边距调了半天。", "at": "2026-11-10T17:04:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "下午平台没那么卡，晚点估计又要排队。", "at": "2026-11-10T17:08:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "食堂二楼今天有热汤，我先去占个小桌。", "at": "2026-11-10T17:42:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p3", "content": "帮我留个位，打印完就来。", "at": "2026-11-10T17:45:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "open", "notes": "只有包柚代为报告交完；方栎创建后的发言均与材料提交无关。"},
+      "reason": "明确的完成说法来自不在people中的包柚，目标涉及人方栎和self均未提供创建后的完成依据。"
+    },
+    {
+      "id": "GR020", "split": "dev", "category": "vague", "now": "2026-11-10T09:40:00+08:00",
+      "entries": [{"id": "e1", "kind": "group", "name": "展台动线小修"}],
+      "subjects": [{"id": "p1", "name": "梁芥", "aliases": []}, {"id": "p2", "name": "白穗", "aliases": []}],
+      "goal": {"key": "g", "content": "把展台方案的签到区和体验区位置调换并导出新版PDF发到筹备群", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-09T18:00:00+08:00", "created_at": "2026-11-09T10:22:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "签到放门口会堵，把签到区和体验区调个位置吧。Iris改完导个新版PDF，今天18点前发筹备群。", "at": "2026-11-09T10:18:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "好，换好这两块的位置，我导出新版发这里。", "at": "2026-11-09T10:21:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "门口那张旧海报我先收起来了，边角卷得厉害。", "at": "2026-11-09T13:34:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "动线这份差不多了，应该很快就能给你们。", "at": "2026-11-09T17:43:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "嗯嗯，先去吃饭也行，今天人都散得早。", "at": "2026-11-09T17:46:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "我带走那卷纸胶带了，明早放回来。", "at": "2026-11-09T18:12:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "早，今天走廊灯怎么又坏一盏。", "at": "2026-11-10T08:51:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "那份动线图应该快好了，我回头再弄一下。", "at": "2026-11-10T09:06:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "纸胶带已放回抽屉，顺手放了把剪刀。", "at": "2026-11-10T09:24:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "open", "notes": "差不多和应该快好都没有确认改完、导出及发送；截止时间已过也不关闭。"},
+      "reason": "Iris的两次表态均是含糊进度，没有完整完成或明确取消的消息；不能因逾期把目标判为完成或放弃。"
+    },
+    {
+      "id": "GR021", "split": "dev", "category": "intent", "now": "2026-11-11T10:20:00+08:00",
+      "entries": [{"id": "e1", "kind": "group", "name": "晚饭后刷题"}],
+      "subjects": [{"id": "p1", "name": "麦辰", "aliases": []}, {"id": "p2", "name": "栗包", "aliases": []}],
+      "goal": {"key": "g", "content": "给学习小组排出11月12日至15日的概率论复习计划并上传群文件", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-11T12:00:00+08:00", "created_at": "2026-11-10T19:03:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "Iris，12到15号概率论怎么复习帮我们排一下，四天都要有安排，明天中午前放群文件可以吗？", "at": "2026-11-10T18:58:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "可以，我按章节和练题时间排这四天，排完传群文件。", "at": "2026-11-10T19:02:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "图书馆热水机修好了，今天不用背一大瓶。", "at": "2026-11-11T08:21:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "我午休会先把概率论这四天的安排排出来，再上传群文件，上午先处理完手头的表。", "at": "2026-11-11T08:50:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "行，我午饭吃完再来群里找。", "at": "2026-11-11T08:54:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "别在靠门的桌子做题，风吹得纸一直翻。", "at": "2026-11-11T09:15:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "我搬到插座边上了，电脑快没电。", "at": "2026-11-11T09:18:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m7", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "计划里我准备留一晚专门过错题，午休排的时候加进去。", "at": "2026-11-11T10:04:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "event", "sender": "p1", "content": "麦辰将群待办「12—15日概率论复习计划上传群文件」标记为完成。", "at": "2026-11-11T10:10:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "窗边这把椅子有点晃，我换到过道边了。", "at": "2026-11-11T10:16:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "open", "notes": "10:10的m2是末条与目标相关的消息，发送者和时间均合格，但kind为event；此后只有闲聊。"},
+      "reason": "创建后的自然语言发言只有排计划和上传的意向；末次相关消息m2在11月11日10:10由涉及人p1发出，虽晚于11月10日19:03创建，却是event，不能作为关闭依据。其后没有合格类型的完成确认，也没有新的未完成表态替代kind限制。"
+    },
+    {
+      "id": "GR022", "split": "dev", "category": "partial", "now": "2026-11-10T19:30:00+08:00",
+      "entries": [{"id": "e1", "kind": "group", "name": "冬季上线活动筹备"}],
+      "subjects": [{"id": "p1", "name": "岑禾", "aliases": []}, {"id": "p2", "name": "陆荞", "aliases": []}],
+      "goal": {"key": "g", "content": "把冬季上线活动brief和预算表两份材料提交到审批盘", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-10T18:00:00+08:00", "created_at": "2026-11-10T09:17:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "Iris，今天18点前把冬季上线活动的brief和预算表都交审批盘，两个一起走审批。", "at": "2026-11-10T09:12:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "好，brief和预算表两份我都提交过去。", "at": "2026-11-10T09:16:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "会议室那根短网线谁拿了？长的这根绕一圈有点夸张。", "at": "2026-11-10T11:06:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "上线活动brief已经提交审批盘啦。预算表还开在另一个窗口，两项税费得再核一下。", "at": "2026-11-10T16:46:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "brief收到，审批盘里总算有东西了。", "at": "2026-11-10T16:50:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "找到短网线了，在投影仪后面，离谱。", "at": "2026-11-10T17:18:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "预算那两项税费还没对上，预算表暂时没提交，我得等报价单补齐。", "at": "2026-11-10T18:22:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "报价单我在邮件里翻一下，别把含税那列当未税。", "at": "2026-11-10T18:26:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "我去取快递，门禁卡先放前台了。", "at": "2026-11-10T19:09:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "open", "notes": "目标包含两份材料，brief已交而预算表仍未提交。"},
+      "reason": "完成说法只覆盖brief，创建后的后续消息明确预算表尚未提交；部分完成和已过截止时间都不足以关闭整个目标。"
+    },
+    {
+      "id": "GR023", "split": "dev", "category": "other_instance", "now": "2026-11-11T18:20:00+08:00",
+      "entries": [{"id": "e1", "kind": "group", "name": "星桥晚间三排"}],
+      "subjects": [{"id": "p1", "name": "糖罐", "aliases": []}, {"id": "p2", "name": "柚皮", "aliases": []}],
+      "goal": {"key": "g", "content": "整理11月11日20点30分那轮三局训练的复盘截图并发到开黑群", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-11T23:30:00+08:00", "created_at": "2026-11-10T18:06:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "明晚11号20点半那轮约三局，Iris结束后帮忙理好复盘截图发群里，睡前能看就行。", "at": "2026-11-10T18:02:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "行，11号这轮三局打完我整理截图，23点半前发这里。", "at": "2026-11-10T18:05:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "今晚10号这轮也开了，耳机刚插好。", "at": "2026-11-10T20:28:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "10号今晚的三局复盘截图已经整理好，全部发群相册了，翻到最新那组就是。", "at": "2026-11-10T23:08:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "昨晚10号那组截图收到，第二局最后那波一眼看出谁走散了哈哈。", "at": "2026-11-11T09:04:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "别问，问就是地图太黑。", "at": "2026-11-11T09:07:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "11号今晚那轮还是20点半开，截图我到时照样收。", "at": "2026-11-11T12:13:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "饭得早点吃，今天外卖一路显示骑手在转圈。", "at": "2026-11-11T17:41:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "我直接煮面了，十分钟吃完。", "at": "2026-11-11T17:49:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "open", "notes": "完成并收到的是11月10日那轮截图，目标指定11月11日晚的训练。"},
+      "reason": "m2虽在目标创建后且由self明确报完成，实际对应前一天的另一轮训练；目标所指11日晚场次尚未开始。"
+    },
+    {
+      "id": "GR024", "split": "dev", "category": "time_trap", "now": "2026-11-11T10:20:00+08:00",
+      "entries": [{"id": "e1", "kind": "group", "name": "统计课清早补题"}],
+      "subjects": [{"id": "p1", "name": "邵芦", "aliases": []}, {"id": "p2", "name": "石榴籽", "aliases": []}],
+      "goal": {"key": "g", "content": "把统计课第六讲练习的答案解析PDF上传到学习群文件", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-11T09:00:00+08:00", "created_at": "2026-11-11T09:10:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "Iris，第六讲练习的答案解析PDF在共享盘了，早上9点前帮我传群文件，通勤路上想看。", "at": "2026-11-11T08:02:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "好，我把第六讲的解析PDF传这里。", "at": "2026-11-11T08:03:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "公交今天挤到连书包都不用自己背，真省力。", "at": "2026-11-11T08:12:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "统计第六讲练习的答案解析PDF已经上传群文件了，文件名是「第六讲-答案解析」。", "at": "2026-11-11T08:41:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "看到了，第六讲解析已收到，我现在打开读。", "at": "2026-11-11T08:44:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "靠门那张桌子今天有人坐吗？我再过十分钟到。", "at": "2026-11-11T09:13:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "刚才照片里门口那排还空着两张。", "at": "2026-11-11T09:18:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "我在窗边，白色水杯旁边那个位子给我留一下。", "at": "2026-11-11T09:22:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "到了，暖气开得也太足，先把外套放门边。", "at": "2026-11-11T09:45:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "open", "notes": "两条完成确认均在09:10创建目标之前；创建后的消息只有座位闲聊。"},
+      "reason": "m2的上传完成和m3的收到分别发生于08:41和08:44，均早于目标09:10的创建时间，不能用来自动关闭这条目标。"
+    },
+    {
+      "id": "GR025", "split": "dev", "category": "retracted", "now": "2026-11-11T15:20:00+08:00",
+      "entries": [{"id": "e1", "kind": "group", "name": "校园旧物日排班"}],
+      "subjects": [{"id": "p1", "name": "钟菇", "aliases": []}, {"id": "p2", "name": "桑麦", "aliases": []}],
+      "goal": {"key": "g", "content": "把11月14日旧物日的志愿者排班表改成每半小时一档并将新版发到筹备群", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-11T17:00:00+08:00", "created_at": "2026-11-11T09:34:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "14号旧物日那张志愿者表，一小时太长了，Iris改成半小时一档，今天17点前把新版发筹备群吧。", "at": "2026-11-11T09:30:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "好，我改好半小时档位再把新表发这里。", "at": "2026-11-11T09:33:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "14号志愿者排班表已经全部改成半小时一档，新版也发到群文件了。", "at": "2026-11-11T12:08:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "我买到一袋夹子，挂价签应该够了。", "at": "2026-11-11T12:14:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "我打开群文件那张怎么还是一小时一档？下午两点到三点还是同一格。", "at": "2026-11-11T12:27:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "刚才说全部改好不对，我发错成旧表了。新版只改了上午，下午的半小时档位还没弄完，也还没把新版发出来。", "at": "2026-11-11T12:31:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "好，我先不把旧表转出去，等你这一份。", "at": "2026-11-11T12:35:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "有人看到蓝色记号笔吗？刚拿在手里就消失了。", "at": "2026-11-11T14:42:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "在胶带芯里，刚才防滚塞进去的。", "at": "2026-11-11T14:46:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "open", "notes": "12:08的完整完成说法已被12:31的本人更正撤回，后续没有重新完成的消息。"},
+      "reason": "Iris虽先明确报完成，随后承认发的是旧表且新版尚未改完和发送，应以这一后续更正保持目标开放。"
+    },
+    {
+      "id": "GR026", "split": "dev", "category": "joke", "now": "2026-11-11T16:00:00+08:00",
+      "entries": [{"id": "e1", "kind": "group", "name": "周末五人车招募"}],
+      "subjects": [{"id": "p1", "name": "糖伞", "aliases": []}, {"id": "p2", "name": "饼屑", "aliases": []}],
+      "goal": {"key": "g", "content": "为11月14日20点的五人训练凑齐五名队员并把房间码发到游戏群", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-14T19:30:00+08:00", "created_at": "2026-11-11T10:06:00+08:00", "entry_id": "e1", "people": ["p1", "p2"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "这周六14号20点想开五人训练，现在名单只有我和饼屑，Iris帮凑齐五个人，再把房间码发群里，19点半前定下来。", "at": "2026-11-11T10:01:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "好，我来找齐这五个人，房间码也发这里。", "at": "2026-11-11T10:05:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "今天食堂玉米甜得像开挂，连啃两根。", "at": "2026-11-11T12:19:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "周六五人车组齐了，五个格子三个填着「空气」，房间码都省得发了🙃", "at": "2026-11-11T13:04:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "请空气三位自带耳机，别又让我一个人报点哈哈哈哈。", "at": "2026-11-11T13:06:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "这车透气是真透气。我下午下课去隔壁群再问一圈，差的三位得抓紧了。", "at": "2026-11-11T13:11:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "我不挑位置，能凑到人先把名字填上。", "at": "2026-11-11T13:14:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "顺便说句，谁的键盘声像炒豆子，开麦记得离远点。", "at": "2026-11-11T15:27:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "我换静音轴了，这次可以证明清白。", "at": "2026-11-11T15:32:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "open", "notes": "所谓组齐是拿三个空位开玩笑，仍缺三名队员，也没有发房间码。"},
+      "reason": "m2的完成措辞与同句的三个空气位构成反话，后续涉及人的发言也明确仍在招人，不能据此完成或放弃真实组队目标。"
+    },
+    {
+      "id": "GR027", "split": "dev", "category": "host_admin", "now": "2026-11-11T11:40:00+08:00",
+      "entries": [{"id": "e1", "kind": "group", "name": "东仓器材交接"}],
+      "subjects": [{"id": "p1", "name": "胡榛", "aliases": []}, {"id": "p2", "name": "晏棉", "aliases": []}],
+      "goal": {"key": "g", "content": "完成东仓B架12件手持测量仪的编号盘点，并把盘点结果存入仓库台账", "kind": "normal", "origin": "admin", "state": "open", "deadline": "2026-11-11T18:00:00+08:00", "created_at": "2026-11-11T09:10:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": []},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "东仓B架那12件手持测量仪都回来了，机身号在底部，旧标签有几张翘边。", "at": "2026-11-11T08:56:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "标签打印机今天终于不歪着出纸了，省了一卷纸。", "at": "2026-11-11T09:04:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "我上午逐件核B架的机身号，盘完把结果记进仓库台账。", "at": "2026-11-11T09:18:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "对，先盘B架这12件，A架那批温度计还没归还。", "at": "2026-11-11T09:22:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "前台送来一箱封箱胶带，我先放门边了。", "at": "2026-11-11T10:00:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "action_result", "sender": "self", "content": "盘点记录保存成功。位置：东仓B架；器材：手持测量仪；应盘12件，实盘12件；12个机身编号逐一核对，无缺失或重复；保存位置：仓库台账/2026-11-11/B架盘点。", "at": "2026-11-11T10:48:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "B架12件的机身号全核完了，盘点结果也存进台账了。", "at": "2026-11-11T10:49:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "我打开今天B架那条记录了，12个编号都在，收到。", "at": "2026-11-11T10:54:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "备用标签纸还有两卷，要不要一起收进柜子？", "at": "2026-11-11T11:11:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "好，装透明袋里，明天一眼能找见。", "at": "2026-11-11T11:20:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m9", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "装好了，袋口贴了张黄便签。", "at": "2026-11-11T11:23:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "open", "notes": "origin仍为admin且sources为空；09:10创建后的盘点回执与双方确认均不改变G1排除条件。"},
+      "reason": "目标由管理员创建，不属于G1对象，必须保持open。10:48行动回执及随后双方确认虽晚于09:10创建，且覆盖12件编号盘点和台账保存，也不能越过origin限制。"
+    },
+    {
+      "id": "GR028", "split": "dev", "category": "self_done", "now": "2026-11-11T12:10:00+08:00",
+      "entries": [{"id": "e1", "kind": "group", "name": "合租屋杂事角"}],
+      "subjects": [{"id": "p1", "name": "麦朵", "aliases": ["麦麦"]}, {"id": "p2", "name": "松脆", "aliases": []}],
+      "goal": {"key": "g", "content": "麦朵把合租屋冰箱冷冻层除霜并擦干，再重新通电", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-11T12:00:00+08:00", "created_at": "2026-11-11T08:10:00+08:00", "entry_id": "e1", "people": [], "sources": ["s1"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "冷冻层冰太厚，我今天中午前除个霜，清完擦干再插电。Iris帮我记着这事，别一忙又忘了。", "at": "2026-11-11T08:08:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "记了，今天中午前把冷冻层弄干净、擦干再通电。", "at": "2026-11-11T08:09:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "今天油条比昨天大一圈，我一个人吃撑了。", "at": "2026-11-11T09:15:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "我带了个插线板，桌边能多接三个口。", "at": "2026-11-11T10:44:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "给我留一个，我那个充电头有点宽。", "at": "2026-11-11T10:46:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "靠边那个留给你，中间的挤不下。", "at": "2026-11-11T10:48:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "中午去吃面吧，今天不想排食堂长队。", "at": "2026-11-11T11:52:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "冷冻层的霜都清掉了，里面也擦干了，冰箱刚重新插电，已经听见压缩机响了。", "at": "2026-11-11T11:58:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "completed", "evidence": ["m2"], "notes": "people为空时回退唯一来源s1的发送者麦朵；末条11:58确认除霜、擦干和通电，晚于08:10创建。"},
+      "reason": "来源s1由麦朵提出自行给冷冻层除霜，people为空时仍回退到该来源发送者。末条11:58的m2晚于08:10创建，逐项确认除霜、擦干与重新通电，整项任务已完成。"
+    },
+    {
+      "id": "GR029", "split": "dev", "category": "self_cancel", "now": "2026-11-10T21:35:00+08:00",
+      "entries": [{"id": "e1", "kind": "group", "name": "十点八人房"}],
+      "subjects": [{"id": "p1", "name": "乌梅", "aliases": []}, {"id": "p2", "name": "面包边", "aliases": ["包边"]}],
+      "goal": {"key": "g", "content": "组齐11月10日22点的八人开黑队并在21点50分前发房间码到群里", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-10T21:50:00+08:00", "created_at": "2026-11-10T18:43:00+08:00", "entry_id": "e1", "people": ["p1", "p2"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "今晚10号22点开八人房，Iris帮忙收齐八个人，21点50前把房间码发群里，我们就不一个个敲了。", "at": "2026-11-10T18:40:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "好，今晚这车我来凑人，凑齐后把码发这里。", "at": "2026-11-10T18:42:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "我的麦终于不滋滋响了，原来是线没插到底。", "at": "2026-11-10T19:04:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "现在名单上六个，我看一眼还有谁在线。", "at": "2026-11-10T19:20:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "嗯，还差两位，今晚22点的这局我继续问。", "at": "2026-11-10T19:35:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "外卖忘给筷子，只好拿叉子吃面了。", "at": "2026-11-10T20:03:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "临时要处理一份值班交接，我今晚来不了了，包边那边也掉线了，咱这车干脆取消吧。", "at": "2026-11-10T20:50:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "今晚11月10日22点这趟八人车取消，不再凑人，也不建房发码了。我已经把取消消息发给名单上的人。", "at": "2026-11-10T21:06:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "收到，今晚这局不约了，大家不用等。", "at": "2026-11-10T21:08:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m8", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "看到取消了，那我先把洗衣机开上。", "at": "2026-11-10T21:11:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m9", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "下次玩再重新约时间，这次不往后顺延了。", "at": "2026-11-10T21:15:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m10", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "阳台衣架又少了两只，肯定吹到楼下去了。", "at": "2026-11-10T21:20:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "abandoned", "evidence": ["m6"], "notes": "取消的是本晚这趟八人局，组队与发码均明确不再做，且取消发生在截止前。"},
+      "reason": "创建后self明确宣布整趟活动取消，涉及人也确认不再等待；这是明确放弃，不是仅缺人、掉线或到点未完成。"
+    },
+    {
+      "id": "GR030", "split": "dev", "category": "self_done", "now": "2026-11-11T20:50:00+08:00",
+      "entries": [{"id": "e1", "kind": "group", "name": "晚间双人练习角"}, {"id": "e2", "kind": "private", "name": "橘核的私聊"}],
+      "subjects": [{"id": "p1", "name": "橘核", "aliases": []}, {"id": "p2", "name": "香芋泥", "aliases": ["芋泥"]}],
+      "goal": {"key": "g", "content": "把11月11日晚双人练习的房间码私发给橘核", "kind": "normal", "origin": "internal", "state": "open", "deadline": "2026-11-11T20:20:00+08:00", "created_at": "2026-11-11T19:55:00+08:00", "entry_id": "e1", "people": ["p1"], "sources": ["s1", "s2"]},
+      "messages": [
+        {"key": "s1", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "Iris，今晚11号双人练习的码单独发我吧，20点20前就行，我怕大群刷没。", "at": "2026-11-11T19:51:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "s2", "entry_id": "e1", "kind": "self_output", "sender": "self", "content": "好，11号今晚这间练习房的码我私发你。", "at": "2026-11-11T19:54:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m1", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "新鼠标比旧的轻好多，刚差点甩飞。", "at": "2026-11-11T20:01:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m2", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "我去倒杯水，电脑已经开着了。", "at": "2026-11-11T20:03:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m3", "entry_id": "e2", "kind": "self_output", "sender": "self", "content": "11月11日晚双人练习房间码：5276。刚开好房，今晚用这一个。", "at": "2026-11-11T20:12:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m4", "entry_id": "e2", "kind": "message", "sender": "p1", "content": "今天11号这间的房间码收到了，我已经用它进练习房了，谢谢。", "at": "2026-11-11T20:14:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m5", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "群公告里那个旧码我删掉了，挂了一个星期都没注意。", "at": "2026-11-11T20:18:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m6", "entry_id": "e1", "kind": "message", "sender": "p1", "content": "我带了一大杯水，今天不半路跑去倒了。", "at": "2026-11-11T20:20:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m7", "entry_id": "e1", "kind": "message", "sender": "p2", "content": "桌面太滑，垫子下面都得塞纸才稳。", "at": "2026-11-11T20:33:00+08:00", "quote_author": null, "quote_content": null},
+        {"key": "m8", "entry_id": "e2", "kind": "message", "sender": "p1", "content": "耳机只剩5%的电，我换成有线那副。", "at": "2026-11-11T20:41:00+08:00", "quote_author": null, "quote_content": null}
+      ],
+      "expected": {"state": "completed", "evidence": ["m4"], "notes": "涉及人在私聊明确确认收到同日晚场房间码；目标只要求私发，不要求练习结束。"},
+      "reason": "m4在创建后由橘核明确确认收到并使用目标所指房间码，虽来自另一入口，仍是涉及人对同一发送任务的完成确认。"
+    }
+  ]
+}
