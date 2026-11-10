@@ -1,6 +1,9 @@
 """Frozen-corpus consolidation runner. No product CLI integration; no model judging.
 
 uv run python evals/consolidation_eval/run.py --method broad --out /external/run
+uv run python evals/consolidation_eval/run.py --method broad --resolution auto_v1 --out /external/run
+
+auto_v1 defaults to evals/consolidation_v2.json and writes auto_score.py materials.
 """
 from __future__ import annotations
 
@@ -20,7 +23,7 @@ from iris.consolidation import METHODS, RESOLUTIONS, MERGE_PROMPT_VERSION, Conso
 from iris.db import Store, dumps
 from iris.evaluation import _json_sha256, _read_json, _write_json
 from iris.maintenance import Maintenance
-from iris.memory_ops import delete_memory, edit_memory, manage_memory
+from iris.memory_ops import delete_memory, edit_memory, lifecycle_settings, manage_memory, set_entry_visibility
 from iris.models import Gateway, load_test_models
 from iris.model_health import ModelHealth
 
@@ -32,6 +35,8 @@ EVALUATION_POLICY='merge_scoring_v2'
 DETAIL_SCORING_V1=(Path(__file__).parent/'merge_details_scoring_v1.md').read_text(encoding='utf-8')
 DETAIL_SCORING=(Path(__file__).parent/'merge_details_scoring_v2.md').read_text(encoding='utf-8')
 WRITE_AUDIT=(Path(__file__).parent/'write_audit_v2.md').read_text(encoding='utf-8')
+AUTO_DETAIL_VERSION='merge_details_auto_v1'
+AUTO_DETAIL_SCORING=(Path(__file__).parent/'merge_details_scoring_auto_v1.md').read_text(encoding='utf-8')
 # Completed model refusals / malformed output are quality observations. Anything
 # else in the call ledger (including unfinished calls) is an execution failure.
 QUALITY_CALL_RESULTS={'success','invalid_output','item_error','content_rejection'}
@@ -60,10 +65,31 @@ def load_corpus(path):
         if len(keys)!=len(c['memories']):
             raise ValueError('duplicate memory key')
         mutual_pairs(c['expected'],keys)
+        auto_labels(c['expected'],keys)
         for field in ('merges','no_merge'):
             if any(len(p)!=2 or not set(p)<=keys for p in c['expected'].get(field,[])):
                 raise ValueError('invalid pair label')
     return cases
+
+
+def auto_labels(expected, keys):
+    """Section 10 labels. Optional, so report-only corpora stay valid."""
+    def known(*values):
+        if any(value not in keys for value in values):
+            raise ValueError('auto label refers to an unknown memory')
+    for label in expected.get('auto_contradictions',[]):
+        known(*label['keys'],label['old'],label['new'])
+        if label['relation'] not in ('supersedes','reported_vs_self','coexist','undecided'):
+            raise ValueError('invalid auto relation')
+    for label in expected.get('auto_dependencies',[]):
+        known(label['derived'])
+        if label['expected'] not in ('keep','forget'):
+            raise ValueError('invalid auto dependency label')
+    for label in expected.get('mutual_merges',[]):
+        known(*label['pair'])
+        if label['expected'] not in ('merge','keep_both') or len(set(label['pair']))!=2:
+            raise ValueError('invalid mutual merge label')
+    known(*expected.get('protected',[]))
 
 
 def mutual_pairs(expected, keys):
@@ -223,6 +249,10 @@ def case_run(case,dbpath,gateway_factory,method,resolution='report_only_v1'):
     try:
         store.set_setting('consolidation',{'enabled':True,'method':method,'max_calls':50,'resolution':resolution,'entry_profile_enabled':False})
         key_map,source_map=seed(store,case)
+        # Visibility comes from the source's entry; every entry declares its own scope.
+        for declared in case.get('entries',[]):
+            if declared.get('visibility','shared')!='shared':
+                set_entry_visibility(store,declared['id'],declared['visibility'],visible_in=declared.get('visible_in',[]))
         members={v:[k] for k,v in key_map.items()}
         retention=[]
         event_actions=[]
@@ -376,8 +406,10 @@ def case_run(case,dbpath,gateway_factory,method,resolution='report_only_v1'):
         enriched=copy.deepcopy(case)
         for m in enriched['memories']:
             m.update(annotations=[],is_placeholder=False,merged_into=None)
+        with store.read() as conn:
+            forget_threshold=lifecycle_settings(conn)['forget_threshold']
         payload={'role':{'name':'Iris','self_subject_id':'self'},'case':enriched,'before':before,'actual_merges':merges,
-            'actual_actions':actions,'after':after,'retention_changes':retention,
+            'actual_actions':actions,'after':after,'retention_changes':retention,'forget_threshold':forget_threshold,
             'merge_checks':checks,'merge_version':MERGE_PROMPT_VERSION,'evaluation_policy':EVALUATION_POLICY}
         failures=[i for i in report['items'] if i['outcome']=='failed']
         safety_rejections=sum(i['reason']=='unsafe_write' for i in failures)
@@ -438,9 +470,55 @@ def export(rows,out,metadata):
     return manifest
 
 
+def auto_detail_items(payload):
+    """Merges carrying must_keep / must_not_add labels; only these need semantic judgment."""
+    keys=payload['before']['key_map']
+    reverse={v:k for k,v in keys.items()}
+    labels={frozenset(label['pair']):label for label in payload['case']['expected'].get('mutual_merges',[])
+            if label['expected']=='merge'}
+    items=[]
+    for merge in payload['actual_merges']:
+        label=next((labels[pair] for pair in labels if pair<=set(merge['input_keys'])),None)
+        if label is None:
+            continue
+        items.append({'action_id':merge['action_id'],'pair':label['pair'],'must_keep':label.get('must_keep',[]),
+                      'must_not_add':label.get('must_not_add',[]),'result_content':merge['result']['content'],
+                      'before':[{'key':reverse[m['id']],'content':m['content']} for m in merge['before_memories']]})
+    return items
+
+
+def export_auto(rows,out,metadata):
+    """Materials for the semantic part of the merge-detail check, bound to the run."""
+    if out.exists() and any(out.iterdir()):
+        raise ValueError('materials directory must be empty')
+    out.mkdir(parents=True,exist_ok=True)
+    (out/'merge-details-scoring.md').write_text(AUTO_DETAIL_SCORING,encoding='utf-8')
+    manifest={'format_version':1,'evaluation':'consolidation_auto','run':metadata,'cases':[],
+              'run_sha256':_write_json(out/'run.json',{'rows':rows}),
+              'merge_details_scoring_sha256':hashlib.sha256(AUTO_DETAIL_SCORING.encode()).hexdigest()}
+    templates=[]
+    for i,row in enumerate(rows):
+        items=auto_detail_items(row['input'])
+        document={'format_version':1,'evaluation':'consolidation_auto','case_id':row['input']['case']['id'],
+                  'corpus_sha256':metadata['corpus']['sha256'],'source_sha256':metadata['source_sha256'],
+                  'scoring_version':AUTO_DETAIL_VERSION,'merges':items}
+        filename=f'cases/{i:04}.json'
+        manifest['cases'].append({'case_id':document['case_id'],'file':filename,'sha256':_write_json(out/filename,document),'judgment_file':f'{i:04}.json'})
+        templates.append({'format_version':1,'case_id':document['case_id'],'merge_detail_results':[
+            {'action_id':item['action_id'],'must_keep_present':[None]*len(item['must_keep']),
+             'must_not_add_absent':[None]*len(item['must_not_add']),'reason':''} for item in items]})
+    manifest['materials_sha256']=_json_sha256(manifest)
+    _write_json(out/'manifest.json',manifest)
+    _write_json(out/'round-template.json',{'materials_sha256':manifest['materials_sha256']})
+    _write_json(out/'detail-judgment-template'/'manifest.json',{'materials_sha256':manifest['materials_sha256']})
+    for entry,template in zip(manifest['cases'],templates,strict=True):
+        _write_json(out/'detail-judgment-template'/entry['judgment_file'],template)
+    return manifest
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--corpus',type=Path,default=ROOT/'evals/consolidation_v1.json')
+    parser.add_argument('--corpus',type=Path,default=None)
     parser.add_argument('--out',type=Path,required=True)
     parser.add_argument('--method',choices=METHODS,required=True)
     parser.add_argument('--resolution',choices=RESOLUTIONS,default='report_only_v1')
@@ -448,6 +526,8 @@ def main():
     args=parser.parse_args()
     if args.method!='broad':
         parser.error('resolution comparison requires --method broad')
+    if args.corpus is None:
+        args.corpus=ROOT/('evals/consolidation_v2.json' if args.resolution=='auto_v1' else 'evals/consolidation_v1.json')
     cases=load_corpus(args.corpus)
     if args.case:
         cases=[c for c in cases if c['id'] in args.case]
@@ -478,7 +558,7 @@ def main():
         'merge_version':MERGE_PROMPT_VERSION,'evaluation_policy':EVALUATION_POLICY,'chat_model':chat.model,
         'chat_reasoning_effort':chat.reasoning_effort,'endpoint_sha256':hashlib.sha256(chat.base_url.encode()).hexdigest(),
         'calls':sum(len(r['calls']) for r in rows),'elapsed_seconds':sum(r['elapsed_seconds'] for r in rows),'valid':all(r['valid'] for r in rows)}
-    export(rows,out/'materials',metadata)
+    (export_auto if args.resolution=='auto_v1' else export)(rows,out/'materials',metadata)
     _write_json(out/'summary.json',metadata)
     print(json.dumps(metadata,ensure_ascii=False),flush=True)
 

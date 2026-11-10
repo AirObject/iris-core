@@ -156,6 +156,13 @@ def confirm_retention(store, memory_id, *, _conn=None, current=None):
         return result
 
 
+def superseded_forgotten(conn, memory_id) -> bool:
+    """Design 10.2: reconfirmation cannot revive a memory consolidation found replaced."""
+    return conn.execute("""SELECT 1 FROM memories m JOIN consolidation_annotations a ON a.memory_id=m.id
+        WHERE m.id=? AND m.lifecycle='forgotten' AND a.kind='superseded' AND a.cleared_at IS NULL LIMIT 1""",
+        (memory_id,)).fetchone() is not None
+
+
 def set_subject_link_status(store: Store, link_id: int, status: str) -> None:
     if status not in ("possible", "confirmed", "denied"):
         raise ValueError("invalid link status")
@@ -257,6 +264,10 @@ def manage_memory(store, memory_id, expected_revision, *, action=None, pinned=No
         if retention is not None:
             adjust_retention(store, memory_id, value=retention, settings=config, _conn=conn)
         latest = conn.execute("SELECT * FROM memories WHERE id=?", (memory_id,)).fetchone()
+        if row["lifecycle"] == "forgotten" and latest["lifecycle"] == "active":
+            # Restoring by hand lifts the limit in superseded_forgotten.
+            conn.execute("""UPDATE consolidation_annotations SET cleared_at=?,cleared_by='admin'
+                WHERE memory_id=? AND kind='superseded' AND cleared_at IS NULL""", (stamp, memory_id))
         if _record:
             operation(conn, "memory_" + (action or "adjust"), "memory", memory_id,
                       {"before": before, "after": {k: latest[k] for k in before}, "revision": latest["revision"]})

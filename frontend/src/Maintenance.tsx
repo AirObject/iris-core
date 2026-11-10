@@ -359,7 +359,11 @@ export function MaintenanceReportDialog({
               ),
             )}
           </details>
-          <ConsolidationReportSections data={data} openMemory={openMemory} />
+          <ConsolidationReportSections
+            data={data}
+            openMemory={openMemory}
+            refresh={report.refresh}
+          />
           {groups.map(([name, items]) => (
             <ReportGroup
               key={`${id}:${name}`}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Notice } from "./ui";
 import {
   consolidationBudgets,
+  consolidationResolutions,
   consolidationSwitches,
 } from "./consolidation-labels";
 import { changedSettings, useSettingsDraft } from "./settings-draft";
@@ -13,6 +14,7 @@ import type {
 const configOf = (value: ConsolidationConfig) => ({
   ...value,
   person_summary_enabled: value.person_summary_enabled ?? true,
+  resolution: value.resolution ?? "report_only_v1",
   entry_profile_max_calls: value.entry_profile_max_calls ?? 60,
   person_summary_max_calls: value.person_summary_max_calls ?? 40,
   persona_max_calls: value.persona_max_calls ?? 30,
@@ -141,8 +143,25 @@ export function ConsolidationSettings({
             persona 与人物摘要需满足各自更新条件且在各自上限内至少剩余 2
             次调用名额。人物摘要开关只影响之后的整理，不关闭已发布摘要的宿主读取。
           </p>
+          <label>
+            矛盾、依赖与互有细节合并的处理方式
+            <select
+              aria-label="矛盾、依赖与互有细节合并的处理方式"
+              value={draft.resolution}
+              onChange={(e) => change("resolution", e.target.value)}
+            >
+              {consolidationResolutions.map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
           <p className="lifecycle-help">
-            矛盾和依赖复核只产生管理员可见的模型建议；目标依据复核不自动完成或放弃目标。
+            {draft.resolution === "auto_v1"
+              ? "自主处理：模型只给判断和合并草稿，分数、遗忘与标注由程序按规则写入；人工编辑和置顶的记忆不动，每项都有操作记录和撤销入口。"
+              : "只报告：矛盾和依赖复核只产生管理员可见的模型建议，不改动记忆。"}
+            目标依据复核不自动完成或放弃目标。
           </p>
           {(error || saveError) && <Notice error>{error || saveError}</Notice>}
           {saved && <Notice>梦境整理设置已保存</Notice>}

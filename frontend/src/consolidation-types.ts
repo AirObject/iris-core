@@ -2,6 +2,7 @@ import type { PersonaVersion } from "./persona-types";
 
 export type ConsolidationConfig = {
   maintenance_time: string;
+  resolution?: string;
   max_calls: number;
   entry_profile_max_calls?: number;
   person_summary_max_calls?: number;
@@ -93,6 +94,11 @@ export type ConsolidationDetails = {
   status?: string;
   version_id?: number | null;
   base_version_id?: number;
+  auto_resolution?: string;
+  relation?: string;
+  verdict?: string;
+  check_failure?: string | null;
+  undo?: { expected_revision: number; undone_at: string | null } | null;
 };
 export type ConsolidationProjection = {
   consolidation?: {

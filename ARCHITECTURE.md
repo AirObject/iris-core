@@ -201,6 +201,10 @@ Scheduler 的独立单工作线程执行 Maintenance，不占学习、模型探�
 
 按 DECISIONS 2026-10-10，矛盾与派生依据复核只有报告和标注路径，不写正文／相信程度，不重复 M2 扣减。`consolidation_annotations` 持久记录建议类型、来源、相关记忆／替代目标、写入时修订与报告 ID；同结论唯一键去重，管理员确认／清除是元数据。建议只进入管理详情与报告，即使已确认也不进入宿主 prepare/search；详情按当前修订与标注修订比较显示“标注后已修改”。报告明确标为模型建议并附源消息摘录。
 
+`resolution=auto_v1` 是第二种处理方式（设置项，默认仍是 `report_only_v1`，未知或旧值一律归一成 `report_only_v1`，运行快照固定）。模型只给判断和互有细节的合并草稿，分数、生命周期和标注由代码按规则写：推断档 `belief=min(belief,49)`，降一档到设计 10.1 下一档上沿，进入遗忘 `lifecycle=forgotten, retention=min(retention,F-1)`。`evidence_trace.py` 沿 `sources` 追溯原始消息（防循环，不经过失效依据），只追溯到 self_output 的依据不算独立。工作开始时人工编辑或置顶的记忆记为 `protected`，不调用模型。矛盾按规格第 4 节核对后执行 supersedes／reported_vs_self／coexist／undecided，核对失败一律 undecided；依赖按追溯到的不同原始消息计独立依据，0 条进入遗忘并标 `insufficient_support`。互有细节的对先由确定性检查核对草稿（双方独有片段、数字、否定、限定、主体引用、时间、实体、内容词不超出），失败记 `mutual_merge_rejected` 和固定原因，保持两条、不写建议；通过后存续记忆写新正文（修订号＋1，清向量），另一条按既有合并路径标记。`memory_revisions.reason` 用固定枚举（`auto_superseded`、`auto_reported_downgrade`、`auto_insufficient_support`、`auto_merge`、`auto_merge_mutual`、撤销 `auto undo`）。跨对互不连带：`blocked` 只含仍未解决的 undecided 矛盾。同一运行内依赖链上较早的自动处理使祖先记忆变化时，不把下游工作判为过期，规则重新读取当前状态。
+
+撤销：`POST /admin/api/maintenance/{run}/consolidation/{work}/undo`（管理员会话和 CSRF，带 `expected_revision`）。每项自动处理在 `maintenance_items.details_json.undo` 保存逐字段的前后值，合并还保存继承的来源、标签和重定向的依赖边。撤销前逐条核对修订号和被处理字段，有任何变化返回 409，不部分撤销；被并入的占位由迁移 037 的 `consolidation_undo_guard` 在同一事务内放行。`superseded_forgotten`（memory_ops）让被替代且遗忘的记忆再次确认时只追加来源、记录弃项 `superseded_no_restore`；管理员恢复或撤销时清除标注，限制随之解除。
+
 `maintenance_persona`（迁移 019）把 run_id 与 persona_attempts 原子关联。先用 persona_due 判断到期，再在同一短事务预留既有 persona 尝试及关联，复用 PersonaEngine 的带 attempt_id 执行入口，保留 only_if_due、版本 CAS、依据检查和发布策略；不另建发布路径。恢复时终态尝试只补报告，queued 尝试可继续，已 running 但未完整结束的尝试记录 interrupted，不重放生成、不发布部分结果。persona 的监管设置与发布方式沿用该模块在接受尝试时的快照。
 
 迁移 019 保留原 `consolidation_calls` 行，允许 persona 调用的 work_id 为 NULL；`maintenance_persona.attempt_id` 提供尝试关联。每个实际 HTTP 尝试在调用前独立预留一行，按步骤计入运行快照的调用上限；persona 使用独立的 `persona_max_calls`（默认 30，范围 0—1000），不占用其他步骤额度。记录用量、耗时、结束原因、推理档位，异常中断保留未知用量。persona 外层健康预检不占调用，内层 Gateway 的每次重试才占一次；生成及其修正至少须余两次，给检查留下一个名额。persona 发布仍须完整检查通过，修正／重试耗尽则留待后续整理。所有模型调用仍写原 model_calls，用于共同每日 token 限额与用途健康。

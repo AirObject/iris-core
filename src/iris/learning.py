@@ -18,7 +18,7 @@ from .db import Store, dumps, now
 from .goals import write_learning_goal
 from .claim_sequences import normalize_claim as _normalize, same_claim_sequences as _same_claim_sequences
 from .people import canonical_subject
-from .memory_ops import Visibility, confirm_retention, record_batch_memory_effect
+from .memory_ops import Visibility, confirm_retention, record_batch_memory_effect, superseded_forgotten
 from .models import Gateway, ModelError, parse_json_object_with_status
 from .media import (material_content, message_media, native_learning_enabled,
                     plan_learning_images, prepare_media)
@@ -35,6 +35,7 @@ MEMORY_TYPES = {"事件", "事实", "偏好", "关系", "观点", "计划", "自
 STANCES = {"亲历", "转述", "推断", "观点"}
 RETRY_DELAYS = (60, 300, 900)
 SELF_ONLY_CONFIRMATION = "confirmation only from self output"
+SUPERSEDED_NO_RESTORE = "superseded_no_restore"
 PARTICIPANT_NUMBER = re.compile(r"(?<![A-Za-z0-9_])P[0-9]+(?![A-Za-z0-9_])")
 
 
@@ -692,8 +693,13 @@ class LearningEngine:
         target = set(batch.target_ids)
         dedupe_threshold = float(self.store.setting("dedupe_cosine_threshold", 0.96))
         with self.store.write() as conn:
-            def confirm_once(memory_id: int) -> None:
+            def confirm_once(memory_id: int, section: str, item: dict[str, Any]) -> None:
                 if memory_id in confirmed_once:
+                    return
+                if superseded_forgotten(conn, memory_id):
+                    # Sources are still appended by the caller; only the rescue is refused.
+                    dropped.append({"section": section, "reason": SUPERSEDED_NO_RESTORE,
+                                    "item": {k: v for k, v in item.items() if k != "_embedding"}})
                     return
                 if not record_batch_memory_effect(conn, batch.id, memory_id, "confirmed"):
                     return
@@ -742,7 +748,7 @@ class LearningEngine:
                     if self_output_only(current, item["evidence"]):
                         dropped.append({"section": "updates", "item": item, "reason": SELF_ONLY_CONFIRMATION})
                     else:
-                        confirm_once(current["id"])
+                        confirm_once(current["id"], "updates", item)
                 else:
                     # A later confirmation or metadata-only revision must not erase
                     # the last actual content editor. Model-supplied reasons alone
@@ -821,7 +827,7 @@ class LearningEngine:
                             dropped.append({"section": "memories", "reason": SELF_ONLY_CONFIRMATION,
                                             "item": {k: v for k, v in item.items() if k != "_embedding"}})
                         else:
-                            confirm_once(duplicate["id"])
+                            confirm_once(duplicate["id"], "memories", item)
                     for message_id in item["evidence"]:
                         if message_id in target:
                             self._source(conn, duplicate["id"], message_id)
