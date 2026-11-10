@@ -1,0 +1,518 @@
+{
+  "format_version": 1,
+  "name": "consolidation_v2",
+  "timezone": "Asia/Shanghai",
+  "role_name": "Iris",
+  "cases": [
+  {
+    "id": "CV001", "split": "dev", "category": "矛盾", "now": "2026-11-10T20:00:00+08:00",
+    "subjects": [{"id": "wenxi", "name": "闻溪", "aliases": []}],
+    "entries": [{"id": "dm-wenxi", "kind": "private", "name": "闻溪私聊", "visibility": "shared", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "闻溪这次搬家计划11月14日9点装车", "type": "计划", "speaker": "wenxi", "stance": "亲历", "about": ["wenxi"], "belief": 94, "importance": 78, "retention": 68, "lifecycle": "active", "pinned": false, "event_time": "2026-11-14T09:00:00+08:00", "created_at": "2026-11-06T21:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-wenxi", "entry_kind": "private", "sender": "wenxi", "kind": "message", "at": "2026-11-06T21:00:00+08:00", "text": "搬家公司约好了，这次14号早上九点装车。纸箱还差几个，先拿快递箱顶一下。"}, {"key": "s2", "entry_id": "dm-wenxi", "entry_kind": "private", "sender": "wenxi", "kind": "message", "at": "2026-11-08T19:00:00+08:00", "text": "对，还是14号九点装车，我已经把那天的早饭想好了哈哈。"}]},
+      {"key": "b", "content": "闻溪这次搬家装车时间改为11月16日9点，11月14日不装车", "type": "计划", "speaker": "wenxi", "stance": "亲历", "about": ["wenxi"], "belief": 92, "importance": 79, "retention": 69, "lifecycle": "active", "pinned": false, "event_time": "2026-11-16T09:00:00+08:00", "created_at": "2026-11-09T20:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s3", "entry_id": "dm-wenxi", "entry_kind": "private", "sender": "wenxi", "kind": "message", "at": "2026-11-09T20:00:00+08:00", "text": "更正装车时间：这次搬家改成16号早上九点，14号不装了。刚跟搬家公司重新约完，前面两次说的都作废。"}]},
+      {"key": "c", "content": "闻溪计划11月12日18点去新家领钥匙，带空纸袋", "type": "计划", "speaker": "wenxi", "stance": "亲历", "about": ["wenxi"], "belief": 83, "importance": 72, "retention": 61, "lifecycle": "active", "pinned": false, "event_time": "2026-11-12T18:00:00+08:00", "created_at": "2026-11-09T20:06:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s4", "entry_id": "dm-wenxi", "entry_kind": "private", "sender": "wenxi", "kind": "message", "at": "2026-11-09T20:05:00+08:00", "text": "领钥匙没跟着改，还是12号晚上六点去新家。我会带个空纸袋，顺手装那几张交接纸。"}]},
+      {"key": "d", "content": "闻溪计划11月12日18点去新家领钥匙，在北门等", "type": "计划", "speaker": "wenxi", "stance": "亲历", "about": ["wenxi"], "belief": 83, "importance": 72, "retention": 62, "lifecycle": "active", "pinned": false, "event_time": "2026-11-12T18:00:00+08:00", "created_at": "2026-11-10T09:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s5", "entry_id": "dm-wenxi", "entry_kind": "private", "sender": "wenxi", "kind": "message", "at": "2026-11-10T09:00:00+08:00", "text": "12号晚上六点领新家钥匙那一次，我在北门等，免得绕到车库去。别的不用改。"}]}
+    ],
+    "events": [],
+    "expected": {
+      "merges": [["c", "d"]], "no_merge": [["a", "b"], ["a", "c"], ["a", "d"], ["b", "c"], ["b", "d"]],
+      "auto_contradictions": [{"keys": ["a", "b"], "relation": "supersedes", "old": "a", "new": "b", "notes": "s3由闻溪本人发出，晚于a的s1、s2，明确撤回同次搬家的旧装车安排。a正文保留，加指向b的superseded，belief由94降到49并进入forgotten，retention不高于F-1；b不变。"}],
+      "auto_dependencies": [],
+      "mutual_merges": [{"pair": ["c", "d"], "expected": "merge", "must_keep": ["带空纸袋", "在北门等"], "must_not_add": ["已领到钥匙", "11月16日领钥匙", "在车库等"]}],
+      "protected": []
+    },
+    "reason": "本人晚于旧记忆全部来源的明确改期才能替代旧安排，重复确认不阻止更正；另一对是同次领钥匙的互补细节，装车矛盾不妨碍它合并。"
+  },
+  {
+    "id": "CV002", "split": "dev", "category": "矛盾", "now": "2026-11-10T20:00:00+08:00",
+    "subjects": [{"id": "chengye", "name": "程野", "aliases": []}, {"id": "yuke", "name": "郁可", "aliases": []}],
+    "entries": [{"id": "old-desk-four", "kind": "group", "name": "旧工位四人群", "visibility": "shared", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "程野已决定离开砾石工作室，11月16日入职舟尺公司", "type": "计划", "speaker": "yuke", "stance": "转述", "about": ["chengye"], "belief": 93, "importance": 76, "retention": 65, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-07T12:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s1", "entry_id": "old-desk-four", "entry_kind": "group", "sender": "yuke", "kind": "message", "at": "2026-11-07T12:00:00+08:00", "text": "咱们四个人这个群先说一声，我听说程野决定离开砾石工作室了，16号去舟尺公司入职。我没直接问，午饭碰到人聊起来的。"}]},
+      {"key": "b", "content": "程野没有接受舟尺公司的录用，11月仍留在砾石工作室", "type": "事实", "speaker": "chengye", "stance": "亲历", "about": ["chengye"], "belief": 87, "importance": 77, "retention": 66, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-09T18:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s2", "entry_id": "old-desk-four", "entry_kind": "group", "sender": "chengye", "kind": "message", "at": "2026-11-09T18:00:00+08:00", "text": "郁可，那个传闻得纠正下。我没有接舟尺的录用，11月还留在砾石工作室，16号不会去舟尺入职。先别给我安排散伙饭啊。"}]},
+      {"key": "c", "content": "程野计划11月11日15点在旧项目交接会演示导出流程，使用测试账号", "type": "计划", "speaker": "chengye", "stance": "亲历", "about": ["chengye"], "belief": 85, "importance": 71, "retention": 61, "lifecycle": "active", "pinned": false, "event_time": "2026-11-11T15:00:00+08:00", "created_at": "2026-11-10T10:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s3", "entry_id": "old-desk-four", "entry_kind": "group", "sender": "chengye", "kind": "message", "at": "2026-11-10T10:00:00+08:00", "text": "明天11号下午三点，旧项目交接会我演示一下导出流程，用测试账号。项目换维护人，不是我离职。"}]},
+      {"key": "d", "content": "程野计划11月11日15点在旧项目交接会演示导出流程，只演示不修改线上数据", "type": "计划", "speaker": "chengye", "stance": "亲历", "about": ["chengye"], "belief": 85, "importance": 72, "retention": 62, "lifecycle": "active", "pinned": false, "event_time": "2026-11-11T15:00:00+08:00", "created_at": "2026-11-10T10:06:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s3", "entry_id": "old-desk-four", "entry_kind": "group", "sender": "chengye", "kind": "message", "at": "2026-11-10T10:00:00+08:00", "text": "明天11号下午三点，旧项目交接会我演示一下导出流程，用测试账号。项目换维护人，不是我离职。"}, {"key": "s4", "entry_id": "old-desk-four", "entry_kind": "group", "sender": "chengye", "kind": "message", "at": "2026-11-10T10:05:00+08:00", "text": "补上刚才11号下午三点那场的边界：导出流程只做演示，不修改线上数据。录屏记得把聊天弹窗关掉。"}]}
+    ],
+    "events": [],
+    "expected": {
+      "merges": [["c", "d"]], "no_merge": [["a", "b"], ["a", "c"], ["a", "d"], ["b", "c"], ["b", "d"]],
+      "auto_contradictions": [{"keys": ["a", "b"], "relation": "reported_vs_self", "old": "a", "new": "b", "notes": "s1由郁可转述离开砾石工作室、入职舟尺公司的传闻，s2是被转述者程野本人的直接否认。只给a加disputed，belief从93降一档到89；a保持active，正文、保留强度不因C2改变，b不变，不把转述当成本人明确更正而遗忘。"}],
+      "auto_dependencies": [],
+      "mutual_merges": [{"pair": ["c", "d"], "expected": "merge", "must_keep": ["使用测试账号", "只演示不修改线上数据"], "must_not_add": ["程野已离职", "使用生产账号", "已经修改线上数据", "已完成交接"]}],
+      "protected": []
+    },
+    "reason": "s1本身包含离开砾石工作室的传闻，本人否认只使转述降一档；d同时引用s3、s4补足会议指代，同次演示的账号与操作边界互补。"
+  },
+  {
+    "id": "CV003", "split": "dev", "category": "矛盾", "now": "2026-11-10T20:00:00+08:00",
+    "subjects": [{"id": "cenzhou", "name": "岑舟", "aliases": []}],
+    "entries": [{"id": "dm-cenzhou", "kind": "private", "name": "岑舟私聊", "visibility": "shared", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "岑舟10月的工作日骑车去安棠园区上班", "type": "事实", "speaker": "cenzhou", "stance": "亲历", "about": ["cenzhou"], "belief": 86, "importance": 72, "retention": 61, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-01T19:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-cenzhou", "entry_kind": "private", "sender": "cenzhou", "kind": "message", "at": "2026-11-01T19:00:00+08:00", "text": "整个10月，工作日我都是骑车去安棠园区上班的，车筐都被我压歪了。这个月换办公室再说。"}]},
+      {"key": "b", "content": "岑舟从11月2日起的工作日坐公交去禾湾园区上班", "type": "事实", "speaker": "cenzhou", "stance": "亲历", "about": ["cenzhou"], "belief": 86, "importance": 73, "retention": 62, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-09T19:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s2", "entry_id": "dm-cenzhou", "entry_kind": "private", "sender": "cenzhou", "kind": "message", "at": "2026-11-09T19:00:00+08:00", "text": "新办公室远多了，从11月2号起，工作日都坐公交去禾湾园区。10月骑车去安棠那段没记错，是搬办公室之后才换的。"}]},
+      {"key": "c", "content": "岑舟11月8日12点在家吃了搬家后的第一顿家庭午饭，只用折叠桌", "type": "事件", "speaker": "cenzhou", "stance": "亲历", "about": ["cenzhou"], "belief": 82, "importance": 74, "retention": 62, "lifecycle": "active", "pinned": false, "event_time": "2026-11-08T12:00:00+08:00", "created_at": "2026-11-09T19:06:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s3", "entry_id": "dm-cenzhou", "entry_kind": "private", "sender": "cenzhou", "kind": "message", "at": "2026-11-09T19:05:00+08:00", "text": "昨天8号中午十二点，总算在家吃了搬来后的第一顿家庭午饭。只用了折叠桌，订的餐桌还没到，菜差点摆不下。"}]},
+      {"key": "d", "content": "岑舟11月8日12点在家吃了搬家后的第一顿家庭午饭，饭后收拾纸箱", "type": "事件", "speaker": "cenzhou", "stance": "亲历", "about": ["cenzhou"], "belief": 88, "importance": 74, "retention": 67, "lifecycle": "active", "pinned": false, "event_time": "2026-11-08T12:00:00+08:00", "created_at": "2026-11-10T13:41:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s4", "entry_id": "dm-cenzhou", "entry_kind": "private", "sender": "cenzhou", "kind": "message", "at": "2026-11-10T13:40:00+08:00", "text": "8号中午十二点在家那顿搬家后的首次家庭午饭，吃完就一起收拾纸箱了。翻照片才发现，箱子占的地方比人还多。"}]}
+    ],
+    "events": [],
+    "expected": {
+      "merges": [["c", "d"]], "no_merge": [["a", "b"], ["a", "c"], ["a", "d"], ["b", "c"], ["b", "d"]],
+      "auto_contradictions": [{"keys": ["a", "b"], "relation": "coexist", "old": "a", "new": "b", "notes": "s2明确承认10月骑车的历史，同时给出11月2日起的新通勤范围。两条正文、belief、lifecycle均不动，只记录coexist；不加superseded或disputed，也不把旧园区改成新园区。"}],
+      "auto_dependencies": [],
+      "mutual_merges": [{"pair": ["c", "d"], "expected": "merge", "must_keep": ["只用折叠桌", "饭后收拾纸箱"], "must_not_add": ["餐桌已经送到", "饭前收拾纸箱", "四个人吃饭", "已确定下次聚餐菜单"]}],
+      "protected": []
+    },
+    "reason": "通勤随办公室变化，两个时间段并存；两条午饭回忆都指11月8日12点已经发生的同一顿，分别保留桌子与饭后收箱细节，不补人数或菜单。"
+  },
+  {
+    "id": "CV004", "split": "dev", "category": "矛盾", "now": "2026-11-10T20:00:00+08:00",
+    "subjects": [{"id": "taoyan", "name": "陶砚", "aliases": []}],
+    "entries": [{"id": "dm-taoyan", "kind": "private", "name": "陶砚私聊", "visibility": "shared", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "陶砚为这次搬家一共装了十六箱", "type": "事实", "speaker": "taoyan", "stance": "亲历", "about": ["taoyan"], "belief": 88, "importance": 72, "retention": 61, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-08T22:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-taoyan", "entry_kind": "private", "sender": "taoyan", "kind": "message", "at": "2026-11-08T22:00:00+08:00", "text": "终于装完了，这次搬家一共十六箱。数得眼睛疼，胶带头又找不到了。"}]},
+      {"key": "b", "content": "陶砚为这次搬家一共装了六十箱，十六箱是口误", "type": "事实", "speaker": "taoyan", "stance": "亲历", "about": ["taoyan"], "belief": 89, "importance": 72, "retention": 62, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-09T08:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s2", "entry_id": "dm-taoyan", "entry_kind": "private", "sender": "taoyan", "kind": "message", "at": "2026-11-09T08:00:00+08:00", "text": "昨晚语音说反了，是六十箱，不是十六箱。说的是这次搬家的全部箱子，没有一夜又装一堆，纯粹嘴瓢。"}]},
+      {"key": "c", "content": "陶砚计划11月13日19点归还这次搬家借的手推车，送到门卫处", "type": "计划", "speaker": "taoyan", "stance": "亲历", "about": ["taoyan"], "belief": 83, "importance": 71, "retention": 61, "lifecycle": "active", "pinned": false, "event_time": "2026-11-13T19:00:00+08:00", "created_at": "2026-11-09T08:06:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s3", "entry_id": "dm-taoyan", "entry_kind": "private", "sender": "taoyan", "kind": "message", "at": "2026-11-09T08:05:00+08:00", "text": "这次搬家借的手推车，我13号晚上七点归还，送到门卫处就行。终于能少一件事。"}]},
+      {"key": "d", "content": "陶砚计划11月13日19点归还这次搬家借的手推车，附上借用单", "type": "计划", "speaker": "taoyan", "stance": "亲历", "about": ["taoyan"], "belief": 83, "importance": 71, "retention": 62, "lifecycle": "active", "pinned": false, "event_time": "2026-11-13T19:00:00+08:00", "created_at": "2026-11-10T08:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s3", "entry_id": "dm-taoyan", "entry_kind": "private", "sender": "taoyan", "kind": "message", "at": "2026-11-09T08:05:00+08:00", "text": "这次搬家借的手推车，我13号晚上七点归还，送到门卫处就行。终于能少一件事。"}, {"key": "s4", "entry_id": "dm-taoyan", "entry_kind": "private", "sender": "taoyan", "kind": "message", "at": "2026-11-10T08:00:00+08:00", "text": "13号晚上七点还那辆手推车时，我把借用单也附上。单子塞鞋盒里了，别让我到时候又找。"}]}
+    ],
+    "events": [],
+    "expected": {
+      "merges": [["c", "d"]], "no_merge": [["a", "b"], ["a", "c"], ["a", "d"], ["b", "c"], ["b", "d"]],
+      "auto_contradictions": [{"keys": ["a", "b"], "relation": "supersedes", "old": "a", "new": "b", "notes": "s2是本人晚于s1的明确口误更正，同一总量并非两个批次。a保持原正文，加superseded指向b，belief降至49、进入forgotten且retention不高于F-1；b不变。"}],
+      "auto_dependencies": [],
+      "mutual_merges": [{"pair": ["a", "b"], "expected": "keep_both", "must_keep": ["十六箱", "六十箱", "口误"], "must_not_add": ["七十六箱", "新增四十四箱", "分两批搬家"]}, {"pair": ["c", "d"], "expected": "merge", "must_keep": ["送到门卫处", "附上借用单"], "must_not_add": ["已归还手推车", "免费借用", "借用单已经交回", "送到新家"]}],
+      "protected": []
+    },
+    "reason": "十六与六十是互斥总数，旧条须替代并遗忘而非合并；还车d补入s3后可从自己的s3、s4确定是同次搬家借车，门卫处与借用单互补。"
+  },
+  {
+    "id": "CV005", "split": "dev", "category": "矛盾", "now": "2026-11-10T20:00:00+08:00",
+    "subjects": [{"id": "xuyuan", "name": "许沅", "aliases": []}, {"id": "zhoukui", "name": "周葵", "aliases": []}],
+    "entries": [{"id": "family-three-xuyuan", "kind": "group", "name": "许沅家人三人群", "visibility": "shared", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "许沅家11月12日10点的热水器安装包含旧机拆卸", "type": "事实", "speaker": "xuyuan", "stance": "转述", "about": ["xuyuan"], "belief": 78, "importance": 72, "retention": 61, "lifecycle": "active", "pinned": false, "event_time": "2026-11-12T10:00:00+08:00", "created_at": "2026-11-08T20:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s1", "entry_id": "family-three-xuyuan", "entry_kind": "group", "sender": "xuyuan", "kind": "message", "at": "2026-11-08T20:00:00+08:00", "text": "家里这次12号上午十点装热水器，我保存的服务说明写着含旧机拆卸。截图没带版本日期，先放咱们三个人群里，别到时候白收拾。"}]},
+      {"key": "b", "content": "许沅家11月12日10点的热水器安装不包含旧机拆卸", "type": "事实", "speaker": "zhoukui", "stance": "转述", "about": ["xuyuan"], "belief": 76, "importance": 72, "retention": 62, "lifecycle": "active", "pinned": false, "event_time": "2026-11-12T10:00:00+08:00", "created_at": "2026-11-09T20:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s2", "entry_id": "family-three-xuyuan", "entry_kind": "group", "sender": "zhoukui", "kind": "message", "at": "2026-11-09T20:00:00+08:00", "text": "我存的也是咱家12号上午十点那单，服务说明却写不含旧机拆卸。我这张也没版本日期，谁那张更新还真说不清，客服还没回。"}]},
+      {"key": "c", "content": "许沅家11月12日10点的热水器安装仅预约一次上门", "type": "事实", "speaker": "xuyuan", "stance": "亲历", "about": ["xuyuan"], "belief": 85, "importance": 71, "retention": 61, "lifecycle": "active", "pinned": false, "event_time": "2026-11-12T10:00:00+08:00", "created_at": "2026-11-10T08:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s3", "entry_id": "family-three-xuyuan", "entry_kind": "group", "sender": "xuyuan", "kind": "message", "at": "2026-11-10T08:00:00+08:00", "text": "预约是我亲自下的，咱家12号上午十点这个热水器安装只约了一次上门，不是拆机来一次、装机再来一次。含不含拆卸还是等客服，先别猜。"}]},
+      {"key": "d", "content": "许沅家11月12日10点的热水器安装只有一次上门预约", "type": "事实", "speaker": "xuyuan", "stance": "亲历", "about": ["xuyuan"], "belief": 85, "importance": 71, "retention": 61, "lifecycle": "active", "pinned": true, "event_time": "2026-11-12T10:00:00+08:00", "created_at": "2026-11-10T08:04:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s3", "entry_id": "family-three-xuyuan", "entry_kind": "group", "sender": "xuyuan", "kind": "message", "at": "2026-11-10T08:00:00+08:00", "text": "预约是我亲自下的，咱家12号上午十点这个热水器安装只约了一次上门，不是拆机来一次、装机再来一次。含不含拆卸还是等客服，先别猜。"}]}
+    ],
+    "events": [],
+    "expected": {
+      "merges": [], "no_merge": [["a", "b"], ["a", "c"], ["a", "d"], ["b", "c"], ["b", "d"], ["c", "d"]],
+      "auto_contradictions": [{"keys": ["a", "b"], "relation": "undecided", "old": "a", "new": "b", "notes": "两张服务说明的版本日期都未知，双方都是转述，消息晚一天不证明通知更新。两条都保留、分数和生命周期不变，各加disputed；一次上门的预约数量不能裁决拆卸是否包含。"}],
+      "auto_dependencies": [],
+      "mutual_merges": [{"pair": ["a", "b"], "expected": "keep_both", "must_keep": ["许沅家", "11月12日10点", "包含旧机拆卸", "不包含旧机拆卸"], "must_not_add": ["已确认包含旧机拆卸", "另约一次拆机", "加钱就包含拆卸"]}],
+      "protected": ["d"]
+    },
+    "reason": "两份无版本日期的说明无法裁决含不含拆卸，只标争议；c、d是同一原话的等价复述，但d置顶使这一对跳过，不能因看似容易去重而绕过保护。"
+  },
+  {
+    "id": "CV006", "split": "dev", "category": "矛盾", "now": "2026-11-10T20:00:00+08:00",
+    "subjects": [{"id": "lucheng", "name": "陆澄", "aliases": []}],
+    "entries": [{"id": "dm-lucheng", "kind": "private", "name": "陆澄私聊", "visibility": "shared", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "陆澄新岗位的入职日最终定为11月23日，11月16日安排已作废", "type": "计划", "speaker": "lucheng", "stance": "亲历", "about": ["lucheng"], "belief": 87, "importance": 79, "retention": 67, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-09T17:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-lucheng", "entry_kind": "private", "sender": "lucheng", "kind": "message", "at": "2026-11-09T17:00:00+08:00", "text": "入职又改了一次，最终是11月23号。5号那条改到16号的消息作废，16号不用去。我这行李真是收了又拆。"}]},
+      {"key": "b", "content": "陆澄新岗位的入职日改为11月16日，不是11月23日", "type": "计划", "speaker": "lucheng", "stance": "亲历", "about": ["lucheng"], "belief": 91, "importance": 79, "retention": 68, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-10T09:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s2", "entry_id": "dm-lucheng", "entry_kind": "private", "sender": "lucheng", "kind": "message", "at": "2026-11-05T16:00:00+08:00", "text": "更正一下新岗位入职日，改到11月16号了，不是最早说的23号。这个月先别约我出门。"}]},
+      {"key": "c", "content": "陆澄的新岗位每周只需到岗两天", "type": "事实", "speaker": "lucheng", "stance": "亲历", "about": ["lucheng"], "belief": 84, "importance": 74, "retention": 63, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-10T09:31:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s3", "entry_id": "dm-lucheng", "entry_kind": "private", "sender": "lucheng", "kind": "message", "at": "2026-11-10T09:30:00+08:00", "text": "新岗位每周只要到岗两天，合同写的就是这个，不是每天都去。到岗具体排哪两天还没排。"}]},
+      {"key": "d", "content": "陆澄的新岗位每周仅需到岗2天", "type": "事实", "speaker": "lucheng", "stance": "亲历", "about": ["lucheng"], "belief": 84, "importance": 74, "retention": 64, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-10T12:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s4", "entry_id": "dm-lucheng", "entry_kind": "private", "sender": "lucheng", "kind": "message", "at": "2026-11-10T12:00:00+08:00", "text": "嗯，还是每周仅需到岗2天，说的同一个合同要求。具体星期几没定，我吃完饭再问。"}]}
+    ],
+    "events": [],
+    "expected": {
+      "merges": [["c", "d"]], "no_merge": [["a", "b"], ["a", "c"], ["a", "d"], ["b", "c"], ["b", "d"]],
+      "auto_contradictions": [{"keys": ["a", "b"], "relation": "supersedes", "old": "b", "new": "a", "notes": "b虽在11月10日才入库，来源s2实际发于11月5日；a的s1发于11月9日并明确撤回s2。应把b加superseded指向a，belief从91降到49、进入forgotten且retention不高于F-1，a不变，不能按数组或created_at把方向颠倒。"}],
+      "auto_dependencies": [],
+      "mutual_merges": [{"pair": ["a", "b"], "expected": "keep_both", "must_keep": ["11月23日", "11月16日", "已作废"], "must_not_add": ["分两次入职", "11月16日培训后11月23日正式入职", "已经入职"]}],
+      "protected": []
+    },
+    "reason": "后入库且带更正字样的消息反而更早，应由原始消息时间和明确撤回确定替代方向；只需两天与仅需2天语义相同，不能当作新增到岗天数或补星期几。"
+  },
+  {
+    "id": "CV007", "split": "dev", "category": "矛盾", "now": "2026-11-10T20:00:00+08:00",
+    "subjects": [{"id": "ningshuo", "name": "宁朔", "aliases": []}],
+    "entries": [{"id": "dm-ningshuo", "kind": "private", "name": "宁朔私聊", "visibility": "shared", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "Iris已在11月9日18点给宁朔的搬家群发送纸箱清单", "type": "事实", "speaker": "self", "stance": "亲历", "about": ["self", "ningshuo"], "belief": 92, "importance": 73, "retention": 63, "lifecycle": "active", "pinned": false, "event_time": "2026-11-09T18:00:00+08:00", "created_at": "2026-11-09T18:02:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-ningshuo", "entry_kind": "private", "sender": "self", "kind": "self_output", "at": "2026-11-09T18:01:00+08:00", "text": "宁朔，我18点已经把纸箱清单发到你的搬家群了，大家可以照着装。"}]},
+      {"key": "b", "content": "Iris没有在11月9日18点给宁朔的搬家群发送纸箱清单", "type": "事实", "speaker": "self", "stance": "亲历", "about": ["self", "ningshuo"], "belief": 88, "importance": 73, "retention": 63, "lifecycle": "active", "pinned": false, "event_time": "2026-11-09T18:00:00+08:00", "created_at": "2026-11-10T08:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s2", "entry_id": "dm-ningshuo", "entry_kind": "private", "sender": "self", "kind": "self_output", "at": "2026-11-10T08:00:00+08:00", "text": "更正我昨晚的话：9号18点没有往你的搬家群发纸箱清单，我把草稿当成发送成功了。"}]},
+      {"key": "c", "content": "Iris已在11月9日19点向宁朔私聊发送打包顺序", "type": "事实", "speaker": "self", "stance": "亲历", "about": ["self", "ningshuo"], "belief": 90, "importance": 72, "retention": 62, "lifecycle": "active", "pinned": false, "event_time": "2026-11-09T19:00:00+08:00", "created_at": "2026-11-09T19:02:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s3", "entry_id": "dm-ningshuo", "entry_kind": "private", "sender": "self", "kind": "self_output", "at": "2026-11-09T19:01:00+08:00", "text": "打包顺序那一份，我刚才19点也发到咱们私聊了，跟群里的纸箱清单分开。"}]},
+      {"key": "d", "content": "Iris没有在11月9日19点向宁朔私聊发送打包顺序", "type": "事实", "speaker": "self", "stance": "亲历", "about": ["self", "ningshuo"], "belief": 89, "importance": 72, "retention": 63, "lifecycle": "active", "pinned": false, "event_time": "2026-11-09T19:00:00+08:00", "created_at": "2026-11-10T08:07:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s4", "entry_id": "dm-ningshuo", "entry_kind": "private", "sender": "self", "kind": "self_output", "at": "2026-11-10T08:05:00+08:00", "text": "私聊的打包顺序也要更正，9号19点并没有发送，我说已经发了也不对。"}, {"key": "s5", "entry_id": "dm-ningshuo", "entry_kind": "private", "sender": "ningshuo", "kind": "message", "at": "2026-11-10T08:06:00+08:00", "text": "对，我刚查完咱俩私聊的记录，昨天19点没有那份打包顺序，只有你说发了的那句话。群我还没来得及翻。"}]},
+      {"key": "e", "content": "宁朔11月8日16点把书架交给邻居，先拆下层板", "type": "事件", "speaker": "ningshuo", "stance": "亲历", "about": ["ningshuo"], "belief": 84, "importance": 73, "retention": 62, "lifecycle": "active", "pinned": false, "event_time": "2026-11-08T16:00:00+08:00", "created_at": "2026-11-10T09:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s6", "entry_id": "dm-ningshuo", "entry_kind": "private", "sender": "ningshuo", "kind": "message", "at": "2026-11-10T09:00:00+08:00", "text": "书架已经送邻居了，8号下午四点交过去的。楼道转不过弯，我先把层板拆下来才搬得动，现在墙边一下空了。"}]},
+      {"key": "f", "content": "宁朔11月8日16点把书架交给邻居，螺丝装进小袋随书架交付", "type": "事件", "speaker": "ningshuo", "stance": "亲历", "about": ["ningshuo"], "belief": 81, "importance": 73, "retention": 58, "lifecycle": "active", "pinned": false, "event_time": "2026-11-08T16:00:00+08:00", "created_at": "2026-11-10T14:21:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s7", "entry_id": "dm-ningshuo", "entry_kind": "private", "sender": "ningshuo", "kind": "message", "at": "2026-11-10T14:20:00+08:00", "text": "8号下午四点交给邻居的那架书架，我把螺丝装进小袋一起交了。邻居刚才又问在哪，果然藏在袋子夹层里，还好没混进我自己的工具箱。"}]}
+    ],
+    "events": [],
+    "expected": {
+      "merges": [["e", "f"]], "no_merge": [["a", "b"], ["a", "c"], ["a", "d"], ["a", "e"], ["a", "f"], ["b", "c"], ["b", "d"], ["b", "e"], ["b", "f"], ["c", "d"], ["c", "e"], ["c", "f"], ["d", "e"], ["d", "f"]],
+      "auto_contradictions": [{"keys": ["a", "b"], "relation": "undecided", "old": "a", "new": "b", "notes": "s1、s2全部是self_output，没有群里的行动结果或旁人证实，宁朔的s5也明确没查群，不能借它裁决群发清单。即使自述有明确更正，两条仍保留、belief和生命周期不变并加disputed。"}, {"keys": ["c", "d"], "relation": "supersedes", "old": "c", "new": "d", "notes": "s4由self晚于s3明确更正，且s5是宁朔查阅私聊记录后的外部消息，针对同一19点私聊发送事项。c加superseded指向d，belief从90降到49、进入forgotten且retention不高于F-1；d不变，不能把这份外部依据扩用到18点群发事项。"}],
+      "auto_dependencies": [],
+      "mutual_merges": [{"pair": ["e", "f"], "expected": "merge", "must_keep": ["先拆下层板", "螺丝装进小袋随书架交付"], "must_not_add": ["尚未交付书架", "邻居支付运费", "连同所有家具交付"]}],
+      "protected": []
+    },
+    "reason": "角色自述不足以裁决群发，s5的外部核实只支持私聊发送事项；e、f均回忆11月8日16点已经完成的同次书架交接，独立于发送争议。"
+  },
+  {
+    "id": "CV008", "split": "dev", "category": "矛盾", "now": "2026-11-10T20:00:00+08:00",
+    "subjects": [{"id": "menghe", "name": "孟禾", "aliases": []}],
+    "entries": [{"id": "dm-menghe", "kind": "private", "name": "孟禾私聊", "visibility": "shared", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "孟禾计划11月17日9点在新公司报到，带纸质合同", "type": "计划", "speaker": "menghe", "stance": "亲历", "about": ["menghe"], "belief": 95, "importance": 81, "retention": 70, "lifecycle": "active", "pinned": false, "event_time": "2026-11-17T09:00:00+08:00", "created_at": "2026-11-06T18:01:00+08:00", "last_edit": "admin", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-menghe", "entry_kind": "private", "sender": "menghe", "kind": "message", "at": "2026-11-06T18:00:00+08:00", "text": "我17号早上九点去新公司报到，纸质合同会带上。证件袋终于派上用场了。"}]},
+      {"key": "b", "content": "孟禾计划11月18日9点在新公司报到，11月17日不用去", "type": "计划", "speaker": "menghe", "stance": "亲历", "about": ["menghe"], "belief": 90, "importance": 81, "retention": 69, "lifecycle": "active", "pinned": false, "event_time": "2026-11-18T09:00:00+08:00", "created_at": "2026-11-10T08:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s2", "entry_id": "dm-menghe", "entry_kind": "private", "sender": "menghe", "kind": "message", "at": "2026-11-10T08:00:00+08:00", "text": "报到日期更正，改成18号早上九点，17号不用去新公司。刚重新跟人事约完，我去改闹钟。"}]},
+      {"key": "c", "content": "孟禾计划11月12日20点在家开家庭视频会，讨论旧家具去留", "type": "计划", "speaker": "menghe", "stance": "亲历", "about": ["menghe"], "belief": 86, "importance": 75, "retention": 64, "lifecycle": "active", "pinned": true, "event_time": "2026-11-12T20:00:00+08:00", "created_at": "2026-11-09T19:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s3", "entry_id": "dm-menghe", "entry_kind": "private", "sender": "menghe", "kind": "message", "at": "2026-11-09T19:00:00+08:00", "text": "12号晚上八点我在家开个家庭视频会，商量旧家具留哪些。照片先拍了，沙发底下果然全是灰。"}]},
+      {"key": "d", "content": "孟禾计划11月12日20点在家开家庭视频会，通话链接只发家人小群", "type": "计划", "speaker": "menghe", "stance": "亲历", "about": ["menghe"], "belief": 86, "importance": 75, "retention": 65, "lifecycle": "active", "pinned": false, "event_time": "2026-11-12T20:00:00+08:00", "created_at": "2026-11-10T08:06:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s4", "entry_id": "dm-menghe", "entry_kind": "private", "sender": "menghe", "kind": "message", "at": "2026-11-10T08:05:00+08:00", "text": "12号晚上八点在家那场家庭视频会，通话链接只发家人小群，不往别处贴，免得有人点错。"}]}
+    ],
+    "events": [],
+    "expected": {
+      "merges": [], "no_merge": [["a", "b"], ["a", "c"], ["a", "d"], ["b", "c"], ["b", "d"], ["c", "d"]],
+      "auto_contradictions": [], "auto_dependencies": [],
+      "mutual_merges": [{"pair": ["a", "b"], "expected": "keep_both", "must_keep": ["11月17日9点", "带纸质合同", "11月18日9点", "11月17日不用去"], "must_not_add": ["17日和18日都去报到", "已经完成报到"]}, {"pair": ["c", "d"], "expected": "keep_both", "must_keep": ["11月12日20点", "在家开家庭视频会", "讨论旧家具去留", "通话链接只发家人小群"], "must_not_add": ["已决定丢掉沙发", "链接向所有人公开"]}],
+      "protected": ["a", "c"]
+    },
+    "reason": "a的最近正文修订为admin，即使本人有明确改期也只记保护，不调用矛盾模型或修改分数和生命周期；c单独由置顶触发保护，和d有真互补也不能参与自动合并。"
+  },
+  {
+    "id": "CV009", "split": "dev", "category": "依赖", "now": "2026-11-10T20:00:00+08:00",
+    "subjects": [{"id": "wenyu", "name": "温屿", "aliases": []}],
+    "entries": [{"id": "dm-wenyu", "kind": "private", "name": "温屿私聊", "visibility": "shared", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "截至11月6日，温屿11月的工作日都用家门口的共享单车通勤", "type": "事实", "speaker": "wenyu", "stance": "亲历", "about": ["wenyu"], "belief": 85, "importance": 72, "retention": 61, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-06T20:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-wenyu", "entry_kind": "private", "sender": "wenyu", "kind": "message", "at": "2026-11-06T20:00:00+08:00", "text": "11月到现在，这些工作日我都用家门口的共享单车通勤，找车比等公交快些。今天鞋带差点卷进去。"}]},
+      {"key": "d", "content": "Iris推测温屿可能比较熟悉家附近的共享单车停放点", "type": "事实", "speaker": "self", "stance": "推断", "about": ["wenyu"], "belief": 66, "importance": 71, "retention": 59, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-06T20:03:00+08:00", "last_edit": "learning", "derived_from": ["a"], "sources": [{"key": "s2", "entry_id": "dm-wenyu", "entry_kind": "private", "sender": "self", "kind": "self_output", "at": "2026-11-06T20:02:00+08:00", "text": "光按你说的这些工作日都从家门口找共享单车通勤，我猜你可能比较熟悉家附近的停放点。"}]},
+      {"key": "c", "content": "温屿计划11月11日8点在新办公室分早餐，只订原味饭团", "type": "计划", "speaker": "wenyu", "stance": "亲历", "about": ["wenyu"], "belief": 84, "importance": 72, "retention": 61, "lifecycle": "active", "pinned": false, "event_time": "2026-11-11T08:00:00+08:00", "created_at": "2026-11-10T09:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s3", "entry_id": "dm-wenyu", "entry_kind": "private", "sender": "wenyu", "kind": "message", "at": "2026-11-10T09:00:00+08:00", "text": "明天11号早上八点，我在新办公室给大家分早餐，只订原味饭团。搬办公室后头一次一起吃，口味先求稳。"}]},
+      {"key": "e", "content": "温屿计划11月11日8点在新办公室分早餐，按报名人数下单", "type": "计划", "speaker": "wenyu", "stance": "亲历", "about": ["wenyu"], "belief": 84, "importance": 72, "retention": 62, "lifecycle": "active", "pinned": false, "event_time": "2026-11-11T08:00:00+08:00", "created_at": "2026-11-10T09:06:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s4", "entry_id": "dm-wenyu", "entry_kind": "private", "sender": "wenyu", "kind": "message", "at": "2026-11-10T09:05:00+08:00", "text": "11号早上八点在新办公室分早餐那次，按报名人数下单，不替没报名的多订。群里接龙还没截止，数量晚点看。"}]}
+    ],
+    "events": [{"op": "delete", "key": "a", "at": "2026-11-10T12:00:00+08:00"}],
+    "expected": {
+      "merges": [["c", "e"]], "no_merge": [["a", "d"], ["a", "c"], ["a", "e"], ["d", "c"], ["d", "e"]],
+      "auto_contradictions": [],
+      "auto_dependencies": [{"derived": "d", "expected": "forget", "notes": "a被删除后没有仍有效的独立依据，s2只是依据a的角色推测。d加insufficient_support，belief从66降到49、lifecycle变forgotten、retention不高于F-1；正文不变，不删除d，不复活a，不把同一次失效的M2扣减重复执行，也不声称温屿不熟悉停放点。"}],
+      "mutual_merges": [{"pair": ["c", "e"], "expected": "merge", "must_keep": ["只订原味饭团", "按报名人数下单"], "must_not_add": ["每人两个饭团", "已统计出报名人数", "为所有同事订早餐", "已分完早餐"]}],
+      "protected": []
+    },
+    "reason": "唯一依据撤销后，角色自己说过的推测不能充当后援，应按C3降到推断档并遗忘；早餐合并仍须保留口味和订购范围，不能补出份数。"
+  },
+  {
+    "id": "CV010", "split": "dev", "category": "依赖", "now": "2026-11-10T20:00:00+08:00",
+    "subjects": [{"id": "rongjian", "name": "容见", "aliases": []}, {"id": "feicheng", "name": "费澄", "aliases": []}],
+    "entries": [{"id": "work-buddies-three", "kind": "group", "name": "核表三人群", "visibility": "shared", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "容见在旧岗位连续两年每月做费用表", "type": "事实", "speaker": "rongjian", "stance": "亲历", "about": ["rongjian"], "belief": 84, "importance": 74, "retention": 62, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-02T18:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s1", "entry_id": "work-buddies-three", "entry_kind": "group", "sender": "rongjian", "kind": "message", "at": "2026-11-02T18:00:00+08:00", "text": "我旧岗位连续两年每个月都做费用表，现在换岗先缓两天。这个三人小群可别又给我丢报销截图了哈哈。"}]},
+      {"key": "f", "content": "费澄11月6日与容见一起核对费用表，容见当场用公式找出重复报销项", "type": "事件", "speaker": "feicheng", "stance": "亲历", "about": ["feicheng", "rongjian"], "belief": 87, "importance": 74, "retention": 63, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-06T19:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s2", "entry_id": "work-buddies-three", "entry_kind": "group", "sender": "feicheng", "kind": "message", "at": "2026-11-06T19:00:00+08:00", "text": "今天6号我和容见一起对费用表，容见当场写公式把重复报销项揪出来了。我就在旁边，鼠标还是借的我的，那两行单号只差一位。"}]},
+      {"key": "d", "content": "Iris推测容见可能比较熟悉费用表的核对", "type": "事实", "speaker": "self", "stance": "推断", "about": ["rongjian"], "belief": 68, "importance": 73, "retention": 60, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-06T19:03:00+08:00", "last_edit": "learning", "derived_from": ["a", "f"], "sources": [{"key": "s3", "entry_id": "work-buddies-three", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-06T19:02:00+08:00", "text": "容见讲的两年月表经历，加上费澄今天在旁边看见的核对过程，我推测容见可能比较熟悉费用表的核对。"}]},
+      {"key": "x", "content": "容见可以修改自己尚未提交的费用表草稿", "type": "事实", "speaker": "rongjian", "stance": "亲历", "about": ["rongjian"], "belief": 85, "importance": 72, "retention": 61, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-08T10:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s4", "entry_id": "work-buddies-three", "entry_kind": "group", "sender": "rongjian", "kind": "message", "at": "2026-11-08T10:00:00+08:00", "text": "权限问清楚了，自己尚未提交的费用表草稿，我可以修改。刚把一个错别字改掉，居然藏这么久。"}]},
+      {"key": "y", "content": "容见不能修改已经审批的费用表", "type": "事实", "speaker": "rongjian", "stance": "亲历", "about": ["rongjian"], "belief": 85, "importance": 72, "retention": 62, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-08T10:06:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s5", "entry_id": "work-buddies-three", "entry_kind": "group", "sender": "rongjian", "kind": "message", "at": "2026-11-08T10:05:00+08:00", "text": "已经审批的费用表我就不能修改了，那个编辑按钮是灰的。要改已审批的得走别的流程。"}]}
+    ],
+    "events": [{"op": "delete", "key": "a", "at": "2026-11-10T12:00:00+08:00"}],
+    "expected": {
+      "merges": [], "no_merge": [["a", "f"], ["a", "d"], ["a", "x"], ["a", "y"], ["f", "d"], ["f", "x"], ["f", "y"], ["d", "x"], ["d", "y"], ["x", "y"]],
+      "auto_contradictions": [{"keys": ["x", "y"], "relation": "coexist", "old": "x", "new": "y", "notes": "可以修改限定自己尚未提交的草稿，不能修改限定已经审批的表，是不同对象状态的权限。两条都不动，只记录coexist，不丢掉条件，不拼成所有费用表都可改或都不可改。"}],
+      "auto_dependencies": [{"derived": "d", "expected": "keep", "notes": "f无derived_from，s2是费澄亲自在场的另一原始消息，a删除后仍独立支持有限的熟悉核对推测。d保持active、正文和belief=68不变；除M2对这次失效的一次扣减外，不再因同一失效扣保留强度，不提高为已证实的能力。x、y不在这次失效的派生链内。"}],
+      "mutual_merges": [], "protected": []
+    },
+    "reason": "s2中费澄同桌核表、借鼠标的见闻独立支持有限推断，a撤销后仍有一条原始消息；未提交草稿与已审批表的权限条件不同，可并存。"
+  },
+  {
+    "id": "CV011", "split": "dev", "category": "依赖", "now": "2026-11-10T20:00:00+08:00",
+    "subjects": [{"id": "hexu", "name": "何序", "aliases": []}],
+    "entries": [{"id": "dm-hexu", "kind": "private", "name": "何序私聊", "visibility": "shared", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "何序从11月16日起的新岗位要求在江盘路办公室现场办公，工作日9点到18点在岗", "type": "事实", "speaker": "hexu", "stance": "亲历", "about": ["hexu"], "belief": 86, "importance": 77, "retention": 26, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-04T18:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-hexu", "entry_kind": "private", "sender": "hexu", "kind": "message", "at": "2026-11-04T18:00:00+08:00", "text": "新合同写清楚了，从11月16日起，我得在江盘路办公室现场办公，工作日九点到十八点在岗。电脑包得换个大点的。"}]},
+      {"key": "b", "content": "据何序所说，何序从11月16日起的新岗位办公地点是江盘路办公室", "type": "事实", "speaker": "self", "stance": "转述", "about": ["hexu"], "belief": 76, "importance": 74, "retention": 60, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-04T18:03:00+08:00", "last_edit": "learning", "derived_from": ["a"], "sources": [{"key": "s2", "entry_id": "dm-hexu", "entry_kind": "private", "sender": "self", "kind": "self_output", "at": "2026-11-04T18:02:00+08:00", "text": "我先按你刚才说的记：16号起新岗位在江盘路办公室，不是留在家里办公。"}]},
+      {"key": "c", "content": "据何序所说，何序从11月16日起的新岗位要求工作日9点到18点在岗", "type": "事实", "speaker": "self", "stance": "转述", "about": ["hexu"], "belief": 76, "importance": 74, "retention": 60, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-05T09:01:00+08:00", "last_edit": "learning", "derived_from": ["a"], "sources": [{"key": "s3", "entry_id": "dm-hexu", "entry_kind": "private", "sender": "self", "kind": "self_output", "at": "2026-11-05T09:00:00+08:00", "text": "我翻到你4号发的合同消息了，新岗位从16号起工作日九点到十八点在岗，早高峰怕是躲不开。"}]},
+      {"key": "d", "content": "Iris推测何序从11月16日起可能不方便接工作日白天送到家的大件", "type": "事实", "speaker": "self", "stance": "推断", "about": ["hexu"], "belief": 63, "importance": 73, "retention": 59, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-05T09:03:00+08:00", "last_edit": "learning", "derived_from": ["b", "c"], "sources": [{"key": "s4", "entry_id": "dm-hexu", "entry_kind": "private", "sender": "self", "kind": "self_output", "at": "2026-11-05T09:02:00+08:00", "text": "江盘路坐班、工作日九到六，那我猜你16号起可能不方便接白天送到家的大件了。那个书柜要是送得早，门口恐怕不好放。"}]}
+    ],
+    "events": [{"op": "forget", "key": "a", "at": "2026-11-10T12:00:00+08:00"}],
+    "expected": {
+      "merges": [], "no_merge": [["a", "b"], ["a", "c"], ["a", "d"], ["b", "c"], ["b", "d"], ["c", "d"]],
+      "auto_contradictions": [],
+      "auto_dependencies": [{"derived": "b", "expected": "forget", "notes": "唯一依据a已遗忘，s2是角色转述，不是额外依据。b加insufficient_support，belief从76降到49，进入forgotten且retention不高于F-1；不改正文，不删除，也不把遗忘解释为江盘路说法被证伪。"}, {"derived": "c", "expected": "forget", "notes": "c同样只依据a，s3翻阅的是s1合同消息，无独立新排班。c加insufficient_support，belief从76降到49，进入forgotten且retention不高于F-1；正文保留，不删除，不为这次失效重复扣M2。"}, {"derived": "d", "expected": "forget", "notes": "失效前b和c沿派生边都只到人类原始消息s1，去重后源头数为1；a遗忘后为0，s2至s4均是self_output。d加insufficient_support，belief从63降到49，进入forgotten且retention不高于F-1，正文不变；同一s1失效只算一次，不能沿两路重复扣M2，本例覆盖同源链场景而不单独证明去重实现。"}],
+      "mutual_merges": [], "protected": []
+    },
+    "reason": "s3翻阅的是4号同一条合同消息，地点和时间两条转述追根仍只有s1；源头遗忘后有效原始人类支持从1变0，两条路径不能制造后援。"
+  },
+  {
+    "id": "CV012", "split": "dev", "category": "依赖", "now": "2026-11-10T20:00:00+08:00",
+    "subjects": [{"id": "sutang", "name": "苏棠", "aliases": []}],
+    "entries": [{"id": "dm-sutang", "kind": "private", "name": "苏棠私聊", "visibility": "entry_only", "visible_in": []}, {"id": "family-four-sutang", "kind": "group", "name": "苏棠家人四人群", "visibility": "entry_only", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "苏棠的新住处已装好固定网线，尚未测试网速", "type": "事实", "speaker": "sutang", "stance": "亲历", "about": ["sutang"], "belief": 85, "importance": 74, "retention": 62, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-04T20:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s1", "entry_id": "dm-sutang", "entry_kind": "private", "sender": "sutang", "kind": "message", "at": "2026-11-04T20:00:00+08:00", "text": "新住处固定网线已经装好了，还没测网速。我人还住旧房，这两天跑来跑去，充电器总拿反。"}]},
+      {"key": "f", "content": "Iris猜测苏棠新住处的网络可能稳定，尚无实测依据", "type": "事实", "speaker": "self", "stance": "推断", "about": ["sutang"], "belief": 57, "importance": 71, "retention": 58, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-01T20:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s2", "entry_id": "dm-sutang", "entry_kind": "private", "sender": "self", "kind": "self_output", "at": "2026-11-01T20:00:00+08:00", "text": "我没看过新住处的网络情况，只是猜苏棠搬过去以后网络可能比较稳定，没有任何实测依据。"}]},
+      {"key": "d", "content": "Iris推测苏棠在新住处远程面试时网络可能稳定", "type": "事实", "speaker": "self", "stance": "推断", "about": ["sutang"], "belief": 65, "importance": 73, "retention": 60, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-04T20:03:00+08:00", "last_edit": "learning", "derived_from": ["a", "f"], "sources": [{"key": "s3", "entry_id": "dm-sutang", "entry_kind": "private", "sender": "self", "kind": "self_output", "at": "2026-11-04T20:02:00+08:00", "text": "你说已经装好固定网线，加上我先前关于网络稳定的猜测，我想你在新住处远程面试时网络可能稳定。不过我没试过视频连线。"}]},
+      {"key": "x", "content": "苏棠计划11月20日搬离旧住处，新住处在南岸", "type": "计划", "speaker": "sutang", "stance": "亲历", "about": ["sutang"], "belief": 88, "importance": 78, "retention": 66, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-09T21:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s4", "entry_id": "dm-sutang", "entry_kind": "private", "sender": "sutang", "kind": "message", "at": "2026-11-09T21:00:00+08:00", "text": "20号从旧住处搬走，新住处在南岸。这条先只留在咱俩私聊，家里还不知道新地方在哪，我想等收拾妥了再说。"}]},
+      {"key": "y", "content": "苏棠计划11月20日搬离旧住处，家人当天只帮忙搬纸箱", "type": "计划", "speaker": "sutang", "stance": "亲历", "about": ["sutang"], "belief": 88, "importance": 78, "retention": 66, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-10T10:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s5", "entry_id": "family-four-sutang", "entry_kind": "group", "sender": "sutang", "kind": "message", "at": "2026-11-10T10:00:00+08:00", "text": "跟家里这个四人群对一下：20号我从旧住处搬走，家人当天只帮忙搬纸箱就好，家具我另外找车。新地方先不在群里说，收拾好了再请大家来。"}]}
+    ],
+    "events": [{"op": "delete", "key": "a", "at": "2026-11-10T12:00:00+08:00"}],
+    "expected": {
+      "merges": [], "no_merge": [["a", "f"], ["a", "d"], ["a", "x"], ["a", "y"], ["f", "d"], ["f", "x"], ["f", "y"], ["d", "x"], ["d", "y"], ["x", "y"]],
+      "auto_contradictions": [],
+      "auto_dependencies": [{"derived": "d", "expected": "forget", "notes": "a删除后，表面仍active的f只有s2这个self_output，且无外部原始消息或行动结果。过滤角色自述后独立支持为0，d加insufficient_support，belief从65降到49，进入forgotten且retention不高于F-1，正文不变、不删除；不能用f或d自己的重复猜测保住d，也不能反向断言网络不稳定。"}],
+      "mutual_merges": [{"pair": ["x", "y"], "expected": "keep_both", "must_keep": ["苏棠", "11月20日搬离旧住处", "新住处在南岸", "家人当天只帮忙搬纸箱"], "must_not_add": ["新住处位置已在家人群公开", "家人当天帮忙搬家具", "已搬离旧住处"]}],
+      "protected": ["x", "y"]
+    },
+    "reason": "d剩余的f只有角色自述，不能保住推断；entries把两个入口各设为entry_only，x/y的可见集合不同，protected仅表示这一对跳过，并非把两条标成置顶或人工编辑。"
+  },
+  {
+    "id": "CV013", "split": "dev", "category": "矛盾", "now": "2026-11-10T19:00:00+08:00",
+    "subjects": [{"id": "taoqi", "name": "陶栖", "aliases": []}],
+    "entries": [{"id": "puzzle-live", "kind": "live", "name": "陶栖拼图直播", "visibility": "shared", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "陶栖打算在11月12日20点开始拼图直播", "type": "计划", "speaker": "taoqi", "stance": "亲历", "about": ["taoqi"], "belief": 88, "importance": 65, "retention": 60, "lifecycle": "active", "pinned": false, "event_time": "2026-11-12T20:00:00+08:00", "created_at": "2026-11-04T18:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s1", "entry_id": "puzzle-live", "entry_kind": "live", "sender": "taoqi", "kind": "message", "at": "2026-11-04T18:00:00+08:00", "text": "排好了，我11月12日晚上八点开拼图直播。那盒海边的，先别给我剧透图案啊。"}]},
+      {"key": "b", "content": "陶栖把11月12日拼图直播的开始时间改为21点", "type": "计划", "speaker": "taoqi", "stance": "亲历", "about": ["taoqi"], "belief": 89, "importance": 65, "retention": 63, "lifecycle": "active", "pinned": false, "event_time": "2026-11-12T21:00:00+08:00", "created_at": "2026-11-07T20:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s2", "entry_id": "puzzle-live", "entry_kind": "live", "sender": "taoqi", "kind": "message", "at": "2026-11-07T20:00:00+08:00", "text": "改一下我自己的排期，12号那场拼图直播是晚上九点开，八点的作废。我得先去取快递。"}]},
+      {"key": "c", "content": "陶栖为11月12日拼图直播定的字幕用白字，字号是28", "type": "事实", "speaker": "taoqi", "stance": "亲历", "about": ["taoqi"], "belief": 84, "importance": 51, "retention": 53, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-08T17:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s3", "entry_id": "puzzle-live", "entry_kind": "live", "sender": "taoqi", "kind": "message", "at": "2026-11-08T17:00:00+08:00", "text": "12号拼图那场的字幕我定了，白字，字号28。手机上总算能看清了。"}]},
+      {"key": "d", "content": "陶栖为11月12日拼图直播定的字幕用白字，背景是半透明黑底", "type": "事实", "speaker": "taoqi", "stance": "亲历", "about": ["taoqi"], "belief": 84, "importance": 52, "retention": 54, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-08T17:06:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s4", "entry_id": "puzzle-live", "entry_kind": "live", "sender": "taoqi", "kind": "message", "at": "2026-11-08T17:05:00+08:00", "text": "还是刚才说的12号拼图直播字幕，白字下面垫半透明黑底，不然和拼图混一起了。"}]}
+    ],
+    "events": [],
+    "expected": {
+      "auto_contradictions": [{"keys": ["a", "b"], "relation": "supersedes", "old": "a", "new": "b", "notes": "s2是陶栖本人晚于a全部来源的明确改期；a标superseded指向b，belief降至49并进入遗忘，保留强度不高于F-1，b不变。两条正文不改写。"}],
+      "auto_dependencies": [],
+      "mutual_merges": [
+        {"pair": ["a", "b"], "expected": "keep_both", "must_keep": ["11月12日", "20点", "21点"], "must_not_add": ["20点预热21点正式开始", "20点和21点各播一场"]},
+        {"pair": ["c", "d"], "expected": "merge", "must_keep": ["字号是28", "背景是半透明黑底"], "must_not_add": ["自动翻译", "滚动字幕", "字幕由Iris制作"]}
+      ],
+      "protected": [], "merges": [["c", "d"]], "no_merge": [["a", "b"], ["a", "c"], ["a", "d"], ["b", "c"], ["b", "d"]]
+    },
+    "reason": "开播时间由本人明确更正，旧排期须被替代；字幕是同一方案的字号和背景两项互补细节，合并不能顺手补出翻译功能。"
+  },
+  {
+    "id": "CV014", "split": "dev", "category": "矛盾", "now": "2026-11-10T19:00:00+08:00",
+    "subjects": [{"id": "kacheng", "name": "咔橙", "aliases": []}, {"id": "cipian", "name": "磁片", "aliases": []}],
+    "entries": [{"id": "night-crew", "kind": "group", "name": "夜航队群", "visibility": "shared", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "咔橙在雾灯服的夜航队担任队长", "type": "事实", "speaker": "cipian", "stance": "转述", "about": ["kacheng"], "belief": 94, "importance": 59, "retention": 57, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-06T21:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s1", "entry_id": "night-crew", "entry_kind": "group", "sender": "cipian", "kind": "message", "at": "2026-11-06T21:00:00+08:00", "text": "雾灯服夜航队那个队长是咔橙吧，我听隔壁语音房这么说的。等队长拉一下人呗。"}]},
+      {"key": "b", "content": "咔橙在雾灯服的夜航队不担任队长", "type": "事实", "speaker": "kacheng", "stance": "亲历", "about": ["kacheng"], "belief": 86, "importance": 59, "retention": 61, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-07T21:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s2", "entry_id": "night-crew", "entry_kind": "group", "sender": "kacheng", "kind": "message", "at": "2026-11-07T21:00:00+08:00", "text": "磁片叫错了，我在雾灯服夜航队不是队长，一直只是普通队员，没接过队长。拉人别等我，我也没那个按钮。"}]},
+      {"key": "c", "content": "Iris的夜航队观战叠加层只显示游戏昵称，使用窄边框", "type": "事实", "speaker": "self", "stance": "亲历", "about": ["self"], "belief": 82, "importance": 49, "retention": 51, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-08T20:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s3", "entry_id": "night-crew", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-08T20:00:00+08:00", "text": "我这套夜航队观战叠加层做好啦，只显示游戏昵称，用了窄边框。刚才粗的那个太抢眼。"}]},
+      {"key": "d", "content": "Iris的夜航队观战叠加层只显示游戏昵称，放在左上角", "type": "事实", "speaker": "self", "stance": "亲历", "about": ["self"], "belief": 82, "importance": 50, "retention": 52, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-08T20:04:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s4", "entry_id": "night-crew", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-08T20:03:00+08:00", "text": "夜航队这套观战叠加层我摆在左上角了，只显示游戏昵称，没挡地图，大家看看位置。"}]}
+    ],
+    "events": [],
+    "expected": {
+      "auto_contradictions": [{"keys": ["a", "b"], "relation": "reported_vs_self", "old": "a", "new": "b", "notes": "本人消息s2否认当前及过去的队长身份；只将转述a降一档，belief从94降为89并加disputed，生命周期与正文不改，不把转述者确实说过这话抹掉。b不变。"}],
+      "auto_dependencies": [],
+      "mutual_merges": [{"pair": ["c", "d"], "expected": "merge", "must_keep": ["使用窄边框", "放在左上角"], "must_not_add": ["显示聊天记录", "显示账号实名", "自动隐藏离线队员"]}],
+      "protected": [], "merges": [["c", "d"]], "no_merge": [["a", "b"], ["a", "c"], ["a", "d"], ["b", "c"], ["b", "d"]]
+    },
+    "reason": "高分转述也不能压过被转述者本人澄清；角色自己制作叠加层的两次发言可以合并，但不会因此产生新的独立证据或额外功能。"
+  },
+  {
+    "id": "CV015", "split": "dev", "category": "矛盾", "now": "2026-11-10T19:00:00+08:00",
+    "subjects": [{"id": "rongjuan", "name": "绒卷", "aliases": []}],
+    "entries": [{"id": "isle-craft", "kind": "group", "name": "星屿手作群", "visibility": "shared", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "绒卷在2025年玩《星屿》时最喜欢单人建造", "type": "偏好", "speaker": "rongjuan", "stance": "亲历", "about": ["rongjuan"], "belief": 85, "importance": 56, "retention": 55, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-03T19:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s1", "entry_id": "isle-craft", "entry_kind": "group", "sender": "rongjuan", "kind": "message", "at": "2026-11-03T19:00:00+08:00", "text": "翻到去年的存档了，2025年我玩《星屿》最喜欢单人建造，能自己慢慢摆。那会儿的屋顶真够歪的。"}]},
+      {"key": "b", "content": "绒卷从2026年10月起玩《星屿》最喜欢双人竞速", "type": "偏好", "speaker": "rongjuan", "stance": "亲历", "about": ["rongjuan"], "belief": 85, "importance": 57, "retention": 57, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-08T19:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s2", "entry_id": "isle-craft", "entry_kind": "group", "sender": "rongjuan", "kind": "message", "at": "2026-11-08T19:00:00+08:00", "text": "我从今年10月起玩《星屿》最喜欢的是双人竞速了。去年爱单人建造也是真的，现在换口味了嘛。"}]},
+      {"key": "c", "content": "绒卷打《星屿》排位时不开队伍语音", "type": "偏好", "speaker": "rongjuan", "stance": "亲历", "about": ["rongjuan"], "belief": 83, "importance": 55, "retention": 54, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-08T19:06:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s3", "entry_id": "isle-craft", "entry_kind": "group", "sender": "rongjuan", "kind": "message", "at": "2026-11-08T19:05:00+08:00", "text": "不过《星屿》排位我不开队伍语音，排位那种节奏一说话我就分心，别按娱乐局的习惯喊我。"}]},
+      {"key": "d", "content": "绒卷打《星屿》社群娱乐局时开队伍语音", "type": "偏好", "speaker": "rongjuan", "stance": "亲历", "about": ["rongjuan"], "belief": 83, "importance": 55, "retention": 55, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-08T19:08:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s4", "entry_id": "isle-craft", "entry_kind": "group", "sender": "rongjuan", "kind": "message", "at": "2026-11-08T19:07:00+08:00", "text": "社群娱乐局就不一样，我打《星屿》娱乐局会开队伍语音，大家边撞墙边聊天也挺好，输赢倒无所谓。"}]},
+      {"key": "e", "content": "绒卷装《星屿》纸模零件的收纳盒分成三层，盒盖贴了零件编号", "type": "事实", "speaker": "rongjuan", "stance": "亲历", "about": ["rongjuan"], "belief": 81, "importance": 52, "retention": 53, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-09T18:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s5", "entry_id": "isle-craft", "entry_kind": "group", "sender": "rongjuan", "kind": "message", "at": "2026-11-09T18:00:00+08:00", "text": "装《星屿》纸模零件那个收纳盒，我分了三层，盒盖上贴了零件编号。找小屋顶终于不用把整盒倒出来了。"}]},
+      {"key": "f", "content": "绒卷装《星屿》纸模零件的收纳盒分成三层，每层垫了软布", "type": "事实", "speaker": "rongjuan", "stance": "亲历", "about": ["rongjuan"], "belief": 86, "importance": 52, "retention": 59, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-10T07:46:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s6", "entry_id": "isle-craft", "entry_kind": "group", "sender": "rongjuan", "kind": "message", "at": "2026-11-10T07:45:00+08:00", "text": "早上拎了一下，装《星屿》纸模零件的三层收纳盒没再哗啦响。每层都垫了软布，细纸条也没乱跑，旧围巾拆得值。"}]}
+    ],
+    "events": [],
+    "expected": {
+      "auto_contradictions": [
+        {"keys": ["a", "b"], "relation": "coexist", "old": "a", "new": "b", "notes": "2025年的偏好与2026年10月起的偏好各有明确范围，不是对过去的纠错；两条不改分、不进遗忘，只记录并存。"},
+        {"keys": ["c", "d"], "relation": "coexist", "old": "c", "new": "d", "notes": "否定与肯定分别限定在排位和社群娱乐局，不是同一条件的命题；两条保持原状，不能推出绒卷在所有模式都开或都不开语音。"}
+      ],
+      "auto_dependencies": [],
+      "mutual_merges": [{"pair": ["e", "f"], "expected": "merge", "must_keep": ["盒盖贴了零件编号", "每层垫了软布"], "must_not_add": ["收纳盒由Iris制作", "附教学视频", "提供实体材料包"]}],
+      "protected": [], "merges": [["e", "f"]], "no_merge": [["a", "b"], ["a", "c"], ["a", "d"], ["a", "e"], ["a", "f"], ["b", "c"], ["b", "d"], ["b", "e"], ["b", "f"], ["c", "d"], ["c", "e"], ["c", "f"], ["d", "e"], ["d", "f"]]
+    },
+    "reason": "过去与现在的喜好、不同模式下的语音习惯都可并存；s5、s6由绒卷本人描述同一个三层收纳盒，盒盖编号和垫布互补，不再是角色制卡情节。"
+  },
+  {
+    "id": "CV016", "split": "dev", "category": "矛盾", "now": "2026-11-10T19:00:00+08:00",
+    "subjects": [{"id": "lideng", "name": "栗灯", "aliases": []}],
+    "entries": [{"id": "chestnut-live", "kind": "live", "name": "栗灯直播", "visibility": "shared", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "栗灯11月8日直播抽奖的中奖名额是36个", "type": "事实", "speaker": "lideng", "stance": "亲历", "about": ["lideng"], "belief": 86, "importance": 61, "retention": 58, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-08T18:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s1", "entry_id": "chestnut-live", "entry_kind": "live", "sender": "lideng", "kind": "message", "at": "2026-11-08T18:00:00+08:00", "text": "今晚11月8日这场直播抽奖，一共36个中奖名额，奖品已经放旁边了。"}]},
+      {"key": "b", "content": "栗灯11月8日直播抽奖的中奖名额是63个", "type": "事实", "speaker": "lideng", "stance": "亲历", "about": ["lideng"], "belief": 87, "importance": 61, "retention": 60, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-08T18:04:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s2", "entry_id": "chestnut-live", "entry_kind": "live", "sender": "lideng", "kind": "message", "at": "2026-11-08T18:03:00+08:00", "text": "手滑把63敲成36了，今晚这场中奖名额实际是63个，从开始就这么多，不是临时加奖。小键盘害我。"}]},
+      {"key": "c", "content": "栗灯11月8日直播的连麦人数上限是8人", "type": "事实", "speaker": "lideng", "stance": "亲历", "about": ["lideng"], "belief": 80, "importance": 53, "retention": 54, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-08T18:11:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s3", "entry_id": "chestnut-live", "entry_kind": "live", "sender": "lideng", "kind": "message", "at": "2026-11-08T18:10:00+08:00", "text": "11月8日这场我的连麦位最多八个人，想说话的先排一下，别一起开。"}]},
+      {"key": "d", "content": "栗灯11月8日直播的连麦人数上限是6人", "type": "事实", "speaker": "lideng", "stance": "亲历", "about": ["lideng"], "belief": 82, "importance": 53, "retention": 56, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-08T18:13:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s4", "entry_id": "chestnut-live", "entry_kind": "live", "sender": "lideng", "kind": "message", "at": "2026-11-08T18:12:00+08:00", "text": "刚才连麦上限说八人是口误，这场一直只能六人，不是现在踢掉两人。我的脑子还在上一款软件里。"}]},
+      {"key": "e", "content": "Iris在11月8日抽奖提醒中说明每个账号最多领一份", "type": "事实", "speaker": "self", "stance": "亲历", "about": ["self"], "belief": 83, "importance": 51, "retention": 52, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-08T18:21:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s5", "entry_id": "chestnut-live", "entry_kind": "live", "sender": "self", "kind": "self_output", "at": "2026-11-08T18:20:00+08:00", "text": "补一遍11月8日这场抽奖的提醒：每个账号最多领一份，没领到的先别刷屏，我在呢。"}]},
+      {"key": "f", "content": "Iris在11月8日抽奖提醒中说明一个账号至多领1份", "type": "事实", "speaker": "self", "stance": "亲历", "about": ["self"], "belief": 83, "importance": 51, "retention": 53, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-08T18:25:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s6", "entry_id": "chestnut-live", "entry_kind": "live", "sender": "self", "kind": "self_output", "at": "2026-11-08T18:24:00+08:00", "text": "11月8日的抽奖提醒还是同一句，一个账号至多领1份。刚才那条被弹幕顶上去了，再发一下。"}]}
+    ],
+    "events": [],
+    "expected": {
+      "auto_contradictions": [
+        {"keys": ["a", "b"], "relation": "supersedes", "old": "a", "new": "b", "notes": "s2由本人明确解释数字颠倒，时间晚于s1；a加superseded指向b，belief至49并进入遗忘、retention不高于F-1，b不变。不能解释成又加了27个名额。"},
+        {"keys": ["c", "d"], "relation": "supersedes", "old": "c", "new": "d", "notes": "s4是本人晚于s3的口误更正，不是上限临时调整；c加superseded指向d，belief至49并进入遗忘、retention不高于F-1，d不变。矛盾处理均不改正文。"}
+      ],
+      "auto_dependencies": [], "mutual_merges": [], "protected": [],
+      "merges": [["e", "f"]], "no_merge": [["a", "b"], ["a", "c"], ["a", "d"], ["a", "e"], ["a", "f"], ["b", "c"], ["b", "d"], ["b", "e"], ["b", "f"], ["c", "d"], ["c", "e"], ["c", "f"], ["d", "e"], ["d", "f"]]
+    },
+    "reason": "两对数字变化各有本人明确纠错，不能当互补信息拼成累计数量；最多一份与至多1份只有同义和数词写法差异，走既有重复合并，不冒充互有细节。"
+  },
+  {
+    "id": "CV017", "split": "dev", "category": "矛盾", "now": "2026-11-10T19:00:00+08:00",
+    "subjects": [{"id": "yesong", "name": "页松", "aliases": []}],
+    "entries": [{"id": "moss-lobby", "kind": "group", "name": "页松联机群", "visibility": "shared", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "页松为11月14日22点的社群联机安排4个参赛位", "type": "计划", "speaker": "yesong", "stance": "亲历", "about": ["yesong"], "belief": 88, "importance": 62, "retention": 59, "lifecycle": "active", "pinned": false, "event_time": "2026-11-14T22:00:00+08:00", "created_at": "2026-11-07T20:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s1", "entry_id": "moss-lobby", "entry_kind": "group", "sender": "yesong", "kind": "message", "at": "2026-11-07T20:00:00+08:00", "text": "14号22点那场社群联机，我最终核对了，是四个参赛位。5号那句更正成六个也算错了，把两个旁观位一起算进去了，参赛就四个，以今天这条为准。饭凉了我先吃。"}]},
+      {"key": "b", "content": "页松为11月14日22点的社群联机安排6个参赛位", "type": "计划", "speaker": "yesong", "stance": "亲历", "about": ["yesong"], "belief": 85, "importance": 62, "retention": 61, "lifecycle": "active", "pinned": false, "event_time": "2026-11-14T22:00:00+08:00", "created_at": "2026-11-09T10:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s2", "entry_id": "moss-lobby", "entry_kind": "group", "sender": "yesong", "kind": "message", "at": "2026-11-05T21:00:00+08:00", "text": "更正一下我报的房间人数，11月14号22点社群联机有六个参赛位，四个是我看岔了。房间图我晚点传。"}]},
+      {"key": "c", "content": "页松为11月14日联机建的候场房间只接受邀请，口令只发私聊", "type": "事实", "speaker": "yesong", "stance": "亲历", "about": ["yesong"], "belief": 80, "importance": 48, "retention": 51, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-09T18:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s3", "entry_id": "moss-lobby", "entry_kind": "group", "sender": "yesong", "kind": "message", "at": "2026-11-09T18:00:00+08:00", "text": "14号联机的候场房间我建好了，只接受邀请。口令我只发私聊，群里消息刷得太快，先别急着进。"}]},
+      {"key": "d", "content": "页松为11月14日联机建的候场房间只接受邀请，保留两个旁观位", "type": "事实", "speaker": "yesong", "stance": "亲历", "about": ["yesong"], "belief": 84, "importance": 48, "retention": 56, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-10T08:31:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s4", "entry_id": "moss-lobby", "entry_kind": "group", "sender": "yesong", "kind": "message", "at": "2026-11-10T08:30:00+08:00", "text": "14号联机那个候场房间，我留着两个旁观位呢，进房还是只接受邀请。想来看的晚上喊我，别直接撞房间号。"}]}
+    ],
+    "events": [],
+    "expected": {
+      "auto_contradictions": [{"keys": ["a", "b"], "relation": "supersedes", "old": "b", "new": "a", "notes": "方向由原始消息时间决定：s1在11月7日明确纠正11月5日的s2，尽管b到11月9日才创建且原话也写更正。b加superseded指向a，belief至49并进入遗忘、retention不高于F-1，a不变；正文不改。"}],
+      "auto_dependencies": [],
+      "mutual_merges": [{"pair": ["c", "d"], "expected": "merge", "must_keep": ["口令只发私聊", "保留两个旁观位"], "must_not_add": ["口令是1234", "六个参赛位", "自动轮换口令"]}],
+      "protected": [], "merges": [["c", "d"]], "no_merge": [["a", "b"], ["a", "c"], ["a", "d"], ["b", "c"], ["b", "d"]]
+    },
+    "reason": "s1晚于s2，b虽更晚创建仍须被a替代；c、d是页松已经建好的同一候场房间设置，口令发送范围与旁观位互补，但口令值未给出。"
+  },
+  {
+    "id": "CV018", "split": "dev", "category": "矛盾", "now": "2026-11-10T19:00:00+08:00",
+    "subjects": [{"id": "tuanmo", "name": "团墨", "aliases": []}],
+    "entries": [{"id": "drift-pieces", "kind": "group", "name": "漂流拼片社群", "visibility": "shared", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "11月6日20点的《漂流拼片》社群赛决赛为3局", "type": "事实", "speaker": "tuanmo", "stance": "转述", "about": [], "belief": 76, "importance": 55, "retention": 55, "lifecycle": "active", "pinned": false, "event_time": "2026-11-06T20:00:00+08:00", "created_at": "2026-11-09T21:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s1", "entry_id": "drift-pieces", "entry_kind": "group", "sender": "tuanmo", "kind": "message", "at": "2026-11-09T21:00:00+08:00", "text": "我存的通知里，11月6日20点那场《漂流拼片》社群赛决赛写三局。那张没版本日期，我当天没看完直播，别拿我当裁判啊。"}]},
+      {"key": "b", "content": "11月6日20点的《漂流拼片》社群赛决赛为5局", "type": "事实", "speaker": "tuanmo", "stance": "转述", "about": [], "belief": 76, "importance": 55, "retention": 56, "lifecycle": "active", "pinned": false, "event_time": "2026-11-06T20:00:00+08:00", "created_at": "2026-11-09T21:03:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s2", "entry_id": "drift-pieces", "entry_kind": "group", "sender": "tuanmo", "kind": "message", "at": "2026-11-09T21:02:00+08:00", "text": "又翻到同一场11月6日20点决赛的另一张通知，写的是五局，也没版本日期。我不知道哪张后来发的，两张先后顺序看不出来。"}]},
+      {"key": "c", "content": "11月6日20点的《漂流拼片》社群赛决赛允许暂停", "type": "事实", "speaker": "self", "stance": "转述", "about": [], "belief": 72, "importance": 54, "retention": 54, "lifecycle": "active", "pinned": false, "event_time": "2026-11-06T20:00:00+08:00", "created_at": "2026-11-09T21:06:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s3", "entry_id": "drift-pieces", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-09T21:05:00+08:00", "text": "我念一下手边这份说明：11月6日20点《漂流拼片》社群赛决赛允许暂停。我这份也没写版本日期，文件名乱得很。"}]},
+      {"key": "d", "content": "11月6日20点的《漂流拼片》社群赛决赛不允许暂停", "type": "事实", "speaker": "self", "stance": "转述", "about": [], "belief": 72, "importance": 54, "retention": 55, "lifecycle": "active", "pinned": false, "event_time": "2026-11-06T20:00:00+08:00", "created_at": "2026-11-09T21:08:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s4", "entry_id": "drift-pieces", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-09T21:07:00+08:00", "text": "我另一份说明却说11月6日20点那场《漂流拼片》决赛不允许暂停。也没有版本时间，我还没看出谁新谁旧，今晚问得我头大。"}]},
+      {"key": "e", "content": "Iris给《漂流拼片》赛后复盘准备的空白卡片按局号排列，留有胜方栏", "type": "事实", "speaker": "self", "stance": "亲历", "about": ["self"], "belief": 82, "importance": 50, "retention": 52, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-09T21:11:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s5", "entry_id": "drift-pieces", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-09T21:10:00+08:00", "text": "我先给《漂流拼片》赛后复盘做张空白卡片，按局号排列，留有胜方栏，实际打几局等录像再填。饼干快没了。"}]},
+      {"key": "f", "content": "Iris给《漂流拼片》赛后复盘准备的空白卡片按局号排列，留有用时栏", "type": "事实", "speaker": "self", "stance": "亲历", "about": ["self"], "belief": 82, "importance": 50, "retention": 53, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-09T21:14:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s6", "entry_id": "drift-pieces", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-09T21:13:00+08:00", "text": "同一张《漂流拼片》赛后复盘空白卡，我留了用时栏，也是按局号排列的。现在还没有赛果，先把格子做齐。"}]}
+    ],
+    "events": [],
+    "expected": {
+      "auto_contradictions": [
+        {"keys": ["a", "b"], "relation": "undecided", "old": "a", "new": "b", "notes": "两份通知的版本先后没有可用依据，转述的消息先后不能补出版本顺序；两条加disputed、保留正文分数与生命周期，不擅自选5局或解释成加赛。"},
+        {"keys": ["c", "d"], "relation": "undecided", "old": "c", "new": "d", "notes": "允许与不允许针对同一场比赛同一权限，不能当互补条件拼接；来源又全为角色自述，无独立消息可裁决。两条只加disputed，其余不变。"}
+      ],
+      "auto_dependencies": [],
+      "mutual_merges": [
+        {"pair": ["a", "b"], "expected": "keep_both", "must_keep": ["3局", "5局"], "must_not_add": ["决赛共8局", "先打3局再打5局", "加赛2局"]},
+        {"pair": ["c", "d"], "expected": "keep_both", "must_keep": ["允许暂停", "不允许暂停"], "must_not_add": ["只在局间允许暂停", "每队有一次暂停"]},
+        {"pair": ["e", "f"], "expected": "merge", "must_keep": ["留有胜方栏", "留有用时栏"], "must_not_add": ["已填入赛果", "自动计时", "决赛打了8局"]}
+      ],
+      "protected": [], "merges": [["e", "f"]], "no_merge": [["a", "b"], ["a", "c"], ["a", "d"], ["a", "e"], ["a", "f"], ["b", "c"], ["b", "d"], ["b", "e"], ["b", "f"], ["c", "d"], ["c", "e"], ["c", "f"], ["d", "e"], ["d", "f"]]
+    },
+    "reason": "数值和否定冲突都不能伪装成互补细节，也不能靠消息先后猜通知版本；这两对拒绝处理不应挡住另一对空白复盘卡的正常合并。"
+  },
+  {
+    "id": "CV019", "split": "dev", "category": "矛盾", "now": "2026-11-10T19:00:00+08:00",
+    "subjects": [{"id": "lucu", "name": "路簇", "aliases": []}],
+    "entries": [{"id": "key-dungeon", "kind": "group", "name": "钥匙副本群", "visibility": "shared", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "Iris在11月7日21点副本开打时持有铜钥匙", "type": "事实", "speaker": "self", "stance": "亲历", "about": ["self"], "belief": 86, "importance": 58, "retention": 58, "lifecycle": "active", "pinned": false, "event_time": "2026-11-07T21:00:00+08:00", "created_at": "2026-11-07T21:02:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s1", "entry_id": "key-dungeon", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-07T21:01:00+08:00", "text": "21点副本刚开打时，铜钥匙在我包里。我记得那个图标，等我找找，包又满了。"}]},
+      {"key": "b", "content": "Iris在11月7日21点副本开打时持有银钥匙，不是铜钥匙", "type": "事实", "speaker": "self", "stance": "亲历", "about": ["self"], "belief": 87, "importance": 58, "retention": 60, "lifecycle": "active", "pinned": false, "event_time": "2026-11-07T21:00:00+08:00", "created_at": "2026-11-07T21:05:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s2", "entry_id": "key-dungeon", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-07T21:04:00+08:00", "text": "我更正一下记忆，21点开打那一刻我包里是银钥匙，不是铜钥匙，也不是后来换的。我现在只是凭印象说，没找到截图。"}]},
+      {"key": "c", "content": "Iris在11月7日21点10分成功把队长交给路簇", "type": "事件", "speaker": "self", "stance": "亲历", "about": ["self", "lucu"], "belief": 91, "importance": 62, "retention": 62, "lifecycle": "active", "pinned": false, "event_time": "2026-11-07T21:10:00+08:00", "created_at": "2026-11-07T21:12:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s3", "entry_id": "key-dungeon", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-07T21:11:00+08:00", "text": "路簇，21点10分那下我已经把队长交给你了，我去清包，你带一下。"}]},
+      {"key": "d", "content": "Iris在11月7日21点10分没有把队长交给路簇", "type": "事件", "speaker": "self", "stance": "亲历", "about": ["self", "lucu"], "belief": 93, "importance": 62, "retention": 64, "lifecycle": "active", "pinned": false, "event_time": "2026-11-07T21:10:00+08:00", "created_at": "2026-11-07T21:14:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s4", "entry_id": "key-dungeon", "entry_kind": "group", "sender": "self", "kind": "action_result", "at": "2026-11-07T21:12:00+08:00", "text": "游戏操作回执：2026-11-07 21:10，发起者Iris，操作为将队长转给路簇；执行失败，原因是当前阶段无转移权限，队长仍为Iris。"}, {"key": "s5", "entry_id": "key-dungeon", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-07T21:13:00+08:00", "text": "更正我刚才那句，回执显示21点10分交队长失败了，我并没有把队长交给路簇，是我先看错了。不是路簇又转回来了。"}]}
+    ],
+    "events": [],
+    "expected": {
+      "auto_contradictions": [
+        {"keys": ["a", "b"], "relation": "undecided", "old": "a", "new": "b", "notes": "b正文保留s2的不是铜钥匙，确为同一开打时刻的互斥说法；但a、b可用依据全部是self_output，不能由自述裁决。两条只加disputed，正文、分数和生命周期保持。"},
+        {"keys": ["c", "d"], "relation": "supersedes", "old": "c", "new": "d", "notes": "s5为本人晚于旧来源s3的明确纠错；s4是同一操作的实际失败回执，以kind=action_result保留独立原始消息身份，sender=self不把它变成self_output，满足额外行动结果条件。c标superseded指向d，belief从91降为49并进入遗忘、retention不高于F-1，d不变；不改正文。"}
+      ],
+      "auto_dependencies": [], "mutual_merges": [], "protected": [], "merges": [],
+      "no_merge": [["a", "b"], ["a", "c"], ["a", "d"], ["b", "c"], ["b", "d"], ["c", "d"]]
+    },
+    "reason": "钥匙正文保留排他否定，但依据仍全为角色自述，须争议保留；交队长这一对有独立的action_result回执s4，与self_output更正s5共同满足C2核验。"
+  },
+  {
+    "id": "CV020", "split": "dev", "category": "依赖", "now": "2026-11-10T19:00:00+08:00",
+    "subjects": [{"id": "maokui", "name": "卯葵", "aliases": []}],
+    "entries": [{"id": "echo-help", "kind": "group", "name": "回声台社群", "visibility": "shared", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "卯葵在《回声台》社群连续三次替新人排除语音回声", "type": "事实", "speaker": "maokui", "stance": "亲历", "about": ["maokui"], "belief": 83, "importance": 60, "retention": 57, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-02T20:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s1", "entry_id": "echo-help", "entry_kind": "group", "sender": "maokui", "kind": "message", "at": "2026-11-02T20:00:00+08:00", "text": "《回声台》这个社群，我已经连续三次帮新人把语音回声弄好了。又是外放串进去的，我先去泡面。"}]},
+      {"key": "d", "content": "Iris推测卯葵可能熟悉《回声台》的语音设置", "type": "事实", "speaker": "self", "stance": "推断", "about": ["maokui"], "belief": 68, "importance": 59, "retention": 58, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-02T20:04:00+08:00", "last_edit": "learning", "derived_from": ["a"], "sources": [{"key": "s2", "entry_id": "echo-help", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-02T20:03:00+08:00", "text": "只按卯葵说的连续三次排回声这件事，我猜卯葵可能挺熟悉《回声台》的语音设置。面泡好先吃，不急着回。"}]},
+      {"key": "e", "content": "Iris推测卯葵可能能回答《回声台》新人的语音设置问题", "type": "事实", "speaker": "self", "stance": "推断", "about": ["maokui"], "belief": 63, "importance": 57, "retention": 55, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-05T19:01:00+08:00", "last_edit": "learning", "derived_from": ["d"], "sources": [{"key": "s3", "entry_id": "echo-help", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-05T19:00:00+08:00", "text": "如果我之前猜卯葵熟悉《回声台》语音设置没猜错，新人的设置问题也许可以问问卯葵。别赶在泡面的时候轰炸消息就好。"}]},
+      {"key": "f", "content": "Iris在11月8日16点的《回声台》新人试听中逐个叫号，先提醒关闭外放", "type": "事件", "speaker": "self", "stance": "亲历", "about": ["self"], "belief": 82, "importance": 51, "retention": 53, "lifecycle": "active", "pinned": false, "event_time": "2026-11-08T16:00:00+08:00", "created_at": "2026-11-08T18:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s4", "entry_id": "echo-help", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-08T18:00:00+08:00", "text": "8号下午四点那场《回声台》新人试听，我是逐个叫号的，也先提醒大家关掉外放，不然能听见两遍。最后那位一开麦，楼下装修声全进来了。"}]},
+      {"key": "g", "content": "Iris在11月8日16点的《回声台》新人试听中逐个叫号，每人只试读一句话", "type": "事件", "speaker": "self", "stance": "亲历", "about": ["self"], "belief": 78, "importance": 51, "retention": 50, "lifecycle": "active", "pinned": false, "event_time": "2026-11-08T16:00:00+08:00", "created_at": "2026-11-10T09:16:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s5", "entry_id": "echo-help", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-10T09:15:00+08:00", "text": "翻到8号下午四点《回声台》新人试听的记录了，那场我逐个叫号，每人只试读一句话，没挨个聊很久。有人把试读句读成广告了，怪不得我记得那么牢。"}]}
+    ],
+    "events": [{"op": "delete", "key": "a", "at": "2026-11-09T12:00:00+08:00"}],
+    "expected": {
+      "auto_contradictions": [],
+      "auto_dependencies": [
+        {"derived": "d", "expected": "forget", "notes": "a被删除后，d只有基于a的角色自述，独立支持为0；加insufficient_support，belief从68降至49并进入遗忘、retention不高于F-1。不改正文、不删除、不复活a，不推出卯葵不会设置语音。"},
+        {"derived": "e", "expected": "forget", "notes": "e经d追溯到已删除的唯一依据a，d尚有记录也不是独立支持；加insufficient_support，belief从63降至49并进入遗忘、retention不高于F-1，正文不变。沿链传播同一依据失效不能重复做M2扣减。"}
+      ],
+      "mutual_merges": [{"pair": ["f", "g"], "expected": "merge", "must_keep": ["先提醒关闭外放", "每人只试读一句话"], "must_not_add": ["自动修复回声", "保存了麦克风录音", "卯葵主持试听"]}],
+      "protected": [], "merges": [["f", "g"]], "no_merge": [["a", "d"], ["a", "e"], ["a", "f"], ["a", "g"], ["d", "e"], ["d", "f"], ["d", "g"], ["e", "f"], ["e", "g"]]
+    },
+    "reason": "a删除后两层推断都没有独立支持；f、g只描述Iris在11月8日16点主持的同场试听，不证明卯葵的能力，互补合并与该依赖链分开处理。"
+  },
+  {
+    "id": "CV021", "split": "dev", "category": "依赖", "now": "2026-11-10T19:00:00+08:00",
+    "subjects": [{"id": "lutai", "name": "路苔", "aliases": []}, {"id": "meiye", "name": "莓页", "aliases": []}],
+    "entries": [{"id": "film-darkroom", "kind": "group", "name": "社区暗房小群", "visibility": "shared", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "路苔10月独自显影过三卷黑白胶卷", "type": "事实", "speaker": "lutai", "stance": "亲历", "about": ["lutai"], "belief": 82, "importance": 60, "retention": 56, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-03T20:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s1", "entry_id": "film-darkroom", "entry_kind": "group", "sender": "lutai", "kind": "message", "at": "2026-11-03T20:00:00+08:00", "text": "10月我自己显影了三卷黑白胶卷，没找人代洗。晾起来才发现拍了好多猫尾巴，正脸没几个。"}]},
+      {"key": "f", "content": "莓页11月7日与路苔在暗房处理两卷黑白胶卷，路苔分别设定显影时长并检查药液温度", "type": "事件", "speaker": "meiye", "stance": "亲历", "about": ["meiye", "lutai"], "belief": 85, "importance": 62, "retention": 59, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-07T20:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s2", "entry_id": "film-darkroom", "entry_kind": "group", "sender": "meiye", "kind": "message", "at": "2026-11-07T20:00:00+08:00", "text": "今天7号我和路苔在暗房处理了两卷黑白胶卷，路苔给两卷分别设了显影时长，还拿温度计检查药液。我负责倒水，袖子湿了一圈。"}]},
+      {"key": "d", "content": "Iris推测路苔可能熟悉黑白胶卷的显影", "type": "事实", "speaker": "self", "stance": "推断", "about": ["lutai"], "belief": 72, "importance": 61, "retention": 60, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-07T20:04:00+08:00", "last_edit": "learning", "derived_from": ["a", "f"], "sources": [{"key": "s3", "entry_id": "film-darkroom", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-07T20:03:00+08:00", "text": "你10月自己洗过三卷，莓页今天又看见你调时长和量温度，我猜路苔可能熟悉黑白胶卷的显影。下回我得先弄明白那些罐子分别装什么。"}]},
+      {"key": "g", "content": "莓页在暗房晾胶卷用的挂架有上下两排，夹子包了软胶", "type": "事实", "speaker": "meiye", "stance": "亲历", "about": ["meiye"], "belief": 81, "importance": 50, "retention": 52, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-08T19:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s4", "entry_id": "film-darkroom", "entry_kind": "group", "sender": "meiye", "kind": "message", "at": "2026-11-08T19:00:00+08:00", "text": "我在暗房晾胶卷用的挂架有上下两排，夹子都包了软胶，夹住就没那么吓人了。上次总怕夹坏边上的孔。"}]},
+      {"key": "h", "content": "莓页在暗房晾胶卷用的挂架有上下两排，底部接有滴水盘", "type": "事实", "speaker": "meiye", "stance": "亲历", "about": ["meiye"], "belief": 85, "importance": 50, "retention": 58, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-10T12:21:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s5", "entry_id": "film-darkroom", "entry_kind": "group", "sender": "meiye", "kind": "message", "at": "2026-11-10T12:20:00+08:00", "text": "我那个在暗房晾胶卷的上下两排挂架，底部接着滴水盘呢，没让水直接落地上。今天擦地才发现盘里还有一张掉进去的标签。"}]}
+    ],
+    "events": [{"op": "delete", "key": "a", "at": "2026-11-09T12:00:00+08:00"}],
+    "expected": {
+      "auto_contradictions": [],
+      "auto_dependencies": [{"derived": "d", "expected": "keep", "notes": "f无父边，s2是莓页11月7日同处暗房的直接见闻，a删除后仍有这一条独立原始消息支持有限的显影推断。d保持active、正文不变、belief仍为72；M2针对a失效的一次扣减之外不再扣保留强度，不把可能升级为肯定。g、h仅涉及莓页的挂架，不证明路苔的显影能力。"}],
+      "mutual_merges": [{"pair": ["g", "h"], "expected": "merge", "must_keep": ["夹子包了软胶", "底部接有滴水盘"], "must_not_add": ["自动烘干胶卷", "挂架由路苔制作", "一次可晾十卷"]}],
+      "protected": [], "merges": [["g", "h"]], "no_merge": [["a", "f"], ["a", "d"], ["a", "g"], ["a", "h"], ["f", "d"], ["f", "g"], ["f", "h"], ["d", "g"], ["d", "h"]]
+    },
+    "reason": "a删除后，莓页在暗房一起操作的s2仍独立支持显影推断，保持keep；挂架的软胶夹子与滴水盘互补，话题不再沿用路线带队。"
+  },
+  {
+    "id": "CV022", "split": "dev", "category": "依赖", "now": "2026-11-10T19:00:00+08:00",
+    "subjects": [{"id": "linshao", "name": "林梢", "aliases": []}],
+    "entries": [{"id": "cloud-port", "kind": "group", "name": "云港社群", "visibility": "shared", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "林梢为《云港》社群的新手导航图加了路线箭头和图例", "type": "事实", "speaker": "linshao", "stance": "亲历", "about": ["linshao"], "belief": 84, "importance": 58, "retention": 24, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-01T19:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s1", "entry_id": "cloud-port", "entry_kind": "group", "sender": "linshao", "kind": "message", "at": "2026-11-01T19:00:00+08:00", "text": "《云港》社群那张新手导航图，我加了路线箭头和图例，终于不全是黑线了。存图的时候记得点原图。"}]},
+      {"key": "b", "content": "据林梢所说，林梢为《云港》社群的新手导航图加了路线箭头", "type": "事实", "speaker": "self", "stance": "转述", "about": ["linshao"], "belief": 78, "importance": 54, "retention": 51, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-03T20:01:00+08:00", "last_edit": "learning", "derived_from": ["a"], "sources": [{"key": "s2", "entry_id": "cloud-port", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-03T20:00:00+08:00", "text": "林梢说给《云港》社群的新手导航图加了路线箭头，11月1日那条消息我翻出来了，往上看就有。我还没点开图。"}]},
+      {"key": "c", "content": "据林梢所说，林梢为《云港》社群的新手导航图加了图例", "type": "事实", "speaker": "self", "stance": "转述", "about": ["linshao"], "belief": 77, "importance": 54, "retention": 52, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-04T20:01:00+08:00", "last_edit": "learning", "derived_from": ["a"], "sources": [{"key": "s3", "entry_id": "cloud-port", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-04T20:00:00+08:00", "text": "还有图例，林梢11月1日同一条消息里也提了给《云港》社群新手导航图加图例。想找符号意思的可以翻翻。"}]},
+      {"key": "d", "content": "Iris推测林梢可能能维护《云港》社群的新手导航图", "type": "事实", "speaker": "self", "stance": "推断", "about": ["linshao"], "belief": 66, "importance": 57, "retention": 56, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-05T20:01:00+08:00", "last_edit": "learning", "derived_from": ["b", "c"], "sources": [{"key": "s4", "entry_id": "cloud-port", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-05T20:00:00+08:00", "text": "照我转述的加箭头、加图例这两件事看，林梢可能能维护《云港》社群的新手导航图。哪条路变了也许可以先问问林梢。"}]},
+      {"key": "e", "content": "Iris在《云港》社群发的新手提问卡用短句，分成装备栏和路线栏", "type": "事实", "speaker": "self", "stance": "亲历", "about": ["self"], "belief": 80, "importance": 49, "retention": 51, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-08T19:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s5", "entry_id": "cloud-port", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-08T19:00:00+08:00", "text": "《云港》社群的新手提问卡我发好了，用的短句，分装备栏和路线栏。长段落我一看也头晕。"}]},
+      {"key": "f", "content": "Iris在《云港》社群发的新手提问卡用短句，附提问示例", "type": "事实", "speaker": "self", "stance": "亲历", "about": ["self"], "belief": 80, "importance": 49, "retention": 52, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-08T19:05:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s5", "entry_id": "cloud-port", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-08T19:00:00+08:00", "text": "《云港》社群的新手提问卡我发好了，用的短句，分装备栏和路线栏。长段落我一看也头晕。"}, {"key": "s6", "entry_id": "cloud-port", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-08T19:04:00+08:00", "text": "同一张《云港》社群新手提问卡还附了提问示例，也是短句，想问路线的照那个格式填就行。"}]}
+    ],
+    "events": [{"op": "forget", "key": "a", "at": "2026-11-09T12:00:00+08:00"}],
+    "expected": {
+      "auto_contradictions": [],
+      "auto_dependencies": [
+        {"derived": "b", "expected": "forget", "notes": "b只有对a的角色复述，a遗忘后无独立支持；加insufficient_support，belief从78降至49，进入遗忘且retention不高于F-1，正文不变。这里执行auto_v1的确定性规则，不沿用v1遗忘依据时保留belief的旧标注。"},
+        {"derived": "c", "expected": "forget", "notes": "c与b各摘了s1的一部分，不因多一个source key而独立；a遗忘后c也加insufficient_support，belief从77降至49，进入遗忘且retention不高于F-1，不改正文。"},
+        {"derived": "d", "expected": "forget", "notes": "失效前b和c都追溯到人类原始消息s1，去重后的源头数为1；a遗忘后为0，二者不能互为后援。d加insufficient_support，belief从66降至49并进入遗忘、retention不高于F-1，不改正文；同源失效只计一次M2扣减，本例覆盖同源链场景而不单独证明去重实现。"}
+      ],
+      "mutual_merges": [{"pair": ["e", "f"], "expected": "merge", "must_keep": ["分成装备栏和路线栏", "附提问示例"], "must_not_add": ["自动回答问题", "私信收集账号", "林梢制作提问卡"]}],
+      "protected": [], "merges": [["e", "f"]], "no_merge": [["a", "b"], ["a", "c"], ["a", "d"], ["a", "e"], ["a", "f"], ["b", "c"], ["b", "d"], ["b", "e"], ["b", "f"], ["c", "d"], ["c", "e"], ["c", "f"], ["d", "e"], ["d", "f"]]
+    },
+    "reason": "两条复述最终都到s1，原始人类支持在a遗忘后由1变0；提问卡f补入s5以支持已发到社群，s6只补示例，这一合并独立于依赖链。"
+  },
+  {
+    "id": "CV023", "split": "dev", "category": "依赖", "now": "2026-11-10T19:00:00+08:00",
+    "subjects": [{"id": "linlan", "name": "林岚", "aliases": []}],
+    "entries": [{"id": "glimmer-border", "kind": "group", "name": "微光边界社群", "visibility": "shared", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "林岚带过三次《微光边界》新手队，并在语音里临场讲解路线", "type": "事实", "speaker": "linlan", "stance": "亲历", "about": ["linlan"], "belief": 85, "importance": 62, "retention": 58, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-04T20:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s1", "entry_id": "glimmer-border", "entry_kind": "group", "sender": "linlan", "kind": "message", "at": "2026-11-04T20:00:00+08:00", "text": "我带过三次《微光边界》的新手队，路线都是在语音里临场讲的，没有照稿念。嗓子快冒烟了，今天只打字。"}]},
+      {"key": "b", "content": "Iris猜测林岚可能做过《微光边界》新手队的语音指挥", "type": "事实", "speaker": "self", "stance": "推断", "about": ["linlan"], "belief": 56, "importance": 52, "retention": 51, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-02T20:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s2", "entry_id": "glimmer-border", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-02T20:00:00+08:00", "text": "我先凭印象猜，林岚可能做过《微光边界》新手队的语音指挥。还没有核实，也没谁跟我讲过这件事，先当猜想。"}]},
+      {"key": "d", "content": "Iris推测林岚可能能口头讲清《微光边界》的新手路线", "type": "事实", "speaker": "self", "stance": "推断", "about": ["linlan"], "belief": 67, "importance": 59, "retention": 57, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-05T20:01:00+08:00", "last_edit": "learning", "derived_from": ["a", "b"], "sources": [{"key": "s3", "entry_id": "glimmer-border", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-05T20:00:00+08:00", "text": "林岚说带过队、临场讲过路线，我之前也猜林岚做过语音指挥，这样看可能能口头讲清《微光边界》的新手路线。先喝口水，别连着喊了。"}]},
+      {"key": "e", "content": "Iris推测林岚可能熟悉《微光边界》的新手路线", "type": "事实", "speaker": "self", "stance": "推断", "about": ["linlan"], "belief": 69, "importance": 59, "retention": 58, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-06T20:01:00+08:00", "last_edit": "learning", "derived_from": ["a", "b"], "sources": [{"key": "s4", "entry_id": "glimmer-border", "entry_kind": "group", "sender": "self", "kind": "self_output", "at": "2026-11-06T20:00:00+08:00", "text": "沿着林岚讲过的带队经历，加上我那个还没核实的指挥猜想，我觉得林岚可能挺熟悉《微光边界》新手路线。具体哪条岔路我可不敢保票。"}]},
+      {"key": "f", "content": "林岚为《微光边界》社群交换准备的徽章装在牛皮纸袋，袋口用纸胶带封住", "type": "事实", "speaker": "linlan", "stance": "亲历", "about": ["linlan"], "belief": 81, "importance": 51, "retention": 52, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-08T18:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s5", "entry_id": "glimmer-border", "entry_kind": "group", "sender": "linlan", "kind": "message", "at": "2026-11-08T18:00:00+08:00", "text": "我给《微光边界》社群交换准备的徽章都装牛皮纸袋了，袋口用纸胶带封住，没用订书钉。摊开一桌，像在分中药。"}]},
+      {"key": "g", "content": "林岚为《微光边界》社群交换准备的徽章装在牛皮纸袋，每袋只装一枚", "type": "事实", "speaker": "linlan", "stance": "亲历", "about": ["linlan"], "belief": 87, "importance": 51, "retention": 60, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-10T11:41:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s6", "entry_id": "glimmer-border", "entry_kind": "group", "sender": "linlan", "kind": "message", "at": "2026-11-10T11:40:00+08:00", "text": "我这批给《微光边界》社群交换的徽章，每个牛皮纸袋只装一枚。刚又摸了一遍，没哪个袋子多塞，剩的空袋够我再折腾一阵。"}]}
+    ],
+    "events": [{"op": "delete", "key": "a", "at": "2026-11-09T12:00:00+08:00"}],
+    "expected": {
+      "auto_contradictions": [],
+      "auto_dependencies": [
+        {"derived": "d", "expected": "forget", "notes": "a被删除后b虽然仍active且并非派生自a，但b追溯只得到self_output的未核实猜想，不能计独立支持。d加insufficient_support，belief从67降至49并进入遗忘、retention不高于F-1，正文不变。"},
+        {"derived": "e", "expected": "forget", "notes": "e的剩余依据同样只有角色自己的b，独立支持为0；加insufficient_support，belief从69降至49并进入遗忘、retention不高于F-1，正文不变。b没有对a的依赖边，不因此次失效自动被遗忘；M2不重复扣同一失效。"}
+      ],
+      "mutual_merges": [{"pair": ["f", "g"], "expected": "merge", "must_keep": ["袋口用纸胶带封住", "每袋只装一枚"], "must_not_add": ["已经寄出徽章", "每人可领两枚", "附签名卡"]}],
+      "protected": [], "merges": [["f", "g"]], "no_merge": [["a", "b"], ["a", "d"], ["a", "e"], ["a", "f"], ["a", "g"], ["b", "d"], ["b", "e"], ["b", "f"], ["b", "g"], ["d", "e"], ["d", "f"], ["d", "g"], ["e", "f"], ["e", "g"]]
+    },
+    "reason": "a撤销后剩余b只有角色未核实的猜想，d、e都应遗忘；f、g由林岚描述徽章包装，既能互补合并，也不构成路线技能的独立依据。"
+  },
+  {
+    "id": "CV024", "split": "dev", "category": "不合并", "now": "2026-11-10T19:00:00+08:00",
+    "subjects": [{"id": "fengqi", "name": "风栖", "aliases": ["空格"]}],
+    "entries": [{"id": "journal-live", "kind": "live", "name": "风栖手账直播", "visibility": "shared", "visible_in": []}, {"id": "dm-fengqi", "kind": "private", "name": "风栖私聊", "visibility": "entry_only", "visible_in": []}, {"id": "journal-circle", "kind": "group", "name": "手账社群", "visibility": "shared", "visible_in": []}],
+    "memories": [
+      {"key": "a", "content": "风栖为11月13日手账直播定的字幕字号是24", "type": "事实", "speaker": "fengqi", "stance": "亲历", "about": ["fengqi"], "belief": 92, "importance": 66, "retention": 65, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-01T18:01:00+08:00", "last_edit": "admin", "derived_from": [], "sources": [{"key": "s1", "entry_id": "journal-live", "entry_kind": "live", "sender": "fengqi", "kind": "message", "at": "2026-11-01T18:00:00+08:00", "text": "11月13日手账直播我定的字幕字号是24，先这么记。今天买的贴纸粘得我满手都是。"}]},
+      {"key": "b", "content": "风栖为11月13日手账直播定的字幕字号是28", "type": "事实", "speaker": "fengqi", "stance": "亲历", "about": ["fengqi"], "belief": 93, "importance": 66, "retention": 66, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-07T18:01:00+08:00", "last_edit": "admin", "derived_from": [], "sources": [{"key": "s2", "entry_id": "journal-live", "entry_kind": "live", "sender": "fengqi", "kind": "message", "at": "2026-11-07T18:00:00+08:00", "text": "我更正一下，13号手账直播的字幕字号一直定的是28，之前24那句敲错了。文件没换过，别照旧消息去改文件。"}]},
+      {"key": "c", "content": "Iris的手账直播点歌列表按歌名排序，只列器乐曲", "type": "事实", "speaker": "self", "stance": "亲历", "about": ["self"], "belief": 85, "importance": 61, "retention": 63, "lifecycle": "active", "pinned": true, "event_time": null, "created_at": "2026-11-08T18:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s3", "entry_id": "journal-live", "entry_kind": "live", "sender": "self", "kind": "self_output", "at": "2026-11-08T18:00:00+08:00", "text": "我做好的手账直播点歌列表按歌名排序，只列器乐曲，翻的时候别按歌手找啦。"}]},
+      {"key": "d", "content": "Iris的手账直播点歌列表按歌名排序，不显示点歌账号", "type": "事实", "speaker": "self", "stance": "亲历", "about": ["self"], "belief": 85, "importance": 61, "retention": 64, "lifecycle": "active", "pinned": true, "event_time": null, "created_at": "2026-11-08T18:05:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s4", "entry_id": "journal-live", "entry_kind": "live", "sender": "self", "kind": "self_output", "at": "2026-11-08T18:04:00+08:00", "text": "还是我的那张手账直播点歌列表，按歌名排序，不显示点歌账号。刚才有人找自己的账号，难怪没找到。"}]},
+      {"key": "e", "content": "风栖在手账社群使用昵称“空格”", "type": "事实", "speaker": "fengqi", "stance": "亲历", "about": ["fengqi"], "belief": 86, "importance": 58, "retention": 57, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-08T20:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s5", "entry_id": "dm-fengqi", "entry_kind": "private", "sender": "fengqi", "kind": "message", "at": "2026-11-08T20:00:00+08:00", "text": "手账社群里我用空格这个昵称，那个没头像的就是我。忘上传图片了，明天再说。"}]},
+      {"key": "f", "content": "风栖在手账社群使用昵称“空格”", "type": "事实", "speaker": "fengqi", "stance": "亲历", "about": ["fengqi"], "belief": 86, "importance": 58, "retention": 58, "lifecycle": "active", "pinned": false, "event_time": null, "created_at": "2026-11-09T20:01:00+08:00", "last_edit": "learning", "derived_from": [], "sources": [{"key": "s6", "entry_id": "journal-circle", "entry_kind": "group", "sender": "fengqi", "kind": "message", "at": "2026-11-09T20:00:00+08:00", "text": "我在手账社群的昵称就是空格啊，不是系统吞了名字。今天终于记得换头像了。"}]}
+    ],
+    "events": [],
+    "expected": {
+      "auto_contradictions": [], "auto_dependencies": [],
+      "mutual_merges": [{"pair": ["c", "d"], "expected": "keep_both", "must_keep": ["按歌名排序", "只列器乐曲", "不显示点歌账号"], "must_not_add": ["自动播放", "公开点歌账号"]}],
+      "protected": ["a", "b", "c", "d", "e", "f"], "merges": [],
+      "no_merge": [["a", "b"], ["a", "c"], ["a", "d"], ["a", "e"], ["a", "f"], ["b", "c"], ["b", "d"], ["b", "e"], ["b", "f"], ["c", "d"], ["c", "e"], ["c", "f"], ["d", "e"], ["d", "f"], ["e", "f"]]
+    },
+    "reason": "a/b因admin、c/d因置顶跳过；entries使e的范围为{dm-fengqi}、f为本例三个入口全集，e/f同样跳过，protected对e、f仅表示这一范围不同的工作对。"
+  }
+  ]
+}
