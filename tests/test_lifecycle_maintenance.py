@@ -75,7 +75,7 @@ def test_cleanup_protects_unlearned_evidence_but_not_finished_batch_references(s
     assert report["summary"]["messages_deleted"]["count"] == 6
 
 
-def test_abandoned_yesterday_retries_once_preserves_attempts_gap_and_refused_is_excluded(store):
+def test_abandoned_retry_catches_up_a_missed_day_preserves_attempts_gap_and_refused_is_excluded(store):
     clock = Clock()
     ids = []
     for i, state in enumerate(("abandoned", "refused", "abandoned")):
@@ -89,10 +89,10 @@ def test_abandoned_yesterday_retries_once_preserves_attempts_gap_and_refused_is_
             conn.execute("INSERT INTO batch_attempts(batch_id,number,started_at,finished_at,parse_status,duration_ms) VALUES(?,4,?,?,'failed',0)", (batch.id,finish,finish))
     report = run(store, clock)
     with store.read() as conn:
-        assert [tuple(r) for r in conn.execute("SELECT state,attempt_count FROM batches ORDER BY id")] == [("waiting",0),("refused",4),("abandoned",4)]
+        assert [tuple(r) for r in conn.execute("SELECT state,attempt_count FROM batches ORDER BY id")] == [("waiting",0),("refused",4),("waiting",0)]
         assert conn.execute("SELECT COUNT(*) FROM memory_gaps").fetchone()[0] == 3
         assert conn.execute("SELECT COUNT(*) FROM batch_attempts").fetchone()[0] == 3
-    assert report["summary"]["batches_retried"]["object_ids"] == [ids[0]]
+    assert report["summary"]["batches_retried"]["object_ids"] == [ids[0], ids[2]]
     with store.write() as conn:
         conn.execute("UPDATE batches SET state='abandoned',attempt_count=4 WHERE id=?", (ids[0],))
     run(store, clock)

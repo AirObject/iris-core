@@ -13,6 +13,7 @@ export const lifecycleFixture = {
   message_retention_days: 30,
   maintenance_time: "03:00",
   abandoned_retry_enabled: true,
+  abandoned_retry_days: [1, 3, 7],
 };
 
 export const memoryFixture: MemoryDetail = {
