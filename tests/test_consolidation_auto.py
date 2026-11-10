@@ -822,13 +822,14 @@ def seeded(store):
     return result['created'][0]
 
 
-def forget(store, memory_id, kind):
+def forget(store, memory_id, kind, *, automatic=True):
+    """Forgotten with one annotation; automatic marks one written by auto_v1 rules."""
     with store.write() as conn:
         conn.execute("UPDATE memories SET lifecycle='forgotten',retention=10,forgotten_at=? WHERE id=?", (now(), memory_id))
         work = conn.execute("INSERT INTO consolidation_work(fingerprint,kind,payload_json,importance,changed_at,created_at) VALUES(?,'pair','{}',0,?,?)",
                             (f'test-{memory_id}-{kind}', now(), now())).lastrowid
-        conn.execute("""INSERT INTO consolidation_annotations(memory_id,work_id,text,evidence_json,created_at,kind,memory_revision,dedupe_key)
-            VALUES(?,?,?,'[]',?,?,1,?)""", (memory_id, work, '测试', now(), kind, f'test-{kind}'))
+        conn.execute("""INSERT INTO consolidation_annotations(memory_id,work_id,text,evidence_json,created_at,kind,memory_revision,dedupe_key,automatic)
+            VALUES(?,?,?,'[]',?,?,1,?,?)""", (memory_id, work, '测试', now(), kind, f'test-{kind}', int(automatic)))
 
 
 def reconfirm(store):

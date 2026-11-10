@@ -327,3 +327,46 @@ def test_superseded_but_active_memory_is_still_planned(store):
     model = AutoModel(store)
     run(store, model)
     assert calls_with(model, a)
+
+
+# ---- only annotations written by auto_v1 rules carry the limit ---------------------
+
+def report_only_superseded(store, change):
+    """A report_only run suggests superseded; the memory then decays to forgotten on its own."""
+    auto(store, 'report_only_v1')
+    suggestion = {'decision': 'conflict', 'reason': '本人后来改了安排', 'evidence': [change['m1'], change['m2']],
+                  'updates': [{'id': change['a'], 'assessment': 'superseded', 'superseded_by': change['b'], 'annotation': '旧安排已被替代'}]}
+    from test_consolidation import Model  # fills unique_details for the pair step, as report_only expects
+    run(store, Model(store, suggestion))
+    notes = annotations(store, change['a'])
+    assert [(n['kind'], n['automatic']) for n in notes] == [('superseded', 0)]
+    assert adjust_retention(store, change['a'], value=10)['lifecycle'] == 'forgotten'
+
+
+def test_report_only_superseded_suggestion_does_not_block_restore(store, change):
+    report_only_superseded(store, change)
+    assert adjust_retention(store, change['a'], 30)['lifecycle'] == 'active'
+    with store.read() as conn:
+        assert not superseded_forgotten(conn, change['a'])
+
+
+def test_report_only_superseded_suggestion_does_not_block_planning(store, change):
+    report_only_superseded(store, change)
+    model = AutoModel(store)
+    _, report = run(store, model)
+    assert calls_with(model, change['a']) and skip_item(report) is None
+
+
+def test_auto_superseded_annotation_still_blocks_restore_and_planning(store, change):
+    run(store, conflict_model(store, change, supersedes(change)))
+    assert [(n['kind'], n['automatic']) for n in annotations(store, change['a'])] == [('superseded', 1)]
+    assert adjust_retention(store, change['a'], 30)['lifecycle'] == 'forgotten'
+    model = AutoModel(store)
+    _, report = run(store, model)
+    assert calls_with(model, change['a']) == [] and skip_item(report)['details']['count'] == 1
+
+
+def test_restore_keeps_report_only_suggestions(store, change):
+    report_only_superseded(store, change)
+    assert manage_memory(store, change['a'], 1, action='restore')
+    assert [n['kind'] for n in annotations(store, change['a'])] == ['superseded']

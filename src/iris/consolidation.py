@@ -331,7 +331,7 @@ def memory_annotations(conn, memory_ids, *, include_reports=False):
         (SELECT value FROM json_each(?)) ORDER BY a.id""",(dumps(list(result)),))
     for row in rows:
         changed=row['current_revision']!=row['memory_revision']
-        item={'id':row['id'],'kind':row['kind'],'text':row['text'],
+        item={'id':row['id'],'kind':row['kind'],'text':row['text'],'automatic':bool(row['automatic']),
               'related_memory_ids':json.loads(row['related_ids_json']), 'superseded_by':row['superseded_by'],
               'evidence':json.loads(row['evidence_json']), 'created_at':row['created_at'],
               'memory_revision':row['memory_revision'],'modified_since_annotation':changed,
@@ -896,8 +896,10 @@ def grounded_reason(text, payload, fallback):
 
 
 def superseded_member(memory):
-    """Forgotten with an uncleared superseded annotation: no merge or suggestion may revive it."""
-    return memory['lifecycle'] == 'forgotten' and any(a['kind'] == 'superseded' for a in memory.get('annotations', []))
+    """Forgotten with an uncleared auto_v1 superseded annotation: no merge or suggestion may revive it.
+    A report_only suggestion was never checked or executed, so it changes nothing here."""
+    return memory['lifecycle'] == 'forgotten' and any(
+        a['kind'] == 'superseded' and a.get('automatic') for a in memory.get('annotations', []))
 
 
 def protected_work(payload):
@@ -1625,7 +1627,7 @@ class Consolidation:
         key=digest(['auto',self.run_id,work['id'],kind,superseded_by])
         conn.execute("""INSERT OR IGNORE INTO consolidation_annotations(
             memory_id,work_id,text,evidence_json,created_at,kind,superseded_by,memory_revision,
-            related_ids_json,run_id,dedupe_key) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+            related_ids_json,run_id,dedupe_key,automatic) VALUES(?,?,?,?,?,?,?,?,?,?,?,1)""",
             (memory_id,work['id'],text,dumps(evidence),self.clock().isoformat(),kind,superseded_by,revision,
              dumps(sorted(related)),self.run_id,key))
         return conn.execute('SELECT id FROM consolidation_annotations WHERE memory_id=? AND dedupe_key=?',(memory_id,key)).fetchone()[0]

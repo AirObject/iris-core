@@ -305,6 +305,7 @@ def test_old_backup_without_cleanup_columns_or_manifest_imports(store, tmp_path)
                 # Migrations 037 and 036 are newer than the columns removed below; undo them first.
                 conn.executescript('''DROP TRIGGER consolidation_no_resurrection;
                     DROP TABLE consolidation_undo_guard;
+                    ALTER TABLE consolidation_annotations DROP COLUMN automatic;
                     CREATE TRIGGER consolidation_no_resurrection BEFORE UPDATE OF lifecycle,merged_into ON memories
                     WHEN old.merged_into IS NOT NULL AND (new.lifecycle!='deleted' OR new.merged_into IS NOT old.merged_into)
                     BEGIN SELECT RAISE(ABORT,'merged memory is a permanent placeholder'); END;''')

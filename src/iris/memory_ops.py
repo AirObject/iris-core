@@ -159,9 +159,14 @@ def confirm_retention(store, memory_id, *, _conn=None, current=None):
 
 
 def superseded_forgotten(conn, memory_id) -> bool:
-    """Design 10.2: reconfirmation cannot revive a memory consolidation found replaced."""
+    """Design 10.2: reconfirmation cannot revive a memory consolidation found replaced.
+
+    Only annotations written by auto_v1 rules count; a report_only suggestion was
+    never checked or executed and must not change restoration.
+    """
     return conn.execute("""SELECT 1 FROM memories m JOIN consolidation_annotations a ON a.memory_id=m.id
-        WHERE m.id=? AND m.lifecycle='forgotten' AND a.kind='superseded' AND a.cleared_at IS NULL LIMIT 1""",
+        WHERE m.id=? AND m.lifecycle='forgotten' AND a.kind='superseded' AND a.automatic=1
+        AND a.cleared_at IS NULL LIMIT 1""",
         (memory_id,)).fetchone() is not None
 
 
@@ -265,7 +270,7 @@ def manage_memory(store, memory_id, expected_revision, *, action=None, pinned=No
             retention = max(row["retention"], config["restore_threshold"])
             # An explicit restore is what lifts the limit in superseded_forgotten.
             conn.execute("""UPDATE consolidation_annotations SET cleared_at=?,cleared_by='admin'
-                WHERE memory_id=? AND kind='superseded' AND cleared_at IS NULL""", (stamp, memory_id))
+                WHERE memory_id=? AND kind='superseded' AND automatic=1 AND cleared_at IS NULL""", (stamp, memory_id))
         if retention is not None:
             adjust_retention(store, memory_id, value=retention, settings=config, _conn=conn)
         latest = conn.execute("SELECT * FROM memories WHERE id=?", (memory_id,)).fetchone()
