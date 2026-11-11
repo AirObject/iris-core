@@ -124,6 +124,9 @@ class Maintenance:
                 config = lifecycle_settings(conn)
                 config['media_retention_days'] = media_retention_days(self.store)
                 config['abandoned_retry_days'] = abandoned_retry_days(conn)
+                from .goals import auto_review_switches
+                # G1/G2 switches are fixed for the run; an older run has none (off).
+                config['goal_auto'] = auto_review_switches(conn)
                 from .consolidation import consolidation_settings
                 model_config = consolidation_settings(conn)
                 zone_row = conn.execute("SELECT value_json FROM runtime_settings WHERE key='timezone'").fetchone()
@@ -202,6 +205,8 @@ class Maintenance:
                 continue
             candidates = self._candidates(run, phase)
             if not candidates:
+                if phase == "goals" and not self._goal_auto(run, stop=stop):
+                    return
                 if phase == "media":
                     orphans = cleanup_upload_orphans(self.store, self.clock())
                     if any(orphans.values()):
@@ -215,6 +220,194 @@ class Maintenance:
                 if stop and stop():
                     return
                 self._process_item(run, phase, candidate)
+
+    # G line (full-auto stage): model judgments after the deterministic goal
+    # items. Every model call is outside a transaction; each write is one short
+    # transaction with its report item. A restarted run skips recorded
+    # fingerprints, and failures stay unrecorded so a later pass retries them.
+    def _goal_auto(self, run, *, stop=None):
+        from .goals import auto_review_switches
+        configured = json.loads(run["settings_json"]).get("goal_auto") or {}
+        with self.store.read() as conn:
+            live = auto_review_switches(conn)
+        for section, step in (("duplicates", self._goal_duplicates), ("review", self._goal_auto_review)):
+            if not configured.get(section):
+                continue
+            if not live[section]:
+                self._goal_summary(run, section, {"stopped": "disabled"})
+                continue
+            if not step(run, stop=stop):
+                return False
+        return True
+
+    @staticmethod
+    def _model_unavailable(error):
+        return bool(error.paused or error.category in ("paused", "configuration", "account", "budget")
+                    or error.reason in ("rate_limited", "unconfigured", "interrupted"))
+
+    def _goal_item(self, conn, run, item_key, object_id, outcome, reason, details):
+        conn.execute("""INSERT INTO maintenance_items(run_id,phase,item_key,memory_id,object_id,outcome,reason,details_json,created_at)
+            VALUES(?,'goals',?,NULL,?,?,?,?,?) ON CONFLICT(run_id,phase,item_key) DO UPDATE SET
+            object_id=excluded.object_id,outcome=excluded.outcome,reason=excluded.reason,
+            details_json=excluded.details_json,created_at=excluded.created_at""",
+            (run["id"], item_key, object_id, outcome, reason, dumps(details), self.clock().isoformat()))
+
+    def _goal_failure(self, run, item_key, object_id, error, details):
+        # Safe categories only, never provider or exception text. Nothing about
+        # the goal is written, so a later pass retries it.
+        reason = (error.reason or error.category) if hasattr(error, "category") else type(error).__name__
+        with self.store.write() as conn:
+            self._goal_item(conn, run, item_key, object_id, "failed", reason, details)
+
+    def _goal_summary(self, run, section, counts):
+        with self.store.write() as conn:
+            row = conn.execute("SELECT progress_json FROM maintenance_runs WHERE id=?", (run["id"],)).fetchone()
+            progress = json.loads(row[0])
+            progress.setdefault("goal_auto", {})[section] = counts
+            conn.execute("UPDATE maintenance_runs SET progress_json=? WHERE id=? AND state='running'",
+                         (dumps(progress), run["id"]))
+
+    def _goal_duplicates(self, run, *, stop=None):
+        """G2: judge each possible-duplicate pair with the shared dedup material."""
+        from .goals import (DUPLICATE_AUTO_MAX_CALLS, GoalConflict, apply_duplicate_judgment, duplicate_auto_judged,
+                            duplicate_auto_material, duplicate_auto_pairs, judge_duplicate_pair)
+        from .models import ModelError
+        counts = {"pairs": 0, "calls": 0}
+        def count(key):
+            counts[key] = counts.get(key, 0) + 1
+        with self.store.read() as conn:
+            pairs = duplicate_auto_pairs(conn, goal_through=run["goal_through"])
+        for goal_a, goal_b in pairs:
+            if stop and stop():
+                self._goal_summary(run, "duplicates", counts)
+                return False
+            counts["pairs"] += 1
+            key = f"duplicate:{goal_a}:{goal_b}"
+            try:
+                with self.store.read() as conn:
+                    material = duplicate_auto_material(conn, goal_a, goal_b)
+                    judged = "skip" not in material and duplicate_auto_judged(conn, material)
+            except KeyError:
+                count("pair_changed")
+                continue
+            except Exception as error:
+                count("failed")
+                self._goal_failure(run, key, goal_a, error, {"kind": "duplicate", "goal_ids": [goal_a, goal_b]})
+                continue
+            if "skip" in material:
+                count(material["skip"])
+                if material["skip"] == "dedup_judge_disabled":
+                    counts["stopped"] = "dedup_judge_disabled"
+                    break
+                continue
+            if judged:
+                count("already_judged")
+                continue
+            verdicts = {}
+            if material["partner_in_material"]:
+                if counts["calls"] >= DUPLICATE_AUTO_MAX_CALLS:
+                    count("deferred")
+                    continue
+                counts["calls"] += 1
+                try:
+                    verdicts = judge_duplicate_pair(self.gateway, material)
+                except ModelError as error:
+                    count("failed")
+                    self._goal_failure(run, key, goal_a, error, {"kind": "duplicate", "goal_ids": [goal_a, goal_b]})
+                    if self._model_unavailable(error):
+                        counts["stopped"] = error.reason or error.category
+                        break
+                    continue
+                except Exception as error:
+                    count("failed")
+                    self._goal_failure(run, key, goal_a, error, {"kind": "duplicate", "goal_ids": [goal_a, goal_b]})
+                    continue
+            try:
+                with self.store.write() as conn:
+                    result = apply_duplicate_judgment(conn, self.clock(), material=material, verdicts=verdicts, run_id=run["id"])
+                    if result is not None:
+                        self._goal_item(conn, run, key, result["target_id"] or goal_a,
+                                        "goal_duplicates_" + {"merged": "merged", "separated": "separated", "kept": "kept"}[result["outcome"]],
+                                        result["reason"], {"kind": "duplicate", **result})
+            except (GoalConflict, KeyError):
+                count("revision_conflict")
+                continue
+            except Exception as error:
+                count("failed")
+                self._goal_failure(run, key, goal_a, error, {"kind": "duplicate", "goal_ids": [goal_a, goal_b]})
+                continue
+            count("already_judged" if result is None else result["outcome"])
+        self._goal_summary(run, "duplicates", counts)
+        return True
+
+    def _goal_auto_review(self, run, *, stop=None):
+        """G1: close learning-created goals only on explicit, code-checked evidence."""
+        from .goals import (AUTO_REVIEW_MAX_CALLS, GoalConflict, apply_goal_review, auto_review_goal_ids,
+                            auto_review_judged, auto_review_material, judge_goal_review)
+        from .models import ModelError
+        as_of = datetime.fromisoformat(run["created_at"])
+        counts = {"goals": 0, "calls": 0}
+        def count(key):
+            counts[key] = counts.get(key, 0) + 1
+        with self.store.read() as conn:
+            goals = auto_review_goal_ids(conn, goal_through=run["goal_through"])
+        for goal_id, _ in goals:
+            if stop and stop():
+                self._goal_summary(run, "review", counts)
+                return False
+            counts["goals"] += 1
+            key = f"auto_review:{goal_id}"
+            try:
+                with self.store.read() as conn:
+                    material = auto_review_material(conn, goal_id, current=as_of, message_through=run["message_through"])
+                    judged = material is not None and auto_review_judged(conn, material)
+            except KeyError:
+                count("goal_missing")
+                continue
+            except Exception as error:
+                count("failed")
+                self._goal_failure(run, key, goal_id, error, {"kind": "auto_review"})
+                continue
+            if material is None:
+                count("no_candidates")  # No candidate message: never call the model.
+                continue
+            if judged:
+                count("already_judged")
+                continue
+            if counts["calls"] >= AUTO_REVIEW_MAX_CALLS:
+                count("deferred")
+                continue
+            counts["calls"] += 1
+            try:
+                result = judge_goal_review(self.gateway, material)
+            except ModelError as error:
+                count("failed")
+                self._goal_failure(run, key, goal_id, error, {"kind": "auto_review", "goal_revision": material["revision"]})
+                if self._model_unavailable(error):
+                    counts["stopped"] = error.reason or error.category
+                    break
+                continue
+            except Exception as error:
+                count("failed")
+                self._goal_failure(run, key, goal_id, error, {"kind": "auto_review", "goal_revision": material["revision"]})
+                continue
+            try:
+                with self.store.write() as conn:
+                    applied = apply_goal_review(conn, self.clock(), material=material, result=result, run_id=run["id"])
+                    if applied is not None:
+                        outcome = ("goals_auto_" + applied["decision"] if applied["outcome"] == "closed"
+                                   else "goal_review_kept")
+                        self._goal_item(conn, run, key, goal_id, outcome, applied["reason"], {"kind": "auto_review", **applied})
+            except (GoalConflict, KeyError):
+                count("revision_conflict")
+                continue
+            except Exception as error:
+                count("failed")
+                self._goal_failure(run, key, goal_id, error, {"kind": "auto_review", "goal_revision": material["revision"]})
+                continue
+            count("already_judged" if applied is None else applied["outcome"])
+        self._goal_summary(run, "review", counts)
+        return True
 
     def _persona_failure(self, run, error):
         # Persona is one atomic generation/check item. Even failure during due
@@ -577,6 +770,12 @@ class Maintenance:
                     'checked':progress.get('checks',{}).get('goals',0)}
                 if not report['goal_review']['enabled']:
                     report['goal_review']['skip_reason'] = 'disabled'
+            configured = report['settings'].get('goal_auto') or {}
+            for section, name in (('review', 'goal_auto_review'), ('duplicates', 'goal_duplicate_review')):
+                report[name] = {'enabled': bool(configured.get(section)),
+                                **progress.get('goal_auto', {}).get(section, {})}
+                if not report[name]['enabled']:
+                    report[name]['skip_reason'] = 'disabled'
             return report
 
     def _retention(self, run, *, stop=None):

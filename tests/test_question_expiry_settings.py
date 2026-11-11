@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from conftest import login_admin
 from iris.api import create_app
-from iris.goals import Goals, question_expiry_days
+from iris.goals import AUTO_DEFAULTS, Goals, question_expiry_days
 
 
 KEY = 'internal_question_expiry_days'
@@ -40,7 +40,7 @@ def test_get_missing_expiry_uses_default_without_writing(client, store, stored):
     response = client.get('/admin/api/settings')
     assert response.status_code == 200
     assert response.json()['goals'] == {
-        'default_reminder_minutes': 60, 'overdue_reminders': True, **(stored or {}), KEY: 7}
+        'default_reminder_minutes': 60, 'overdue_reminders': True, **(stored or {}), KEY: 7, **AUTO_DEFAULTS}
     assert store.setting('goals') == stored
     assert operations(store) == before
 
@@ -62,7 +62,7 @@ def test_patch_expiry_alone_preserves_reminder_settings(client, store, days):
     response = client.patch(PATH, json={KEY: days})
     assert response.status_code == 200
     expected = {'default_reminder_minutes': 90, 'overdue_reminders': False, KEY: days}
-    assert response.json()['goals'] == expected
+    assert response.json()['goals'] == {**expected, **AUTO_DEFAULTS}
     assert store.setting('goals') == expected
     with store.read() as conn:
         assert question_expiry_days(conn) == days
@@ -79,9 +79,9 @@ def test_patch_combined_settings_returns_saved_values_and_one_audit(client, stor
     changes = {'default_reminder_minutes': 30, 'overdue_reminders': True, KEY: 14}
     response = client.patch(PATH, json=changes)
     assert response.status_code == 200
-    assert response.json()['goals'] == changes
+    assert response.json()['goals'] == {**changes, **AUTO_DEFAULTS}
     assert store.setting('goals') == changes
-    assert client.get('/admin/api/settings').json()['goals'] == changes
+    assert client.get('/admin/api/settings').json()['goals'] == {**changes, **AUTO_DEFAULTS}
     after = operations(store)
     assert len(after) == len(before) + 1
     assert after[-1]['actor'] == 'admin'

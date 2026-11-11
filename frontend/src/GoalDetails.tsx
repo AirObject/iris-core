@@ -1,4 +1,9 @@
-import { GoalBasisReview, GoalDedupReview } from "./GoalReview";
+import {
+  GoalAutoReviewPanel,
+  GoalBasisReview,
+  GoalDedupReview,
+  ReopenConfirm,
+} from "./GoalReview";
 import { useState } from "react";
 import { api, ApiError, errorText, json, useData } from "./api";
 import { Dialog, Notice, RoleTime, lifecycleLabel } from "./ui";
@@ -15,7 +20,7 @@ import type {
 } from "./types";
 
 type Action =
-  | { kind: "completed" | "abandoned"; goal: Goal }
+  | { kind: "completed" | "abandoned" | "reopen"; goal: Goal }
   | { kind: "merge"; goal: Goal; other: Goal }
   | { kind: "basis_clear"; goal: Goal; annotation: GoalBasisAnnotation };
 function Duplicate({
@@ -140,7 +145,11 @@ export default function GoalDetails({
         openGoal(result.id);
       } else
         setNotice(
-          path.endsWith("/dismiss") ? "已驳回可能重复关系" : "目标已更新",
+          path.endsWith("/dismiss")
+            ? "已驳回可能重复关系"
+            : path.endsWith("/reopen")
+              ? "目标已重开"
+              : "目标已更新",
         );
     } catch (e) {
       setError(errorText(e));
@@ -275,6 +284,12 @@ export default function GoalDetails({
               setAction({ kind: "basis_clear", goal, annotation })
             }
           />
+          <GoalAutoReviewPanel
+            goal={goal}
+            locked={locked || !!editing || !!action}
+            openGoal={openGoal}
+            reopen={() => setAction({ kind: "reopen", goal })}
+          />
           <GoalDedupReview goal={goal} openGoal={openGoal} />
           {!goal.merged_into && goal.possible_duplicate_ids.length > 0 && (
             <section className="panel goals-panel">
@@ -386,7 +401,22 @@ export default function GoalDetails({
           />
         </>
       )}
-      {action && (
+      {action?.kind === "reopen" && (
+        <ReopenConfirm
+          goal={action.goal}
+          busy={busy || stale}
+          error={error}
+          cancel={() => setAction(null)}
+          confirm={() =>
+            void write(
+              `/goals/${id}/reopen`,
+              { expected_revision: action.goal.revision },
+              "POST",
+            )
+          }
+        />
+      )}
+      {action && action.kind !== "reopen" && (
         <Dialog
           title={
             action.kind === "basis_clear"

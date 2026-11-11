@@ -211,12 +211,75 @@ export type Goal = {
   possible_duplicate_ids: number[];
   basis_needs_review?: boolean;
   basis_annotations?: GoalBasisAnnotation[];
+  auto_closed?: boolean;
 };
 export type GoalConfig = {
   internal_question_expiry_days?: number;
   default_reminder_minutes: number;
   overdue_reminders: boolean;
+  goal_auto_review_enabled?: boolean;
+  goal_duplicate_auto_judge_enabled?: boolean;
 };
+export type GoalEvidenceMessage = {
+  id: number;
+  missing: boolean;
+  notice?: string;
+  entry_id?: string;
+  entry_name?: string | null;
+  kind?: string;
+  sender_subject_id?: string;
+  sender_name?: string | null;
+  content?: string;
+  occurred_at?: string;
+};
+export type GoalAutoReviewRecord = {
+  id: number;
+  goal_id: number;
+  goal_revision: number;
+  latest_message_id: number;
+  run_id: number | null;
+  decision: "completed" | "abandoned" | "open" | "invalid";
+  outcome: "closed" | "kept_open";
+  reason: string;
+  prompt_version: string;
+  revision_after: number | null;
+  evidence: number[];
+  created_at: string;
+  evidence_messages?: GoalEvidenceMessage[];
+};
+export type GoalDuplicateJudgment = {
+  id: number;
+  goal_a: number;
+  goal_b: number;
+  run_id: number | null;
+  method: string;
+  verdict: "same" | "different" | "uncertain" | null;
+  outcome: "merged" | "separated" | "kept";
+  reason: string;
+  target_id: number | null;
+  created_at: string;
+};
+export type GoalAutoReview = {
+  reviews: GoalAutoReviewRecord[];
+  duplicate_judgments: GoalDuplicateJudgment[];
+  closure: GoalAutoReviewRecord | null;
+  reopenable: boolean;
+};
+export type GoalAutoAction =
+  | (GoalAutoReviewRecord & {
+      type: "review";
+      goal: Pick<Goal, "id" | "content" | "state" | "revision" | "merged_into">;
+      current: boolean;
+      reopenable: boolean;
+      evidence_messages: GoalEvidenceMessage[];
+    })
+  | (GoalDuplicateJudgment & {
+      type: "duplicate";
+      goals: Pick<
+        Goal,
+        "id" | "content" | "state" | "origin" | "merged_into" | "revision"
+      >[];
+    });
 export type GoalCatalog = {
   people: (Person & { kind?: string })[];
   entries: Pick<Entry, "id" | "name" | "kind">[];
@@ -244,6 +307,7 @@ export type GoalNotification = {
 };
 export type GoalDetail = Goal & {
   revision_history?: GoalHistoryStatus;
+  auto_review?: GoalAutoReview;
   dedup_review?: {
     state: "pending" | "running" | "done" | "cancelled";
     method: string;
@@ -397,6 +461,11 @@ export type MaintenanceRun = {
   finished_at: string | null;
   summary: MaintenanceSummary;
 };
+export type GoalAutoSummary = {
+  enabled: boolean;
+  skip_reason?: string;
+  stopped?: string;
+} & Record<string, number | boolean | string | undefined>;
 export type MaintenanceItem = {
   phase: string;
   item_key: string;
@@ -409,6 +478,12 @@ export type MaintenanceItem = {
     after?: number;
     transition?: string;
     source_memory_id?: number;
+    kind?: string;
+    evidence?: number[];
+    revision_after?: number | null;
+    goal_ids?: number[];
+    target_id?: number | null;
+    merged_id?: number | null;
   };
   created_at: string;
 };
@@ -416,6 +491,8 @@ export type MaintenanceReport = MaintenanceRun &
   ConsolidationProjection & {
     timezone: string;
     question_expiry?: { count: number; goal_ids: number[] };
+    goal_auto_review?: GoalAutoSummary;
+    goal_duplicate_review?: GoalAutoSummary;
     items: MaintenanceItem[];
   };
 export type TrialCatalog = {

@@ -302,8 +302,13 @@ def test_old_backup_without_cleanup_columns_or_manifest_imports(store, tmp_path)
         with sqlite3.connect(database) as conn:
             columns = {r[1] for r in conn.execute('PRAGMA table_info(media_files)')}
             if 'bytes_purged_at' in columns:
-                # Migrations 038, 037 and 036 are newer than the columns removed below; undo them first.
+                # Migrations 039, 038, 037 and 036 are newer than the columns removed below; undo them first.
                 # 038 only changes a setting value, so dropping its record is enough.
+                assert manifest['migrations'][-1] == '039_goal_auto_review.sql'
+                conn.executescript('''DROP TABLE goal_auto_reviews;
+                    DROP TABLE goal_duplicate_judgments;
+                    ALTER TABLE goals DROP COLUMN auto_review_after_message_id;''')
+                conn.execute('DELETE FROM schema_migrations WHERE version=?', (manifest['migrations'].pop(),))
                 assert manifest['migrations'][-1] == '038_consolidation_default_auto.sql'
                 conn.execute('DELETE FROM schema_migrations WHERE version=?', (manifest['migrations'].pop(),))
                 conn.executescript('''DROP TRIGGER consolidation_no_resurrection;

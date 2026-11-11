@@ -118,6 +118,8 @@ const revisionActions: Record<string, string> = {
   basis_clear: "清除依据标注",
   basis_review: "复核目标依据",
   dedup: "目标去重判断",
+  auto_review: "每日维护自动复核",
+  reopen: "重开目标",
 };
 const revisionReasons: Record<string, string> = {
   "goal created": "创建目标",
@@ -127,6 +129,12 @@ const revisionReasons: Record<string, string> = {
   "possible duplicate dismissed": "驳回可能重复关系",
   "goal basis reviewed": "复核目标依据",
   "basis warning cleared by administrator": "管理员清除依据标注",
+  "goal reopened by administrator": "管理员重开目标",
+  auto_completed: "每日维护按依据自动完成",
+  auto_abandoned: "每日维护按依据自动放弃",
+  auto_merged: "每日维护补判为重复并合并",
+  auto_different: "每日维护补判为不重复",
+  admin_not_merged: "补判为重复，含管理员目标未合并",
 };
 const relationStates: Record<string, string> = {
   possible: "可能重复",

@@ -1,7 +1,8 @@
 import { ConsolidationReportSections } from "./ConsolidationReport";
 import { consolidationReason } from "./consolidation-labels";
 import { useEffect, useState } from "react";
-import { api, errorText, json, useData } from "./api";
+import { api, ApiError, errorText, json, useData } from "./api";
+import { goalAutoReason, goalAutoReasons } from "./goal-ui";
 import {
   Badge,
   Dialog,
@@ -53,8 +54,20 @@ const countNames: Record<string, string> = {
   persona_pending: "persona 待确认",
   person_summary: "人物摘要处理",
   goals_reviewed: "目标依据标注变化",
+  goals_auto_completed: "目标自动完成",
+  goals_auto_abandoned: "目标自动放弃",
+  goal_review_kept: "目标复核保持未结束",
+  goal_duplicates_merged: "重复目标合并",
+  goal_duplicates_separated: "撤销可能重复",
+  goal_duplicates_kept: "保留可能重复",
   model_calls: "模型调用",
 };
+const goalAutoOutcomes = [
+  "goals_auto_completed",
+  "goals_auto_abandoned",
+  "goal_duplicates_merged",
+  "goal_duplicates_separated",
+];
 const reasonNames: Record<string, string> = {
   pinned: "已置顶",
   revision_conflict: "修订冲突",
@@ -188,7 +201,7 @@ export function MaintenancePanel({
           <p>
             手动维护也计一次衰减，并执行遗忘、到期删除、消息清理和批次重试。还会按本次设置调用模型进行整理与
             persona
-            与人物摘要更新，并复核目标依据。已有未完成的维护时继续该次运行。
+            与人物摘要更新，复核目标依据；目标自动复核和可能重复补判开启时也会执行。已有未完成的维护时继续该次运行。
           </p>
           <div className="actions">
             <button
@@ -319,6 +332,12 @@ export function MaintenanceReportDialog({
           data.items.filter((i) => i.outcome === "batches_retried"),
         ],
         ["失败项", data.items.filter((i) => i.outcome === "failed")],
+        [
+          "目标复核保持不变",
+          data.items.filter((i) =>
+            ["goal_review_kept", "goal_duplicates_kept"].includes(i.outcome),
+          ),
+        ],
       ]
     : [];
   return (
@@ -362,6 +381,13 @@ export function MaintenanceReportDialog({
           <ConsolidationReportSections
             data={data}
             openMemory={openMemory}
+            refresh={report.refresh}
+          />
+          <GoalAutoReport
+            data={data}
+            items={data.items.filter((i) =>
+              goalAutoOutcomes.includes(i.outcome),
+            )}
             refresh={report.refresh}
           />
           {groups.map(([name, items]) => (
@@ -432,13 +458,135 @@ function ReportGroup({
           )}
           {i.reason && (
             <p className="danger-text">
-              {reasonNames[i.reason] || consolidationReason(i.reason)}
+              {(i.phase === "goals" && goalAutoReasons[i.reason]) ||
+                reasonNames[i.reason] ||
+                consolidationReason(i.reason)}
             </p>
           )}
           <small>{fullTime(i.created_at)}</small>
         </article>
       ))}
       <Pagination total={items.length} offset={offset} change={setOffset} />
+    </section>
+  );
+}
+
+function GoalAutoReport({
+  data,
+  items,
+  refresh,
+}: {
+  data: MaintenanceReport;
+  items: MaintenanceItem[];
+  refresh: () => void;
+}) {
+  const [busy, setBusy] = useState<number | null>(null),
+    [error, setError] = useState(""),
+    [done, setDone] = useState<number[]>([]);
+  const sections = [
+    ["目标自动复核", data.goal_auto_review],
+    ["可能重复补判", data.goal_duplicate_review],
+  ] as const;
+  if (!sections.some(([, v]) => v?.enabled) && !items.length) return null;
+  async function reopen(goalId: number, revision: number) {
+    if (busy !== null) return;
+    setBusy(goalId);
+    setError("");
+    try {
+      await api(
+        `/goals/${goalId}/reopen`,
+        json("POST", { expected_revision: revision }),
+      );
+      setDone((d) => [...d, goalId]);
+      refresh();
+    } catch (e) {
+      setError(
+        e instanceof ApiError && e.status === 409
+          ? `目标 #${goalId} 已变化，请到目标页核对后处理。`
+          : errorText(e),
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+  return (
+    <section className="detail-section" aria-label="目标自动复核">
+      <h3>
+        目标自动复核 <Badge>{items.length}</Badge>
+      </h3>
+      {sections.map(([name, summary]) => (
+        <p key={name} className="muted">
+          {name}：
+          {!summary?.enabled
+            ? "本次未开启"
+            : [
+                ["calls", "模型调用"],
+                ["closed", "关闭"],
+                ["kept_open", "保持未结束"],
+                ["merged", "合并"],
+                ["separated", "撤销标记"],
+                ["kept", "保留标记"],
+                ["no_candidates", "无候选消息"],
+                ["already_judged", "未变化"],
+                ["deferred", "留到下次"],
+                ["failed", "失败"],
+              ]
+                .filter(([key]) => typeof summary[key] === "number")
+                .map(([key, label]) => `${label} ${summary[key]}`)
+                .join(" · ") || "无可处理目标"}
+          {summary?.stopped &&
+            ` · 提前停止：${goalAutoReason(summary.stopped)}`}
+        </p>
+      ))}
+      {error && <Notice error>{error}</Notice>}
+      {items.map((i) => {
+        const goalId =
+          i.details.kind === "duplicate"
+            ? (i.details.target_id ?? i.object_id)
+            : i.object_id;
+        const closed = i.outcome.startsWith("goals_auto_");
+        return (
+          <article className="maintenance-item" key={i.item_key}>
+            <strong>
+              {i.details.kind === "duplicate"
+                ? `目标 #${(i.details.goal_ids || []).join(" 与 #")}`
+                : `目标 #${i.object_id}`}
+            </strong>
+            <p>
+              {countNames[i.outcome] || i.outcome} · {goalAutoReason(i.reason)}
+            </p>
+            {closed && (
+              <p>
+                依据消息：
+                {(i.details.evidence || []).map((id) => `#${id}`).join("、")}
+              </p>
+            )}
+            <div className="actions">
+              <a
+                className="text-button"
+                href={`#/state?tab=goals&id=${goalId}`}
+              >
+                查看目标 #{goalId}
+              </a>
+              {closed &&
+                i.details.revision_after != null &&
+                (done.includes(i.object_id) ? (
+                  <span>已重开</span>
+                ) : (
+                  <button
+                    disabled={busy !== null}
+                    onClick={() =>
+                      void reopen(i.object_id, i.details.revision_after!)
+                    }
+                  >
+                    重开目标 #{i.object_id}
+                  </button>
+                ))}
+            </div>
+            <small>{fullTime(i.created_at)}</small>
+          </article>
+        );
+      })}
     </section>
   );
 }

@@ -149,6 +149,9 @@ class GoalsSettings(Input):
     default_reminder_minutes: int = Field(default=60, ge=0, le=525600, strict=True)
     overdue_reminders: bool = Field(default=True, strict=True)
     internal_question_expiry_days: int = Field(default=DEFAULT_QUESTION_EXPIRY_DAYS, ge=1, le=365, strict=True)
+    # Full-auto G line; both stay off until the planner enables them after the gates.
+    goal_auto_review_enabled: bool = Field(default=False, strict=True)
+    goal_duplicate_auto_judge_enabled: bool = Field(default=False, strict=True)
 
 
 class Limits(Input):

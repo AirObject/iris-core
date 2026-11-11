@@ -3,6 +3,7 @@ import { api, errorText, json, useData } from "./api";
 import { Dialog, Empty, Notice, Pagination } from "./ui";
 import GoalDetails from "./GoalDetails";
 import GoalForm from "./GoalForm";
+import { GoalAutoActions } from "./GoalReview";
 import {
   GoalBadges,
   GoalFacts,
@@ -270,6 +271,7 @@ export default function Goals({
               change={setOffset}
             />
           )}
+          <GoalAutoActions openGoal={setSelected} onChange={list.refresh} />
         </>
       )}
       {creating && (

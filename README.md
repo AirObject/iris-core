@@ -653,6 +653,18 @@ GD2：`pending`／运行中的目标在补判结束前不进入 prepare 和 sear
 
 探测脚本支持仓库外 `--corpus` 和 `--out`；`--fake` 使用本地传输，不读取模型配置、不发送网络请求，结果明确标为模拟并被选型函数拒绝。使用方法与本轮验证汇总见 [探测说明](evals/goal_dedup_probe/README.md)。
 
+## 全自动阶段 G：目标自动复核
+
+两项都在每日维护的目标阶段、确定性项目之后执行。开关 `goals.goal_auto_review_enabled` 与 `goals.goal_duplicate_auto_judge_enabled` 默认关闭，新库和旧库都不开；设置页“目标与提醒”提供两个复选框，只有显式保存过才写入运行设置。开关在接受维护请求时固定到该次运行，运行中被关闭时停止。模型调用都在事务外，写回前核对目标修订号，不一致跳过，下次再处理；不新增模型用途。
+
+**G1 内部目标按依据完成或放弃**：只处理 `origin=internal`、`kind=normal`、`state=open`、未合并且没有吸收宿主或管理员目标的目标；询问沿用 7 天过期，不进入 G1。材料是目标正文、涉及的人、截止时间、创建时间、来源消息和候选消息。候选消息须晚于目标创建（管理员重开过则晚于重开），发送者是涉及的人（为空时取来源消息中不是角色的发送者）或“我”，所在入口的可见范围不窄于目标；先取目标入口且含目标关键词的，再取目标入口或含关键词的，最后补最近的，最多 30 条。没有候选消息不调用模型。提示词 `goal_review_auto_v1.md`，走 `chat` 用途（purpose `goal_auto_review`），只输出 `{"decision","evidence","reason"}`。代码核对三条：判断不是 open、依据非空且都在材料内；至少一条依据晚于目标创建、发送者是涉及的人或“我”、类型是 message／self_output／action_result；目标仍为内部、未结束、修订未变。通过才置为完成或放弃，`closed_by=maintenance`，取消未取走的提醒，记目标快照（动作 `auto_review`，原因 `auto_completed`／`auto_abandoned`）和操作记录。每次判断写一行 `goal_auto_reviews`（迁移 039），以“目标修订号＋材料内最新消息 ID”为指纹，指纹不变不再调用模型。超时、限流、暂停等失败不记指纹，下次再试；输出无效或核对失败保持未结束并记固定原因。模型的文字理由不保存。管理员可在目标详情、目标页“每日维护自动处理的目标”和维护报告中查看依据消息并重开（`POST /admin/api/goals/{id}/reopen`，带 `expected_revision`）；重开后只有更晚的新消息才能作为依据，原依据不会再次关闭它。
+
+**G2 可能重复补判**：对仍为 `possible` 的目标对，以较晚的一条为待判目标，调用与创建时去重相同的材料组装 `dedup_review_material`（`goal_dedup_probe` 驱动的创建路径用的也是它）和现行 D6 提示词，走 `goal_dedup_judge` 用途，每对预算 60 秒。只有创建时规则会合并到这一对中较早的一方（唯一 same、无其他歧义、未超限、无序列冲突）才合并，走现有 `_merge`；含管理员创建的目标时不合并，撤销标记并记录。判为不重复撤销标记；不确定或仍有歧义保留标记。完成的判断记 `goal_duplicate_judgments`，按指纹（全部观察到的目标修订和最新来源消息）不再重判；超时或失败保留标记，下次再试；目标去重判断关闭时不运行。
+
+每次维护 G1 最多调用 100 次、G2 最多 50 次，其余留到下次。维护报告的 `goal_auto_review`／`goal_duplicate_review` 汇总调用、关闭、保持、无候选、未变化和停止原因，并逐项列出关闭、合并、撤销标记及依据；`GET /admin/api/goal-auto-actions` 分页列出自动处理记录。宿主接口的目标字段不变。
+
+评测：`uv run python evals/goal_review_eval/run.py --corpus <JSON> --out <仓库外目录>`，默认语料是冻结的公开 dev 集 `evals/goal_review_v1.json`。每例隔离数据库、固定时钟，原样写入入口、人物、消息和目标后跑真实的目标阶段（只开 G1）；`expected`、`reason`、`category` 在写入前剔除，全部案例跑完后才计分。确定性计分包括误关闭（应 open 却被关闭，或完成与放弃方向相反）、宿主／管理员目标被关闭数、识别率（应关闭案例中状态正确的比例）和按类别明细；`call_counts` 统计超时、429、截断、无效调用和执行错误，`valid` 要求完整、无超时／429／截断／执行错误且没有失败的复核。出现超时、429 或复核失败即停止，整次无效，换新目录重跑。`--fake completed|abandoned|open|invalid|timeout` 只检查管线，不读模型配置、不访问网络。G2 用现有 `evals/goal_dedup_probe/run.py --method D6 --budget-seconds 60` 测量。
+
 ## M2 人物与身份联系（后端）
 
 人物管理接口沿用管理员会话、CSRF、JSON Content-Type 和本机 Host 校验；人物页提供列表、详情、否认、确认合并和别名管理，有待确认联系时导航和试用页会提示。
