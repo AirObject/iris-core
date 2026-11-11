@@ -543,9 +543,11 @@ def _model_call_outcomes(calls, checkpoints=(), observations=()):
         incomplete = bool(_incomplete_checks(matching))
         retained = incomplete and _retained_current(checkpoint, matching[0])
         checks = candidate['checks']
-        split_recovered = any((checks.get(phase) or {}).get(
-            'output_limit_diagnostics', {}).get('split_results', {}).get('recovered', 0)
-            for phase in ('initial_model', 'model', 'recheck'))
+        # Sentence splits, focus splits and degenerate-output retries all recover
+        # a truncation by a later complete request of the same operation.
+        split_recovered = any((checks.get(phase) or {}).get('output_limit_diagnostics', {}).get(key, {}).get('recovered', 0)
+            for phase in ('initial_model', 'model', 'recheck')
+            for key in ('split_results', 'focus_split_results', 'output_retry_results'))
         ordered = [by_id[i] for i in sorted(ids)]
         for position, call in enumerate(ordered):
             purpose = call['purpose'].removesuffix('_repair')
@@ -691,8 +693,8 @@ def _check_structure_metrics(rows):
 
 
 def _check_output_limit_metrics(rows):
-    totals = {'truncations':0, 'splits':0, 'terminal_truncations':0}
-    results = Counter()
+    totals = {'truncations':0, 'splits':0, 'terminal_truncations':0, 'focus_splits':0, 'output_retries':0}
+    results = {key:Counter() for key in ('split_results', 'focus_split_results', 'output_retry_results')}
     for row in rows:
         for attempt in row['attempts']:
             outputs = json.loads(attempt['outputs_json'])
@@ -700,8 +702,9 @@ def _check_output_limit_metrics(rows):
                 diagnostic = _output_limit_diagnostics(outputs.get(purpose+'_batches', []), purpose)
                 for key in totals:
                     totals[key] += diagnostic[key]
-                results.update(diagnostic['split_results'])
-    return {**totals, 'split_results':dict(results)}
+                for key, counter in results.items():
+                    counter.update(diagnostic[key])
+    return {**totals, **{key:dict(counter) for key, counter in results.items()}}
 
 
 def _metrics(rows, judgments=None):

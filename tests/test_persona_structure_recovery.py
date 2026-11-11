@@ -446,7 +446,8 @@ def test_structure_reask_never_swallows_infrastructure_errors(store,purpose,unit
         with pytest.raises(ModelError) as error:
             run()
         assert error.value.reason == reason
-    assert len(model.calls) == 2
+    # PE-23: a truncated two-span window is split once by span before it is incomplete.
+    assert len(model.calls) == (3 if reason == 'output_limit' and unit != 'degree' else 2)
 
 
 def test_salvaged_reordered_batch_does_not_invent_conservative_rejections(store):

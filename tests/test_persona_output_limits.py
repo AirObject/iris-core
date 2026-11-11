@@ -94,8 +94,12 @@ def test_single_unit_truncation_in_nested_check_is_incomplete(store, stage):
     model, outputs = Nested(store, mutate), {}
     result = PersonaEngine(store, model)._check_all('persona_check', material, [sentence],
         full_content=sentence['text'], outputs=outputs)
-    assert result['validation_errors'] and result['output_limit_diagnostics']['truncations'] == 1
-    assert len(model.calls) == 2
+    diagnostics = result['output_limit_diagnostics']
+    # PE-23: a two-span window is retried span by span before it counts as incomplete.
+    split = stage == 'focus'
+    assert result['validation_errors'] and diagnostics['truncations'] == 1 + split
+    assert diagnostics['terminal_truncations'] == 1 and diagnostics['focus_splits'] == split
+    assert len(model.calls) == 2 + split
 
 
 @pytest.mark.parametrize('mode', ['all_auto', 'small_medium_auto', 'all_manual'])
@@ -227,7 +231,8 @@ def test_terminal_child_does_not_run_its_sibling_or_accept_completed_fragments(s
     assert not result['sentences'] and result['validation_errors']
     assert result['output_limit_diagnostics'] == {
         'truncations':3, 'splits':2, 'terminal_truncations':1,
-        'split_results':{'incomplete_output_limit':2}}
+        'split_results':{'incomplete_output_limit':2}, 'focus_splits':0, 'focus_split_results':{},
+        'output_retries':0, 'output_retry_results':{}}
 
 
 def test_successful_split_is_recovered_by_its_own_complete_operation(tmp_path):

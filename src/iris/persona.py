@@ -39,8 +39,8 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v23', 'persona_check': 'persona_check_v36',
-                   'persona_recheck': 'persona_check_v36'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v24', 'persona_check': 'persona_check_v37',
+                   'persona_recheck': 'persona_check_v37'}
 DEGREE_PROMPT_VERSION = 'persona_degree_v1'
 HANDWRITTEN_PROMPT_VERSION = 'persona_handwritten_v2'
 # Each sentence's review pages are relevance-first, so the bound drops the least related.
@@ -107,6 +107,46 @@ QUANTIFIER_CHECK_FIELDS = frozenset(('candidate_quantifier', 'candidate_scope', 
                                      'source_scopes', 'preserved'))
 # These date an occasion or name where it happened; they do not bound a comparison.
 SCOPE_FILLERS = frozenset('里 中 时 上 内 的 时候 期间 当中 当晚 那晚 今晚 晚上 上午 下午 早上 中午 夜里 那时 当时'.split())
+# How often a practice holds is part of the claim, like a comparison range. A closed
+# grammatical class of frequency adverbs and universal quantifiers over occasions,
+# ranked by the closed order 偶尔 < 有时 < 经常 < 通常/习惯 < 总是/都/每次/从不. No topic,
+# person or corpus answer. A candidate may not rank above the frequency word its own
+# bound source states; a source with instances only and no such word supports a
+# bounded experience (那两次……), never a habit or a universal.
+FREQUENCY_STRENGTH = {
+    **dict.fromkeys('偶尔 偶然 间或'.split(), 1),
+    **dict.fromkeys('有时 有时候 时而'.split(), 2),
+    **dict.fromkeys('经常 常常 时常 往往 屡次 一再'.split(), 3),
+    **dict.fromkeys('通常 惯常 习惯 习惯于 向来 一向 素来 一贯 多半 大多'.split(), 4),
+    **dict.fromkeys(('总是 总会 老是 都 每次 每回 每当 每逢 次次 回回 一直 始终 永远 '
+                     '从不 从未 从没 从来不 从来没 从来没有').split(), 5)}
+QUANTIFIER_WORDS = SCOPED_QUANTIFIERS | frozenset(FREQUENCY_STRENGTH)
+# 都 right after these ranges over the people or things they name, or is emphatic
+# (什么都, 一点都), not over occasions: plural/universal pronouns and minimizers only.
+DISTRIBUTIVE_HOSTS = frozenset(('我们 咱们 你们 他们 她们 它们 大家 大伙 大伙儿 人人 个个 各位 各自 彼此 双方 俩 '
+                                '谁 什么 哪 哪儿 哪里 任何 一切 一点 一点儿').split())
+# A counted or deictic set of occasions: what a bounded experience ranges over.
+BOUNDED_INSTANCES = re.compile(r'(?:这|那|当|本|同)(?P<deictic>一|几|[两二三四五六七八九十]|[0-9]+)?(?:次|场|回|天)'
+                               r'|(?P<count>几|[两二三四五六七八九十]|[0-9]+)(?:次|场|回|天)')
+INSTANCE_NUMERALS = {'一':1, '两':2, '二':2, '三':3, '四':4, '五':5, '六':6, '七':7, '八':8, '九':9, '十':10, '几':2}
+# A closed grammatical class, as SCOPED_QUANTIFIERS (#107): future-time words, the
+# future/volitional auxiliaries and the verbs of intending or committing. A marker
+# only obliges the checker to judge each claim of that focus separately; it never
+# decides whether a claim is eligible.
+PLAN_MARKERS = frozenset(('以后 今后 往后 日后 将来 下次 下回 下一次 下一回 改天 届时 到时 到时候 '
+                          '会 要 将要 将会 想要 打算 准备 计划 预备 决定 承诺 保证 答应 发誓 立志 '
+                          '争取 尽量 力争 务必 希望 但愿 愿意').split())
+# Segmentation can fuse a pronoun or adverb with the auxiliary (我会, 都会, 也要).
+AUXILIARY_HOSTS = frozenset('我 你 他 她 它 也 还 就 才 都 又 再 不 将 总'.split())
+CLAIM_TYPES = ('recognition', 'action', 'result', 'plan')
+CLAIM_CHECK_FIELDS = frozenset(('claim', 'claim_type', 'eligible', 'reason'))
+CLAIM_ISSUE = ('claim not eligible: 逐个实质命题核对收录资格，任一命题不合格整句不能保留；'
+               '说过／表示过不使计划内容获得资格，已实践的应改写那次实践')
+# An output-limited reply that is an unclosed JSON object or ends in a run of blanks
+# is a degenerate generation, not an answer too long to give; an unsplittable
+# request may repeat it once within the stage budget.
+DEGENERATE_BLANK_RUN = 64
+RETRYABLE_OUTPUT_SHAPES = frozenset(('blank', 'blank_padding', 'unclosed_json'))
 
 
 def utc_now():
@@ -460,6 +500,18 @@ def _model_memory(memory, *, proof_choices=False):
     return result
 
 
+def _marked_focus(part):
+    """Name the closed-class words whose claims need their own contract in this focus."""
+    marked = dict(part)
+    if found := _focus_quantifiers(part['text']):
+        marked['quantifiers'] = found
+        if frequency := [word for word in found if word in FREQUENCY_STRENGTH]:
+            marked['frequency_words'] = frequency
+    if markers := _focus_plan_markers(part['text']):
+        marked['plan_markers'] = markers
+    return marked
+
+
 def _check_payload(material, sentences, *, full_content, proof_choices=True):
     # No unbound memories, former proofs, trace graph or self snapshot in the
     # checker. Every sentence carries only its own currently frozen evidence.
@@ -478,8 +530,7 @@ def _check_payload(material, sentences, *, full_content, proof_choices=True):
                  or bool({'认同', '认可'} & set(words(sentence['text'])))))
         focus = sentence.get('_check_focus',_clause_parts(sentence['text']))
         if sentence['origin'] == 'memory' and not sentence.get('initial_setting'):
-            focus = [{**part, 'quantifiers':found} if (found := _focus_quantifiers(part['text'])) else part
-                     for part in focus]
+            focus = [_marked_focus(part) for part in focus]
         row.update(index=index, evidence_refs=refs, clauses=focus,
                    full_clause_count=len(_clause_parts(sentence['text'])))
         if sentence['origin'] == 'initial_template':
@@ -548,6 +599,10 @@ def _adverse_field_verdicts(row):
         checks = part.get('quantifier_checks')
         if isinstance(checks, list) and any(isinstance(c, dict) and c.get('preserved') is False for c in checks):
             reasons.append('original quantifier scope rejected')
+        claims = part.get('claim_checks')
+        if isinstance(claims, list) and any(isinstance(c, dict) and (c.get('eligible') is False
+                                            or c.get('claim_type') == 'plan') for c in claims):
+            reasons.append('original claim judged ineligible')
     return reasons
 
 
@@ -659,7 +714,7 @@ def _structure_event(container, purpose, unit, errors, **fields):
 def _check_records(batches, purpose):
     for raw in batches:
         yield raw
-        for key in ('_timeout_retries', '_structure_events', '_focus_completions'):
+        for key in ('_timeout_retries', '_structure_events', '_focus_completions', '_output_retries'):
             for event in raw.get(purpose + key, []):
                 if isinstance(event.get('outputs'), dict):
                     yield from _check_records([event['outputs']], purpose)
@@ -667,13 +722,62 @@ def _check_records(batches, purpose):
             yield from _check_records([child['outputs'] for child in split['children']], purpose)
 
 
+def _request_focus_count(payload):
+    """Proof spans a lone automatic row asks for; other rows cannot be split by focus."""
+    rows = payload.get('candidate', []) if isinstance(payload, dict) else []
+    if not rows:
+        return 0
+    if len(rows) > 1:
+        return None
+    row = rows[0]
+    automatic = row.get('origin') == 'memory' and not row.get('initial_setting')
+    return len(row.get('clauses', [])) if automatic else 1
+
+
+def _output_shape(content):
+    """How an output-limited reply ended; it only selects a bounded retry, never a verdict."""
+    if not isinstance(content, str) or not content:
+        return 'empty'  # Typically reasoning used the whole budget.
+    if not content.strip():
+        return 'blank'
+    if len(content) - len(content.rstrip()) >= DEGENERATE_BLANK_RUN:
+        return 'blank_padding'
+    body = re.sub(r'^```(?:json)?\s*', '', content.strip())
+    if body.startswith(('{', '[')):
+        try:
+            json.loads(body.rstrip('`').rstrip())
+        except (ValueError, RecursionError):
+            return 'unclosed_json'
+        return 'complete_json'
+    return 'text'
+
+
+def _handle_output_limit(error, handling):
+    """Record what recovery, if any, followed this truncation."""
+    event = getattr(error, 'output_limit_event', None)
+    if isinstance(event, dict):
+        event['handled'] = handling
+
+
+def _terminal_truncation(event):
+    # Records before handling was recorded keep their original rule.
+    return event.get('handled', 'terminal' if event['candidate_count'] <= 1 else None) == 'terminal'
+
+
 def _output_limit_diagnostics(batches, purpose):
     records = list(_check_records(batches, purpose))
     truncations = [event for raw in records for event in raw.get(purpose + '_output_limits', [])]
-    splits = [event for raw in records for event in raw.get(purpose + '_output_splits', [])]
+    every_split = [event for raw in records for event in raw.get(purpose + '_output_splits', [])]
+    splits = [event for event in every_split if event.get('unit') != 'focus']
+    focus_splits = [event for event in every_split if event.get('unit') == 'focus']
+    retries = [event for raw in records for event in raw.get(purpose + '_output_retries', [])]
     return {'truncations':len(truncations), 'splits':len(splits),
             'split_results':dict(Counter(event['status'] for event in splits)),
-            'terminal_truncations':sum(event['candidate_count'] <= 1 for event in truncations)}
+            'terminal_truncations':sum(_terminal_truncation(event) for event in truncations),
+            'focus_splits':len(focus_splits),
+            'focus_split_results':dict(Counter(event['status'] for event in focus_splits)),
+            'output_retries':len(retries),
+            'output_retry_results':dict(Counter(event['status'] for event in retries))}
 
 
 def _structure_diagnostics(batches, purpose):
@@ -703,6 +807,25 @@ def _structure_diagnostics(batches, purpose):
             'conservative_sentence_indices':sorted(sentences),
             'conservative_batch_count':batch_count, 'conservative_degree_count':degree_count,
             'events':events}
+
+
+def _merge_window_rows(previous, row):
+    """Combine verdicts on different proof spans of one sentence; adverse ones always win."""
+    if previous is None:
+        return row
+    merged = {**previous,
+        'supported':previous['supported'] and row['supported'],
+        'fabricated':previous['fabricated'] or row['fabricated'],
+        'scene_qualified':previous['scene_qualified'] and row['scene_qualified'],
+        'violations':list(dict.fromkeys(previous['violations'] + row['violations'])),
+        'reason':previous['reason'] + '；' + row['reason']}
+    for key in ('clauses', 'additional_clause_checks', 'repeated_clause_checks',
+                'unchecked_clause_indices', 'clause_errors'):
+        merged[key] = ((previous.get(key) if isinstance(previous.get(key), list) else [])
+                       + (row.get(key) if isinstance(row.get(key), list) else []))
+    if row.get('unchecked_scope_check'):
+        merged['unchecked_scope_check'] = True
+    return merged
 
 
 def _decode(conn, row):
@@ -1366,24 +1489,66 @@ def _proof_uncertainty_issues(text, focus, cited):
     return [UNCERTAINTY_ISSUE] if verdicts and all(verdicts) else []
 
 
+def _grammar_tokens(text):
+    """Whole tokens, with a fused pronoun/adverb + auxiliary (我会, 都会) taken apart.
+
+    Titles are names, not assertions. Closed-class words themselves stay whole.
+    """
+    for token in words(re.sub(r'《[^》]*》', '', text)):
+        if (len(token) == 2 and token[1] in '会要' and token[0] in AUXILIARY_HOSTS
+                and token not in QUANTIFIER_WORDS and token not in PLAN_MARKERS):
+            yield token[0]
+            yield token[1]
+        else:
+            yield token
+
+
 def _focus_quantifiers(text):
-    """The comparison quantifiers this focus asserts: whole tokens, in order.
+    """The comparison and frequency quantifiers this focus asserts: whole tokens, in order.
 
     A negated one (不是每次) claims less, and a measure word (这只) is none at all.
+    都 after another quantifier is its correlative (每次都, 不是所有……都), not a claim of
+    its own; after a plural or universal pronoun (大家都, 什么都) it ranges over those.
     """
-    tokens, found, index = list(words(re.sub(r'《[^》]*》', '', text))), [], 0
+    tokens, found, index, seen = list(_grammar_tokens(text)), [], 0, False
     while index < len(tokens):
         previous = tokens[index - 1] if index else ''
         for size in (3, 2, 1):
             phrase = ''.join(tokens[index:index + size])
-            if phrase in SCOPED_QUANTIFIERS:
-                if previous not in QUANTIFIER_NEGATORS and not (
-                        phrase == '只' and MEASURE_PREFIX.fullmatch(previous)):
+            if phrase in QUANTIFIER_WORDS:
+                measure = phrase == '只' and MEASURE_PREFIX.fullmatch(previous)
+                distributive = phrase == '都' and (seen or previous in DISTRIBUTIVE_HOSTS)
+                if not distributive and previous not in QUANTIFIER_NEGATORS and not measure:
                     found.append(phrase)
+                seen = seen or not measure
                 index += size
                 break
         else:
             index += 1
+    return list(dict.fromkeys(found))
+
+
+def _frequency_rank(phrase):
+    """The strongest frequency word of a quoted phrase, or None if it has none."""
+    tokens = list(_grammar_tokens(phrase))
+    ranks = [FREQUENCY_STRENGTH[''.join(tokens[i:i + size])] for i in range(len(tokens))
+             for size in (3, 2, 1) if ''.join(tokens[i:i + size]) in FREQUENCY_STRENGTH]
+    return max(ranks, default=None)
+
+
+def _focus_plan_markers(text):
+    """Future, intention and commitment markers of a focus, in order (negated ones too).
+
+    An A-not-A question (要不要, 会不会, 打不打算) asks about a plan; it commits to none.
+    """
+    tokens, found = list(_grammar_tokens(text)), []
+    for index, token in enumerate(tokens):
+        if token not in PLAN_MARKERS:
+            continue
+        if tokens[index + 1:index + 3] == ['不', token] or (
+                index >= 2 and tokens[index - 1] == '不' and tokens[index - 2] in (token, token[0])):
+            continue
+        found.append(token)
     return list(dict.fromkeys(found))
 
 
@@ -1400,22 +1565,64 @@ def _scope_residue(scope):
             if re.search(r'\w', token) and token not in QUERY_STOP and token not in SCOPE_FILLERS]
 
 
+def _instance_count(match):
+    numeral = match['deictic'] or match['count']
+    if numeral is None:
+        return 1
+    return int(numeral) if numeral.isdigit() else INSTANCE_NUMERALS[numeral]
+
+
+def _instance_only_issues(check, scope, bound):
+    """A source with instances and no frequency word supports only a bounded experience.
+
+    The range must count or point at those occasions in the candidate's own clause.
+    Willingness to keep doing something and a second date are not a frequency word.
+    """
+    issues = []
+    match = BOUNDED_INSTANCES.search(scope) if scope.strip() else None
+    if match is None:
+        issues.append(f'frequency raised above the source: 来源只有若干实例、没有频率词，'
+                      f'“{check["candidate_quantifier"]}”只能用于写明那几次的有界经历，不能写成全称或常态')
+    elif check['source_instances'] < _instance_count(match):
+        issues.append('bounded experience claims more occasions than the bound source shows')
+    for proof in check['source_scopes']:
+        if proof.get('preserved') is False:
+            issues.append('quantifier scope not preserved by bound source ' + proof['ref'])
+        if not any(proof['quote'] in clause for clause in bound.get(proof['ref'], [])):
+            issues.append('frequency range must quote an own bound source')
+    return issues
+
+
 def _quantifier_value_issues(check, focus_text, sentence, evidence):
-    """Literal bindings of one range; the model has judged whether they are equivalent."""
+    """Literal bindings of one range; the model has judged whether they are equivalent.
+
+    A frequency word also has a strength. Code compares only the closed ranks of
+    the quoted words; a hedge never lowers a rank, here or elsewhere in the sentence.
+    """
     name, scope, proofs = check['candidate_quantifier'], check['candidate_scope'], check['source_scopes']
     if not check['preserved']:
-        return [f'quantifier scope not preserved: “{name}”的比较范围丢失或被扩大']
+        return [f'quantifier scope not preserved: “{name}”的比较范围或频率强度丢失或被扩大']
     issues = []
     if not name.strip() or name not in focus_text:
         issues.append('quantifier must be quoted from this focus')
     if scope.strip() and scope not in focus_text:
         issues.append('quantifier scope must be quoted from the same candidate clause')
-    if proofs and not scope.strip():
-        issues.append('quantifier scope omitted: 来源量词有比较范围，候选未保留')
     source_name = check['source_quantifier']
     bound = {ref:_quantifier_source_clauses(evidence[ref]) for ref in sentence['evidence_refs'] if ref in evidence}
+    strength = _frequency_rank(name)
+    if strength is not None and not source_name.strip():
+        return issues + _instance_only_issues(check, scope, bound)
+    if proofs and not scope.strip():
+        issues.append('quantifier scope omitted: 来源量词有比较范围，候选未保留')
     if not source_name.strip() or not any(source_name in clause for clauses in bound.values() for clause in clauses):
         issues.append('quantifier must be quoted from an own bound source')
+    if strength is not None:
+        supported = _frequency_rank(source_name)
+        if supported is None:
+            issues.append('frequency needs the frequency word of its own bound source: 来源对应词不是频率词')
+        elif strength > supported:
+            issues.append(f'frequency strength raised: 候选“{name}”强于来源“{source_name}”'
+                          '（偶尔＜有时＜经常＜通常／习惯＜总是／都／每次／从不）')
     for proof in proofs:
         quote = proof['quote']
         if proof.get('preserved') is False:
@@ -1438,8 +1645,15 @@ def _validate_quantifier_scope(part, focus_text, sentence, evidence):
     if not required and 'quantifier_checks' not in part:
         return [], []
     checks = part.get('quantifier_checks')
+    def fields(check):
+        # A frequency item also states how many occasions its own source shows.
+        if isinstance(check.get('candidate_quantifier'), str) and _frequency_rank(check['candidate_quantifier']):
+            instances = check.get('source_instances')
+            return (set(check) == QUANTIFIER_CHECK_FIELDS | {'source_instances'}
+                    and type(instances) is int and instances >= 0)
+        return set(check) == QUANTIFIER_CHECK_FIELDS
     if (not isinstance(checks, list)
-            or any(not isinstance(check, dict) or set(check) != QUANTIFIER_CHECK_FIELDS
+            or any(not isinstance(check, dict) or not fields(check)
                    or type(check['preserved']) is not bool
                    or not all(isinstance(check[key], str) for key in
                               ('candidate_quantifier', 'candidate_scope', 'source_quantifier'))
@@ -1454,6 +1668,47 @@ def _validate_quantifier_scope(part, focus_text, sentence, evidence):
         return ['invalid quantifier scope verdict'], []
     return [], [issue for check in checks for issue in
                 _quantifier_value_issues(check, focus_text, sentence, evidence)]
+
+
+def _marker_reached(claim, marker, focus_text):
+    # The claim judged for a marker must be the marked part of this focus, not an
+    # equal word in another clause: the marker lies in their longest shared span.
+    match = SequenceMatcher(None, claim, focus_text, autojunk=False).find_longest_match(
+        0, len(claim), 0, len(focus_text))
+    return marker in claim[match.a:match.a + match.size]
+
+
+def _claim_eligibility_issues(part, focus_text, text):
+    """Every claim keeps its own eligibility; none is lifted by another one.
+
+    The checker lists the claims and judges each. Code only binds the verdicts:
+    each marked claim judged on its own, quoted from this sentence, no pending
+    plan or commitment eligible, and any ineligible claim rejects the sentence.
+    Missing or malformed verdicts count as ineligible, never as eligible.
+    """
+    required = _focus_plan_markers(focus_text)
+    if not required and 'claim_checks' not in part:
+        return []
+    checks = part.get('claim_checks')
+    if (not isinstance(checks, list) or not checks
+            or any(not isinstance(check, dict) or set(check) != CLAIM_CHECK_FIELDS
+                   or not isinstance(check['claim'], str) or not check['claim'].strip()
+                   or check['claim_type'] not in CLAIM_TYPES or type(check['eligible']) is not bool
+                   or not isinstance(check['reason'], str) or not check['reason'].strip()
+                   for check in checks)):
+        return [f'{CLAIM_ISSUE}；claim_checks 缺失或格式不符，按不合格处理']
+    issues = []
+    for marker in required:
+        if not any(_marker_reached(check['claim'], marker, focus_text) for check in checks):
+            issues.append(f'{CLAIM_ISSUE}；带“{marker}”的命题没有单独核对资格')
+    for check in checks:
+        if check['claim'] not in text:
+            issues.append(f'{CLAIM_ISSUE}；命题须原样取自本句：{check["claim"]}')
+        if check['claim_type'] == 'plan':
+            issues.append(f'{CLAIM_ISSUE}；未来打算或承诺不能收录：{check["claim"]}')
+        elif not check['eligible']:
+            issues.append(f'{CLAIM_ISSUE}；{check["claim_type"]}：{check["claim"]}：{check["reason"]}')
+    return issues
 
 
 def _bound_source_issues(sentence, tokens, memories):
@@ -1784,6 +2039,8 @@ def _validate_clause_checks(output, payload):
                                                                   payload['evidence_by_ref'])
                 errors.extend(f'sentence {index}: {label}: {error}' for error in invalid)
                 issues.extend(f'{label}: {issue}' for issue in unsupported)
+                issues.extend(f'{label}: {issue}' for issue in
+                              _claim_eligibility_issues(part, expected['text'], sentence['text']))
             if part['supported'] and len(dates) < 2:
                 if not part['scene_qualified']:
                     issues.append(f'{label}: general claim needs at least two distinct dates of its own proof')
@@ -2411,13 +2668,16 @@ class PersonaEngine:
                 if monotonic() >= deadline:
                     raise ModelError('timeout', 'total timeout', reason='timeout')
                 if reply.finish_reason == 'length':
-                    # Exhausted reasoning/output is not malformed JSON to retry.
+                    # Exhausted reasoning/output is not malformed JSON to repair.
                     # Keep the raw result; no partial or parseable fragment passes.
-                    outputs.setdefault(purpose + '_output_limits', []).append({
-                        'candidate_count':len(payload.get('candidate', [])),
-                        'request_bytes':request_bytes, 'finish_reason':reply.finish_reason})
+                    event = {'candidate_count':len(payload.get('candidate', [])),
+                             'focus_count':_request_focus_count(payload),
+                             'request_bytes':request_bytes, 'finish_reason':reply.finish_reason,
+                             'output_shape':_output_shape(reply.content)}
+                    outputs.setdefault(purpose + '_output_limits', []).append(event)
                     failure = ModelError('invalid_output', 'output budget exhausted', reason='output_limit')
                     failure.check_sentence_count = len(payload.get('candidate', []))
+                    failure.output_limit_event = event
                     raise failure
                 try:
                     result, _ = parse_json_object_with_status(reply.content)
@@ -2458,8 +2718,9 @@ class PersonaEngine:
         except ModelError as error:
             if error.reason == 'output_limit' and not hasattr(error, 'check_sentence_count'):
                 error.check_sentence_count = len(payload.get('candidate', []))
-                outputs.setdefault(purpose + '_output_limits', []).append({
-                    'candidate_count':error.check_sentence_count, 'signal':'output_limit'})
+                error.output_limit_event = {'candidate_count':error.check_sentence_count,
+                    'focus_count':_request_focus_count(payload), 'signal':'output_limit'}
+                outputs.setdefault(purpose + '_output_limits', []).append(error.output_limit_event)
             # The gateway's late-response path records timed_out but may omit the
             # reason. Keep the attempt diagnostic consistent with that call record.
             if error.reason is None and error.summary in {
@@ -2474,13 +2735,23 @@ class PersonaEngine:
             if owned:
                 gateway.close()
 
-    def _check_call(self, purpose, payload, outputs, *, deadline, retry_state):
-        """One timeout retry per logical batch; never renew the stage deadline."""
+    def _check_call(self, purpose, payload, outputs, *, deadline, retry_state, output_retry=True):
+        """One timeout retry per logical batch; never renew the stage deadline.
+
+        An unsplittable request whose output-limited reply is degenerate (an
+        unclosed JSON object or a run of blanks) may repeat once, but only while
+        the stage still holds as long again as that request took: a retry must
+        not turn a contained truncation into a stage timeout.
+        """
         import time
         monotonic = getattr(self.gateway, 'monotonic', time.monotonic)
+        started = monotonic()
         try:
             return self._call(purpose, payload, outputs, deadline=deadline, json_repair=False)
         except ModelError as error:
+            if error.reason == 'output_limit' and output_retry:
+                return self._retry_degenerate_output(purpose, payload, outputs, error, deadline=deadline,
+                    retry_state=retry_state, elapsed=monotonic() - started)
             if (error.reason != 'timeout' or error.paused
                     or retry_state['timeouts'] >= CHECK_TIMEOUT_RETRIES or monotonic() >= deadline):
                 raise
@@ -2495,6 +2766,35 @@ class PersonaEngine:
                 raise
             retry['status'] = 'complete'
             return answer
+
+    def _retry_degenerate_output(self, purpose, payload, outputs, error, *, deadline, retry_state, elapsed):
+        """Repeat one unsplittable request once after a degenerate truncated reply.
+
+        Splittable requests are split instead. The retry shares the stage deadline
+        and the timeout allowance; its own truncation is handled like any other.
+        """
+        import time
+        monotonic = getattr(self.gateway, 'monotonic', time.monotonic)
+        event = getattr(error, 'output_limit_event', None) or {}
+        shape = event.get('output_shape')
+        if shape not in RETRYABLE_OUTPUT_SHAPES or _request_focus_count(payload) not in (0, 1):
+            raise error
+        remaining = deadline - monotonic()
+        if remaining <= 0 or remaining < elapsed:
+            event['retry_skipped'] = 'stage_budget'
+            raise error
+        _handle_output_limit(error, 'retry')
+        retry = {'error_reason':'output_limit', 'output_shape':shape, 'stage_deadline':deadline,
+                 'remaining_seconds':remaining, 'truncated_request_seconds':elapsed, 'outputs':{}}
+        outputs.setdefault(purpose + '_output_retries', []).append(retry)
+        try:
+            answer = self._check_call(purpose, payload, retry['outputs'], deadline=deadline,
+                                      retry_state=retry_state, output_retry=False)
+        except ModelError as repeated:
+            retry.update(status='failed', retry_error=repeated.reason or repeated.category)
+            raise
+        retry['status'] = 'recovered'
+        return answer
 
     def _correct_batch_coverage(self, purpose, payload, batch, outputs, *,
                                 deadline, retry_state, sentence_indices, first_error=None):
@@ -2794,10 +3094,18 @@ class PersonaEngine:
         except ModelError as error:
             if error.reason != 'output_limit':
                 raise
+            # A lone sentence is split by its proof spans, keeping its whole text
+            # and bound sources in every request, until a single focus remains.
+            if len(subset) == 1 and len(subset[0].get('_check_focus', [])) > 1:
+                _handle_output_limit(error, 'focus_split')
+                return self._check_focus_split(purpose, material, subset[0], raw, adverse, deadline=deadline,
+                    retry_state=retry_state, batch_index=batch_index, diagnostics=diagnostics)
             # A single-sentence field/focus retry cannot be recovered by asking
             # a larger enclosing batch again. No truncated fragment is parsed.
             if len(subset) <= 1 or getattr(error, 'check_sentence_count', len(subset)) <= 1:
+                _handle_output_limit(error, 'terminal')
                 raise
+            _handle_output_limit(error, 'sentence_split')
             split = {'sentence_indices':[s['_check_sentence'] for s in subset],
                      'stage_deadline':deadline, 'status':'splitting', 'children':[]}
             raw.setdefault(purpose + '_output_splits', []).append(split)
@@ -2840,6 +3148,74 @@ class PersonaEngine:
             batch = {'sentences':combined, 'change_degree':'small',
                      'reason':'complete sentence checks after output split'}
             return batch, {'output_split_batches':originals}, window_problems, problems
+
+    def _check_focus_split(self, purpose, material, sentence, raw, adverse, *, deadline, retry_state,
+                           batch_index, diagnostics):
+        """Check a truncated one-sentence window again in halves of its proof spans.
+
+        Each half carries the whole sentence and its bound sources. Results are
+        combined as windows are (supported AND, fabricated OR, union of problems);
+        once a half rejects the sentence the rest stays unchecked, and every span
+        must have a verdict before the combined row can pass.
+        """
+        foci = sentence['_check_focus']
+        split = {'unit':'focus', 'sentence_indices':[sentence['_check_sentence']],
+                 'clause_indices':[part['index'] for part in foci], 'stage_deadline':deadline,
+                 'status':'splitting', 'children':[]}
+        raw.setdefault(purpose + '_output_splits', []).append(split)
+        merged, originals, problems, window_problems, unchecked = None, [], [], [], []
+        middle = len(foci) // 2
+        try:
+            for half in (foci[:middle], foci[middle:]):
+                indices = [part['index'] for part in half]
+                if window_problems:
+                    unchecked.extend(indices)
+                    continue
+                child_raw = {purpose+'_task':'check_facts_and_rules',
+                             purpose+'_prompt_version':PROMPT_VERSIONS[purpose],
+                             'sentence_indices':[sentence['_check_sentence']], 'clause_indices':indices}
+                split['children'].append({'outputs':child_raw})
+                checked, original, child_window, child_problems = self._check_fact_batch(
+                    purpose, material, [{**sentence, '_check_focus':half}], child_raw, deadline=deadline,
+                    retry_state=retry_state, batch_index=batch_index, diagnostics=diagnostics)
+                originals.append(original)
+                merged = _merge_window_rows(merged, dict(checked['sentences'][0]))
+                window_problems.extend(child_window.get(1, []))
+                problems.extend(child_problems.get(1, []))
+        except ModelError as repeated:
+            split['status'] = 'incomplete_' + (repeated.reason or repeated.category)
+            raise
+        split['status'] = 'recovered'
+        for event in raw.get(purpose + '_structure_events', []):
+            if event['status'] == 'infrastructure_failure':
+                event.update(status='partial', recovered_by_output_split=True)
+        if unchecked:
+            merged['supported'] = False
+            merged['unchecked_clause_indices'] = merged.get('unchecked_clause_indices', []) + unchecked
+            split['unchecked_clause_indices'] = unchecked
+        checked_indices = {part['index'] for key in ('clauses', 'additional_clause_checks')
+                           for part in merged.get(key, []) if isinstance(part, dict)}
+        missing = [part['index'] for part in foci
+                   if part['index'] not in checked_indices | set(merged.get('unchecked_clause_indices', []))]
+        if missing:
+            reason = 'focus split left spans without a verdict'
+            merged['supported'] = False
+            problems.append(reason)
+            window_problems.append(reason)
+            split['missing_clause_indices'] = missing
+        if 1 in adverse:
+            prior = adverse[1]
+            merged['supported'] = False
+            merged['fabricated'] = merged['fabricated'] or prior['fabricated']
+            merged['violations'] = list(dict.fromkeys(merged['violations'] + prior['violations']))
+            problems.extend(prior['reasons'])
+            window_problems.extend(prior['reasons'])
+            split['preserved_adverse_sentence_indices'] = [sentence['_check_sentence']]
+        batch = {'sentences':[{**merged, 'index':1}], 'change_degree':'small',
+                 'reason':'complete focus checks after output split'}
+        return (batch, {'output_split_batches':originals},
+                {1:list(dict.fromkeys(window_problems))} if window_problems else {},
+                {1:list(dict.fromkeys(problems))} if problems else {})
 
     def _check_fact_batch_once(self, purpose, material, subset, raw, *, deadline, retry_state,
                                batch_index, diagnostics, adverse):
@@ -3064,26 +3440,7 @@ class PersonaEngine:
                     rejected.add(original)
                 part = {**row, 'index':original, 'clause_errors':problems.get(local,[]),
                         'clauses':row.get('clauses') if isinstance(row.get('clauses'),list) else []}
-                if original not in rows:
-                    rows[original] = part
-                else:
-                    previous = rows[original]
-                    rows[original] = {**previous,
-                        'supported':previous['supported'] and part['supported'],
-                        'fabricated':previous['fabricated'] or part['fabricated'],
-                        'scene_qualified':previous['scene_qualified'] and part['scene_qualified'],
-                        'violations':list(dict.fromkeys(previous['violations']+part['violations'])),
-                        'reason':previous['reason']+'；'+part['reason'],
-                        'clauses':previous['clauses']+part['clauses'],
-                        'additional_clause_checks':previous.get('additional_clause_checks',[])
-                            + part.get('additional_clause_checks',[]),
-                        'repeated_clause_checks':previous.get('repeated_clause_checks',[])
-                            + part.get('repeated_clause_checks',[]),
-                        'unchecked_clause_indices':previous.get('unchecked_clause_indices',[])
-                            + part.get('unchecked_clause_indices',[]),
-                        'clause_errors':previous['clause_errors']+part['clause_errors']}
-                if part.get('unchecked_scope_check'):
-                    rows[original]['unchecked_scope_check'] = True
+                rows[original] = _merge_window_rows(rows.get(original), part)
         for row in rows.values():
             extra_checked = {part['index'] for part in row.get('additional_clause_checks', [])}
             if extra_checked and row.get('unchecked_clause_indices'):
@@ -3144,6 +3501,7 @@ class PersonaEngine:
                     degree_event['status'] = 'infrastructure_failure'
                 if error.reason != 'output_limit':
                     raise
+                _handle_output_limit(error, 'terminal')
                 degree_errors = ['degree: output_limit; no complete judgment']
                 assessment = {'status':'invalid', 'error':'output_limit'}
                 degree, reason = 'large', 'incomplete degree judgment'
