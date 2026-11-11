@@ -29,7 +29,7 @@ from .memory_ops import setup_role, delete_memory, adjust_retention, lifecycle_s
 from .model_health import ModelHealth
 from .models import Gateway, ModelError, parse_json_object_with_status
 from .persona import (PersonaEngine, admin_edit, current_persona, pending_update, select_evidence,
-                      confirm_candidate, reject_candidate, DEGREES, PUBLISH_MODES, PROMPT_VERSIONS, DEGREE_PROMPT_VERSION, HANDWRITTEN_PROMPT_VERSION, CALL_TIMEOUTS, CALL_MAX_TOKENS, CHECK_BATCH_SIZE, CHECK_BATCH_CLAUSES, MAX_CHECK_STAGE_SECONDS, MAX_CHECK_REQUEST_BYTES, CHECK_TIMEOUT_RETRIES, CHECK_STREAM_IDLE_SECONDS, REPAIR_POLICY, check_transport, _trace, _stale, _settings, split_sentences, _structure_diagnostics, _output_limit_diagnostics, _check_records)
+                      confirm_candidate, reject_candidate, DEGREES, PUBLISH_MODES, PROMPT_VERSIONS, DEGREE_PROMPT_VERSION, HANDWRITTEN_PROMPT_VERSION, CALL_TIMEOUTS, CALL_MAX_TOKENS, CHECK_BATCH_SIZE, CHECK_BATCH_CLAUSES, MAX_CHECK_STAGE_SECONDS, MAX_CHECK_REQUEST_BYTES, CHECK_TIMEOUT_RETRIES, CHECK_STREAM_IDLE_SECONDS, REPAIR_POLICY, check_transport, _trace, _stale, _settings, split_sentences, _structure_diagnostics, _output_limit_diagnostics, _check_records, _handwritten_check_records)
 
 FORMAT_VERSION = 1
 SCORING_VERSION = 'persona_scoring_v1'
@@ -543,11 +543,14 @@ def _model_call_outcomes(calls, checkpoints=(), observations=()):
         incomplete = bool(_incomplete_checks(matching))
         retained = incomplete and _retained_current(checkpoint, matching[0])
         checks = candidate['checks']
-        # Sentence splits, focus splits and degenerate-output retries all recover
-        # a truncation by a later complete request of the same operation.
-        split_recovered = any((checks.get(phase) or {}).get('output_limit_diagnostics', {}).get(key, {}).get('recovered', 0)
-            for phase in ('initial_model', 'model', 'recheck')
-            for key in ('split_results', 'focus_split_results', 'output_retry_results'))
+        # A truncation is recovered when its window ended complete, whether by a
+        # retry, a structure reask or a split; older records count recovered splits.
+        diagnostics = [(checks.get(phase) or {}).get('output_limit_diagnostics', {})
+                       for phase in ('initial_model', 'model', 'recheck')]
+        diagnostics.append((checks.get('handwritten_review') or {}).get('output_limit_diagnostics', {}))
+        split_recovered = any(diagnostic.get('recovered_truncations', 0)
+                              or diagnostic.get('split_results', {}).get('recovered', 0)
+                              for diagnostic in diagnostics)
         ordered = [by_id[i] for i in sorted(ids)]
         for position, call in enumerate(ordered):
             purpose = call['purpose'].removesuffix('_repair')
@@ -693,13 +696,17 @@ def _check_structure_metrics(rows):
 
 
 def _check_output_limit_metrics(rows):
-    totals = {'truncations':0, 'splits':0, 'terminal_truncations':0, 'focus_splits':0, 'output_retries':0}
+    totals = {'truncations':0, 'splits':0, 'terminal_truncations':0, 'recovered_truncations':0,
+              'focus_splits':0, 'output_retries':0}
     results = {key:Counter() for key in ('split_results', 'focus_split_results', 'output_retry_results')}
     for row in rows:
         for attempt in row['attempts']:
             outputs = json.loads(attempt['outputs_json'])
             for purpose in ('persona_check', 'persona_recheck'):
-                diagnostic = _output_limit_diagnostics(outputs.get(purpose+'_batches', []), purpose)
+                records = outputs.get(purpose+'_batches', [])
+                if purpose == 'persona_check':
+                    records = records + _handwritten_check_records(outputs)
+                diagnostic = _output_limit_diagnostics(records, purpose)
                 for key in totals:
                     totals[key] += diagnostic[key]
                 for key, counter in results.items():

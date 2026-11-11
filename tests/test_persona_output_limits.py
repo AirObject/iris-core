@@ -230,7 +230,7 @@ def test_terminal_child_does_not_run_its_sibling_or_accept_completed_fragments(s
     assert [len(c[1]['candidate']) for c in model.calls] == [4, 2, 1]
     assert not result['sentences'] and result['validation_errors']
     assert result['output_limit_diagnostics'] == {
-        'truncations':3, 'splits':2, 'terminal_truncations':1,
+        'truncations':3, 'splits':2, 'terminal_truncations':1, 'recovered_truncations':0,
         'split_results':{'incomplete_output_limit':2}, 'focus_splits':0, 'focus_split_results':{},
         'output_retries':0, 'output_retry_results':{}}
 
