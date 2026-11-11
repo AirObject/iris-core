@@ -16,8 +16,8 @@ from test_persona import FakeGateway, add_self, store
 FIRST, SECOND = '共读那天对方读错时我先问了要不要重读', '第二次共读对方又读错了，我也先问了，以后也想这样'
 UNIVERSAL = '在两次共读里，对方读错时我都先问要不要重读。'
 UNIVERSAL_FOCUS = '对方读错时我都先问要不要重读。'
-BOUNDED = '在两次共读里，那两次读错我都先问了要不要重读。'
-BOUNDED_FOCUS = '那两次读错我都先问了要不要重读。'
+BOUNDED = '在两次共读里，那两次我都先问了要不要重读。'
+BOUNDED_FOCUS = '那两次我都先问了要不要重读。'
 HABIT_SOURCE = '合奏排练时我每次都先听节拍'
 HABIT = '合奏排练时我每次都先听节拍。'
 CURRENT = '对方读错时我先问要不要重读，以后也想这样'
@@ -68,9 +68,9 @@ def test_frequency_words_join_the_closed_quantifier_class(text, expected):
 
 
 @pytest.mark.parametrize('text', ['不总是先听', '并不是每次都先听', '不是所有事情都这样', '我不经常先听', '《总是有人》很好听',
-                                  '我先听了节拍', '用大家都能听清的速度', '什么都想试试', '一点都不难', '我们都觉得好',
+                                  '我先听了节拍', '用大家都能听清的速度', '我们都觉得好',
                                   '那三本书我都读完了', '两门课都过了', '两个人都来了', '这几首歌我都听过', '我和对方都觉得好',
-                                  '共读和合奏我都喜欢', '我常去那家店', '我总熬夜', '我一般先听节拍'])
+                                  '我常去那家店', '我总熬夜', '我一般先听节拍'])
 def test_negated_distributive_and_ambiguous_uses_are_not_frequency_claims(text):
     assert not _asserted_frequency(text)
 
@@ -127,7 +127,7 @@ def test_universal_with_an_auxiliary_is_still_a_frequency_claim():
 
 
 def test_bounded_experience_of_those_instances_passes():
-    assert verdict(BOUNDED, BOUNDED_FOCUS, [check('都', '那两次读错')]) == ([], {})
+    assert verdict(BOUNDED, BOUNDED_FOCUS, [check('都', '那两次')]) == ([], {})
 
 
 @pytest.mark.parametrize('scope,focus', [
@@ -147,8 +147,8 @@ def test_count_after_the_frequency_word_does_not_bound_it():
 
 def test_bounded_experience_cannot_count_more_occasions_than_the_source():
     focus = BOUNDED_FOCUS.replace('两', '三')
-    assert 'more occasions' in problems_of(BOUNDED.replace('那两次', '那三次'), focus, [check('都', '那三次读错')])
-    assert 'more occasions' in problems_of(BOUNDED, BOUNDED_FOCUS, [check('都', '那两次读错', instances=1)])
+    assert 'more occasions' in problems_of(BOUNDED.replace('那两次', '那三次'), focus, [check('都', '那三次')])
+    assert 'more occasions' in problems_of(BOUNDED, BOUNDED_FOCUS, [check('都', '那两次', instances=1)])
 
 
 @pytest.mark.parametrize('quoted', ['想这样', '不经常', '每次都', '我每次都先听节拍偶尔也先看谱'])
@@ -195,7 +195,7 @@ def test_a_hedge_cannot_stand_in_for_the_frequency_check(text, focus, source):
 
 @pytest.mark.parametrize('mutation', ['missing', 'bool', 'negative', 'text'])
 def test_frequency_item_needs_its_instance_count(mutation):
-    value = check('都', '那两次读错')
+    value = check('都', '那两次')
     if mutation == 'missing': value.pop('source_instances')
     elif mutation == 'bool': value['source_instances'] = True
     elif mutation == 'negative': value['source_instances'] = -1
@@ -299,62 +299,81 @@ def test_repair_from_a_universal_summary_faces_the_same_frequency_check(store):
 def test_prompts_state_the_order_and_the_bounded_rule():
     check_prompt = files('iris').joinpath(f"prompts/{PROMPT_VERSIONS['persona_check']}.md").read_text(encoding='utf-8')
     generate = files('iris').joinpath(f"prompts/{PROMPT_VERSIONS['persona_generate']}.md").read_text(encoding='utf-8')
-    for field in ('frequency_words', 'source_instances', '偶尔＜有时＜经常＜通常／习惯＜总是', '有界的经历', '那次之后'):
+    for field in ('frequency_words', 'source_instances', '偶尔＜有时＜经常＜通常／习惯＜总是', '有界的经历',
+                  '只有“都”', '自从'):
         assert field in check_prompt
     assert '不要把有限次数写成“都／总是／每次”' in generate
 
 
-# Round 3: 都 is read from its whole clause; occasions, universals and period openers.
+# Round 4: 都 is a frequency claim except in three closed forms; only 都 can be bounded.
 
-OCCASION_LEAKS = ['这些天我都先问要不要重读。', '那些日子我都先问要不要重读。', '每个晚上我都先问要不要重读。',
-                  '每个周末我都先问要不要重读。', '各场共读我都先问要不要重读。', '这阵子我都先问要不要重读。',
-                  '我跟以前一样都先问要不要重读。']
+NAMES = ('小舒', '南柚')
 
 
-@pytest.mark.parametrize('focus', OCCASION_LEAKS)
-def test_dou_over_times_or_occasions_is_a_frequency_claim(focus):
-    assert _focus_quantifiers(focus) == ['都']
-    joined = problems_of('在两次共读里，' + focus, focus, [check('都', '', '', 2)])
-    assert 'frequency raised above the source' in joined
+@pytest.mark.parametrize('text', [
+    '这些天我都先问', '那些日子我都先问', '每个晚上我都写日记', '每个周末我都去爬山', '各场直播我都先问',
+    '我跟以前一样都先问', '这阵子我都早睡', '这些歌我都听过', '每个人我都问了', '晚上和周末都先问',
+    '我在家和学校都先问', '直播和私聊都先问', '接龙和私聊里我都先问', '我跟他聊天时都先问', '跟对方说话都先问',
+    '和新朋友都先问', '跟她都先问', '平时和周末都练琴', '这几天的作业我都写完了', '那几次的录音我都听了',
+    '那些天的照片我都存了', '什么时候我都愿意', '我跟人吵架都先道歉', '一点都不难', '什么都想试试',
+    '每个人都来了', '任何人都可以问', '这些天对方读错时我都先问'])
+def test_any_other_dou_is_a_frequency_or_universal_claim(text):
+    assert _focus_quantifiers(text, NAMES) == ['都']
 
 
-def test_the_reading_of_dou_does_not_depend_on_clause_length():
-    assert _focus_quantifiers('这些天对方读错时我都先问') == _focus_quantifiers('这些天我都先问') == ['都']
-    assert _focus_quantifiers('那三本书我读的时候都先查') == _focus_quantifiers('那三本书我都先查') == []
+@pytest.mark.parametrize('text', [
+    '我们都觉得好', '他们俩都来了', '大家都在', '我们也都先问', '各位都辛苦了', '两个人都来了', '几个人都来了',
+    '那三本书我都读完了', '那两门课都过了', '这几首歌我都听过', '两样东西我都喜欢', '这几个人我都问过',
+    '我和对方都先问', '我和她都喜欢共读', '我和小舒都喜欢共读', '我跟南柚都先问', '对小舒和南柚都先问',
+    '我和小舒也都先问'])
+def test_three_closed_forms_are_distributive(text):
+    assert _focus_quantifiers(text, NAMES) == []
 
 
-@pytest.mark.parametrize('text', ['每个人都来了', '任何人都可以问', '无论谁读错我都先问', '两样东西我都喜欢',
-                                  '我和她都喜欢共读', '我和小舒都喜欢共读', '我跟南柚都先问'])
-def test_universal_and_bounded_sets_of_people_or_things_stay_distributive(text):
-    assert _focus_quantifiers(text) == []
+def test_coordination_needs_known_names_or_pronouns():
+    assert _focus_quantifiers('我和小舒都喜欢共读', NAMES) == []
+    assert _focus_quantifiers('我和小舒都喜欢共读') == ['都']
+    assert _focus_quantifiers('共读和合奏我都喜欢', NAMES) == ['都']
 
 
-@pytest.mark.parametrize('text', ['在共读和合奏我都先问', '共读和合奏里我都先问', '我跟以前一样都先问'])
-def test_locative_or_comparative_phrases_are_no_coordination(text):
-    assert _focus_quantifiers(text) == ['都']
-
-
-def test_topic_universal_and_its_dou_are_counted_once():
+def test_counted_universal_and_its_dou_are_counted_once():
     text = '每次排练我都先听节拍。'
     assert _focus_quantifiers(text) == ['每次']
     excerpt = '排练时我每次都先听节拍'
     assert verdict(text, text, [check('每次', '', '每次', 2)], excerpts=(excerpt, excerpt), current=excerpt) == ([], {})
     assert _focus_quantifiers('第一次排练我都先听节拍') == ['第一次', '都']
-    assert _focus_quantifiers('不是每次排练我都先听') == []
+    assert _focus_quantifiers('不是所有事情都这样') == []
 
 
-@pytest.mark.parametrize('focus,scope', [('那一次共读之后我每次都先问要不要重读。', '那一次共读之后'),
-                                         ('那两次读错以后我都先问要不要重读。', '那两次读错以后'),
-                                         ('那两次读错后我都先问要不要重读。', '那两次读错后')])
-def test_a_period_opener_anywhere_after_the_count_unbounds_it(focus, scope):
-    word = '每次' if '每次' in focus else '都'
-    joined = problems_of('在两次共读里，' + focus, focus, [check(word, scope, '', 2)])
+@pytest.mark.parametrize('focus,word,scope', [
+    ('那次我才意识到自己总是太急。', '总是', '那次'), ('那天我才发现自己一直太急。', '一直', '那天'),
+    ('这次让我明白我每次都太急。', '每次', '这次'), ('自从那次共读我每次都先问。', '每次', '那次'),
+    ('那次共读过后我每次都先问。', '每次', '那次'), ('那次往后我都先问要不要重读。', '都', '那次'),
+    ('从那次起我都先问要不要重读。', '都', '那次'), ('那两次读错后我都先问要不要重读。', '都', '那两次'),
+    ('那两次读错我都先问了要不要重读。', '都', '那两次'), ('那两天我都先问了要不要重读。', '都', '那两天'),
+    ('我两次都先问了要不要重读。', '都', '两次'), ('那次共读里我一直耐心解释。', '一直', '那次共读里')])
+def test_only_a_count_right_before_dou_bounds_it(focus, word, scope):
+    excerpt = '那次共读我先问了要不要重读'
+    joined = problems_of(focus, focus, [check(word, scope, '', 2)], excerpts=(excerpt, excerpt), current=excerpt)
     assert 'frequency raised above the source' in joined
 
 
-def test_one_occasion_named_without_a_numeral_counts_as_one():
-    focus, excerpt = '那次共读我一直耐心解释。', '那次共读我耐心解释了规则'
-    assert verdict(focus, focus, [check('一直', '那次共读', '', 1)], excerpts=(excerpt, excerpt), current=excerpt) \
-        == ([], {})
-    assert 'more occasions' in problems_of(focus, focus, [check('一直', '那次共读', '', 0)],
+@pytest.mark.parametrize('focus,scope,instances', [
+    ('那两次我都先问了对方。', '那两次', 2), ('那次我也都先问了要不要重读。', '那次', 1), ('这几回我都先问了。', '这几回', 2)])
+def test_a_count_right_before_dou_bounds_it(focus, scope, instances):
+    excerpt = '那次共读我先问了要不要重读'
+    assert verdict(focus, focus, [check('都', scope, '', instances)], excerpts=(excerpt, excerpt),
+                   current=excerpt) == ([], {})
+    assert 'more occasions' in problems_of(focus, focus, [check('都', scope, '', instances - 1)],
                                            excerpts=(excerpt, excerpt), current=excerpt)
+
+
+def test_a_bad_source_word_reask_keeps_the_other_items_adverse_verdicts():
+    excerpt = '合奏排练时我有时先听节拍，偶尔先看谱'
+    text = '合奏排练时我总是先听节拍，经常先看谱。'
+    focus = '合奏排练时我总是先听节拍经常先看谱。'
+    checks = [check('总是', '', '有时', 2), check('经常', '', '偶尔先看谱', 2)]
+    errors, problems = verdict(focus, focus, checks, excerpts=('合奏排练时我有时先听节拍偶尔先看谱',) * 2,
+                               current=excerpt)
+    assert any('one frequency word' in error for error in errors)
+    assert 'frequency strength raised' in ' '.join(problems[1])

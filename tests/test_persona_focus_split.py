@@ -100,7 +100,7 @@ def test_truncated_one_sentence_window_is_split_by_focus_with_full_context(store
     assert result['output_limit_diagnostics'] == {'truncations':1, 'splits':0, 'split_results':{},
         'terminal_truncations':0, 'recovered_truncations':1, 'focus_splits':1,
         'focus_split_results':{'recovered':1}, 'output_retries':0, 'output_retry_results':{},
-        'output_retry_errors':{}}
+        'output_retry_errors':{}, 'truncation_events':[{'order':1}]}
     assert limits(outputs)[0]['handled'] == 'focus_split' and limits(outputs)[0]['focus_count'] == 2
     assert [call[1] for call in model.calls] == [360, 361, 362]  # Per-call caps within one stage.
 
@@ -314,8 +314,9 @@ def test_output_shapes(content, shape):
     assert _output_shape(content) == shape
 
 
-def evaluate(tmp_path, decide, *, one_focus=False):
+def evaluate(tmp_path, decide, *, one_focus=False, text=None):
     """Run the format timeline; `decide(purpose, payload, number)` may change a fact reply."""
+    generated = '在那次直播中我耐心解释了规则。' if one_focus else text
     class Scripted(FakeGateway):
         numbers = 0
         def __init__(self, configs, store, **kwargs):
@@ -323,9 +324,9 @@ def evaluate(tmp_path, decide, *, one_focus=False):
             self.clock = kwargs['clock']
         def chat(self, messages, purpose, **kwargs):
             payload = json.loads(messages[-1]['content'])
-            if purpose == 'persona_generate' and one_focus:
+            if purpose == 'persona_generate' and generated:
                 evidence = payload['evidence']['memories'][0]
-                reply = ModelReply(dumps({'sentences':[{'text':'在那次直播中我耐心解释了规则。',
+                reply = ModelReply(dumps({'sentences':[{'text':generated,
                                                         'basis':[evidence['ref']]}]}), 'stop', {})
             else:
                 reply = super().chat(messages, purpose, **kwargs)
@@ -482,3 +483,83 @@ def test_an_ordinary_batch_timeout_is_still_invalid(tmp_path):
     metrics = evaluate(tmp_path, decide, one_focus=True)
     assert not metrics['run_valid'] and metrics['invalid_call_count'] == 1
     assert metrics['calls']['tolerated_timed_out_calls'] == 0
+
+
+# Round 4: sibling sub-batches, the retry's own call, and adverse verdicts across a reask.
+
+def pair_of_single_foci():
+    material, sentence = single_focus_case()
+    return material, [sentence, copy.deepcopy(sentence)]
+
+
+def test_a_sibling_overrunning_the_stage_after_a_retry_is_a_tolerable_incomplete_check(store):
+    material, sentences = pair_of_single_foci()
+    model = Truncating(lambda request, number: number in (1, 2), content='{"sentences":[',
+                       durations={1:200, 2:200, 3:200, 4:350})
+    outputs = {}
+    result, _ = run(store, model, material, sentences, outputs)  # Never a stage failure.
+    assert len(model.calls) == 4 and result['validation_errors']
+    assert outputs['persona_check_incomplete'] == 'output_limit'
+    split = outputs['persona_check_batches'][0]['persona_check_output_splits'][0]
+    assert split['status'] == 'incomplete_timeout' and limits(outputs)[0]['handled'] == 'terminal'
+
+
+@pytest.mark.parametrize('failure', ['rate_limited', 'transport_failure'])
+def test_a_failed_sentence_split_child_restores_the_truncation(store, failure):
+    material, sentences = pair_of_single_foci()
+    model = Truncating(first_call, script={3:failure})
+    outputs = {}
+    result, _ = run(store, model, material, sentences, outputs)
+    assert result['validation_errors'] and outputs['persona_check_incomplete'] == 'output_limit'
+    assert result['output_limit_diagnostics']['terminal_truncations'] == 1
+
+
+@pytest.mark.parametrize('second,retried', [(250, False), (100, True)])
+def test_a_retry_inside_a_split_leaves_room_for_its_sibling(store, second, retried):
+    # A retry of the first child after 250+d s needs d + (sibling) d + reserve.
+    material, sentences = pair_of_single_foci()
+    model = Truncating(lambda request, number: number in (1, 2), content='', durations={1:250, 2:second})
+    result, outputs = run(store, model, material, sentences)
+    child = outputs['persona_check_batches'][0]['persona_check_output_splits'][0]['children'][0]['outputs']
+    event = child['persona_check_output_limits'][0]
+    assert ('retry_skipped' in event) is not retried
+    assert bool(result['validation_errors']) is not retried
+
+
+def test_only_the_failed_retrys_own_timeout_is_tolerated(tmp_path):
+    # A focus split whose half recovers from an ordinary timeout, then a later window's retry times out.
+    def decide(reply, payload, number):
+        if number in (1, 5):
+            reply.finish_reason, reply.content = 'length', '{"sentences":['
+        elif number in (2, 6):
+            return 'timeout'
+    metrics = evaluate(tmp_path, decide, text='在那次直播中，我耐心解释了规则，我回答了提问。')
+    assert metrics['incomplete_check_count'] == 1
+    assert metrics['calls']['tolerated_timed_out_calls'] == 1
+    assert metrics['calls']['unrecovered_timed_out_calls'] == 1
+    assert not metrics['run_valid'] and metrics['invalid_call_count'] == 1
+
+
+def test_a_reask_for_one_item_cannot_clear_another_items_adverse_verdict(store):
+    from test_persona_check_resilience import Checks, general_case
+    material, sentence = general_case()
+    text = '合奏排练中我总是先听节拍偶尔先看谱。'
+    sentence['text'] = text
+    memory = material['evidence']['memories'][0]
+    memory['content'] = text
+    for source in memory['excerpts']:
+        source['excerpt'] = '合奏排练中我总是先听节拍偶尔先看谱'
+    def item(word, source):
+        return {'candidate_quantifier':word, 'candidate_scope':'', 'source_quantifier':source,
+                'source_scopes':[], 'source_instances':2, 'preserved':True}
+    def mutate(value, payload, number):
+        first = value['sentences'][0]['clauses'][0]
+        first['quantifier_checks'] = ([item('总是', '偶尔'), item('偶尔', '偶尔先看谱')] if number == 1
+                                      else [item('总是', '总是'), item('偶尔', '偶尔')])
+    model = Checks(store, mutate)
+    result = PersonaEngine(store, model)._check_all('persona_check', material, [sentence],
+        full_content=text, outputs={}, assess_degree=False)
+    assert len(model.calls) == 2  # One reask, which on its own would pass.
+    assert not result['sentences'][0]['supported']
+    problems = _check_verdicts(result, [sentence], material=material)[2]
+    assert 'frequency strength raised' in ' '.join(problems[1])

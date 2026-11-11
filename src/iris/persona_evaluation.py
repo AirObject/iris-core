@@ -520,6 +520,13 @@ def _retained_current(checkpoint, observation):
         and current.get('sentences') == previous['sentences'])
 
 
+def _check_output_limited(call):
+    return (call.get('finish_reason') == 'length'
+            and call['purpose'].removesuffix('_repair') in ('persona_check', 'persona_recheck')
+            and not call.get('timed_out') and call.get('status_code') != 429
+            and call.get('result_category') == 'success')
+
+
 def _model_call_outcomes(calls, checkpoints=(), observations=()):
     """Recover owned calls only; tolerate truncation only at retained checkpoints.
 
@@ -551,27 +558,32 @@ def _model_call_outcomes(calls, checkpoints=(), observations=()):
         split_recovered = any(diagnostic.get('recovered_truncations', 0)
                               or diagnostic.get('split_results', {}).get('recovered', 0)
                               for diagnostic in diagnostics)
-        # An output retry that timed out restored its truncation; at a retained
-        # checkpoint its own timed-out call is tolerated too, one per failed retry.
-        retry_timeouts = sum(diagnostic.get('output_retry_errors', {}).get('timeout', 0)
-                             for diagnostic in diagnostics)
         ordered = [by_id[i] for i in sorted(ids)]
+        # An output retry that timed out restored its truncation. At a retained
+        # checkpoint only that retry's own call is tolerated: truncation records
+        # (deduplicated across phases) pair one to one with the output-limited
+        # calls in order, and the record must say its retry failed by timeout.
+        records = {event['order']:event for diagnostic in diagnostics
+                   for event in diagnostic.get('truncation_events', [])}
+        limited_calls = [call for call in ordered if _check_output_limited(call)]
+        retried = set()
+        if retained and len(records) == len(limited_calls):
+            for call, record in zip(limited_calls, (records[order] for order in sorted(records))):
+                position = ordered.index(call)
+                follower = ordered[position + 1] if position + 1 < len(ordered) else None
+                if (record.get('retry') == 'failed' and record.get('retry_error') == 'timeout'
+                        and follower is not None and follower['purpose'] == call['purpose']
+                        and follower.get('timed_out') and follower.get('status_code') != 429):
+                    retried.add(follower['id'])
         for position, call in enumerate(ordered):
             purpose = call['purpose'].removesuffix('_repair')
-            limited = (call.get('finish_reason') == 'length' and purpose in ('persona_check', 'persona_recheck')
-                       and not call.get('timed_out') and call.get('status_code') != 429
-                       and call.get('result_category') == 'success')
+            limited = _check_output_limited(call)
             if retained and limited:
                 tolerated[call['id']] = {'checkpoint_id':checkpoint['checkpoint']['id'],
                     'outcome':'unpublished_current_retained'}
-                # Only the very next call of the same purpose, and only a timeout.
-                follower = next((c for c in ordered[position + 1:]
-                                 if c['purpose'].removesuffix('_repair') == purpose), None)
-                if (retry_timeouts and follower is not None and follower.get('timed_out')
-                        and follower.get('status_code') != 429 and follower['id'] not in tolerated):
-                    tolerated[follower['id']] = {'checkpoint_id':checkpoint['checkpoint']['id'],
-                        'outcome':'unpublished_current_retained', 'tolerated_as':'failed_output_retry_timeout'}
-                    retry_timeouts -= 1
+            if call['id'] in retried:
+                tolerated[call['id']] = {'checkpoint_id':checkpoint['checkpoint']['id'],
+                    'outcome':'unpublished_current_retained', 'tolerated_as':'failed_output_retry_timeout'}
             if incomplete:
                 continue
             success = next((c for c in ordered[position + 1:]

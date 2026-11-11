@@ -60,15 +60,17 @@ def test_single_sentence_truncation_is_incomplete_without_accepting_partial_json
 
 
 def test_split_children_do_not_renew_the_stage_budget(store):
+    # PE-23: the child's timeout restores the original truncation: incomplete, not a stage failure.
     model, outputs = Limited(store, 1, cost=350), {}
-    with pytest.raises(ModelError) as caught:
-        PersonaEngine(store, model)._check_all('persona_check', batch_material(), batch_sentences()[:4],
-            full_content='draft', outputs=outputs, assess_degree=False)
-    assert caught.value.reason == 'timeout'
+    result = PersonaEngine(store, model)._check_all('persona_check', batch_material(), batch_sentences()[:4],
+        full_content='draft', outputs=outputs, assess_degree=False)
+    assert result['validation_errors'] and outputs['persona_check_incomplete'] == 'output_limit'
     assert model.now == 1050 and len(model.calls) == 3
     assert model.calls[-1][2] == 900
     split = outputs['persona_check_batches'][0]['persona_check_output_splits'][0]
-    assert split['status'] == 'incomplete_timeout'
+    inner = split['children'][0]['outputs']['persona_check_output_splits'][0]
+    assert inner['status'] == 'incomplete_timeout' and split['status'] == 'incomplete_output_limit'
+    assert result['output_limit_diagnostics']['terminal_truncations'] == 1
 
 
 @pytest.mark.parametrize('stage', ['field', 'focus', 'degree'])
@@ -232,7 +234,8 @@ def test_terminal_child_does_not_run_its_sibling_or_accept_completed_fragments(s
     assert result['output_limit_diagnostics'] == {
         'truncations':3, 'splits':2, 'terminal_truncations':1, 'recovered_truncations':0,
         'split_results':{'incomplete_output_limit':2}, 'focus_splits':0, 'focus_split_results':{},
-        'output_retries':0, 'output_retry_results':{}, 'output_retry_errors':{}}
+        'output_retries':0, 'output_retry_results':{}, 'output_retry_errors':{},
+        'truncation_events':[{'order':1}, {'order':2}, {'order':3}]}
 
 
 def test_successful_split_is_recovered_by_its_own_complete_operation(tmp_path):
