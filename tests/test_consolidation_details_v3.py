@@ -10,6 +10,9 @@ from test_consolidation import pair, run, merge_answer
 from test_lifecycle import Clock
 from test_merge_details import bodies, DetailModel
 
+# These cases exercise report_only_v1, the default before C-B2 made it auto_v1.
+pytestmark = pytest.mark.usefixtures('report_only')
+
 
 @pytest.mark.parametrize('qualifier', [
     '一直', '总是', '经常', '偶尔', '每次', '多年', '从小', '只', '都', '非常', '稍微',

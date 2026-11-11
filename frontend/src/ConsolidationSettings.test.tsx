@@ -133,14 +133,49 @@ test("整理设置保存时间、调用预算与所有开关，并显示操作�
   expect(within(section).getByText(/只影响之后接受的新运行/)).toBeVisible();
 });
 
+test("处理方式显示服务端的默认值，可退回只报告", async () => {
+  settings.consolidation.resolution = "auto_v1";
+  render(<SettingsPage />);
+  const section = await screen.findByRole("region", { name: "梦境整理设置" });
+  const select = within(section).getByLabelText(
+    "矛盾、依赖与互有细节合并的处理方式",
+  );
+  expect(select).toHaveValue("auto_v1");
+  expect(
+    within(section).getByRole("option", { name: /^自主处理（默认）/ }),
+  ).toBeInTheDocument();
+  expect(within(section).getByText(/每项都有操作记录和撤销入口/)).toBeVisible();
+  fireEvent.change(select, { target: { value: "report_only_v1" } });
+  expect(within(section).getByText(/只报告：矛盾和依赖复核/)).toBeVisible();
+  await userEvent.click(
+    within(section).getByRole("button", { name: "保存梦境整理设置" }),
+  );
+  await waitFor(() =>
+    expect(
+      requests.find(
+        (r) => r.url.endsWith("/consolidation") && r.init?.method === "PATCH",
+      )?.body,
+    ).toEqual({ resolution: "report_only_v1" }),
+  );
+  await waitFor(() =>
+    expect(settings.consolidation.resolution).toBe("report_only_v1"),
+  );
+  expect(
+    await within(section).findByLabelText(
+      "矛盾、依赖与互有细节合并的处理方式",
+    ),
+  ).toHaveValue("report_only_v1");
+});
+
 test("处理方式可切换为自主处理，也可退回只报告", async () => {
+  settings.consolidation.resolution = "report_only_v1";
   render(<SettingsPage />);
   const section = await screen.findByRole("region", { name: "梦境整理设置" });
   const select = within(section).getByLabelText(
     "矛盾、依赖与互有细节合并的处理方式",
   );
   expect(select).toHaveValue("report_only_v1");
-  expect(within(section).getByText(/只报告：/)).toBeVisible();
+  expect(within(section).getByText(/只报告：矛盾和依赖复核/)).toBeVisible();
   fireEvent.change(select, { target: { value: "auto_v1" } });
   expect(within(section).getByText(/每项都有操作记录和撤销入口/)).toBeVisible();
   await userEvent.click(

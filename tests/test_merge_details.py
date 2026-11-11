@@ -10,6 +10,9 @@ from iris.retrieval import Retrieval
 from test_consolidation import pair, merge_answer, run
 from test_lifecycle import Clock
 
+# These cases exercise report_only_v1, the default before C-B2 made it auto_v1.
+pytestmark = pytest.mark.usefixtures('report_only')
+
 
 class DetailModel:
     health = None

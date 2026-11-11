@@ -388,6 +388,7 @@ def test_small_scale_unrelated_history_is_not_visited_or_cleared(store):
         assert not any('SCAN model_calls' in detail for detail in details)
 
 
+@pytest.mark.usefixtures('report_only')
 def test_normal_dependency_review_after_purge_calls_model_and_is_not_repeated(store):
     from test_consolidation import Model, run
     from iris.consolidation import snapshot

@@ -15,6 +15,9 @@ from test_retrieval import put
 from test_lifecycle import Clock
 from conftest import msg
 
+# These cases exercise report_only_v1, the default before C-B2 made it auto_v1.
+pytestmark = pytest.mark.usefixtures('report_only')
+
 
 class Model:
     def __init__(self, store, answer=None, hook=None):

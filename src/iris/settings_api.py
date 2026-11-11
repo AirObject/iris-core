@@ -192,7 +192,7 @@ class ConsolidationSettings(Input):
     entry_profile_max_calls: int = Field(default=60, ge=0, le=1000, strict=True)
     person_summary_max_calls: int = Field(default=40, ge=0, le=1000, strict=True)
     persona_max_calls: int = Field(default=30, ge=0, le=1000, strict=True)
-    resolution: Literal['report_only_v1', 'auto_v1'] = 'report_only_v1'
+    resolution: Literal['report_only_v1', 'auto_v1'] = 'auto_v1'
     merge_enabled: bool = Field(default=True, strict=True)
     conflict_enabled: bool = Field(default=True, strict=True)
     dependency_enabled: bool = Field(default=True, strict=True)

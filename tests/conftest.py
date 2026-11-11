@@ -58,6 +58,20 @@ def store(tmp_path):
         value.close()
 
 
+@pytest.fixture
+def report_only(store, monkeypatch):
+    """Opt-in for cases written for consolidation report_only_v1; the default is auto_v1.
+
+    Pins the stored choice and the fallback used when a case later replaces the
+    whole consolidation setting without naming a resolution. Unknown values still
+    normalize to report_only_v1 as in production.
+    """
+    from iris import consolidation
+    monkeypatch.setitem(consolidation.DEFAULTS, "resolution", "report_only_v1")
+    store.set_setting("consolidation", {**store.setting("consolidation"), "resolution": "report_only_v1"})
+    return store
+
+
 def msg(store, index, text, *, entry="A", sender="小林", kind="message", platform="test",
         quote_author=None, at=None):
     return add_message(store, entry_id=entry, entry_name=entry, platform=platform, entry_kind="group",

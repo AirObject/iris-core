@@ -376,13 +376,13 @@ def test_pair_switches_leave_disabled_work_for_later(store,merge,conflict):
                 'updates':[{'id':a,'annotation':'需要核对'}]}
     model=Model(store,answer)
     engine=Maintenance(store,gateway=model,clock=Clock())
-    store.set_setting('consolidation',{'merge_enabled':merge,'conflict_enabled':conflict})
+    store.set_setting('consolidation',{'resolution':'report_only_v1','merge_enabled':merge,'conflict_enabled':conflict})
     report=complete(engine)
     assert report['summary'].get('conflicts',{}).get('count',0)==int(conflict)
     assert len(model.requests)==(2 if conflict else 1 if merge else 0)
     if not merge and conflict:
         assert not model.requests[0][1]['merge_allowed']
-    store.set_setting('consolidation',{'merge_enabled':True,'conflict_enabled':True})
+    store.set_setting('consolidation',{'resolution':'report_only_v1','merge_enabled':True,'conflict_enabled':True})
     second=complete(engine)
     assert second['summary'].get('conflicts',{}).get('count',0)==(0 if conflict else 1)
 
@@ -395,13 +395,13 @@ def test_dependency_switch_does_not_repeat_M2_penalty_and_reenables_pending_revi
         conn.execute("INSERT INTO sources(memory_id,kind,source_memory_id,source_revision,created_at) VALUES(?,'memory',?,1,?)",
                      (child,source,Clock()().isoformat()))
     manage_memory(store,source,1,action='forget')
-    store.set_setting('consolidation',{'dependency_enabled':False,'merge_enabled':False,'conflict_enabled':False})
+    store.set_setting('consolidation',{'resolution':'report_only_v1','dependency_enabled':False,'merge_enabled':False,'conflict_enabled':False})
     model=Model(store,lambda p:{'decision':'weaken','reason':'唯一依据遗忘','evidence':[],
                               'updates':[{'id':child,'assessment':'unsupported','annotation':'依据不足'}]})
     engine=Maintenance(store,gateway=model,clock=Clock())
     assert complete(engine)['summary']['dependencies_weakened']['count']==1
     assert not model.requests
-    store.set_setting('consolidation',{'dependency_enabled':True,'merge_enabled':False,'conflict_enabled':False})
+    store.set_setting('consolidation',{'resolution':'report_only_v1','dependency_enabled':True,'merge_enabled':False,'conflict_enabled':False})
     report=complete(engine)
     assert report['summary']['dependencies_weakened']['count']==0
     assert report['summary']['dependencies_reviewed']['count']==1
