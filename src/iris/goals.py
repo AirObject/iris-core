@@ -1761,40 +1761,49 @@ def undo_auto_merge(conn, current, *, judgment_id, expected_revision, actor='adm
     conn.execute("UPDATE goal_duplicates SET status='dismissed',resolved_at=?,resolved_by=? WHERE goal_a=? AND goal_b=?",
                  (stamp,actor,row['goal_a'],row['goal_b']))
     pending_before = {nid:owner for nid,owner in record['notifications']}
-    # Reminders published for the survivor since the merge: those for its own
-    # restored deadline stay (unless only an earlier, merged lead produced them
-    # while its own warning time is still ahead; the new plan re-issues those);
-    # those for the merged-in goal's own deadline go back to it, pending or
-    # taken; anything else came from the merge alone and is cancelled.
+    # Existing reminder records never change owner or text (a host cursor may
+    # already be past them). Taken ones stay as they are. Of the survivor's
+    # reminders since the merge, those for its own restored deadline stay
+    # (unless only an earlier, merged lead produced them while its own warning
+    # time is still ahead; the new plan re-issues those). Pending reminders for
+    # the merged-in goal's own deadline, or that were its own before the merge,
+    # are cancelled; its restored schedule then publishes one fresh immediate
+    # reminder if its own warning time has already passed. Anything else that
+    # only the merge produced is cancelled.
     own_deadline = fields['deadline_at']
     source_deadline = _row(conn,sid)['deadline_at']
     own_lead = fields['reminder_minutes'] if fields['reminder_minutes'] is not None else goal_settings(conn)['default_reminder_minutes']
     own_soon = _soon(datetime.fromisoformat(own_deadline),own_lead) if own_deadline else None
+    reissue = False
+    cancel = lambda nid: conn.execute("UPDATE notifications SET status='cancelled',cancelled_at=? WHERE id=?",(stamp,nid))  # noqa: E731
     for note in conn.execute("""SELECT * FROM notifications WHERE goal_id=? AND kind='goal_reminder'
-            AND status IN ('pending','taken') AND id NOT IN (SELECT value FROM json_each(?))""",
+            AND status='pending' AND id NOT IN (SELECT value FROM json_each(?))""",
             (tid,dumps(list(pending_before)))).fetchall():
         if own_deadline is not None and note['deadline_at']==own_deadline:
-            early = (note['reminder_kind'] in ('soon','immediate') and note['status']=='pending'
-                     and datetime.fromisoformat(note['published_at'])<own_soon and current<own_soon)
-            if early:
-                conn.execute("UPDATE notifications SET status='cancelled',cancelled_at=? WHERE id=?",(stamp,note['id']))
-        elif source_deadline is not None and note['deadline_at']==source_deadline:
-            conn.execute('UPDATE notifications SET goal_id=?,content=? WHERE id=?',
-                         (sid,note['content'].split('：',1)[0]+'：'+_row(conn,sid)['content'],note['id']))
-        elif note['status']=='pending':
-            conn.execute("UPDATE notifications SET status='cancelled',cancelled_at=? WHERE id=?",(stamp,note['id']))
+            if (note['reminder_kind'] in ('soon','immediate')
+                    and datetime.fromisoformat(note['published_at'])<own_soon and current<own_soon):
+                cancel(note['id'])
+        else:
+            cancel(note['id'])
+            reissue = reissue or (source_deadline is not None and note['deadline_at']==source_deadline)
     for nid,owner in pending_before.items():
         note = conn.execute('SELECT * FROM notifications WHERE id=?',(nid,)).fetchone()
-        if note is None or note['status']=='taken' or (note['status']=='cancelled' and note['cancelled_at']!=record['merged_at']):
+        if note is None or note['status']=='taken' or note['kind']!='goal_reminder':
             continue
-        content = note['content']
-        if note['kind']=='goal_reminder':
-            content = content.split('：',1)[0]+'：'+_row(conn,owner)['content']
-        conn.execute("UPDATE notifications SET goal_id=?,status='pending',cancelled_at=NULL,content=? WHERE id=?",
-                     (owner,content,nid))
-    for gid in (tid,sid):
-        _cancel(conn,gid,current,notifications=False)
-        _schedule(conn,_row(conn,gid),current,immediate=False)
+        merge_cancelled = note['status']=='cancelled' and note['cancelled_at']==record['merged_at']
+        if owner==tid:
+            if merge_cancelled:  # the merge's duplicate check cancelled the survivor's own reminder
+                conn.execute("UPDATE notifications SET status='pending',cancelled_at=NULL WHERE id=?",(nid,))
+        elif note['status']=='pending':
+            cancel(nid)
+            reissue = True
+        elif merge_cancelled:
+            reissue = True
+    _cancel(conn,tid,current,notifications=False)
+    _schedule(conn,_row(conn,tid),current,immediate=False)
+    _cancel(conn,sid,current,notifications=False)
+    # immediate publishes only when its own warning time has passed (new ID).
+    _schedule(conn,_row(conn,sid),current,immediate=reissue)
     conn.execute("UPDATE goal_dedup_jobs SET result_json=? WHERE goal_id=? AND state='cancelled'",
                  (_decision_json(conn,sid,{'status':'created','target_id':None,'reason':'merge_undone'}),sid))
     snapshot_ids = [_record_snapshot(conn,gid,snapshot,actor=actor,action='merge_undo',reason=reason,current=current)

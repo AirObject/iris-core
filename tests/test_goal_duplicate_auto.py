@@ -334,8 +334,10 @@ def test_undo_returns_moved_reminders_to_the_restored_goal(store, pair):
     Goals(store, clock=Clock()).undo_auto_merge(judgment['id'], expected_revision=row(store, first)['revision'])
     with store.read() as conn:
         note = conn.execute('SELECT * FROM notifications WHERE id=?', (pending[0],)).fetchone()
-    assert (note['goal_id'], note['status']) == (second, 'pending')
-    assert note['content'].endswith(row(store, second)['content'])
+        fresh = conn.execute("SELECT * FROM notifications WHERE goal_id=? AND status='pending'", (second,)).fetchall()
+    assert (note['goal_id'], note['status']) == (first, 'cancelled')  # the record itself is not rewritten
+    assert len(fresh) == 1 and fresh[0]['id'] > pending[0]  # a new ID a host cursor can still reach
+    assert fresh[0]['content'].endswith(row(store, second)['content'])
 
 
 def test_undo_removes_relations_the_merge_copied_and_restores_watermarks(store):
@@ -425,8 +427,9 @@ def test_undo_keeps_the_survivors_own_reminders_and_cancels_merged_ones(store):
     for jid, survivor in ((j['id'], j['target_id']) for j in judgments(store) if j['outcome'] == 'merged'):
         undo.undo_auto_merge(jid, expected_revision=row(store, survivor)['revision'])
     assert pending(own) == own_note  # still waiting to be taken
-    assert pending(bare) == []  # it was for the merged-in goal's deadline ...
-    assert pending(later) == merged_note  # ... so it went back to that goal, still pending
+    assert pending(bare) == []  # it was for the merged-in goal's deadline: cancelled, not moved ...
+    fresh = pending(later)
+    assert len(fresh) == 1 and fresh[0] > merged_note[0]  # ... and that goal gets one fresh reminder
     assert row(store, bare)['deadline'] is None and row(store, later)['deadline'] is not None
 
 
@@ -512,11 +515,13 @@ def test_undo_returns_reminders_of_the_merged_goals_own_deadline(store):
     with store.read() as conn:
         note = conn.execute('SELECT * FROM notifications WHERE id=?', (soon,)).fetchone()
         other = conn.execute('SELECT status FROM notifications WHERE id=?', (stray,)).fetchone()[0]
+        fresh = conn.execute("SELECT * FROM notifications WHERE goal_id=? AND status='pending'", (b,)).fetchall()
         plans = [tuple(r) for r in conn.execute("""SELECT reminder_kind FROM goal_reminder_plans
             WHERE goal_id=? AND status='scheduled'""", (b,))]
-    assert (note['goal_id'], note['status']) == (b, 'pending') and note['content'].endswith(row(store, b)['content'])
+    assert (note['goal_id'], note['status']) == (a, 'cancelled')
+    assert len(fresh) == 1 and fresh[0]['id'] > stray and fresh[0]['content'].endswith(row(store, b)['content'])
     assert other == 'cancelled'
-    assert plans == [('due',)]  # B's own plan continues; the passed warning is not re-sent
+    assert plans == [('due',)]  # B's own plan continues
 
 
 def test_undo_keeps_reminders_on_the_survivor_when_both_deadlines_match(store):
@@ -545,3 +550,54 @@ def test_undo_keeps_reminders_on_the_survivor_when_both_deadlines_match(store):
         b_plans = [r[0] for r in conn.execute("SELECT reminder_kind FROM goal_reminder_plans WHERE goal_id=? AND status='scheduled'", (b,))]
     assert tuple(note) == (a, 'pending')
     assert b_pending == 0 and b_plans == ['due']  # rescheduled without re-sending the passed warning
+
+
+
+def _long_lead_merge(store, *, deadline, take):
+    """probe_undo_dup: the survivor's longer lead fires B's deadline early under the survivor."""
+    from iris import goals as gm
+    from goal_auto_helpers import goal, subject
+    store.set_setting('goal_dedup_judge', {'enabled': True, 'budget_seconds': 1})
+    subject(store, 'p1', '程栗')
+    a = goal(store, '周五前整理操作手册', people=('p1',), created='2026-11-02T08:10:00+00:00')
+    b = goal(store, '周五前整理操作说明手册', people=(), created='2026-11-02T09:40:00+00:00', deadline=deadline)
+    with store.write() as conn:
+        conn.execute('UPDATE goals SET reminder_minutes=600 WHERE id=?', (a,))
+        conn.execute("INSERT INTO goal_duplicates(goal_a,goal_b,status,created_at) VALUES(?,?,'possible','x')", (a, b))
+        gm._schedule(conn, gm._row(conn, b), Clock('2026-11-02T10:00:00+00:00')())
+    enable(store, review=False, duplicates=True)
+    run_goals(store, Judge(store, 'same'), Clock('2026-11-03T01:00:00+00:00'))
+    Goals(store, clock=Clock('2026-11-03T02:30:00+00:00')).generate_notifications()
+    with store.write() as conn:
+        early, = [r[0] for r in conn.execute("SELECT id FROM notifications WHERE goal_id=? AND status='pending'", (a,))]
+        if take:
+            conn.execute("UPDATE notifications SET status='taken',taken_at=? WHERE id=?", ('2026-11-03T02:35:00+00:00', early))
+        before = dict(conn.execute('SELECT * FROM notifications WHERE id=?', (early,)).fetchone())
+    Goals(store, clock=Clock('2026-11-03T03:00:00+00:00')).undo_auto_merge(
+        judgments(store)[-1]['id'], expected_revision=row(store, a)['revision'])
+    return a, b, early, before
+
+
+def _notes(store, gid):
+    with store.read() as conn:
+        return [dict(r) for r in conn.execute('SELECT * FROM notifications WHERE goal_id=? ORDER BY id', (gid,))]
+
+
+@pytest.mark.parametrize('take', [False, True])
+def test_undo_never_rewrites_existing_reminders_and_b_gets_exactly_one_on_time(store, take):
+    a, b, early, before = _long_lead_merge(store, deadline='2026-11-03T12:00:00+00:00', take=take)
+    with store.read() as conn:
+        after = dict(conn.execute('SELECT * FROM notifications WHERE id=?', (early,)).fetchone())
+    assert (after['goal_id'], after['content']) == (before['goal_id'], before['content']) == (a, before['content'])
+    assert after['status'] == ('taken' if take else 'cancelled')
+    assert _notes(store, b) == []  # B's own warning (11:00) is still ahead: no new record yet
+    Goals(store, clock=Clock('2026-11-03T11:00:00+00:00')).generate_notifications()  # B's own warning time
+    pending = [n for n in _notes(store, b) if n['status'] == 'pending']
+    assert len(pending) == 1 and pending[0]['reminder_kind'] == 'soon' and pending[0]['id'] > early
+
+
+def test_undo_reissues_immediately_when_bs_own_warning_time_has_passed(store):
+    a, b, early, before = _long_lead_merge(store, deadline='2026-11-03T03:30:00+00:00', take=False)
+    notes = _notes(store, b)
+    assert len(notes) == 1 and notes[0]['status'] == 'pending' and notes[0]['id'] > early
+    assert notes[0]['reminder_kind'] == 'immediate' and notes[0]['content'].startswith('目标临近截止')
