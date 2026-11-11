@@ -551,6 +551,7 @@ function GoalAutoReport({
                 ["no_candidates", "无候选消息"],
                 ["already_judged", "未变化"],
                 ["budget_exhausted", "预算用尽"],
+                ["merged_this_run", "本轮刚合并"],
                 ["failed", "失败"],
               ]
                 .filter(([key]) => typeof summary[key] === "number")

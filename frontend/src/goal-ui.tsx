@@ -147,7 +147,7 @@ export const goalAutoReasons: Record<string, string> = {
   auto_different: "判为不重复，已撤销可能重复标记",
   admin_not_merged: "判为重复，但含管理员创建的目标，不合并并撤销标记",
   host_scope_not_merged:
-    "一方是宿主目标，另一方在它的令牌范围外，不合并并撤销标记",
+    "宿主目标会被并入它令牌范围外的目标，不合并，保留可能重复标记",
   uncertain: "仍不确定，保留可能重复标记",
   same_ambiguous: "判为重复但还有其他歧义，保留标记",
   partner_not_in_material: "对方不在去重材料中，保留标记",
@@ -156,6 +156,7 @@ export const goalAutoReasons: Record<string, string> = {
   no_candidates: "没有新的候选消息，未调用模型",
   already_judged: "目标与材料未变，未再次调用模型",
   budget_exhausted: "预算用尽，留到下次",
+  merged_this_run: "本轮刚被自动合并，下次维护再复核",
   revision_conflict: "目标在判断期间已变化，下次再处理",
   dedup_judge_disabled: "目标去重判断已关闭",
   review_pending: "创建时的去重复核尚未结束",

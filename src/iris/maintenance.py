@@ -382,36 +382,46 @@ class Maintenance:
         as_of = datetime.fromisoformat(run["created_at"])
         with self.store.read() as conn:
             counts = self._goal_counts(conn, run, "review") or {"goals": 0, "calls": 0}
-            goals = auto_review_goal_ids(conn, goal_through=run["goal_through"])
+            # Least recently reviewed first; the order ignores this run's own
+            # judgments, so a resumed pass continues from the same cursor.
+            goals = auto_review_goal_ids(conn, goal_through=run["goal_through"], run_id=run["id"])
+            # A goal that G2 merged into in this run waits for the next run, so the
+            # administrator can still undo the merge (undo needs its revision).
+            merged = {r[0] for r in conn.execute("""SELECT target_id FROM goal_duplicate_judgments
+                WHERE run_id=? AND outcome='merged' AND target_id IS NOT NULL""", (run["id"],))}
         counts.pop("stopped", None)
-        done = counts.get("cursor") or 0
-        for goal_id, _ in goals:
-            if goal_id <= done:
+        done = tuple(counts.get("cursor") or ("", 0))
+        for goal_id, _, reviewed in goals:
+            position = [reviewed, goal_id]
+            if tuple(position) <= done:
                 continue
             if stop and stop():
                 return False
             key = f"auto_review:{goal_id}"
             counts["goals"] = counts.get("goals", 0) + 1
+            if goal_id in merged:
+                self._goal_step(run, "review", counts, "merged_this_run", cursor=position)
+                continue
             try:
                 with self.store.read() as conn:
                     material = auto_review_material(conn, goal_id, current=as_of, message_through=run["message_through"])
                     judged = material is not None and auto_review_judged(conn, material)
             except KeyError:
-                self._goal_step(run, "review", counts, "goal_missing", cursor=goal_id)
+                self._goal_step(run, "review", counts, "goal_missing", cursor=position)
                 continue
             except Exception as error:
-                self._goal_step(run, "review", counts, "failed", cursor=goal_id,
+                self._goal_step(run, "review", counts, "failed", cursor=position,
                                 item=(key, goal_id, "failed", self._failure_reason(error), {"kind": "auto_review"}))
                 continue
             if material is None:
                 # No candidate message: never call the model.
-                self._goal_step(run, "review", counts, "no_candidates", cursor=goal_id)
+                self._goal_step(run, "review", counts, "no_candidates", cursor=position)
                 continue
             if judged:
-                self._goal_step(run, "review", counts, "already_judged", cursor=goal_id)
+                self._goal_step(run, "review", counts, "already_judged", cursor=position)
                 continue
             if counts.get("calls", 0) >= AUTO_REVIEW_MAX_CALLS:
-                self._goal_step(run, "review", counts, "budget_exhausted", cursor=goal_id)
+                self._goal_step(run, "review", counts, "budget_exhausted", cursor=position)
                 continue
             failure = lambda error: (key, goal_id, "failed", self._failure_reason(error),  # noqa: E731
                                      {"kind": "auto_review", "goal_revision": material["revision"]})
@@ -427,28 +437,28 @@ class Maintenance:
             try:
                 result = judge_goal_review(self.gateway, material)
             except ModelError as error:
-                self._goal_step(run, "review", counts, "failed", cursor=goal_id, item=failure(error))
+                self._goal_step(run, "review", counts, "failed", cursor=position, item=failure(error))
                 if self._model_unavailable(error):
                     self._goal_stop(run, "review", counts, error.reason or error.category)
                     break
                 continue
             except Exception as error:
-                self._goal_step(run, "review", counts, "failed", cursor=goal_id, item=failure(error))
+                self._goal_step(run, "review", counts, "failed", cursor=position, item=failure(error))
                 continue
             try:
                 with self.store.write() as conn:
                     applied = apply_goal_review(conn, self.clock(), material=material, result=result, run_id=run["id"])
                     if applied is None:
-                        self._goal_step(run, "review", counts, "already_judged", cursor=goal_id, conn=conn)
+                        self._goal_step(run, "review", counts, "already_judged", cursor=position, conn=conn)
                     else:
                         outcome = ("goals_auto_" + applied["decision"] if applied["outcome"] == "closed"
                                    else "goal_review_kept")
-                        self._goal_step(run, "review", counts, applied["outcome"], cursor=goal_id, conn=conn,
+                        self._goal_step(run, "review", counts, applied["outcome"], cursor=position, conn=conn,
                                         item=(key, goal_id, outcome, applied["reason"], {"kind": "auto_review", **applied}))
             except (GoalConflict, KeyError):
-                self._goal_step(run, "review", counts, "revision_conflict", cursor=goal_id)
+                self._goal_step(run, "review", counts, "revision_conflict", cursor=position)
             except Exception as error:
-                self._goal_step(run, "review", counts, "failed", cursor=goal_id, item=failure(error))
+                self._goal_step(run, "review", counts, "failed", cursor=position, item=failure(error))
         else:
             with self.store.write() as conn:
                 self._goal_summary(conn, run, "review", counts)

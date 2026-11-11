@@ -613,6 +613,9 @@ def test_merge_keeps_the_reopen_watermark(store, reopened):
     reviewer = Both(store, cite('completed', lambda payload: [done]))
     run_goals(store, reviewer)
     assert row(store, gid)['merged_into'] == earlier
+    # The survivor of this run's merge is left alone until the next run.
+    assert row(store, earlier)['state'] == 'open' and reviewer.calls == []
+    run_goals(store, reviewer, Clock('2026-11-04T01:00:00+00:00'))
     if reopened:
         assert row(store, earlier)['auto_review_after_message_id'] == row(store, gid)['auto_review_after_message_id']
         assert row(store, earlier)['state'] == 'open' and reviewer.calls == []
@@ -681,3 +684,112 @@ def test_call_cap_reports_budget_exhausted_and_the_rest_waits(store, monkeypatch
     assert row(store, first)['state'] == 'completed' and row(store, second)['state'] == 'open'
     run_goals(store, reviewer)
     assert row(store, second)['state'] == 'completed'
+
+
+def test_role_messages_in_unrelated_entries_do_not_cause_daily_rejudgment(store):
+    from datetime import datetime, timedelta
+    subject(store, 'p1', '程栗')
+    gid = goal(store, '帮程栗取快递')
+    message(store, '在吗', at='2026-11-02T18:00:00+08:00')
+    unrelated = message(store, '好的，收到', sender='self', kind='self_output', entry_id='other',
+                        at='2026-11-02T18:30:00+08:00')
+    enable(store)
+    reviewer = Reviewer(store, {'decision': 'open', 'evidence': [], 'reason': ''})
+    day = datetime.fromisoformat('2026-11-03T01:00:00+00:00')
+    run_goals(store, reviewer, Clock(day.isoformat()))
+    assert unrelated not in [m['id'] for m in reviewer.calls[0]['payload']['messages']]
+    for n in range(1, 4):  # the role speaks once a day in an unrelated entry only
+        message(store, '好的，收到', sender='self', kind='self_output', entry_id='other',
+                at=(day + timedelta(days=n - 1, hours=2)).isoformat())
+        run_goals(store, reviewer, Clock((day + timedelta(days=n)).isoformat()))
+    assert len(reviewer.calls) == 1
+    # Passing direction: the role's reply in the goal's own conversation is a candidate.
+    message(store, '快递我拿到了', sender='self', kind='self_output', entry_id='e1',
+            at=(day + timedelta(days=4)).isoformat())
+    run_goals(store, reviewer, Clock((day + timedelta(days=5)).isoformat()))
+    assert len(reviewer.calls) == 2 and gid
+
+
+def test_role_messages_count_where_the_goal_people_speak(store):
+    subject(store, 'p1', '程栗')
+    gid = goal(store, '帮程栗取快递')
+    message(store, '在群里也问一下', entry_id='group', at='2026-11-02T18:00:00+08:00')
+    there = message(store, '快递我拿到了', sender='self', kind='self_output', entry_id='group',
+                    at='2026-11-02T18:10:00+08:00')
+    elsewhere = message(store, '快递我拿到了', sender='self', kind='self_output', entry_id='other',
+                        at='2026-11-02T18:20:00+08:00')
+    enable(store)
+    reviewer = Reviewer(store, {'decision': 'open', 'evidence': [], 'reason': ''})
+    run_goals(store, reviewer)
+    picked = [m['id'] for m in reviewer.calls[0]['payload']['messages']]
+    assert there in picked and elsewhere not in picked and gid
+
+
+def test_call_cap_leftover_goal_is_first_in_line_next_time(store, monkeypatch):
+    from datetime import datetime, timedelta
+    from iris import goals as goals_module
+    monkeypatch.setattr(goals_module, 'AUTO_REVIEW_MAX_CALLS', 2)
+    for sid, name in (('p1', '程栗'), ('p2', '路人'), ('p3', '老周')):
+        subject(store, sid, name)
+    texts = ['帮程栗取快递', '帮路人交水费', '提醒老周买药']
+    for text, sid in zip(texts, ('p1', 'p2', 'p3')):
+        goal(store, text, people=(sid,))
+        message(store, '在吗', sender=sid, at='2026-11-02T18:00:00+08:00')
+    enable(store)
+    reviewer = Reviewer(store, {'decision': 'open', 'evidence': [], 'reason': ''})
+    day = datetime.fromisoformat('2026-11-03T01:00:00+00:00')
+    engine, rid = run_goals(store, reviewer, Clock(day.isoformat()))
+    assert [c['payload']['goal']['text'] for c in reviewer.calls] == texts[:2]
+    assert engine.report(rid)['goal_auto_review']['budget_exhausted'] == 1
+    run_goals(store, reviewer, Clock((day + timedelta(days=1)).isoformat()))
+    assert [c['payload']['goal']['text'] for c in reviewer.calls] == texts
+    # Once all have a judgment, the least recently reviewed go first; new evidence every day.
+    for n, expected in ((2, [texts[0], texts[1]]), (3, [texts[2], texts[0]])):
+        for sid in ('p1', 'p2', 'p3'):
+            message(store, '还在弄', sender=sid, at=(day + timedelta(days=n - 1, hours=12)).isoformat())
+        before = len(reviewer.calls)
+        run_goals(store, reviewer, Clock((day + timedelta(days=n)).isoformat()))
+        assert [c['payload']['goal']['text'] for c in reviewer.calls[before:]] == expected
+
+
+def test_goal_merged_into_this_run_is_reviewed_next_run(store):
+    gid, source, done = basic(store)
+    earlier = goal(store, '帮程栗取南门驿站电热毯的快递', created='2026-11-02T09:00:00+00:00')
+    store.set_setting('goal_dedup_judge', {'enabled': True, 'budget_seconds': 1})
+    with store.write() as conn:
+        conn.execute("INSERT INTO goal_duplicates(goal_a,goal_b,status,created_at) VALUES(?,?,'possible',?)",
+                     (min(earlier, gid), max(earlier, gid), CREATED))
+
+    class Both(Reviewer):
+        def goal_dedup_judge(self, messages, ids, *, budget_seconds):
+            return {'decisions': {i: 'same' for i in ids}}
+    enable(store, review=True, duplicates=True)
+    reviewer = Both(store, cite('completed', lambda payload: [done]))
+    engine, rid = run_goals(store, reviewer)
+    assert row(store, gid)['merged_into'] == earlier and reviewer.calls == []
+    assert row(store, earlier)['state'] == 'open'
+    assert engine.report(rid)['goal_auto_review']['merged_this_run'] == 1
+    run_goals(store, reviewer, Clock('2026-11-04T01:00:00+00:00'))
+    assert len(reviewer.calls) == 1 and row(store, earlier)['state'] == 'completed'
+
+
+def test_reopen_releases_evidence_and_unqualified_co_citations_are_never_protected(store):
+    from iris.memory_ops import message_references
+    gid, source, done = basic(store)
+    event = message(store, '程栗把待办标成完成', kind='event', at='2026-11-02T19:10:00+08:00')
+    enable(store)
+    run_goals(store, Reviewer(store, cite('completed', lambda payload: [done, event, source])))
+    assert row(store, gid)['state'] == 'completed'
+    with store.read() as conn:
+        assert 'goal_auto_evidence' in message_references(conn, done)
+        assert 'goal_auto_evidence' not in message_references(conn, event)
+    Goals(store, clock=Clock()).reopen(gid, expected_revision=row(store, gid)['revision'])
+    with store.read() as conn:
+        assert 'goal_auto_evidence' not in message_references(conn, done)
+    from iris.maintenance import Maintenance
+    store.set_setting('lifecycle', {'message_retention_days': 1})
+    engine = Maintenance(store, gateway=None, clock=Clock('2026-12-20T01:00:00+00:00'))
+    engine.run(engine.request())
+    with store.read() as conn:
+        left = {r[0] for r in conn.execute('SELECT id FROM messages')}
+    assert done not in left and source in left  # the goal source stays protected as before

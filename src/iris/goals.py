@@ -1178,12 +1178,18 @@ def _instant(value):
     return stamp.astimezone(timezone.utc)
 
 
-def auto_review_goal_ids(conn, *, goal_through=None):
-    """Learning-created, normal, open, unmerged goals that absorbed no host/admin goal."""
-    rows = conn.execute('SELECT g.id,g.revision FROM goals g WHERE '+_AUTO_REVIEW_GOALS+
-                        (' AND g.id<=?' if goal_through is not None else '')+' ORDER BY g.id',
-                        (goal_through,) if goal_through is not None else ())
-    return [(r[0],r[1]) for r in rows]
+def auto_review_goal_ids(conn, *, goal_through=None, run_id=None):
+    """Learning-created, normal, open, unmerged goals that absorbed no host/admin goal.
+
+    Least recently reviewed first: never reviewed, then by the last judgment
+    before this run. Returns (id, revision, order key); a goal left over by the
+    per-run call cap is therefore first in line the next time.
+    """
+    rows = conn.execute("""SELECT g.id,g.revision,COALESCE((SELECT MAX(r.created_at) FROM goal_auto_reviews r
+            WHERE r.goal_id=g.id AND (? IS NULL OR r.run_id IS NULL OR r.run_id!=?)),'') AS reviewed
+        FROM goals g WHERE """+_AUTO_REVIEW_GOALS+(' AND g.id<=?' if goal_through is not None else '')+
+        ' ORDER BY reviewed,g.id',(run_id,run_id,*((goal_through,) if goal_through is not None else ())))
+    return [(r[0],r[1],r[2]) for r in rows]
 
 
 def _auto_review_people(conn, goal):
@@ -1246,19 +1252,28 @@ def auto_review_material(conn, goal_id, *, current, message_through=None):
         message_through = conn.execute('SELECT COALESCE(MAX(id),0) FROM messages').fetchone()[0]
     keywords = _goal_keywords(goal['content'])
     entries = _evidence_entries(conn,goal_id)
-    params = {'people':dumps(sorted({*people,'self'})),'entry':goal['entry_id'],'gid':goal_id,
+    params = {'people':dumps(sorted(people)),'entry':goal['entry_id'],'gid':goal_id,
               'after':goal['auto_review_after_message_id'] or 0,'through':message_through,
               'created':goal['created_at'],'entries':dumps(entries or []),
               **{f'k{i}':keyword for i,keyword in enumerate(keywords)}}
     keyword_sql = ' OR '.join(f'instr(lower(m.content),lower(:k{i}))>0' for i in range(len(keywords))) or '0'
     entry_sql = ' AND m.entry_id IN (SELECT value FROM json_each(:entries))' if entries is not None else ''
     # julianday narrows the scan; the exact instant comparison follows in Python.
+    # The people's own messages come from any visible entry. The role's own
+    # messages count only in this goal's conversation: its entry and the entries
+    # where its people have spoken, so unrelated chatter elsewhere neither enters
+    # the material nor changes the fingerprint.
     pool = f"""WITH RECURSIVE tree(id) AS (
             SELECT value FROM json_each(:people)
             UNION SELECT s.id FROM subjects s JOIN tree t ON s.merged_into=t.id
+        ), conversation(entry_id) AS (
+            SELECT :entry WHERE :entry IS NOT NULL
+            UNION SELECT DISTINCT x.entry_id FROM messages x
+                WHERE x.id<=:through AND x.sender_subject_id IN (SELECT id FROM tree)
         ) SELECT {_MESSAGE_COLUMNS},(m.entry_id IS :entry) AS same_entry,({keyword_sql}) AS keyword
         FROM messages m WHERE m.id>:after AND m.id<=:through
-            AND m.sender_subject_id IN (SELECT id FROM tree)
+            AND (m.sender_subject_id IN (SELECT id FROM tree)
+                 OR (m.sender_subject_id='self' AND m.entry_id IN (SELECT entry_id FROM conversation)))
             AND julianday(m.occurred_at)>=julianday(:created)-1.0/86400
             AND m.id NOT IN (SELECT message_id FROM goal_sources WHERE goal_id=:gid){entry_sql}"""
 
@@ -1427,8 +1442,16 @@ def _review_check(conn, goal, material, result):
 
 
 def _qualifying_evidence(conn, goal, material, evidence):
+    """Cited messages that each pass every rule-2 check on their own."""
     sources = {r[0] for r in conn.execute('SELECT message_id FROM goal_sources WHERE goal_id=?',(goal['id'],))}
-    return [mid for mid in evidence if mid in set(material['candidate_ids'])-sources]
+    cited = [mid for mid in evidence if mid in set(material['candidate_ids'])-sources]
+    created = _instant(goal['created_at'])
+    after = goal['auto_review_after_message_id'] or 0
+    allowed = {*_auto_review_people(conn,goal),'self'}
+    rows = conn.execute('''SELECT id,kind,sender_subject_id,occurred_at FROM messages
+        WHERE id IN (SELECT value FROM json_each(?))''',(dumps(cited),)).fetchall()
+    return sorted(r['id'] for r in rows if r['id']>after and _instant(r['occurred_at'])>created
+                  and r['kind'] in EVIDENCE_KINDS and canonical_subject(conn,r['sender_subject_id']) in allowed)
 
 
 def apply_goal_review(conn, current, *, material, result, run_id=None):
@@ -1517,13 +1540,14 @@ def duplicate_auto_material(conn, goal_a, goal_b):
         return {'skip':'review_pending'}
     partner,proposed = sorted(rows.values(),key=lambda r:(r['created_at'],r['id']))
     method = dedup_judge.candidate_method(options)
-    # A host goal keeps its token scope, as in the creation-time review: a pair
-    # reaching outside it can never merge, so the hint is withdrawn (like admin).
+    # The later goal is judged (and would be merged) under its own token scope,
+    # exactly as in the creation-time review. Only a scoped host goal that would
+    # be merged into a goal outside its scope is blocked; the hint stays.
     scopes = {gid:Scope.model_validate_json(rows[gid]['host_scope_json'] or '{"kind":"all"}') for gid in rows}
     common = {'goal_a':goal_a,'goal_b':goal_b,'proposed_id':proposed['id'],'partner_id':partner['id'],
               'origins':sorted({r['origin'] for r in rows.values()}),'options':options,'method':method,
               'revisions':{str(gid):rows[gid]['revision'] for gid in rows}}
-    if any(not scopes[gid].allows_write(rows[other]['entry_id']) for gid,other in ((goal_a,goal_b),(goal_b,goal_a))):
+    if not scopes[proposed['id']].allows_write(partner['entry_id']):
         fingerprint = hashlib.sha256(json.dumps({'scope_blocked':True,'goals':sorted(common['revisions'].items())},
                                                 sort_keys=True).encode()).hexdigest()
         return {**common,'scope_blocked':True,'fingerprint':fingerprint,'partner_in_material':False}
@@ -1538,7 +1562,7 @@ def duplicate_auto_material(conn, goal_a, goal_b):
     fingerprint = hashlib.sha256(json.dumps({'method':method,'goals':observed,'latest_message_id':latest},
                                             sort_keys=True).encode()).hexdigest()
     return {**common,'review':review,'fingerprint':fingerprint,'partner_in_material':partner['id'] in judged,
-            'scope':scope,'merge_scope':scope if scope.kind!='all' else scopes[partner['id']]}
+            'scope':scope,'merge_scope':scope}
 
 
 def duplicate_auto_judged(conn, material):
@@ -1641,14 +1665,12 @@ def _apply_scope_block(conn, current, *, material, run_id=None):
         raise GoalConflict()
     if duplicate_auto_judged(conn,material):
         return None
+    # No model call and no goal write: the hint stays for the administrator.
     reason = 'host_scope_not_merged'
-    _dismiss_pair(conn,a,b,current,actor='maintenance',reason=reason)
     judgment_id = conn.execute('''INSERT INTO goal_duplicate_judgments(goal_a,goal_b,fingerprint,run_id,method,verdict,
-        outcome,reason,target_id,created_at) VALUES(?,?,?,?,?,NULL,'separated',?,NULL,?)''',
+        outcome,reason,target_id,created_at) VALUES(?,?,?,?,?,NULL,'kept',?,NULL,?)''',
         (a,b,material['fingerprint'],run_id,material['method'],reason,stamp)).lastrowid
-    operation(conn,'goal_duplicate_auto_judged','goal',a,{'other_id':b,'verdict':None,'outcome':'separated',
-              'reason':reason,'target_id':None,'judgment_id':judgment_id,'run_id':run_id},actor='maintenance',stamp=stamp)
-    return {'judgment_id':judgment_id,'goal_ids':[a,b],'outcome':'separated','reason':reason,'verdict':None,
+    return {'judgment_id':judgment_id,'goal_ids':[a,b],'outcome':'kept','reason':reason,'verdict':None,
             'target_id':None,'merged_id':None,'method':material['method'],'target_revision_after':None}
 
 
@@ -1731,9 +1753,19 @@ def undo_auto_merge(conn, current, *, judgment_id, expected_revision, actor='adm
     conn.execute("UPDATE goal_duplicates SET status='dismissed',resolved_at=?,resolved_by=? WHERE goal_a=? AND goal_b=?",
                  (stamp,actor,row['goal_a'],row['goal_b']))
     pending_before = {nid:owner for nid,owner in record['notifications']}
-    # Reminders the merged schedule published for the survivor go; the original ones return.
-    conn.execute("""UPDATE notifications SET status='cancelled',cancelled_at=? WHERE goal_id=? AND kind='goal_reminder'
-        AND status='pending' AND id NOT IN (SELECT value FROM json_each(?))""",(stamp,tid,dumps(list(pending_before))))
+    # Of the survivor's reminders published after the merge, only those caused by
+    # fields the merge brought in go: another deadline, or a lead earlier than its
+    # own while its own warning time is still ahead (the new plan re-issues it).
+    own_deadline = fields['deadline_at']
+    own_lead = fields['reminder_minutes'] if fields['reminder_minutes'] is not None else goal_settings(conn)['default_reminder_minutes']
+    own_soon = _soon(datetime.fromisoformat(own_deadline),own_lead) if own_deadline else None
+    for note in conn.execute("""SELECT * FROM notifications WHERE goal_id=? AND kind='goal_reminder' AND status='pending'
+            AND id NOT IN (SELECT value FROM json_each(?))""",(tid,dumps(list(pending_before)))).fetchall():
+        merged_field = note['deadline_at']!=own_deadline or (
+            note['reminder_kind'] in ('soon','immediate') and own_soon is not None
+            and datetime.fromisoformat(note['published_at'])<own_soon and current<own_soon)
+        if merged_field:
+            conn.execute("UPDATE notifications SET status='cancelled',cancelled_at=? WHERE id=?",(stamp,note['id']))
     for nid,owner in pending_before.items():
         note = conn.execute('SELECT * FROM notifications WHERE id=?',(nid,)).fetchone()
         if note is None or note['status']=='taken' or (note['status']=='cancelled' and note['cancelled_at']!=record['merged_at']):
@@ -2114,6 +2146,8 @@ class Goals:
                 raise GoalConflict()
             _cancel(conn,goal_id,current)
             _schedule(conn,_row(conn,goal_id),current)
+            # Reopening rejects this closure: its evidence is no longer kept from retention.
+            conn.execute('DELETE FROM goal_auto_review_evidence WHERE review_id=?',(closing['id'],))
             sid = _record_snapshot(conn,goal_id,before,actor=actor,action='reopen',reason=reason,current=current)
             operation(conn,'goal_reopen','goal',goal_id,{'revision_before':row['revision'],'snapshot_id':sid,
                       'review_id':closing['id'],'message_watermark':watermark},actor=actor,stamp=current.isoformat())

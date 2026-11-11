@@ -231,9 +231,12 @@ def test_host_goal_is_never_merged_outside_its_token_scope(store):
     engine, rid = run_goals(store, judge)
     assert len(judge.calls) == calls  # no model call for a pair that can never merge
     assert row(store, host)['merged_into'] is None and row(store, inner)['merged_into'] is None
-    assert tuple(status(store, inner, host)) == ('dismissed', 'maintenance')
-    assert judgments(store)[-1]['reason'] == 'host_scope_not_merged'
-    assert engine.report(rid)['goal_duplicate_review']['separated'] == 1
+    assert tuple(status(store, inner, host))[0] == 'possible'  # the hint stays for the administrator
+    record = judgments(store)[-1]
+    assert (record['outcome'], record['reason'], record['verdict']) == ('kept', 'host_scope_not_merged', None)
+    assert engine.report(rid)['goal_duplicate_review']['kept'] == 1
+    engine, rid = run_goals(store, judge)
+    assert len(judge.calls) == calls and engine.report(rid)['goal_duplicate_review']['already_judged'] == 1
     # The host keeps writing its own goal within its token scope.
     updated = Goals(store, clock=Clock()).update(host, content='周五前整理操作说明', actor='h', scope=scope)
     assert updated['content'] == '周五前整理操作说明'
@@ -360,3 +363,67 @@ def test_undo_removes_relations_the_merge_copied_and_restores_watermarks(store):
         assert [r[0] for r in conn.execute('SELECT message_id FROM goal_sources WHERE goal_id=?', (second,))] == [s2]
     assert row(store, first)['auto_review_after_message_id'] is None
     assert row(store, second)['auto_review_after_message_id'] == s2 and row(store, second)['merged_into'] is None
+
+
+
+def test_internal_goal_merges_into_an_earlier_scoped_host_goal_as_at_creation(store):
+    from iris.goals import write_learning_goal
+    from iris.tokens import Scope
+    from goal_auto_helpers import entry
+    store.set_setting('goal_dedup_judge', {'enabled': True, 'budget_seconds': 1})
+    judge = Judge(store, 'uncertain')
+    with store.write() as conn:
+        for name in ('e1', 'e2'):
+            entry(conn, name)
+    goals = Goals(store, gateway=judge, clock=Clock('2026-11-02T09:00:00+00:00'))
+    host = goals.create(content='周五前整理操作说明手册', origin='host', actor='h', host='h', entry_id='e1',
+                        scope=Scope(kind='entries', entries=('e1',)))['submitted_id']
+    goals.clock = Clock('2026-11-02T10:00:00+00:00')
+    with store.write() as conn:
+        later = write_learning_goal(conn, content='周五前整理操作手册', kind='normal', deadline=None, entry_id='e2',
+                                    evidence=[], current=goals.clock())['submitted_id']
+    assert goals.review(later)['dedup']['status'] == 'possible_duplicate'
+    judge.verdict, judge.calls = 'same', []
+    enable(store, review=False, duplicates=True)
+    run_goals(store, judge)
+    assert [c['payload']['incoming']['id'] for c in judge.calls] == [later]
+    assert row(store, later)['merged_into'] == host and row(store, host)['entry_id'] == 'e1'
+    assert judgments(store)[-1]['reason'] == 'auto_merged'
+
+
+def test_undo_keeps_the_survivors_own_reminders_and_cancels_merged_ones(store):
+    from iris import goals as gm
+    from goal_auto_helpers import goal, subject
+    store.set_setting('goal_dedup_judge', {'enabled': True, 'budget_seconds': 1})
+    subject(store, 'p1', '程栗')
+    own = goal(store, '周五前整理操作手册', people=('p1',), created='2026-11-02T08:10:00+00:00',
+               deadline='2026-11-03T03:00:00+00:00')
+    other = goal(store, '周五前整理操作说明手册', people=(), created='2026-11-02T09:40:00+00:00')
+    bare = goal(store, '周五前整理产品手册', people=(), created='2026-11-02T08:00:00+00:00')
+    later = goal(store, '周五前整理产品说明手册', people=(), created='2026-11-02T09:50:00+00:00',
+                 deadline='2026-11-03T03:00:00+00:00')
+    with store.write() as conn:
+        for a, b in ((own, other), (bare, later)):
+            conn.execute("INSERT INTO goal_duplicates(goal_a,goal_b,status,created_at) VALUES(?,?,'possible','x')", (a, b))
+        for gid in (own, later):
+            gm._schedule(conn, gm._row(conn, gid), Clock('2026-11-02T10:00:00+00:00')())
+    judge = RuleJudge(store)
+    judge.verdicts.update({(other, own): 'same', (other, bare): 'different', (other, later): 'different',
+                           (later, bare): 'same', (later, own): 'different', (later, other): 'different'})
+    enable(store, review=False, duplicates=True)
+    run_goals(store, judge, Clock('2026-11-03T01:00:00+00:00'))
+    assert row(store, other)['merged_into'] == own and row(store, later)['merged_into'] == bare
+    Goals(store, clock=Clock('2026-11-03T02:30:00+00:00')).generate_notifications()
+
+    def pending(gid):
+        with store.read() as conn:
+            return [r[0] for r in conn.execute(
+                "SELECT id FROM notifications WHERE goal_id=? AND kind='goal_reminder' AND status='pending'", (gid,))]
+    own_note, merged_note = pending(own), pending(bare)
+    assert own_note and merged_note  # the survivor's own deadline / the deadline the merge brought in
+    undo = Goals(store, clock=Clock('2026-11-03T02:40:00+00:00'))
+    for jid, survivor in ((j['id'], j['target_id']) for j in judgments(store) if j['outcome'] == 'merged'):
+        undo.undo_auto_merge(jid, expected_revision=row(store, survivor)['revision'])
+    assert pending(own) == own_note  # still waiting to be taken
+    assert pending(bare) == []  # it came from the merged-in deadline
+    assert row(store, bare)['deadline'] is None and row(store, later)['deadline'] is not None
