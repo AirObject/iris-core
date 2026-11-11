@@ -393,7 +393,7 @@ def test_internal_goal_merges_into_an_earlier_scoped_host_goal_as_at_creation(st
     assert judgments(store)[-1]['reason'] == 'auto_merged'
 
 
-def test_undo_keeps_the_survivors_own_reminders_and_cancels_merged_ones(store):
+def test_undo_reissues_the_current_stage_for_both_goals_of_each_merge(store):
     from iris import goals as gm
     from goal_auto_helpers import goal, subject
     store.set_setting('goal_dedup_judge', {'enabled': True, 'budget_seconds': 1})
@@ -416,21 +416,11 @@ def test_undo_keeps_the_survivors_own_reminders_and_cancels_merged_ones(store):
     run_goals(store, judge, Clock('2026-11-03T01:00:00+00:00'))
     assert row(store, other)['merged_into'] == own and row(store, later)['merged_into'] == bare
     Goals(store, clock=Clock('2026-11-03T02:30:00+00:00')).generate_notifications()
-
-    def pending(gid):
-        with store.read() as conn:
-            return [r[0] for r in conn.execute(
-                "SELECT id FROM notifications WHERE goal_id=? AND kind='goal_reminder' AND status='pending'", (gid,))]
-    own_note, merged_note = pending(own), pending(bare)
-    assert own_note and merged_note  # the survivor's own deadline / the deadline the merge brought in
+    before = _all_notes(store)
     undo = Goals(store, clock=Clock('2026-11-03T02:40:00+00:00'))
     for jid, survivor in ((j['id'], j['target_id']) for j in judgments(store) if j['outcome'] == 'merged'):
         undo.undo_auto_merge(jid, expected_revision=row(store, survivor)['revision'])
-    assert pending(own) == own_note  # still waiting to be taken
-    assert pending(bare) == []  # it was for the merged-in goal's deadline: cancelled, not moved ...
-    fresh = pending(later)
-    assert len(fresh) == 1 and fresh[0] > merged_note[0]  # ... and that goal gets one fresh reminder
-    assert row(store, bare)['deadline'] is None and row(store, later)['deadline'] is not None
+    _assert_undo_reminders(store, before, due_soon=[own, later], silent=[other, bare])
 
 
 
@@ -488,8 +478,8 @@ def _absorbed_scope_flow(store, *, host_entries, blocked):
         assert row(store, survivor)['merged_into'] == inner and row(store, host)['merged_into'] == inner
 
 
-def test_undo_returns_reminders_of_the_merged_goals_own_deadline(store):
-    """probe_round3: A has no deadline, B has one; B's reminder fired under A goes back to B."""
+def test_undo_round3_reminder_fired_under_a_for_bs_deadline(store):
+    """probe_round3: A has no deadline, B has one; B's warning fired under A before the undo."""
     from iris import goals as gm
     from goal_auto_helpers import goal, subject
     store.set_setting('goal_dedup_judge', {'enabled': True, 'budget_seconds': 1})
@@ -504,27 +494,17 @@ def test_undo_returns_reminders_of_the_merged_goals_own_deadline(store):
     run_goals(store, Judge(store, 'same'), Clock('2026-11-03T01:00:00+00:00'))
     assert row(store, b)['merged_into'] == a
     Goals(store, clock=Clock('2026-11-03T02:30:00+00:00')).generate_notifications()
-    with store.write() as conn:
-        soon = conn.execute("SELECT id FROM notifications WHERE goal_id=? AND status='pending'", (a,)).fetchone()[0]
-        # A reminder for neither goal's own deadline (only the merge could have produced it).
-        stray = conn.execute("""INSERT INTO notifications(kind,goal_id,reminder_kind,deadline_at,scheduled_at,published_at,content)
-            VALUES('goal_reminder',?,'soon','2026-11-09T03:00:00+00:00',?,?,'目标临近截止：x')""",
-            (a, '2026-11-03T02:31:00+00:00', '2026-11-03T02:31:00+00:00')).lastrowid
+    before = _all_notes(store)
     jid = judgments(store)[-1]['id']
     Goals(store, clock=Clock('2026-11-03T02:40:00+00:00')).undo_auto_merge(jid, expected_revision=row(store, a)['revision'])
+    _assert_undo_reminders(store, before, due_soon=[b], silent=[a])
     with store.read() as conn:
-        note = conn.execute('SELECT * FROM notifications WHERE id=?', (soon,)).fetchone()
-        other = conn.execute('SELECT status FROM notifications WHERE id=?', (stray,)).fetchone()[0]
-        fresh = conn.execute("SELECT * FROM notifications WHERE goal_id=? AND status='pending'", (b,)).fetchall()
-        plans = [tuple(r) for r in conn.execute("""SELECT reminder_kind FROM goal_reminder_plans
-            WHERE goal_id=? AND status='scheduled'""", (b,))]
-    assert (note['goal_id'], note['status']) == (a, 'cancelled')
-    assert len(fresh) == 1 and fresh[0]['id'] > stray and fresh[0]['content'].endswith(row(store, b)['content'])
-    assert other == 'cancelled'
-    assert plans == [('due',)]  # B's own plan continues
+        plans = [r[0] for r in conn.execute("SELECT reminder_kind FROM goal_reminder_plans WHERE goal_id=? AND status='scheduled'", (b,))]
+    assert plans == ['due']  # B's own plan continues
 
 
-def test_undo_keeps_reminders_on_the_survivor_when_both_deadlines_match(store):
+
+def test_undo_with_equal_deadlines_reissues_for_both(store):
     from iris import goals as gm
     from goal_auto_helpers import goal, subject
     store.set_setting('goal_dedup_judge', {'enabled': True, 'budget_seconds': 1})
@@ -539,17 +519,10 @@ def test_undo_keeps_reminders_on_the_survivor_when_both_deadlines_match(store):
     enable(store, review=False, duplicates=True)
     run_goals(store, Judge(store, 'same'), Clock('2026-11-03T01:00:00+00:00'))
     Goals(store, clock=Clock('2026-11-03T02:30:00+00:00')).generate_notifications()
-    with store.read() as conn:
-        soon = [r[0] for r in conn.execute("SELECT id FROM notifications WHERE goal_id=? AND status='pending'", (a,))]
-    assert len(soon) == 1
+    before = _all_notes(store)
     jid = judgments(store)[-1]['id']
     Goals(store, clock=Clock('2026-11-03T02:40:00+00:00')).undo_auto_merge(jid, expected_revision=row(store, a)['revision'])
-    with store.read() as conn:
-        note = conn.execute('SELECT goal_id,status FROM notifications WHERE id=?', (soon[0],)).fetchone()
-        b_pending = conn.execute("SELECT COUNT(*) FROM notifications WHERE goal_id=? AND status='pending'", (b,)).fetchone()[0]
-        b_plans = [r[0] for r in conn.execute("SELECT reminder_kind FROM goal_reminder_plans WHERE goal_id=? AND status='scheduled'", (b,))]
-    assert tuple(note) == (a, 'pending')
-    assert b_pending == 0 and b_plans == ['due']  # rescheduled without re-sending the passed warning
+    _assert_undo_reminders(store, before, due_soon=[a, b])
 
 
 
@@ -601,3 +574,124 @@ def test_undo_reissues_immediately_when_bs_own_warning_time_has_passed(store):
     notes = _notes(store, b)
     assert len(notes) == 1 and notes[0]['status'] == 'pending' and notes[0]['id'] > early
     assert notes[0]['reminder_kind'] == 'immediate' and notes[0]['content'].startswith('目标临近截止')
+
+
+
+def _all_notes(store):
+    with store.read() as conn:
+        return {r['id']: dict(r) for r in conn.execute('SELECT * FROM notifications ORDER BY id')}
+
+
+def _assert_undo_reminders(store, before, *, due_soon=(), overdue=(), silent=()):
+    """Undo never moves, rewrites or revives a record; each goal gets at most one fresh one."""
+    after = _all_notes(store)
+    involved = {*due_soon, *overdue, *silent}
+    for nid, old in before.items():
+        new = after[nid]
+        assert (new['goal_id'], new['content']) == (old['goal_id'], old['content'])
+        if old['goal_id'] in involved:  # pending ones are cancelled, nothing is revived, taken ones stay
+            assert new['status'] == ('cancelled' if old['status'] == 'pending' else old['status'])
+    fresh = [n for nid, n in after.items() if nid not in before]
+    assert len(fresh) <= len(due_soon) + len(overdue)
+    for gid in (*due_soon, *overdue):
+        mine = [n for n in fresh if n['goal_id'] == gid]
+        assert len(mine) == 1 and mine[0]['status'] == 'pending' and mine[0]['reminder_kind'] == 'immediate'
+        assert mine[0]['content'].startswith('已过期' if gid in overdue else '目标临近截止')
+        assert mine[0]['content'].endswith(row(store, gid)['content'])
+    for gid in silent:
+        assert [n for n in after.values() if n['goal_id'] == gid and n['status'] == 'pending'] == []
+
+
+def _round5_setup(store, lead_a, lead_b):
+    from iris import goals as gm
+    from goal_auto_helpers import goal, subject
+    store.set_setting('goal_dedup_judge', {'enabled': True, 'budget_seconds': 1})
+    subject(store, 'p1', '程栗')
+    a = goal(store, '周五前整理操作手册', people=('p1',), created='2026-11-02T08:10:00+00:00',
+             deadline='2026-11-03T12:00:00+00:00')
+    b = goal(store, '周五前整理操作说明手册', people=(), created='2026-11-02T09:40:00+00:00',
+             deadline='2026-11-03T12:00:00+00:00')
+    with store.write() as conn:
+        conn.execute('UPDATE goals SET reminder_minutes=? WHERE id=?', (lead_a, a))
+        conn.execute('UPDATE goals SET reminder_minutes=? WHERE id=?', (lead_b, b))
+        conn.execute("INSERT INTO goal_duplicates(goal_a,goal_b,status,created_at) VALUES(?,?,'possible','x')", (a, b))
+        for gid in (a, b):
+            gm._schedule(conn, gm._row(conn, gid), Clock('2026-11-02T10:00:00+00:00')())
+    return a, b
+
+
+def _generate(store, at):
+    goals = Goals(store, clock=Clock(at))
+    goals._first_generation = False
+    goals.generate_notifications()
+    return goals
+
+
+def test_undo_round5_after_the_kept_reminder_was_taken_both_goals_get_their_stage(store):
+    """probe_undo_round5 (1): B warned first, A later; the merge kept one under A; the host took it."""
+    a, b = _round5_setup(store, 60, 120)
+    _generate(store, '2026-11-03T10:01:00+00:00')
+    _generate(store, '2026-11-03T11:01:00+00:00')
+    enable(store, review=False, duplicates=True)
+    run_goals(store, Judge(store, 'same'), Clock('2026-11-03T11:30:00+00:00'))
+    host = _generate(store, '2026-11-03T11:40:00+00:00')
+    first = host.pull(after=0)
+    assert first['items']
+    before = _all_notes(store)
+    jid = judgments(store)[-1]['id']
+    Goals(store, clock=Clock('2026-11-03T11:50:00+00:00')).undo_auto_merge(jid, expected_revision=row(store, a)['revision'])
+    _assert_undo_reminders(store, before, due_soon=[a, b])
+    host.clock = Clock('2026-11-03T11:55:00+00:00')
+    again = host.pull(after=first['next_cursor'])
+    assert sorted(item['goal_id'] for item in again['items']) == sorted([a, b])  # neither goal loses its warning
+
+
+def test_undo_round5_equal_deadlines_merged_before_the_warning(store):
+    """probe_undo_round5 (2): one warning fired for A while merged; undo while it is pending."""
+    a, b = _round5_setup(store, 60, 60)
+    enable(store, review=False, duplicates=True)
+    run_goals(store, Judge(store, 'same'), Clock('2026-11-03T01:00:00+00:00'))
+    _generate(store, '2026-11-03T11:05:00+00:00')
+    before = _all_notes(store)
+    jid = judgments(store)[-1]['id']
+    Goals(store, clock=Clock('2026-11-03T11:10:00+00:00')).undo_auto_merge(jid, expected_revision=row(store, a)['revision'])
+    _assert_undo_reminders(store, before, due_soon=[a, b])
+    with store.read() as conn:
+        for gid in (a, b):
+            assert [r[0] for r in conn.execute("SELECT reminder_kind FROM goal_reminder_plans WHERE goal_id=? AND status='scheduled'", (gid,))] == ['due']
+
+
+def test_undo_past_the_deadline_issues_one_overdue_reminder_unless_turned_off(store):
+    from iris import goals as gm
+    from goal_auto_helpers import goal, subject
+    store.set_setting('goal_dedup_judge', {'enabled': True, 'budget_seconds': 1})
+    subject(store, 'p1', '程栗')
+    a = goal(store, '周五前整理操作手册', people=('p1',), created='2026-11-02T08:10:00+00:00')
+    b = goal(store, '周五前整理操作说明手册', people=(), created='2026-11-02T09:40:00+00:00',
+             deadline='2026-11-03T03:00:00+00:00')
+    with store.write() as conn:
+        conn.execute("INSERT INTO goal_duplicates(goal_a,goal_b,status,created_at) VALUES(?,?,'possible','x')", (a, b))
+    enable(store, review=False, duplicates=True)
+    run_goals(store, Judge(store, 'same'), Clock('2026-11-03T01:00:00+00:00'))
+    before = _all_notes(store)
+    jid = judgments(store)[-1]['id']
+    Goals(store, clock=Clock('2026-11-03T05:00:00+00:00')).undo_auto_merge(jid, expected_revision=row(store, a)['revision'])
+    _assert_undo_reminders(store, before, overdue=[b], silent=[a])
+
+
+def test_undo_past_the_deadline_respects_turned_off_overdue_reminders(store):
+    from goal_auto_helpers import goal, subject
+    store.set_setting('goal_dedup_judge', {'enabled': True, 'budget_seconds': 1})
+    store.set_setting('goals', {'overdue_reminders': False})
+    subject(store, 'p1', '程栗')
+    a = goal(store, '周五前整理操作手册', people=('p1',), created='2026-11-02T08:10:00+00:00')
+    b = goal(store, '周五前整理操作说明手册', people=(), created='2026-11-02T09:40:00+00:00',
+             deadline='2026-11-03T03:00:00+00:00')
+    with store.write() as conn:
+        conn.execute("INSERT INTO goal_duplicates(goal_a,goal_b,status,created_at) VALUES(?,?,'possible','x')", (a, b))
+    store.set_setting('goals', {'overdue_reminders': False, 'goal_duplicate_auto_judge_enabled': True})
+    run_goals(store, Judge(store, 'same'), Clock('2026-11-03T01:00:00+00:00'))
+    before = _all_notes(store)
+    jid = judgments(store)[-1]['id']
+    Goals(store, clock=Clock('2026-11-03T05:00:00+00:00')).undo_auto_merge(jid, expected_revision=row(store, a)['revision'])
+    _assert_undo_reminders(store, before, silent=[a, b])
