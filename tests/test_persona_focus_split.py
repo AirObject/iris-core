@@ -29,11 +29,13 @@ class Truncating(FocusModel):
         number = len(self.calls) + 1
         self.duration = self.durations.get(number, self.base)
         action = self.script.get(number)
-        if action in ('timeout', 'rate_limited', 'transport_failure'):
+        if action in ('timeout', 'rate_limited', 'transport_failure', 'paused'):
             self.calls.append((json.loads(messages[-1]['content']), kwargs['_deadline']))
             if action == 'timeout':
                 self.now = kwargs['_deadline']
                 raise ModelError('timeout', 'total timeout', reason='timeout')
+            if action == 'paused':
+                raise ModelError('paused', '达到每日 token 上限', paused=True, reason='usage_limit')
             self.now += self.duration
             raise ModelError('retryable', action, reason=action)
         reply = super().chat(messages, purpose, **kwargs)
@@ -330,18 +332,21 @@ def evaluate(tmp_path, decide, *, one_focus=False, text=None):
                                                         'basis':[evidence['ref']]}]}), 'stop', {})
             else:
                 reply = super().chat(messages, purpose, **kwargs)
-            timed_out = False
+            failure = None
             if purpose == 'persona_check' and payload.get('task') == 'check_facts_and_rules':
                 Scripted.numbers += 1
-                timed_out = decide(reply, payload, Scripted.numbers) == 'timeout'
+                failure = decide(reply, payload, Scripted.numbers)
+            timed_out, limited = failure == 'timeout', failure == 'rate_limited'
             with self.store.write() as conn:
                 conn.execute("""INSERT INTO model_calls
                     (purpose,model,duration_ms,result_category,status_code,timed_out,finish_reason,created_at)
                     VALUES(?,'fake',1,?,?,?,?,?)""",
-                    (purpose, 'retryable' if timed_out else 'success', None if timed_out else 200, int(timed_out),
-                     None if timed_out else reply.finish_reason, self.clock().isoformat()))
+                    (purpose, 'retryable' if failure else 'success', 429 if limited else None if timed_out else 200,
+                     int(timed_out), None if failure else reply.finish_reason, self.clock().isoformat()))
             if timed_out:
                 raise ModelError('timeout', 'total timeout', reason='timeout')
+            if limited:
+                raise ModelError('retryable', 'rate limited', reason='rate_limited')
             return reply
     case = copy.deepcopy(TIMELINE)
     case['role'] = {**case['role'], 'background':''}
@@ -563,3 +568,98 @@ def test_a_reask_for_one_item_cannot_clear_another_items_adverse_verdict(store):
     assert not result['sentences'][0]['supported']
     problems = _check_verdicts(result, [sentence], material=material)[2]
     assert 'frequency strength raised' in ' '.join(problems[1])
+
+
+# Round 5: pauses keep their own path; a failed focus split's timeouts; names stay in code.
+
+@pytest.mark.parametrize('case', ['retry', 'focus_split', 'sentence_split'])
+def test_a_pause_is_never_absorbed_by_a_fallback(store, case):
+    if case == 'retry':
+        material, sentences = single_focus_case()
+        sentences = [sentences]
+        model = Truncating(first_call, content='', script={2:'paused'})
+    elif case == 'focus_split':
+        material, sentence = material_and_sentence(2)
+        sentences = [sentence]
+        model = Truncating(first_call, script={2:'paused'})
+    else:
+        material, sentences = pair_of_single_foci()
+        model = Truncating(first_call, script={2:'paused'})
+    with pytest.raises(ModelError) as caught:
+        run(store, model, material, sentences)
+    assert caught.value.paused and caught.value.reason == 'usage_limit'
+
+
+def test_a_pause_during_a_retry_skips_the_attempt_instead_of_rejecting(store):
+    from iris.persona import _generation_material, _settings
+    text = '在那次直播中我耐心解释了规则。'
+    mid = add_self(store, text)
+    previous = current_persona(store)
+    with store.read() as conn:
+        material = _generation_material(conn, _settings(conn), previous, '2026-11-12T12:00:00+00:00')
+    ref = next(m['ref'] for m in material['evidence']['memories'] if m['memory_id'] == mid)
+
+    class PausedRetry(ProductGateway):
+        facts = 0
+        def chat(self, messages, purpose, **kwargs):
+            payload = json.loads(messages[-1]['content'])
+            if purpose == 'persona_check' and payload.get('task') == 'check_facts_and_rules':
+                self.facts += 1
+                if self.facts == 2:
+                    raise ModelError('paused', '达到每日 token 上限', paused=True, reason='usage_limit')
+            reply = super().chat(messages, purpose, **kwargs)
+            if self.facts == 1 and purpose == 'persona_check':
+                reply.finish_reason, reply.content = 'length', ''
+            return reply
+    result = PersonaEngine(store, PausedRetry(store, {'sentences':[{'text':text, 'basis':[ref]}]})
+                           ).regenerate(expected_version=previous['id'])
+    assert result['status'] == 'skipped' and result['reason'] == 'usage_limit' and result['version'] is None
+    assert current_persona(store)['id'] == previous['id']
+
+
+def test_a_failed_focus_splits_own_timeouts_are_tolerated(tmp_path):
+    def decide(reply, payload, number):
+        if number == 1:
+            reply.finish_reason, reply.content = 'length', '{"sentences":['
+        elif number in (2, 3):
+            return 'timeout'  # The half, then its own timeout retry.
+    metrics = evaluate(tmp_path, decide, text='在那次直播中，我耐心解释了规则。')
+    assert metrics['run_valid'] and metrics['invalid_call_count'] == 0
+    assert metrics['incomplete_check_count'] == 1
+    assert metrics['calls']['tolerated_timed_out_calls'] == 2
+
+
+def test_a_focus_split_failed_by_a_rate_limit_is_not_tolerated(tmp_path):
+    def decide(reply, payload, number):
+        if number == 1:
+            reply.finish_reason, reply.content = 'length', '{"sentences":['
+        elif number == 2:
+            return 'rate_limited'
+    metrics = evaluate(tmp_path, decide, text='在那次直播中，我耐心解释了规则。')
+    assert metrics['incomplete_check_count'] == 1
+    assert not metrics['run_valid'] and metrics['invalid_call_count'] == 1
+
+
+def test_subject_names_never_reach_a_model_request(store):
+    from iris.persona import _generation_material, _request_messages, _settings
+    stamp = '2026-10-01T12:00:00+00:00'
+    with store.write() as conn:
+        conn.execute("INSERT INTO subjects(id,kind,name,created_at) VALUES('p1','person','小舒秘名',?)", (stamp,))
+        conn.execute("INSERT INTO subject_aliases(subject_id,alias) VALUES('p1','舒舒秘名')")
+    mid = add_self(store, '那次直播里我和对方都先问了要不要继续。')
+    with store.write() as conn:
+        conn.execute("INSERT INTO memory_subjects VALUES(?,'p1')", (mid,))
+    previous = current_persona(store)
+    with store.read() as conn:
+        material = _generation_material(conn, _settings(conn), previous, '2026-11-12T12:00:00+00:00')
+    assert material['subject_names'] == ['小舒秘名', '舒舒秘名']
+    ref = next(m['ref'] for m in material['evidence']['memories'] if m['memory_id'] == mid)
+    model = ProductGateway(store, {'sentences':[{'text':'那次直播里，我和小舒秘名都先问了要不要继续。', 'basis':[ref]}]})
+    PersonaEngine(store, model).regenerate(expected_version=previous['id'])
+    checks = [payload for purpose, payload in model.calls if purpose in ('persona_check', 'persona_recheck')]
+    assert checks and all('_subject_names' not in payload for payload in checks)
+    # The alias is in no text of this material: only the code's name list holds it.
+    assert all('舒舒秘名' not in json.dumps(payload, ensure_ascii=False) for _, payload in model.calls)
+    messages = _request_messages('persona_check', {'task':'check_facts_and_rules', 'candidate':[],
+                                                   '_subject_names':['只给代码的名字']})
+    assert '只给代码的名字' not in messages[1]['content'] and '_subject_names' not in messages[1]['content']

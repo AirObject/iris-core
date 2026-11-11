@@ -377,3 +377,41 @@ def test_a_bad_source_word_reask_keeps_the_other_items_adverse_verdicts():
                                current=excerpt)
     assert any('one frequency word' in error for error in errors)
     assert 'frequency strength raised' in ' '.join(problems[1])
+
+
+# Round 5: a counted group needs two or more; each 都 bounded on its own; a source 都 is no evidence.
+
+@pytest.mark.parametrize('focus', ['每遇到一位新朋友我都先问要不要重读。', '每见一个人我都先问要不要重读。',
+                                   '遇到一个人我都先问要不要重读。', '每读完一本书我都写笔记。',
+                                   '每拿到一张票我都很开心。', '一部分时候我都先问要不要重读。',
+                                   '每读完两本书我都写笔记。'])
+def test_one_item_or_an_each_clause_is_no_counted_group(focus):
+    assert _focus_quantifiers(focus) == ['都']
+    assert 'frequency raised above the source' in problems_of(focus, focus, [check('都', '', '', 2)])
+
+
+@pytest.mark.parametrize('text', ['那三本书我都读完了', '两个人都来了', '两门课都过了', '这几首歌我都听过', '那十二本书我都读了'])
+def test_two_or_more_counted_people_or_things_stay_distributive(text):
+    assert _focus_quantifiers(text) == []
+
+
+def test_a_count_bounds_only_the_dou_right_after_it():
+    focus, excerpt = '这次我都明白了自己从来都太急。', '那次共读我发现自己有点急'
+    joined = problems_of(focus, focus, [check('都', '这次', '', 1)], excerpts=(excerpt, excerpt), current=excerpt)
+    assert 'frequency raised above the source' in joined
+    focus = '这次我都明白了。'
+    assert verdict(focus, focus, [check('都', '这次', '', 1)], excerpts=(excerpt, excerpt), current=excerpt) == ([], {})
+
+
+@pytest.mark.parametrize('excerpt,word', [('这些歌我都听过', '都'), ('每个人我都问了', '都'), ('对方读错时我都先问了', '都'),
+                                          ('这些歌我都听过', '总是')])
+def test_a_bare_source_dou_supports_no_frequency(excerpt, word):
+    focus = f'对方读错时我{word}先问要不要重读。'
+    joined = problems_of(focus, focus, [check(word, '', '都', 2)], excerpts=(excerpt, excerpt), current=excerpt)
+    assert 'frequency raised above the source' in joined
+
+
+def test_an_explicit_source_word_still_supports_dou():
+    excerpt = '对方读错时我每次都先问了'
+    focus = '对方读错时我都先问要不要重读。'
+    assert verdict(focus, focus, [check('都', '', '每次', 2)], excerpts=(excerpt, excerpt), current=excerpt) == ([], {})
