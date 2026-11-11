@@ -128,8 +128,9 @@ QUANTIFIER_WORDS = SCOPED_QUANTIFIERS | frozenset(FREQUENCY_STRENGTH)
 # sentence is preferred over a missed universal):
 # (a) a plural pronoun or closed word for a group of people right before it, with at
 #     most one adverb between (我们都, 他们俩也都);
-# (b) a numeral, or 这／那 + numeral, with a closed classifier that counts people or
-#     things, never times or occasions, before it in its clause (那三本书我都, 两个人都);
+# (b) a numeral of two or more (or 几), possibly after 这／那, with a closed classifier
+#     that counts people or things, never times or occasions, as the group right before
+#     it in its clause (那三本书我都, 两个人都); not inside 每……一 (每读完一本书我都);
 # (c) X 和／跟／与／同 Y right before it, X and Y each a personal pronoun or a name or
 #     alias of a subject in this material (我和对方都, 我和小舒都).
 # A 都 right after another quantifier (每次都), or after a counted universal heading its
@@ -137,8 +138,8 @@ QUANTIFIER_WORDS = SCOPED_QUANTIFIERS | frozenset(FREQUENCY_STRENGTH)
 PEOPLE_GROUPS = ('我们', '你们', '他们', '她们', '它们', '咱们', '大家', '大伙', '各位', '俩', '两人',
                  '两个人', '几个人')
 DOU_ADVERBS = frozenset('也 还 又 就 才 全 几乎 基本 差不多 同样'.split())
-COUNTED_THINGS = re.compile(r'(?:[0-9]+|[一两二三四五六七八九十百千几]+)'
-                            r'(?:[本门位件首张篇份部只条样][一-鿿]|个人|道题)')
+COUNTED_THINGS = re.compile(r'(?:[2-9]|[1-9][0-9]+|[两二三四五六七八九十几][两二三四五六七八九十百千]*)'
+                            r'(?:[本门位件首张篇份部只条样][\u4e00-\u9fff]|个人|道题)')
 COORDINATION_PRONOUNS = frozenset('我 你 您 他 她 它 我们 你们 他们 她们 咱们 对方'.split())
 COORDINATORS = re.compile(r'和|跟|与|同')
 # A quantifier right after a negative universal is negated too (从没……每次).
@@ -801,6 +802,13 @@ def _output_shape(content):
     return 'text'
 
 
+def _contained_failure(error):
+    """A failure a retry or split falls back from: timeout, rate limit, transport,
+    truncation, unparseable output. A pause or usage limit keeps its own path."""
+    return not error.paused and (error.category in ('retryable', 'invalid_output', 'timeout')
+                                 or error.reason in ('timeout', 'rate_limited', 'output_limit', 'json_parse'))
+
+
 def _handle_output_limit(error, handling):
     """Record what recovery, if any, followed this truncation."""
     event = getattr(error, 'output_limit_event', None)
@@ -847,7 +855,8 @@ def _output_limit_diagnostics(batches, purpose):
             'output_retry_errors':dict(Counter(event['retry_error'] for event in retries
                                                if event.get('status') == 'failed')),
             # In call order: lets an evaluation pair each record with its call.
-            'truncation_events':[{key:event[key] for key in ('order', 'retry', 'retry_error') if key in event}
+            'truncation_events':[{key:event[key] for key in ('order', 'retry', 'retry_error', 'split_failed',
+                                                             'split_timeouts') if key in event}
                                  for event in sorted(truncations, key=lambda event: event.get('order', 0))
                                  if 'order' in event]}
 
@@ -1582,6 +1591,23 @@ def _coordinated_people(text, names):
                for match in COORDINATORS.finditer(text))
 
 
+def _counted_group(clause):
+    """Whether the clause before 都 ends in a counted group of people or things.
+
+    The count is the group 都 ranges over only if just its noun, a pronoun and an
+    adverb follow it (那三本书我都, 两门课都); a 每 anywhere makes it a frequency.
+    """
+    if any(token.startswith('每') for token in clause):
+        return False
+    rest = list(clause)
+    if rest and rest[-1] in DOU_ADVERBS:
+        rest.pop()
+    if rest and rest[-1] in COORDINATION_PRONOUNS:
+        rest.pop()
+    text = ''.join(rest)
+    return any(len(text) - match.end() <= 3 for match in COUNTED_THINGS.finditer(text))
+
+
 def _distributive_dou(tokens, index, names=()):
     """Whether 都／全都 at tokens[index] is no frequency claim of its own (see PEOPLE_GROUPS)."""
     previous = tokens[index - 1] if index else ''
@@ -1595,18 +1621,17 @@ def _distributive_dou(tokens, index, names=()):
     if any(token in QUANTIFIER_WORDS and (token.startswith('每') or token in ('所有', '全部')) for token in clause):
         return True  # 每次排练我都: the counted universal's correlative.
     head = ''.join(clause[:-1] if clause and clause[-1] in DOU_ADVERBS else clause)
-    return (head.endswith(PEOPLE_GROUPS) or _coordinated_people(head, names)
-            or any(not match.group().startswith('一样') for match in COUNTED_THINGS.finditer(''.join(clause))))
+    return head.endswith(PEOPLE_GROUPS) or _coordinated_people(head, names) or _counted_group(clause)
 
 
-def _focus_quantifiers(text, names=()):
-    """The comparison and frequency quantifiers this focus asserts: whole tokens, in order.
+def _quantifier_spans(text, names=()):
+    """(word, offset) of each quantifier this text asserts, every occurrence, in order.
 
-    A negated one (不是每次, 不经常, 从没……每次) claims less, a measure word (这只) is
-    none at all, and 都 is a frequency claim except in the closed forms of
-    _distributive_dou. Candidate foci and source clauses are read by this same function.
+    Offsets are into the text with titles removed. A negated one (不是每次, 不经常,
+    从没……每次) claims less, a measure word (这只) is none at all, and 都 is a
+    frequency claim except in the closed forms of _distributive_dou.
     """
-    tokens, found, index = list(_grammar_tokens(text)), [], 0
+    tokens, found, index, offset = list(_grammar_tokens(text)), [], 0, 0
     while index < len(tokens):
         previous = tokens[index - 1] if index else ''
         for size in (3, 2, 1):
@@ -1615,12 +1640,20 @@ def _focus_quantifiers(text, names=()):
                 if not (previous in QUANTIFIER_NEGATORS or previous in NEVER_WORDS
                         or (phrase == '只' and MEASURE_PREFIX.fullmatch(previous))
                         or (phrase in ('都', '全都') and _distributive_dou(tokens, index, names))):
-                    found.append(phrase)
-                index += size
+                    found.append((phrase, offset))
+                index, offset = index + size, offset + len(phrase)
                 break
         else:
-            index += 1
-    return list(dict.fromkeys(found))
+            index, offset = index + 1, offset + len(tokens[index])
+    return found
+
+
+def _focus_quantifiers(text, names=()):
+    """The comparison and frequency quantifiers this focus asserts: whole tokens, in order.
+
+    Candidate foci and source clauses are read by this same function.
+    """
+    return list(dict.fromkeys(word for word, _ in _quantifier_spans(text, names)))
 
 
 def _asserted_frequency(text, names=()):
@@ -1671,9 +1704,9 @@ def _source_strength(source_name, clauses, names=()):
 
     Only a single closed-class word counts, and only where its clause asserts it:
     a negated (不经常, 从没……每次) or distributive (我们都) word is no frequency
-    evidence, nor is a correlative 都 quoted without the word it follows.
+    evidence. 都 alone never is: the source must say an explicit frequency word.
     """
-    if source_name not in FREQUENCY_STRENGTH:
+    if source_name not in FREQUENCY_STRENGTH or source_name in ('都', '全都'):
         return None
     return next((FREQUENCY_STRENGTH[source_name] for clause in clauses
                  if source_name in clause and source_name in _asserted_frequency(clause, names)), None)
@@ -1696,27 +1729,35 @@ def _instance_count(numeral):
     return max(INSTANCE_NUMERALS.get(char, 0) for char in numeral)
 
 
-def _bounded_count(focus_text, scope):
-    """How many occasions a counted phrase bounds 都 to, else None (see BOUNDED_INSTANCES)."""
-    if not scope.strip() or scope not in focus_text or PERIOD_WORDS & set(words(focus_text)):
+def _bounded_count(focus_text, scope, names=()):
+    """How many occasions counted phrases bound every asserted 都 to, else None.
+
+    Each 都 needs its own count right before it (see BOUNDED_INSTANCES); a count
+    bounds only the 都 it stands next to, so a later unbounded 都 is a claim.
+    """
+    text = re.sub(r'《[^》]*》', '', focus_text)
+    positions = [offset for word, offset in _quantifier_spans(focus_text, names) if word == '都']
+    if not scope.strip() or scope not in focus_text or not positions or PERIOD_WORDS & set(words(text)):
         return None
-    for match in BOUNDED_INSTANCES.finditer(focus_text):
-        position = focus_text.find('都', match.end())
-        between = [token for token in words(focus_text[match.end():position]) if re.search(r'\w', token)]
-        if (match.group() in scope and position >= 0
-                and all(token in COORDINATION_PRONOUNS or token in DOU_ADVERBS for token in between)):
-            return _instance_count(match['count'] or '一')
-    return None
+    counts = []
+    for position in positions:
+        bounds = [match for match in BOUNDED_INSTANCES.finditer(text[:position]) if match.group() in scope
+                  and all(token in COORDINATION_PRONOUNS or token in DOU_ADVERBS
+                          for token in words(text[match.end():position]) if re.search(r'\w', token))]
+        if not bounds:
+            return None
+        counts.append(_instance_count(bounds[-1]['count'] or '一'))
+    return max(counts)
 
 
-def _instance_only_issues(check, focus_text, bound):
+def _instance_only_issues(check, focus_text, bound, names=()):
     """Without an asserted source frequency word only 都 bounded to counted occasions passes.
 
     Willingness to keep doing something and a second date are not frequency words;
     总是／每次／一直 and the rest need a source word whatever the candidate counts.
     """
     issues = []
-    count = (_bounded_count(focus_text, check['candidate_scope'])
+    count = (_bounded_count(focus_text, check['candidate_scope'], names)
              if check['candidate_quantifier'] == '都' else None)
     if count is None:
         issues.append(f'frequency raised above the source: 来源只有若干实例、没有被肯定的频率词，'
@@ -1753,7 +1794,7 @@ def _quantifier_value_issues(check, focus_text, sentence, evidence, frequency_wo
         supported = _source_strength(source_name, [clause for clauses in spoken.values() for clause in clauses],
                                      names)
         if supported is None:
-            return issues + _instance_only_issues(check, focus_text, bound)
+            return issues + _instance_only_issues(check, focus_text, bound, names)
         if strength > supported:
             issues.append(f'frequency strength raised: 候选“{name}”强于来源“{source_name}”'
                           '（偶尔＜有时＜经常＜通常／习惯＜总是／都／每次／从不）')
@@ -2776,7 +2817,7 @@ class PersonaEngine:
         self.store, self.gateway, self.clock = store, gateway, clock
         # Truncation records are numbered in call order, so an evaluation can pair
         # each with its output-limited call record.
-        self._truncation_order = itertools.count(1)
+        self._call_order = itertools.count(1)
 
     def update(self, *, expected_version):
         return self._run(expected_version, 'periodic', only_if_due=True)
@@ -2845,7 +2886,7 @@ class PersonaEngine:
                              'request_bytes':request_bytes, 'finish_reason':reply.finish_reason,
                              'output_shape':_output_shape(reply.content),
                              'seconds':round(monotonic() - attempt_started, 3),
-                             'order':next(self._truncation_order)}
+                             'order':next(self._call_order)}
                     outputs.setdefault(purpose + '_output_limits', []).append(event)
                     failure = ModelError('invalid_output', 'output budget exhausted', reason='output_limit')
                     failure.check_sentence_count = len(payload.get('candidate', []))
@@ -2892,13 +2933,15 @@ class PersonaEngine:
                 error.check_sentence_count = len(payload.get('candidate', []))
                 error.output_limit_event = {'candidate_count':error.check_sentence_count,
                     'focus_count':_request_focus_count(payload), 'signal':'output_limit',
-                    'seconds':round(monotonic() - call_started, 3), 'order':next(self._truncation_order)}
+                    'seconds':round(monotonic() - call_started, 3), 'order':next(self._call_order)}
                 outputs.setdefault(purpose + '_output_limits', []).append(error.output_limit_event)
             # The gateway's late-response path records timed_out but may omit the
             # reason. Keep the attempt diagnostic consistent with that call record.
             if error.reason is None and error.summary in {
                     'total timeout', 'ReadTimeout', 'WriteTimeout', 'ConnectTimeout', 'PoolTimeout'}:
                 error.reason = 'timeout'
+            if error.reason == 'timeout':
+                outputs.setdefault(purpose + '_timeouts', []).append({'order':next(self._call_order)})
             raise
         finally:
             if stream is not None:
@@ -2980,6 +3023,8 @@ class PersonaEngine:
                                 deadline=deadline - OUTPUT_RECOVERY_RESERVE_SECONDS, json_repair=False)
         except ModelError as repeated:
             retry.update(status='failed', retry_error=repeated.reason or repeated.category)
+            if not _contained_failure(repeated):
+                raise
             _handle_output_limit(repeated, 'retry_failed')
             event.update(retry='failed', retry_error=repeated.reason or repeated.category)
             raise error from None
@@ -3342,6 +3387,8 @@ class PersonaEngine:
                 # truncation), the original truncation stands and is terminal.
                 split['status'] = 'incomplete_' + (repeated.reason or repeated.category)
                 split['child_error'] = repeated.reason or repeated.category
+                if not _contained_failure(repeated):
+                    raise
                 _handle_output_limit(repeated, 'split_child_failed')
                 _handle_output_limit(error, 'terminal')
                 raise error from None
@@ -3397,8 +3444,18 @@ class PersonaEngine:
         except ModelError as repeated:
             split['status'] = 'incomplete_' + (repeated.reason or repeated.category)
             split['child_error'] = repeated.reason or repeated.category
+            if not _contained_failure(repeated):
+                raise
             _handle_output_limit(repeated, 'split_child_failed')
             _handle_output_limit(truncation, 'terminal')
+            # Bind the failed half's timed-out requests to this truncation, so an
+            # evaluation can tolerate exactly those calls at a retained checkpoint.
+            if repeated.reason == 'timeout':
+                child = split['children'][-1]['outputs']
+                truncation_event = getattr(truncation, 'output_limit_event', None)
+                if isinstance(truncation_event, dict):
+                    truncation_event.update(split_failed='timeout', split_timeouts=sum(
+                        len(record.get(purpose + '_timeouts', [])) for record in _check_records([child], purpose)))
             raise truncation from None
         finally:
             retry_state['pending_siblings'] = pending

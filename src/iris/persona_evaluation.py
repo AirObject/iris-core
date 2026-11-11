@@ -566,24 +566,35 @@ def _model_call_outcomes(calls, checkpoints=(), observations=()):
         records = {event['order']:event for diagnostic in diagnostics
                    for event in diagnostic.get('truncation_events', [])}
         limited_calls = [call for call in ordered if _check_output_limited(call)]
-        retried = set()
+        retried, split_children = set(), set()
         if retained and len(records) == len(limited_calls):
-            for call, record in zip(limited_calls, (records[order] for order in sorted(records))):
+            for number, (call, record) in enumerate(zip(limited_calls, (records[order] for order in sorted(records)))):
                 position = ordered.index(call)
                 follower = ordered[position + 1] if position + 1 < len(ordered) else None
                 if (record.get('retry') == 'failed' and record.get('retry_error') == 'timeout'
                         and follower is not None and follower['purpose'] == call['purpose']
                         and follower.get('timed_out') and follower.get('status_code') != 429):
                     retried.add(follower['id'])
+                # A focus split that failed by timeout: its half's timed-out requests
+                # (the half's own timeout retry included), as many as recorded, all
+                # before the next output-limited call.
+                if record.get('split_failed') == 'timeout' and record.get('split_timeouts'):
+                    end = (ordered.index(limited_calls[number + 1]) if number + 1 < len(limited_calls)
+                           else len(ordered))
+                    timed_out = [later for later in ordered[position + 1:end]
+                                 if later['purpose'] == call['purpose'] and later.get('timed_out')
+                                 and later.get('status_code') != 429]
+                    split_children.update(later['id'] for later in timed_out[:record['split_timeouts']])
         for position, call in enumerate(ordered):
             purpose = call['purpose'].removesuffix('_repair')
             limited = _check_output_limited(call)
             if retained and limited:
                 tolerated[call['id']] = {'checkpoint_id':checkpoint['checkpoint']['id'],
                     'outcome':'unpublished_current_retained'}
-            if call['id'] in retried:
+            if call['id'] in retried or call['id'] in split_children:
                 tolerated[call['id']] = {'checkpoint_id':checkpoint['checkpoint']['id'],
-                    'outcome':'unpublished_current_retained', 'tolerated_as':'failed_output_retry_timeout'}
+                    'outcome':'unpublished_current_retained', 'tolerated_as':
+                    'failed_output_retry_timeout' if call['id'] in retried else 'failed_focus_split_timeout'}
             if incomplete:
                 continue
             success = next((c for c in ordered[position + 1:]
@@ -602,8 +613,8 @@ def _model_call_outcomes(calls, checkpoints=(), observations=()):
         if reason:
             recovery = recovered.get(call.get('id'))
             tolerance = tolerated.get(call.get('id'))
-            if not (reason == 'output_limit' or (reason == 'timeout' and tolerance
-                    and tolerance.get('tolerated_as') == 'failed_output_retry_timeout')):
+            if not (reason == 'output_limit' or (reason == 'timeout' and tolerance and tolerance.get('tolerated_as')
+                    in ('failed_output_retry_timeout', 'failed_focus_split_timeout'))):
                 tolerance = None
             outcomes.append({key:call.get(key) for key in
                 ('id','purpose','created_at','duration_ms','status_code','timed_out')} |
