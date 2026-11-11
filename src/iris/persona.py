@@ -24,7 +24,7 @@ from .db import dumps
 from .memory_ops import Visibility
 from .models import Gateway, ModelError, parse_json_object_with_status
 from .queue import estimate_tokens, truncate_material
-from .search_text import words
+from .search_text import QUERY_STOP, words
 
 DEFAULT_GOAL = '维持稳定的发言风格，并充分认识自我'
 DEFAULT_RULES = ('只根据现有的自我记忆提炼，不虚构经历、关系或能力；外部设定的背景不写成亲身经历；'
@@ -39,10 +39,14 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v21', 'persona_check': 'persona_check_v34',
-                   'persona_recheck': 'persona_check_v34'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v23', 'persona_check': 'persona_check_v36',
+                   'persona_recheck': 'persona_check_v36'}
 DEGREE_PROMPT_VERSION = 'persona_degree_v1'
-HANDWRITTEN_PROMPT_VERSION = 'persona_handwritten_v1'
+HANDWRITTEN_PROMPT_VERSION = 'persona_handwritten_v2'
+# Each sentence's review pages are relevance-first, so the bound drops the least related.
+HANDWRITTEN_REVIEW_MAX_PAGES = 2
+# About what two pages hold; also bounds the memories stored with each attempt/version.
+HANDWRITTEN_MAX_OVER_BUDGET = 40
 CALL_TIMEOUTS = {'persona_generate': 360, 'persona_check': 360,
                  'persona_recheck': 360}
 CALL_MAX_TOKENS = {'persona_generate':16000, 'persona_check':16000,
@@ -74,8 +78,35 @@ BOUNDED_CONTEXT = re.compile(
     r'(?:的)?(?P<context>[^，,。！？!?；;]{1,60}?)(?:中|里|时)(?=[，,])')
 ENTRY_CONTEXT_TERMS = {'live': ('直播',), 'group': ('群聊',),
                        'private': ('私聊',), 'game': ('游戏', '联机')}
+ENTRY_SCOPE_WORDS = frozenset({term for terms in ENTRY_CONTEXT_TERMS.values() for term in terms} | {'直播间', '群'})
 
 REFERENCE = re.compile(r'(?<![A-Za-z0-9])[MP]\s*#?\s*\d+(?![A-Za-z0-9])', re.I)
+# The closed grammatical class of epistemic modal expressions. It names no topic,
+# activity, person or corpus answer and applies uniformly to every source clause.
+UNCERTAINTY = re.compile(r'(?<!不)可能(?!性)|好像|似乎|大概|大约|也许|或许|恐怕|貌似|兴许|说不定|没准|'
+                         r'不一定|未必|(?:不太?|不能|无法|没法)确定|(?:拿|说)不准|说不好|不好说|不敢肯定|估计|我猜')
+# Saying one cannot tell is no assertion, so it already keeps the doubt. Read from
+# candidate wording only: it can lift a rejection and can never add one.
+EPISTEMIC_LIMIT = re.compile(r'(?:不能|无法|没法|难以)(?:直接|马上|立刻|轻易)?(?:判|断定|确认|肯定|下结论)|'
+                             r'判断不了|(?:记|说|看|分)不(?:清|准)')
+# Closed grammatical classes, like UNCERTAINTY: no topic, activity, person or corpus answer.
+# What follows a link is what came of a doubt, not its content; a request that was
+# made is a fact of its own.
+CLAIM_LINKS = frozenset('于是 所以 因此 因而 然后 接着 随后 但是 但 不过 可是 然而 而 就 便 才'.split())
+CLAIM_SUBJECTS = frozenset(('我', '我们'))
+CLAIM_OPENERS = frozenset('那次 这次 这回 那回 那天 当天 当时 那时 后来 其实 同时'.split())
+REQUEST_ACTS = frozenset('请 请求 让 叫 求 拜托 要求 问 追问 询问'.split())
+REQUEST_LEAD_INS = frozenset('先 又 便 只好'.split())
+# The comparison quantifiers, after consolidation's DETAIL_QUALIFIERS (#107). What
+# such a word ranges over is part of the claim, as an activity scope is.
+SCOPED_QUANTIFIERS = frozenset(('第一次 第一回 头一次 头一回 首次 初次 唯一 只 只有 仅 仅有 仅仅 全部 所有 所有人 '
+                                '每次 每回 从不 从未 从没 从来不 从来没 从来没有 总是').split())
+QUANTIFIER_NEGATORS = frozenset('不 不是 并非 并不 并不是 未必 不一定 没 没有'.split())
+MEASURE_PREFIX = re.compile(r'[这那哪某每几0-9零〇一二三四五六七八九十百两半]+')
+QUANTIFIER_CHECK_FIELDS = frozenset(('candidate_quantifier', 'candidate_scope', 'source_quantifier',
+                                     'source_scopes', 'preserved'))
+# These date an occasion or name where it happened; they do not bound a comparison.
+SCOPE_FILLERS = frozenset('里 中 时 上 内 的 时候 期间 当中 当晚 那晚 今晚 晚上 上午 下午 早上 中午 夜里 那时 当时'.split())
 
 
 def utc_now():
@@ -196,9 +227,9 @@ def _self_snapshot(conn):
             WHERE a.subject_id='self' AND (m.speaker_subject_id='self' OR m.stance='设定') ORDER BY m.id''') if visibility.memory_visible(r['id'])}
 
 
-def _select(conn, token_limit=BASIS_TOKENS, *, timezone_name=None, required_ids=()):
+def _select(conn, token_limit=BASIS_TOKENS, *, timezone_name=None, required_ids=(), later_than=None):
     zone = ZoneInfo(timezone_name or _setting(conn, 'timezone', 'Asia/Shanghai'))
-    selected = []
+    selected, over_budget = [], []
     reserved = ",".join("?" for _ in required_ids) or "NULL"
     rows = conn.execute(f'''SELECT m.*,e.kind AS entry_kind FROM memories m
         JOIN memory_subjects a ON a.memory_id=m.id LEFT JOIN entries e ON e.id=m.entry_id
@@ -222,7 +253,12 @@ def _select(conn, token_limit=BASIS_TOKENS, *, timezone_name=None, required_ids=
         # a model to compress a large item to make it fit.
         if estimate_tokens(dumps([*selected, record])) <= token_limit:
             selected.append(record)
-    return {'memories': selected, 'estimated_tokens': estimate_tokens(dumps(selected)), 'token_limit': token_limit}
+        elif later_than is not None and (_instant(record['recorded_at']) or later_than) > later_than:
+            over_budget.append(record)
+    result = {'memories': selected, 'estimated_tokens': estimate_tokens(dumps(selected)), 'token_limit': token_limit}
+    if later_than is not None:
+        result['over_budget'] = over_budget
+    return result
 
 
 def select_evidence(store, *, token_limit=BASIS_TOKENS):
@@ -284,7 +320,13 @@ def _template_snapshot(conn):
 def _generation_material(conn, settings, previous, stamp):
     locked, omitted = _template_snapshot(conn)
     required = sorted({b['memory_id'] for s in locked for b in s['basis']})
-    evidence = _select(conn, timezone_name=settings['timezone'], required_ids=required)
+    handwritten = _handwritten_snapshot(conn, previous)
+    # The generation budget ranks by importance and retention, which tends to
+    # exclude exactly the recent correction a handwritten sentence needs reviewed.
+    written = [t for t in (_instant(s['written_at']) for s in handwritten.values()) if t is not None]
+    evidence = _select(conn, timezone_name=settings['timezone'], required_ids=required,
+                       later_than=min(written, default=None))
+    over_budget = evidence.pop('over_budget', [])
     available = {(m['memory_id'],m['revision']):m for m in evidence['memories']}
     retained = []
     for sentence in locked:
@@ -303,7 +345,8 @@ def _generation_material(conn, settings, previous, stamp):
         'omitted_template_sentences':omitted, 'previous':previous['content'],
         'previous_sentences':previous['sentences'],
         'admin_sentences':{k:v['text'] for k,v in _admin_sentences(previous).items()},
-        'handwritten_snapshot':_handwritten_snapshot(conn, previous),
+        'handwritten_snapshot':handwritten,
+        'handwritten_evidence':{'memories':_handwritten_overflow(over_budget, handwritten, len(evidence['memories']))},
         'handwritten_prompt_version':HANDWRITTEN_PROMPT_VERSION}
 
 
@@ -433,8 +476,11 @@ def _check_payload(material, sentences, *, full_content, proof_choices=True):
             and not sentence.get('initial_setting')
             and (not BOUNDED_SCENE.search(sentence['text'])
                  or bool({'认同', '认可'} & set(words(sentence['text'])))))
-        row.update(index=index, evidence_refs=refs,
-                   clauses=sentence.get('_check_focus',_clause_parts(sentence['text'])),
+        focus = sentence.get('_check_focus',_clause_parts(sentence['text']))
+        if sentence['origin'] == 'memory' and not sentence.get('initial_setting'):
+            focus = [{**part, 'quantifiers':found} if (found := _focus_quantifiers(part['text'])) else part
+                     for part in focus]
+        row.update(index=index, evidence_refs=refs, clauses=focus,
                    full_clause_count=len(_clause_parts(sentence['text'])))
         if sentence['origin'] == 'initial_template':
             # The whole original background must not become an extra fact source
@@ -499,6 +545,9 @@ def _adverse_field_verdicts(row):
             proofs = scope.get('source_scopes')
             if isinstance(proofs, list) and any(isinstance(p, dict) and p.get('preserved') is False for p in proofs):
                 reasons.append('original bound activity scope rejected')
+        checks = part.get('quantifier_checks')
+        if isinstance(checks, list) and any(isinstance(c, dict) and c.get('preserved') is False for c in checks):
+            reasons.append('original quantifier scope rejected')
     return reasons
 
 
@@ -574,7 +623,7 @@ def _structure_types(errors, unit):
             code = 'degree_sentences'
         elif 'invalid proof shape' in error:
             code = 'proof_shape'
-        elif 'activity scope verdict' in error:
+        elif 'scope verdict' in error:
             code = 'scope_fields'
         elif 'rejection short circuit' in error:
             code = 'short_circuit'
@@ -837,6 +886,33 @@ def _handwritten_snapshot(conn, previous):
     return result
 
 
+def _content_terms(text):
+    # QUERY_STOP is the existing general grammar list; no topic or answer words.
+    return {token.casefold() for token in words(text) if re.search(r'\w', token) and token not in QUERY_STOP}
+
+
+def _handwritten_rank(terms):
+    # Same-topic memories first, newest first. Callers exclude unparseable times.
+    return lambda m: (-len(terms & _content_terms(m['content'])), -_instant(m['recorded_at']).timestamp())
+
+
+def _handwritten_overflow(memories, handwritten, first_index):
+    """Over-budget later memories sharing a content term with a handwritten sentence.
+
+    Only their review needs them, so they are not generation evidence. Later
+    memories without a shared term cannot be recognised as the same fact cheaply.
+    """
+    kept = {}
+    for sentence in handwritten.values():
+        written, terms = _instant(sentence['written_at']), _content_terms(sentence['text'])
+        if written is None:
+            continue
+        related = [m for m in memories if (_instant(m['recorded_at']) or written) > written
+                   and terms & _content_terms(m['content'])]
+        kept.update((m['memory_id'], m) for m in sorted(related, key=_handwritten_rank(terms))[:HANDWRITTEN_MAX_OVER_BUDGET])
+    return [{**memory, 'ref':f'M{first_index+index}'} for index, memory in enumerate(kept.values(), 1)]
+
+
 def _handwritten_answer(answer, evidence, sentence):
     """Validate bindings only; the model judges explicit correction vs another side."""
     if (set(answer) != {'decision','reason','evidence','instruction_quote'}
@@ -859,6 +935,8 @@ def _handwritten_answer(answer, evidence, sentence):
                 or not isinstance(proof.get('quote'),str) or not proof['quote'].strip()
                 or proof['quote'] not in evidence[proof['ref']]['content']):
             return 'correction proof must bind an exact quote from an eligible later memory'
+        if UNCERTAINTY.search(proof['quote']):
+            return 'correction proof must be a definite statement, not an uncertain one'
     return None
 
 
@@ -1135,6 +1213,249 @@ def _resultative_aspect_issues(text, sources):
     return issues
 
 
+def _claim_spans(clause):
+    """End a hedged clause where its doubted content ends; a stated consequence is not doubted."""
+    hedge = UNCERTAINTY.search(clause)
+    if hedge is None:
+        return [clause]
+    tail, offset = clause[hedge.end():], 0
+    for token in words(tail):
+        if token in CLAIM_LINKS and _content_terms(tail[:offset]):
+            return [clause[:hedge.end() + offset], *_claim_spans(tail[offset + len(token):])]
+        offset += len(token)
+    return [clause]
+
+
+def _epistemic_clauses(text):
+    """(clause, uncertain) pairs; a bare hedge fragment governs its neighbours."""
+    clauses = [span.strip() for clause in _aspect_clauses(text) for span in _claim_spans(clause) if span.strip()]
+    marked = [bool(UNCERTAINTY.search(clause)) for clause in clauses]
+    for index, clause in enumerate(clauses):
+        if marked[index] and not _content_terms(UNCERTAINTY.sub(' ', clause)):
+            for neighbour in (index - 1, index + 1):
+                if 0 <= neighbour < len(clauses):
+                    marked[neighbour] = True
+    return list(zip(clauses, marked))
+
+
+def _request_head(text):
+    """The asking verb if this focus reports a request, else None."""
+    for token in words(text):
+        if token in REQUEST_ACTS:
+            return token
+        if (re.search(r'\w', token) and token not in QUERY_STOP and token not in CLAIM_LINKS
+                and token not in REQUEST_LEAD_INS):
+            return None
+    return None
+
+
+def _asked_elsewhere(focus_text, clause):
+    # A doubt in another clause says nothing of a request; it must be the one doubted.
+    head = _request_head(focus_text)
+    return head is not None and head not in words(clause)
+
+
+def _link_score(focus_text, clause):
+    # A necessary lexical link only: it does not establish entailment or attribution.
+    # Most of the focus must lie in this clause for its modal to be about the focus.
+    if _asked_elsewhere(focus_text, clause):
+        return 0
+    terms = _content_terms(BOUNDED_SCENE.sub(' ', focus_text))
+    shared = len(terms & _content_terms(UNCERTAINTY.sub(' ', clause)))
+    return shared if shared >= 2 and shared * 2 >= len(terms) else 0
+
+
+def _witness_uncertain(focus_text, clauses):
+    """None if unrelated, else whether this witness's closest clause is uncertain.
+
+    Equal closeness favours uncertainty: a hedged retelling constrains the claim.
+    """
+    scored = [(_link_score(focus_text, clause), uncertain) for clause, uncertain in clauses]
+    best = max((score for score, _ in scored), default=0)
+    if not best:
+        return None
+    return any(uncertain for score, uncertain in scored if score == best)
+
+
+def _restarts_claim(clause):
+    """A clause with its own subject or opening connective is a separate claim."""
+    tokens = [token for token in words(clause) if re.search(r'\w', token)]
+    if tokens and tokens[0] in CLAIM_OPENERS:
+        tokens = tokens[1:]
+    return bool(tokens) and (tokens[0] in CLAIM_LINKS or tokens[0] in CLAIM_SUBJECTS)
+
+
+def _hedge_kept(text, focus):
+    """Whether a hedge reaches this focus; one on an unrelated claim does not.
+
+    Scope runs rightwards, never backwards, and only while later clauses continue
+    the hedged claim. An ambiguous continuation counts as kept for the semantic check.
+    """
+    reached = [part['text'] for part in _clause_parts(text) if part['index'] <= focus['index']]
+    for position in range(len(reached) - 1, -1, -1):
+        clause = reached[position]
+        if UNCERTAINTY.search(clause) or EPISTEMIC_LIMIT.search(clause):
+            return True
+        if _restarts_claim(clause):
+            before = reached[position - 1] if position else ''
+            return bool(UNCERTAINTY.search(before)) and not _content_terms(UNCERTAINTY.sub(' ', before))
+    return False
+
+
+def _own_words(source):
+    # Another person's hedge, including a quoted one, says nothing about how sure
+    # this speaker was. Metadata-free fallbacks are the memory's own text.
+    if source.get('speaker_subject_id') not in (None, 'self', 'scene'):
+        return ''
+    return source['excerpt'].split('\n引用原话：', 1)[0]
+
+
+UNCERTAINTY_ISSUE = ('uncertainty must be preserved: 依据是不确定说法时，自动句须保留同等的不确定语气，'
+                     '不能写成肯定句或换成更肯定的说法；保留不了就省去该主张')
+
+
+def _uncertainty_issues(sentence, memories):
+    """Applies when every related bound memory is uncertain about this clause.
+
+    One certain, independent memory ends the gate: the semantic check still owns
+    whether its date, scope and attribution actually support the claim.
+    """
+    refs = {(b['memory_id'], b['revision']) for b in sentence.get('basis', [])}
+    bound = [m for m in memories if (m['memory_id'], m['revision']) in refs]
+    for focus in _clause_parts(sentence['text']):
+        if _hedge_kept(sentence['text'], focus):
+            continue
+        verdicts = []
+        for memory in bound:
+            clauses = [pair for source in memory.get('excerpts', [])
+                       for pair in _epistemic_clauses(_own_words(source))]
+            verdict = _witness_uncertain(focus['text'], clauses + _epistemic_clauses(memory['content']))
+            if verdict is not None:
+                verdicts.append(verdict)
+        if verdicts and all(verdicts):
+            return [UNCERTAINTY_ISSUE]
+    return []
+
+
+def _proof_uncertainty_issues(text, focus, cited):
+    """The same rule on the spans the checker actually cited for this focus.
+
+    A modal constrains only its own proposition. Citing one clause binds it to this
+    focus; a bundle of clauses, or the current text, needs a link to the focus. With
+    no such link this witness gives no verdict and the semantic check decides.
+    """
+    if _hedge_kept(text, focus):
+        return []
+    verdicts = []
+    for memory, source, quote in cited:
+        own = _own_words(source)
+        if quote not in own:
+            continue
+        quoted = [(clause, uncertain) for clause, uncertain in _epistemic_clauses(own)
+                  if clause in quote or quote in clause] or [(quote, bool(UNCERTAINTY.search(quote)))]
+        if len(quoted) > 1:
+            verdict = _witness_uncertain(focus['text'], quoted)
+        else:
+            verdict = None if _asked_elsewhere(focus['text'], quoted[0][0]) else quoted[0][1]
+        current = memory.get('current_revision_text')
+        if verdict is not True and current is not None \
+                and _witness_uncertain(focus['text'], _epistemic_clauses(current)) is True:
+            verdict = True
+        if verdict is not None:
+            verdicts.append(verdict)
+    return [UNCERTAINTY_ISSUE] if verdicts and all(verdicts) else []
+
+
+def _focus_quantifiers(text):
+    """The comparison quantifiers this focus asserts: whole tokens, in order.
+
+    A negated one (不是每次) claims less, and a measure word (这只) is none at all.
+    """
+    tokens, found, index = list(words(re.sub(r'《[^》]*》', '', text))), [], 0
+    while index < len(tokens):
+        previous = tokens[index - 1] if index else ''
+        for size in (3, 2, 1):
+            phrase = ''.join(tokens[index:index + size])
+            if phrase in SCOPED_QUANTIFIERS:
+                if previous not in QUANTIFIER_NEGATORS and not (
+                        phrase == '只' and MEASURE_PREFIX.fullmatch(previous)):
+                    found.append(phrase)
+                index += size
+                break
+        else:
+            index += 1
+    return list(dict.fromkeys(found))
+
+
+def _quantifier_source_clauses(memory):
+    # Own utterances and the current text only; another speaker cannot set the range.
+    texts = [_own_words(source) for source in memory.get('excerpts', [])]
+    texts.append(memory.get('current_revision_text') or memory.get('content') or '')
+    return [clause for text in texts for clause in re.split(r'[。！？；，.!?;,\n…]+', text) if clause]
+
+
+def _scope_residue(scope):
+    """The words of a range once dates, occasion markers and postpositions are gone."""
+    return [token for token in words(BOUNDED_SCENE.sub(' ', scope))
+            if re.search(r'\w', token) and token not in QUERY_STOP and token not in SCOPE_FILLERS]
+
+
+def _quantifier_value_issues(check, focus_text, sentence, evidence):
+    """Literal bindings of one range; the model has judged whether they are equivalent."""
+    name, scope, proofs = check['candidate_quantifier'], check['candidate_scope'], check['source_scopes']
+    if not check['preserved']:
+        return [f'quantifier scope not preserved: “{name}”的比较范围丢失或被扩大']
+    issues = []
+    if not name.strip() or name not in focus_text:
+        issues.append('quantifier must be quoted from this focus')
+    if scope.strip() and scope not in focus_text:
+        issues.append('quantifier scope must be quoted from the same candidate clause')
+    if proofs and not scope.strip():
+        issues.append('quantifier scope omitted: 来源量词有比较范围，候选未保留')
+    source_name = check['source_quantifier']
+    bound = {ref:_quantifier_source_clauses(evidence[ref]) for ref in sentence['evidence_refs'] if ref in evidence}
+    if not source_name.strip() or not any(source_name in clause for clauses in bound.values() for clause in clauses):
+        issues.append('quantifier must be quoted from an own bound source')
+    for proof in proofs:
+        quote = proof['quote']
+        if proof.get('preserved') is False:
+            issues.append('quantifier scope not preserved by bound source ' + proof['ref'])
+        if not any(source_name in clause and quote in clause for clause in bound.get(proof['ref'], [])):
+            issues.append('quantifier scope must quote the same clause of an own bound source')
+        elif not _scope_residue(quote):
+            issues.append('a date or occasion marker cannot be the range of a quantifier')
+    if scope.strip():
+        residue = _scope_residue(scope.replace(name, ' '))
+        entry_only = bool(residue) and set(residue) <= ENTRY_SCOPE_WORDS
+        if not residue or (entry_only and not any(term in proof['quote'] for proof in proofs for term in residue)):
+            issues.append('a date, occasion or entry name cannot be the range of a quantifier')
+    return issues
+
+
+def _validate_quantifier_scope(part, focus_text, sentence, evidence):
+    """Every quantifier of a supported focus needs its own complete range contract."""
+    required = _focus_quantifiers(focus_text)
+    if not required and 'quantifier_checks' not in part:
+        return [], []
+    checks = part.get('quantifier_checks')
+    if (not isinstance(checks, list)
+            or any(not isinstance(check, dict) or set(check) != QUANTIFIER_CHECK_FIELDS
+                   or type(check['preserved']) is not bool
+                   or not all(isinstance(check[key], str) for key in
+                              ('candidate_quantifier', 'candidate_scope', 'source_quantifier'))
+                   or not isinstance(check['source_scopes'], list)
+                   or any(not isinstance(proof, dict)
+                          or set(proof) not in ({'ref', 'quote'}, {'ref', 'quote', 'preserved'})
+                          or not isinstance(proof['ref'], str) or not isinstance(proof['quote'], str)
+                          or ('preserved' in proof and type(proof['preserved']) is not bool)
+                          for proof in check['source_scopes'])
+                   for check in checks)
+            or any(not any(word in check['candidate_quantifier'] for check in checks) for word in required)):
+        return ['invalid quantifier scope verdict'], []
+    return [], [issue for check in checks for issue in
+                _quantifier_value_issues(check, focus_text, sentence, evidence)]
+
+
 def _bound_source_issues(sentence, tokens, memories):
     if memories is None or sentence['initial_setting']:
         return []
@@ -1197,6 +1518,8 @@ def _surface_issues(sentence, *, memories=None):
         # match; the model must still check all other pending-action semantics.
         issues.append('explicit pending intention is not persona: '
                       '明确仅为打算、计划或承诺的片段须修复或删除；日期与宣布行为不豁免待办')
+    if memories is not None:
+        issues.extend(_uncertainty_issues(sentence, memories))
     issues.extend(_bound_source_issues(sentence, tokens, memories))
     if not sentence['initial_setting'] and sentence['date_count'] < 2:
         # This is the same necessary boundary used by the proof validator. Apply
@@ -1405,7 +1728,7 @@ def _validate_clause_checks(output, payload):
                     or not isinstance(part.get('evidence'), list)):
                 errors.append(f'sentence {index}: {label}: invalid clause verdict')
                 continue
-            dates, valid, context_sources = set(), 0, []
+            dates, valid, context_sources, cited = set(), 0, [], []
             for proof in part['evidence']:
                 ref = proof.get('ref') if isinstance(proof, dict) else None
                 n = proof.get('source_index') if isinstance(proof, dict) else None
@@ -1436,6 +1759,7 @@ def _validate_clause_checks(output, payload):
                     continue
                 valid += 1
                 context_sources.append((memory, source))
+                cited.append((memory, source, quote))
                 if source.get('date'):
                     dates.add(source['date'])
             if not part['supported']:
@@ -1453,6 +1777,13 @@ def _validate_clause_checks(output, payload):
                 issues.extend(f'{label}: {issue}' for issue in
                               _resultative_aspect_issues(expected['text'],
                                   [source['excerpt'] for _, source in context_sources]))
+                issues.extend(f'{label}: {issue}' for issue in
+                              _proof_uncertainty_issues(sentence['text'], expected, cited))
+            if part['supported']:
+                invalid, unsupported = _validate_quantifier_scope(part, expected['text'], sentence,
+                                                                  payload['evidence_by_ref'])
+                errors.extend(f'sentence {index}: {label}: {error}' for error in invalid)
+                issues.extend(f'{label}: {issue}' for issue in unsupported)
             if part['supported'] and len(dates) < 2:
                 if not part['scene_qualified']:
                     issues.append(f'{label}: general claim needs at least two distinct dates of its own proof')
@@ -1549,7 +1880,9 @@ def _admin_removed(previous, sentences):
 
 def _stale(conn, version, *, check_sources=False):
     problems = {}
-    material = {m['memory_id']: m for m in version.get('material', {}).get('evidence', {}).get('memories', [])}
+    saved = version.get('material', {})
+    material = {m['memory_id']: m for m in (*saved.get('evidence', {}).get('memories', []),
+                                            *saved.get('handwritten_evidence', {}).get('memories', []))}
     refs = {b['memory_id']: b['revision'] for s in version['sentences'] for b in s['basis']}
     for change in version.get('material',{}).get('handwritten_changes',[]):
         for basis in change['basis']:
@@ -2828,17 +3161,23 @@ class PersonaEngine:
 
     def _review_handwritten(self, material, outputs, *, deadline):
         """One sentence per bounded page; uncertain/invalid semantic permission means keep."""
+        extra = material.get('handwritten_evidence', {}).get('memories', [])
         audit = {'policy':'explicit_correction_or_reply_instruction_v1',
-                 'decisions':[], 'retries':0, 'conservative_keeps':0, 'oversized_memories':[]}
+                 'decisions':[], 'retries':0, 'conservative_keeps':0, 'oversized_memories':[],
+                 'over_budget_candidates':len(extra), 'unreviewed_memories':[]}
         raw_batches = outputs.setdefault('persona_check_handwritten_batches', [])
         changes = []
         as_of = _instant(material['as_of'])
         for ref,sentence in material['handwritten_snapshot'].items():
             written = _instant(sentence['written_at'])
-            eligible = [m for m in material['evidence']['memories']
-                        if written is not None and as_of is not None
-                        and _instant(m['recorded_at']) is not None
-                        and written < _instant(m['recorded_at']) <= as_of]
+            terms = _content_terms(sentence['text'])
+            def later(memory):
+                recorded = _instant(memory['recorded_at'])
+                return (written is not None and as_of is not None and recorded is not None
+                        and written < recorded <= as_of)
+            eligible = ([m for m in material['evidence']['memories'] if later(m)]
+                        + [m for m in extra if later(m) and terms & _content_terms(m['content'])])
+            eligible.sort(key=_handwritten_rank(terms))
             def payload(memories):
                 return {'task':'handwritten_review','candidate':[],
                         'handwritten':sentence,
@@ -2859,6 +3198,10 @@ class PersonaEngine:
                             'memory_id':memory['memory_id'],'revision':memory['revision']})
             if page or not pages:
                 pages.append(page)
+            if len(pages) > HANDWRITTEN_REVIEW_MAX_PAGES:
+                audit['unreviewed_memories'].append({'sentence_ref':ref,
+                    'count':sum(len(rest) for rest in pages[HANDWRITTEN_REVIEW_MAX_PAGES:])})
+                pages = pages[:HANDWRITTEN_REVIEW_MAX_PAGES]
             decisions = []
             for page in pages:
                 request = payload(page)
@@ -2871,8 +3214,16 @@ class PersonaEngine:
                 for attempt in range(2):
                     attempt_raw = {}
                     raw['attempts'].append(attempt_raw)
+                    attempted = request
+                    if attempt:
+                        # Name the defect, or the same wording just fails the same way.
+                        attempted = {**request, 'format_retry':{'errors':[error],
+                            'instruction':'上次输出未通过结构或引文核对。只按原任务重新判断这一页，严格返回原定字段；'
+                                          'quote 必须从同一 ref 的 content 连续逐字复制。给不出合格依据就 keep，判定标准不放宽。'}}
+                        if _check_request_bytes('persona_check', attempted) > MAX_CHECK_REQUEST_BYTES:
+                            attempted = request
                     try:
-                        answer = self._check_call('persona_check',request,attempt_raw,
+                        answer = self._check_call('persona_check',attempted,attempt_raw,
                             deadline=deadline,retry_state=retry_state)
                         error = _handwritten_answer(answer,request['evidence_by_ref'],sentence)
                     except ModelError as failure:

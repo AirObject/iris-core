@@ -20,8 +20,26 @@ def add_clause_proofs(output, payload):
         add_scope_proof(row, sentence, payload)
         row['clauses'] = [{'index': focus['index'], 'supported': row['supported'],
             'scene_qualified': row['scene_qualified'], 'reason': '假模型按本句来源给格式完整的证明。',
-            'evidence': copy.deepcopy(proofs)} for focus in sentence['clauses']]
+            'evidence': copy.deepcopy(proofs),
+            **quantifier_proof(focus, sentence, payload)} for focus in sentence['clauses']]
     return output
+
+
+def quantifier_proof(focus, sentence, payload):
+    """Only fill the protocol; like the scope proof, this judges no comparison range."""
+    if not focus.get('quantifiers'):
+        return {}
+    sources = []
+    for ref in sentence['evidence_refs']:
+        memory = payload['evidence_by_ref'][ref]
+        sources += [source['excerpt'] for source in memory['excerpts']]
+        sources.append(memory.get('current_revision_text') or memory.get('content') or '')
+    def source_word(word):
+        return word if any(word in text for text in sources) else next(
+            (match.group() for text in sources for match in [re.search(r'\w', text)] if match), '')
+    return {'quantifier_checks': [{'candidate_quantifier': word, 'candidate_scope': '',
+        'source_quantifier': source_word(word), 'source_scopes': [], 'preserved': True}
+        for word in focus['quantifiers']]}
 
 
 def add_scope_proof(row, sentence, payload):
