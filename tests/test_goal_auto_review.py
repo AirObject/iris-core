@@ -793,3 +793,25 @@ def test_reopen_releases_evidence_and_unqualified_co_citations_are_never_protect
     with store.read() as conn:
         left = {r[0] for r in conn.execute('SELECT id FROM messages')}
     assert done not in left and source in left  # the goal source stays protected as before
+
+
+
+def test_people_speaking_in_a_group_only_before_creation_do_not_widen_the_conversation(store):
+    subject(store, 'p1', '程栗')
+    message(store, '在群里说一下', entry_id='group', at='2026-11-02T16:00:00+08:00')  # before creation
+    gid = goal(store, '帮程栗取快递')
+    message(store, '在吗', at='2026-11-02T18:00:00+08:00')
+    mine = message(store, '快递我拿到了', sender='self', kind='self_output', entry_id='group',
+                   at='2026-11-02T18:10:00+08:00')
+    enable(store)
+    reviewer = Reviewer(store, {'decision': 'open', 'evidence': [], 'reason': ''})
+    run_goals(store, reviewer)
+    assert mine not in [m['id'] for m in reviewer.calls[0]['payload']['messages']]
+    message(store, '好的', sender='self', kind='self_output', entry_id='group', at='2026-11-02T19:00:00+08:00')
+    run_goals(store, reviewer, Clock('2026-11-04T01:00:00+00:00'))
+    assert len(reviewer.calls) == 1  # no new fingerprint from that group
+    # Passing direction: once the person speaks there after creation, the group counts.
+    message(store, '群里也说一声', entry_id='group', at='2026-11-02T20:00:00+08:00')
+    run_goals(store, reviewer, Clock('2026-11-05T01:00:00+00:00'))
+    assert len(reviewer.calls) == 2 and mine in [m['id'] for m in reviewer.calls[1]['payload']['messages']]
+    assert gid

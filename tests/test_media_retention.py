@@ -305,7 +305,8 @@ def test_old_backup_without_cleanup_columns_or_manifest_imports(store, tmp_path)
                 # Migrations 039, 038, 037 and 036 are newer than the columns removed below; undo them first.
                 # 038 only changes a setting value, so dropping its record is enough.
                 assert manifest['migrations'][-1] == '039_goal_auto_review.sql'
-                conn.executescript('''DROP TABLE goal_auto_review_evidence;
+                conn.executescript('''DROP INDEX messages_sender_entry;
+                    DROP TABLE goal_auto_review_evidence;
                     DROP TABLE goal_auto_reviews;
                     DROP TABLE goal_duplicate_judgments;
                     ALTER TABLE goals DROP COLUMN auto_review_after_message_id;''')

@@ -35,6 +35,11 @@ CREATE TABLE goal_auto_review_evidence (
 );
 CREATE INDEX goal_auto_review_evidence_message ON goal_auto_review_evidence(message_id);
 
+-- G1 candidate messages are found by sender: a person's messages, or the
+-- role's own messages within one goal's conversation entries. Without this the
+-- per-goal query walks every message in the run's ID range.
+CREATE INDEX messages_sender_entry ON messages(sender_subject_id,entry_id,id);
+
 -- An administrator reopen sticks: afterwards only messages newer than this
 -- watermark can serve as candidates, so the same evidence cannot re-close it.
 ALTER TABLE goals ADD COLUMN auto_review_after_message_id INTEGER;

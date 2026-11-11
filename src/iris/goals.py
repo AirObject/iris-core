@@ -1261,8 +1261,8 @@ def auto_review_material(conn, goal_id, *, current, message_through=None):
     # julianday narrows the scan; the exact instant comparison follows in Python.
     # The people's own messages come from any visible entry. The role's own
     # messages count only in this goal's conversation: its entry and the entries
-    # where its people have spoken, so unrelated chatter elsewhere neither enters
-    # the material nor changes the fingerprint.
+    # where its people have spoken since the goal was created, so chatter
+    # elsewhere neither enters the material nor changes the fingerprint.
     pool = f"""WITH RECURSIVE tree(id) AS (
             SELECT value FROM json_each(:people)
             UNION SELECT s.id FROM subjects s JOIN tree t ON s.merged_into=t.id
@@ -1270,6 +1270,7 @@ def auto_review_material(conn, goal_id, *, current, message_through=None):
             SELECT :entry WHERE :entry IS NOT NULL
             UNION SELECT DISTINCT x.entry_id FROM messages x
                 WHERE x.id<=:through AND x.sender_subject_id IN (SELECT id FROM tree)
+                AND julianday(x.occurred_at)>julianday(:created)
         ) SELECT {_MESSAGE_COLUMNS},(m.entry_id IS :entry) AS same_entry,({keyword_sql}) AS keyword
         FROM messages m WHERE m.id>:after AND m.id<=:through
             AND (m.sender_subject_id IN (SELECT id FROM tree)
@@ -1547,7 +1548,14 @@ def duplicate_auto_material(conn, goal_a, goal_b):
     common = {'goal_a':goal_a,'goal_b':goal_b,'proposed_id':proposed['id'],'partner_id':partner['id'],
               'origins':sorted({r['origin'] for r in rows.values()}),'options':options,'method':method,
               'revisions':{str(gid):rows[gid]['revision'] for gid in rows}}
-    if not scopes[proposed['id']].allows_write(partner['entry_id']):
+    # Merging the later goal also redirects every goal absorbed into it, so each
+    # absorbed host goal's token scope must allow the earlier goal's entry too.
+    absorbed = [r[0] for r in conn.execute('''WITH RECURSIVE chain(id) AS (
+            SELECT ? UNION SELECT g.id FROM goals g JOIN chain c ON g.merged_into=c.id)
+        SELECT g.host_scope_json FROM goals g JOIN chain c ON c.id=g.id WHERE g.id!=?''',
+        (proposed['id'],proposed['id']))]
+    moved = [scopes[proposed['id']],*(Scope.model_validate_json(value or '{"kind":"all"}') for value in absorbed)]
+    if any(not scope.allows_write(partner['entry_id']) for scope in moved):
         fingerprint = hashlib.sha256(json.dumps({'scope_blocked':True,'goals':sorted(common['revisions'].items())},
                                                 sort_keys=True).encode()).hexdigest()
         return {**common,'scope_blocked':True,'fingerprint':fingerprint,'partner_in_material':False}
@@ -1753,18 +1761,27 @@ def undo_auto_merge(conn, current, *, judgment_id, expected_revision, actor='adm
     conn.execute("UPDATE goal_duplicates SET status='dismissed',resolved_at=?,resolved_by=? WHERE goal_a=? AND goal_b=?",
                  (stamp,actor,row['goal_a'],row['goal_b']))
     pending_before = {nid:owner for nid,owner in record['notifications']}
-    # Of the survivor's reminders published after the merge, only those caused by
-    # fields the merge brought in go: another deadline, or a lead earlier than its
-    # own while its own warning time is still ahead (the new plan re-issues it).
+    # Reminders published for the survivor since the merge: those for its own
+    # restored deadline stay (unless only an earlier, merged lead produced them
+    # while its own warning time is still ahead; the new plan re-issues those);
+    # those for the merged-in goal's own deadline go back to it, pending or
+    # taken; anything else came from the merge alone and is cancelled.
     own_deadline = fields['deadline_at']
+    source_deadline = _row(conn,sid)['deadline_at']
     own_lead = fields['reminder_minutes'] if fields['reminder_minutes'] is not None else goal_settings(conn)['default_reminder_minutes']
     own_soon = _soon(datetime.fromisoformat(own_deadline),own_lead) if own_deadline else None
-    for note in conn.execute("""SELECT * FROM notifications WHERE goal_id=? AND kind='goal_reminder' AND status='pending'
-            AND id NOT IN (SELECT value FROM json_each(?))""",(tid,dumps(list(pending_before)))).fetchall():
-        merged_field = note['deadline_at']!=own_deadline or (
-            note['reminder_kind'] in ('soon','immediate') and own_soon is not None
-            and datetime.fromisoformat(note['published_at'])<own_soon and current<own_soon)
-        if merged_field:
+    for note in conn.execute("""SELECT * FROM notifications WHERE goal_id=? AND kind='goal_reminder'
+            AND status IN ('pending','taken') AND id NOT IN (SELECT value FROM json_each(?))""",
+            (tid,dumps(list(pending_before)))).fetchall():
+        if own_deadline is not None and note['deadline_at']==own_deadline:
+            early = (note['reminder_kind'] in ('soon','immediate') and note['status']=='pending'
+                     and datetime.fromisoformat(note['published_at'])<own_soon and current<own_soon)
+            if early:
+                conn.execute("UPDATE notifications SET status='cancelled',cancelled_at=? WHERE id=?",(stamp,note['id']))
+        elif source_deadline is not None and note['deadline_at']==source_deadline:
+            conn.execute('UPDATE notifications SET goal_id=?,content=? WHERE id=?',
+                         (sid,note['content'].split('：',1)[0]+'：'+_row(conn,sid)['content'],note['id']))
+        elif note['status']=='pending':
             conn.execute("UPDATE notifications SET status='cancelled',cancelled_at=? WHERE id=?",(stamp,note['id']))
     for nid,owner in pending_before.items():
         note = conn.execute('SELECT * FROM notifications WHERE id=?',(nid,)).fetchone()
