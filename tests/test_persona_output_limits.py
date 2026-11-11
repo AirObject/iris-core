@@ -232,7 +232,7 @@ def test_terminal_child_does_not_run_its_sibling_or_accept_completed_fragments(s
     assert result['output_limit_diagnostics'] == {
         'truncations':3, 'splits':2, 'terminal_truncations':1, 'recovered_truncations':0,
         'split_results':{'incomplete_output_limit':2}, 'focus_splits':0, 'focus_split_results':{},
-        'output_retries':0, 'output_retry_results':{}}
+        'output_retries':0, 'output_retry_results':{}, 'output_retry_errors':{}}
 
 
 def test_successful_split_is_recovered_by_its_own_complete_operation(tmp_path):

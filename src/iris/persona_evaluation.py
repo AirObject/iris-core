@@ -551,6 +551,10 @@ def _model_call_outcomes(calls, checkpoints=(), observations=()):
         split_recovered = any(diagnostic.get('recovered_truncations', 0)
                               or diagnostic.get('split_results', {}).get('recovered', 0)
                               for diagnostic in diagnostics)
+        # An output retry that timed out restored its truncation; at a retained
+        # checkpoint its own timed-out call is tolerated too, one per failed retry.
+        retry_timeouts = sum(diagnostic.get('output_retry_errors', {}).get('timeout', 0)
+                             for diagnostic in diagnostics)
         ordered = [by_id[i] for i in sorted(ids)]
         for position, call in enumerate(ordered):
             purpose = call['purpose'].removesuffix('_repair')
@@ -560,6 +564,14 @@ def _model_call_outcomes(calls, checkpoints=(), observations=()):
             if retained and limited:
                 tolerated[call['id']] = {'checkpoint_id':checkpoint['checkpoint']['id'],
                     'outcome':'unpublished_current_retained'}
+                # Only the very next call of the same purpose, and only a timeout.
+                follower = next((c for c in ordered[position + 1:]
+                                 if c['purpose'].removesuffix('_repair') == purpose), None)
+                if (retry_timeouts and follower is not None and follower.get('timed_out')
+                        and follower.get('status_code') != 429 and follower['id'] not in tolerated):
+                    tolerated[follower['id']] = {'checkpoint_id':checkpoint['checkpoint']['id'],
+                        'outcome':'unpublished_current_retained', 'tolerated_as':'failed_output_retry_timeout'}
+                    retry_timeouts -= 1
             if incomplete:
                 continue
             success = next((c for c in ordered[position + 1:]
@@ -577,7 +589,10 @@ def _model_call_outcomes(calls, checkpoints=(), observations=()):
                   'output_limit' if call.get('finish_reason') == 'length' else None)
         if reason:
             recovery = recovered.get(call.get('id'))
-            tolerance = tolerated.get(call.get('id')) if reason == 'output_limit' else None
+            tolerance = tolerated.get(call.get('id'))
+            if not (reason == 'output_limit' or (reason == 'timeout' and tolerance
+                    and tolerance.get('tolerated_as') == 'failed_output_retry_timeout')):
+                tolerance = None
             outcomes.append({key:call.get(key) for key in
                 ('id','purpose','created_at','duration_ms','status_code','timed_out')} |
                 {'reason':reason, 'recovered':bool(recovery), 'tolerated':bool(tolerance),
@@ -665,7 +680,9 @@ def _call_metrics(calls, outcomes=None):
             'timed_out_calls':sum(bool(c.get('timed_out')) for c in calls),
             'rate_limited_calls':sum(c.get('status_code') == 429 for c in calls),
             'recovered_timed_out_calls':sum(bool(c['timed_out']) and c['recovered'] for c in outcomes),
-            'unrecovered_timed_out_calls':sum(bool(c['timed_out']) and not c['recovered'] for c in outcomes),
+            'unrecovered_timed_out_calls':sum(bool(c['timed_out']) and not c['recovered']
+                                              and not c.get('tolerated', False) for c in outcomes),
+            'tolerated_timed_out_calls':sum(bool(c['timed_out']) and c.get('tolerated', False) for c in outcomes),
             'recovered_rate_limited_calls':sum(c['status_code'] == 429 and c['recovered'] for c in outcomes),
             'unrecovered_rate_limited_calls':sum(c['status_code'] == 429 and not c['recovered'] for c in outcomes),
             'by_purpose':dict(Counter(c['purpose'] for c in calls))}
@@ -698,7 +715,8 @@ def _check_structure_metrics(rows):
 def _check_output_limit_metrics(rows):
     totals = {'truncations':0, 'splits':0, 'terminal_truncations':0, 'recovered_truncations':0,
               'focus_splits':0, 'output_retries':0}
-    results = {key:Counter() for key in ('split_results', 'focus_split_results', 'output_retry_results')}
+    results = {key:Counter() for key in ('split_results', 'focus_split_results', 'output_retry_results',
+                                         'output_retry_errors')}
     for row in rows:
         for attempt in row['attempts']:
             outputs = json.loads(attempt['outputs_json'])

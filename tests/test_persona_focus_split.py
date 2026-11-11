@@ -99,7 +99,8 @@ def test_truncated_one_sentence_window_is_split_by_focus_with_full_context(store
     assert not _check_verdicts(result, [sentence], material=material)[2]
     assert result['output_limit_diagnostics'] == {'truncations':1, 'splits':0, 'split_results':{},
         'terminal_truncations':0, 'recovered_truncations':1, 'focus_splits':1,
-        'focus_split_results':{'recovered':1}, 'output_retries':0, 'output_retry_results':{}}
+        'focus_split_results':{'recovered':1}, 'output_retries':0, 'output_retry_results':{},
+        'output_retry_errors':{}}
     assert limits(outputs)[0]['handled'] == 'focus_split' and limits(outputs)[0]['focus_count'] == 2
     assert [call[1] for call in model.calls] == [360, 361, 362]  # Per-call caps within one stage.
 
@@ -117,9 +118,9 @@ def test_one_focus_still_truncated_is_incomplete_and_skips_its_sibling(store):
     assert diagnostics['output_retries'] == 0  # A complete JSON body is not retried.
 
 
-@pytest.mark.parametrize('durations,split', [({1:300, 2:300}, False), ({1:300, 2:200}, True)])
+@pytest.mark.parametrize('durations,split', [({1:300, 2:300}, False), ({1:200, 2:150}, True)])
 def test_focus_split_needs_room_in_the_stage(store, durations, split):
-    # Window [3,4] truncates at 300+d after d s; it is split only if 900-(300+d)-reserve >= d.
+    # Window [3,4] truncates after d s; its two halves need 2d plus the reserve.
     material, sentence = material_and_sentence(4)
     model = Truncating(lambda request, number: number == 2, durations=durations)
     result, outputs = run(store, model, material, [sentence])
@@ -328,14 +329,18 @@ def evaluate(tmp_path, decide, *, one_focus=False):
                                                         'basis':[evidence['ref']]}]}), 'stop', {})
             else:
                 reply = super().chat(messages, purpose, **kwargs)
+            timed_out = False
             if purpose == 'persona_check' and payload.get('task') == 'check_facts_and_rules':
                 Scripted.numbers += 1
-                decide(reply, payload, Scripted.numbers)
+                timed_out = decide(reply, payload, Scripted.numbers) == 'timeout'
             with self.store.write() as conn:
                 conn.execute("""INSERT INTO model_calls
                     (purpose,model,duration_ms,result_category,status_code,timed_out,finish_reason,created_at)
-                    VALUES(?,'fake',1,'success',200,0,?,?)""",
-                    (purpose, reply.finish_reason, self.clock().isoformat()))
+                    VALUES(?,'fake',1,?,?,?,?,?)""",
+                    (purpose, 'retryable' if timed_out else 'success', None if timed_out else 200, int(timed_out),
+                     None if timed_out else reply.finish_reason, self.clock().isoformat()))
+            if timed_out:
+                raise ModelError('timeout', 'total timeout', reason='timeout')
             return reply
     case = copy.deepcopy(TIMELINE)
     case['role'] = {**case['role'], 'background':''}
@@ -381,3 +386,99 @@ def test_failed_retry_is_a_retained_incomplete_checkpoint(tmp_path):
     assert metrics['incomplete_checks'][0]['outcome'] == 'unpublished_current_retained'
     assert metrics['calls']['tolerated_output_limited_calls'] == 1
     assert metrics['check_output_limits']['terminal_truncations'] == 1
+
+
+# Round 3: a recovery leaves room for the rest of the stage; a failed split restores the truncation.
+
+def two_windows_then_single():
+    """A single-focus sentence (its own window) followed by a two-focus sentence."""
+    material, later = material_and_sentence(2)
+    single = {**later, 'text':'在那次共读中我核对了第1项。'}
+    return material, [single, later]
+
+
+@pytest.mark.parametrize('truncated,split', [(300, False), (100, True)])
+def test_focus_split_must_fit_both_halves(store, truncated, split):
+    # Two halves of a 300 s truncation (600 s) plus the reserve exceed the 600 s left.
+    material, sentence = material_and_sentence(2)
+    model = Truncating(first_call, durations={1:truncated})
+    outputs = {}
+    result, _ = run(store, model, material, [sentence], outputs)
+    assert len(model.calls) == (3 if split else 1)
+    assert bool(result['validation_errors']) is not split
+    assert outputs.get('persona_check_incomplete') == (None if split else 'output_limit')
+
+
+@pytest.mark.parametrize('failure', ['timeout', 'rate_limited', 'transport_failure', 'length'])
+def test_failed_half_restores_the_original_truncation(store, failure):
+    # A half that times out twice (its one timeout retry included), is refused or truncated.
+    material, sentence = material_and_sentence(2)
+    script = {} if failure == 'length' else {2:failure, 3:failure} if failure == 'timeout' else {2:failure}
+    model = Truncating(lambda request, number: number in (1, 2) if failure == 'length' else number == 1,
+                       durations={1:100}, script=script)
+    outputs = {}
+    result, _ = run(store, model, material, [sentence], outputs)  # Never a stage failure.
+    assert len(model.calls) == (3 if failure == 'timeout' else 2)
+    assert result['validation_errors'] == ['output_limit; no complete judgment']
+    assert outputs['persona_check_incomplete'] == 'output_limit'
+    split = outputs['persona_check_batches'][0]['persona_check_output_splits'][0]
+    assert split['status'] == 'incomplete_' + ('output_limit' if failure == 'length' else failure)
+    diagnostics = result['output_limit_diagnostics']
+    assert diagnostics['terminal_truncations'] == 1 and diagnostics['recovered_truncations'] == 0
+    assert limits(outputs)[0]['handled'] == 'terminal'
+
+
+def test_halves_end_before_the_stage_reserve(store):
+    material, sentence = material_and_sentence(4)
+    model = Truncating(lambda request, number: number == 2, durations={1:359, 2:130})
+    result, _ = run(store, model, material, [sentence])
+    assert len(model.calls) == 4 and not result['validation_errors']
+    assert all(deadline <= 900 - OUTPUT_RECOVERY_RESERVE_SECONDS for _, deadline in model.calls[2:])
+
+
+@pytest.mark.parametrize('later,split', [(True, False), (False, True)])
+def test_a_split_leaves_room_for_the_windows_still_to_run(store, later, split):
+    # [1,2] truncates after 250 s: 2*250 + later windows*250 + reserve against 650 s left.
+    material, sentence = material_and_sentence(3 if later else 2)
+    model = Truncating(first_call, durations={1:250})
+    outputs = {}
+    result, _ = run(store, model, material, [sentence], outputs)
+    assert len(model.calls) == (3 if split else 1)
+    assert bool(result['validation_errors']) is not split
+    assert outputs.get('persona_check_incomplete') == (None if split else 'output_limit')
+    assert limits(outputs)[0]['recovery_estimate_seconds'] == 560 + 250 * later
+
+
+@pytest.mark.parametrize('later,retried', [(True, False), (False, True)])
+def test_a_retry_leaves_room_for_the_windows_still_to_run(store, later, retried):
+    # The single-focus window truncates after 290 s: 290 + later windows*290 + reserve against 610 s left.
+    material, sentences = two_windows_then_single()
+    model = Truncating(first_call, content='', durations={1:290})
+    result, outputs = run(store, model, material, sentences if later else sentences[:1])
+    assert (len(model.calls) >= 2 and model.calls[1][0] == model.calls[0][0]) is retried
+    assert bool(result['validation_errors']) is not retried
+
+
+def test_failed_retry_timeout_is_tolerated_at_a_retained_checkpoint(tmp_path):
+    def decide(reply, payload, number):
+        if number == 1:
+            reply.finish_reason, reply.content = 'length', ''
+        elif number == 2:
+            return 'timeout'
+    metrics = evaluate(tmp_path, decide, one_focus=True)
+    assert metrics['run_valid'] and metrics['invalid_call_count'] == 0
+    assert metrics['incomplete_check_count'] == 1
+    assert metrics['calls']['tolerated_timed_out_calls'] == 1 and metrics['calls']['unrecovered_timed_out_calls'] == 0
+    assert metrics['check_output_limits']['output_retry_errors'] == {'timeout':1}
+
+
+def test_an_ordinary_batch_timeout_is_still_invalid(tmp_path):
+    # The timeout comes before the truncation: it is no failed output retry.
+    def decide(reply, payload, number):
+        if number == 1:
+            return 'timeout'
+        if number == 2:
+            reply.finish_reason, reply.content = 'length', ''
+    metrics = evaluate(tmp_path, decide, one_focus=True)
+    assert not metrics['run_valid'] and metrics['invalid_call_count'] == 1
+    assert metrics['calls']['tolerated_timed_out_calls'] == 0

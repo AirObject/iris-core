@@ -126,21 +126,32 @@ QUANTIFIER_WORDS = SCOPED_QUANTIFIERS | frozenset(FREQUENCY_STRENGTH)
 # (什么都, 一点都), not over occasions: plural/universal pronouns and minimizers only.
 DISTRIBUTIVE_HOSTS = frozenset(('我们 咱们 你们 他们 她们 它们 大家 大伙 大伙儿 人人 个个 各位 各自 彼此 双方 俩 '
                                 '谁 什么 哪 哪儿 哪里 任何 一切 一点 一点儿').split())
-# A bounded set of people or things just before 都 makes it distributive too:
-# a plural demonstrative or universal determiner, a coordination (我和对方都), or a
-# numeral with a classifier that counts things (那三本书, 两个人), not occasions.
-SET_DETERMINERS = frozenset('这些 那些 所有 全部 一切 各 各个 每个 每位 每样'.split())
-COORDINATORS = frozenset('和 与 跟 及 以及 同'.split())
-PERSONAL_PRONOUNS = frozenset('我 你 您 他 她 它 自己'.split())
+# How 都 is read from everything before it in its own clause. A set of times or
+# occasions (这些天, 每个晚上, 各场直播, 这阵子) makes it a frequency claim. A universal
+# phrase (每次排练, 所有事情, 每个人, 任何人, 无论谁) makes it that phrase's correlative.
+# A bounded set of people or things makes it distributive: a plural demonstrative
+# (这些歌), a numeral with a classifier that counts things (那三本书, 两个人), or a
+# coordination right before it (我和对方都). Closed grammatical tables only.
+OCCASION_SET = re.compile(r'(?:这些|那些|这几|那几|这|那|每个|每|各个|各|所有的?|全部的?|任何|什么)'
+                          r'[一两二三四五六七八九十几]*个?'
+                          r'(?:天|日子|日|晚上|晚|夜里|夜|早上|早晨|上午|下午|中午|周末|周|星期|礼拜|月|年|'
+                          r'次|回|场|遍|趟|阵子|段时间|时候|时间|会儿)')
+UNIVERSAL_HEADS = frozenset('所有 全部 各 各个 任何 无论 不论 不管 一切'.split())
+SET_DETERMINERS = frozenset('这些 那些'.split())
 COUNTED_THINGS = re.compile(r'(?:[0-9]+|[一两二三四五六七八九十百千几]+)'
                             r'[个位名本门首件张篇部只条种样项份道句段家所台支把块双对套组册页幅款盘局杯瓶碗盒封袋层节]')
+# Lexical adverbs that look like a numeral and a classifier: 一样 (alike), 一道／一块 (together).
+COUNTED_LOOKALIKES = frozenset('一样 一道 一块'.split())
+COORDINATED_END = re.compile(r'(?:和|与|跟|同|及)(?P<right>[一-鿿A-Za-z]{1,4})$')
+LOCATIVE_MARKS = frozenset('在里中上时后前内外边')
 # A quantifier right after a negative universal is negated too (从没……每次).
 NEVER_WORDS = frozenset('从不 从未 从没 从来不 从来没 从来没有'.split())
 # A bounded experience counts the occasions it covers, in its own clause before the
-# frequency word: 这／那 + a numeral or 几 + 次／回／场／遍／天. A count that starts a
-# period (那次之后, 从那天起) bounds nothing; 三天两头 is not a count of occasions.
-BOUNDED_INSTANCES = re.compile(r'(?:这|那)(?P<count>几|[一两二三四五六七八九十]+|[0-9]+)(?:次|回|场|遍|天)')
-PERIOD_OPENERS = re.compile(r'(?:之后|以后|后|起|以来|开始)')
+# frequency word: 这／那 + a numeral or 几 (none for one, as in 那次) + 次／回／场／遍／天.
+# A count followed anywhere before the word by a period opener (那次直播之后, 从那天起)
+# bounds nothing; 三天两头 and a bare 两次 are not counts of these occasions.
+BOUNDED_INSTANCES = re.compile(r'(?:这|那)(?P<count>几|[一两二三四五六七八九十]+|[0-9]+)?(?:次|回|场|遍|天)')
+PERIOD_OPENERS = frozenset('之后 以后 后 起 以来 开始'.split())
 INSTANCE_NUMERALS = {'一':1, '两':2, '二':2, '三':3, '四':4, '五':5, '六':6, '七':7, '八':8, '九':9}
 # A closed grammatical class, as SCOPED_QUANTIFIERS (#107): future-time words and the
 # verbs and auxiliaries of intending or committing. Bare 会/要 and verbs of wishing or
@@ -813,7 +824,9 @@ def _output_limit_diagnostics(batches, purpose):
             'focus_splits':len(focus_splits),
             'focus_split_results':dict(Counter(event['status'] for event in focus_splits)),
             'output_retries':len(retries),
-            'output_retry_results':dict(Counter(event['status'] for event in retries))}
+            'output_retry_results':dict(Counter(event['status'] for event in retries)),
+            'output_retry_errors':dict(Counter(event['retry_error'] for event in retries
+                                               if event.get('status') == 'failed'))}
 
 
 def _structure_diagnostics(batches, purpose):
@@ -1540,27 +1553,37 @@ def _grammar_tokens(text):
 
 
 def _distributive_dou(tokens, index):
-    """Whether 都 at tokens[index] ranges over people or things, not over occasions.
+    """Whether 都 at tokens[index] is no frequency claim of its own.
 
-    Only its own left context counts: the quantifier right before it (每次都, its
-    correlative), a plural or universal pronoun (大家都), or a bounded set closing the
-    same clause just before it (那三本书我都, 我和对方都, 所有事情都). A bare noun
-    (歌我都) leaves it a frequency claim, which is the conservative reading.
+    Read from everything before it in its own clause, so the verdict does not
+    depend on how long that clause is. Right after a quantifier (每次都) or a
+    plural/universal pronoun (大家都) it is a correlative or distributive. A set of
+    times or occasions (这些天, 每个晚上) makes it a frequency claim. A universal
+    phrase (每次排练, 所有事情, 每个人, 任何人) makes it that phrase's correlative;
+    第一次／唯一／只 form none. A bounded set of people or things (这些歌, 那三本书,
+    两个人, 我和对方) makes it distributive. A bare noun (歌我都) leaves a frequency claim.
     """
     previous = tokens[index - 1] if index else ''
     if previous in QUANTIFIER_WORDS or previous in DISTRIBUTIVE_HOSTS:
         return True
-    chunk = []
+    clause = []
     for token in reversed(tokens[:index]):
         if not re.search(r'\w', token):
             break  # Clause boundary.
-        chunk.insert(0, token)
-    if chunk and chunk[-1] in PERSONAL_PRONOUNS:
-        chunk.pop()
-    chunk = chunk[-4:]
-    if SET_DETERMINERS & set(chunk) or (len(chunk) >= 3 and chunk[-2] in COORDINATORS):
+        clause.insert(0, token)
+    if any(token in QUANTIFIER_WORDS and (token.startswith('每') or token in ('所有', '全部')) for token in clause):
         return True
-    return bool(COUNTED_THINGS.search(''.join(chunk)))
+    text = ''.join(clause)
+    if OCCASION_SET.search(text):
+        return False
+    if any(token.startswith(('每', *UNIVERSAL_HEADS)) for token in clause):  # 任何人, 无论谁 fuse.
+        return True
+    if SET_DETERMINERS & set(clause) or any(match.group() not in COUNTED_LOOKALIKES
+                                           for match in COUNTED_THINGS.finditer(text)):
+        return True
+    coordinated = COORDINATED_END.search(text)
+    head = text[:coordinated.start()] if coordinated else ''
+    return bool(coordinated and '在' not in head and not LOCATIVE_MARKS & set(coordinated['right']))
 
 
 def _focus_quantifiers(text):
@@ -1631,17 +1654,16 @@ def _frequency_source_clauses(memory):
 
 
 def _source_strength(source_name, clauses):
-    """The rank an own utterance asserts with the quoted words, else None.
+    """The rank of the one frequency word an own utterance clause asserts, else None.
 
-    Only a frequency word its clause asserts counts: a negated (不经常, 从没……每次)
-    or distributive (我们都) word is no frequency evidence, nor is a correlative 都
-    quoted without the word it follows.
+    Only a single closed-class word counts, and only where its clause asserts it:
+    a negated (不经常, 从没……每次) or distributive (我们都) word is no frequency
+    evidence, nor is a correlative 都 quoted without the word it follows.
     """
-    if not source_name.strip():
+    if source_name not in FREQUENCY_STRENGTH:
         return None
-    ranks = [rank for clause in clauses if source_name in clause
-             for word, rank in _asserted_frequency(clause).items() if word in source_name]
-    return max(ranks, default=None)
+    return next((FREQUENCY_STRENGTH[source_name] for clause in clauses
+                 if source_name in clause and source_name in _asserted_frequency(clause)), None)
 
 
 def _scope_residue(scope):
@@ -1664,15 +1686,16 @@ def _instance_count(numeral):
 def _bounded_count(focus_text, name, scope):
     """How many occasions a counted phrase bounds this frequency word to, else None.
 
-    The count (那两次, 这几回) must be the stated range, in this clause before the
-    word, and must not open a period (那次之后, 从那天起).
+    The count (那两次, 这几回, 那次) must be the stated range, in this clause before
+    the word, with no period opener anywhere in between (那次直播之后, 从那天起).
     """
     if not scope.strip() or scope not in focus_text:
         return None
     for match in BOUNDED_INSTANCES.finditer(focus_text):
-        if (match.group() in scope and not PERIOD_OPENERS.match(focus_text, match.end())
-                and focus_text.find(name, match.end()) >= 0):
-            return _instance_count(match['count'])
+        position = focus_text.find(name, match.end())
+        if (match.group() in scope and position >= 0
+                and not PERIOD_OPENERS & set(words(focus_text[match.end():position]))):
+            return _instance_count(match['count'] or '一')
     return None
 
 
@@ -1742,11 +1765,13 @@ def _quantifier_value_issues(check, focus_text, sentence, evidence, frequency_wo
     return issues
 
 
-def _validate_quantifier_scope(part, focus_text, sentence, evidence):
+def _validate_quantifier_scope(part, focus_text, sentence, evidence, *, final=False):
     """Every quantifier of a supported focus needs its own complete range contract.
 
     An item for a word this focus does not assert (negated, distributive) can only
-    add its own explicit rejection; its other fields bind nothing.
+    add its own explicit rejection; its other fields bind nothing. A frequency item
+    names one closed-class source word or none: anything else is asked again once
+    and, when `final`, read as no frequency evidence.
     """
     required = _focus_quantifiers(focus_text)
     if not required and 'quantifier_checks' not in part:
@@ -1779,6 +1804,11 @@ def _validate_quantifier_scope(part, focus_text, sentence, evidence):
         return ['invalid quantifier scope verdict'], []
     issues = []
     for check in checks:
+        if (any(word in check['candidate_quantifier'] for word in frequency_words)
+                and check['source_quantifier'] and check['source_quantifier'] not in FREQUENCY_STRENGTH):
+            if not final:
+                return ['invalid quantifier scope verdict: source_quantifier must be one frequency word'], []
+            check = {**check, 'source_quantifier':''}
         if any(word in check['candidate_quantifier'] for word in required):
             issues.extend(_quantifier_value_issues(check, focus_text, sentence, evidence, frequency_words))
         elif not check['preserved']:
@@ -2017,7 +2047,7 @@ def _validate_activity_scope_value(scope, sentence, evidence):
     return [], issues
 
 
-def _validate_clause_checks(output, payload):
+def _validate_clause_checks(output, payload, *, final=False):
     """Check quote identity and per-focus dates; never assert semantic entailment."""
     errors, problems = [], {}
     rows = output.get('sentences')
@@ -2154,7 +2184,7 @@ def _validate_clause_checks(output, payload):
                               _proof_uncertainty_issues(sentence['text'], expected, cited))
             if part['supported']:
                 invalid, unsupported = _validate_quantifier_scope(part, expected['text'], sentence,
-                                                                  payload['evidence_by_ref'])
+                                                                  payload['evidence_by_ref'], final=final)
                 errors.extend(f'sentence {index}: {label}: {error}' for error in invalid)
                 issues.extend(f'{label}: {issue}' for issue in unsupported)
                 invalid, unsupported = _claim_eligibility_issues(
@@ -2871,7 +2901,8 @@ class PersonaEngine:
             return self._call(purpose, payload, outputs, deadline=deadline, json_repair=False)
         except ModelError as error:
             if error.reason == 'output_limit':
-                return self._retry_degenerate_output(purpose, payload, outputs, error, deadline=deadline)
+                return self._retry_degenerate_output(purpose, payload, outputs, error, deadline=deadline,
+                                                     retry_state=retry_state)
             if (error.reason != 'timeout' or error.paused
                     or retry_state['timeouts'] >= CHECK_TIMEOUT_RETRIES or monotonic() >= deadline):
                 raise
@@ -2887,14 +2918,24 @@ class PersonaEngine:
             retry['status'] = 'complete'
             return answer
 
-    def _recovery_fits(self, deadline, event):
-        """Whether the stage, less its reserve, holds another request as long as the truncated one."""
+    def _recovery_fits(self, deadline, event, retry_state, requests=1):
+        """Whether the stage holds a recovery and everything still planned after it.
+
+        The recovery is estimated as `requests` requests as long as the truncated
+        one; each window still to run as the longest window seen in this stage
+        (at least the truncated request); plus the stage reserve. A recovery that
+        would push a later window into a stage timeout is not attempted.
+        """
         import time
         monotonic = getattr(self.gateway, 'monotonic', time.monotonic)
-        remaining = deadline - monotonic() - OUTPUT_RECOVERY_RESERVE_SECONDS
-        return remaining > 0 and remaining >= event.get('seconds', 0)
+        seconds = event.get('seconds', 0)
+        longest = max(retry_state.get('longest_window', 0), seconds)
+        needed = (requests * seconds + retry_state.get('remaining_windows', 0) * longest
+                  + OUTPUT_RECOVERY_RESERVE_SECONDS)
+        event['recovery_estimate_seconds'] = round(needed, 3)
+        return deadline - monotonic() >= needed
 
-    def _retry_degenerate_output(self, purpose, payload, outputs, error, *, deadline):
+    def _retry_degenerate_output(self, purpose, payload, outputs, error, *, deadline, retry_state):
         """Ask an unsplittable request once more after an empty, blank or unclosed reply.
 
         Splittable requests are split instead. The retry has no timeout retry of its
@@ -2907,7 +2948,7 @@ class PersonaEngine:
         shape = event.get('output_shape')
         if shape not in RETRYABLE_OUTPUT_SHAPES or _request_focus_count(payload) not in (0, 1):
             raise error
-        if not self._recovery_fits(deadline, event):
+        if not self._recovery_fits(deadline, event, retry_state):
             event['retry_skipped'] = 'stage_budget'
             raise error
         retry = {'error_reason':'output_limit', 'output_shape':shape, 'stage_deadline':deadline,
@@ -3070,7 +3111,7 @@ class PersonaEngine:
                         corrected['index'] = local
                         correction_errors.extend(_proof_format_errors(corrected, local))
                         clause_errors, corrected_issues = _validate_clause_checks(
-                            {'sentences': [corrected]}, {**payload, 'candidate': [sentence]})
+                            {'sentences': [corrected]}, {**payload, 'candidate': [sentence]}, final=True)
                         correction_errors.extend(clause_errors)
         if correction_errors:
             audit['correction_errors'] = correction_errors
@@ -3230,9 +3271,9 @@ class PersonaEngine:
             # only while the stage holds it, else the truncation is terminal.
             event = getattr(error, 'output_limit_event', None) or {}
             if len(subset) == 1 and len(subset[0].get('_check_focus', [])) > 1:
-                if self._recovery_fits(deadline, event):
+                if self._recovery_fits(deadline, event, retry_state, len(subset[0]['_check_focus'])):
                     _handle_output_limit(error, 'focus_split')
-                    return self._check_focus_split(purpose, material, subset[0], raw, adverse,
+                    return self._check_focus_split(purpose, material, subset[0], raw, adverse, error,
                         deadline=deadline, retry_state=retry_state, batch_index=batch_index,
                         diagnostics=diagnostics)
                 event['focus_split_skipped'] = 'stage_budget'
@@ -3285,14 +3326,16 @@ class PersonaEngine:
                      'reason':'complete sentence checks after output split'}
             return batch, {'output_split_batches':originals}, window_problems, problems
 
-    def _check_focus_split(self, purpose, material, sentence, raw, adverse, *, deadline, retry_state,
-                           batch_index, diagnostics):
+    def _check_focus_split(self, purpose, material, sentence, raw, adverse, truncation, *, deadline,
+                           retry_state, batch_index, diagnostics):
         """Check a truncated one-sentence window again in halves of its proof spans.
 
-        Each half carries the whole sentence and its bound sources. Results are
-        combined as windows are (supported AND, fabricated OR, union of problems);
-        once a half rejects the sentence the rest stays unchecked, and every span
-        must have a verdict before the combined row can pass.
+        Each half carries the whole sentence and its bound sources, and its requests
+        end before the stage reserve. Results are combined as windows are (supported
+        AND, fabricated OR, union of problems); once a half rejects the sentence the
+        rest stays unchecked, and every span must have a verdict before the combined
+        row can pass. If any half fails (timeout, rate limit, transport, truncation),
+        the original truncation stands and is terminal, as without a split.
         """
         foci = sentence['_check_focus']
         split = {'unit':'focus', 'sentence_indices':[sentence['_check_sentence']],
@@ -3312,15 +3355,19 @@ class PersonaEngine:
                              'sentence_indices':[sentence['_check_sentence']], 'clause_indices':indices}
                 split['children'].append({'outputs':child_raw})
                 checked, original, child_window, child_problems = self._check_fact_batch(
-                    purpose, material, [{**sentence, '_check_focus':half}], child_raw, deadline=deadline,
-                    retry_state=retry_state, batch_index=batch_index, diagnostics=diagnostics)
+                    purpose, material, [{**sentence, '_check_focus':half}], child_raw,
+                    deadline=deadline - OUTPUT_RECOVERY_RESERVE_SECONDS, retry_state=retry_state,
+                    batch_index=batch_index, diagnostics=diagnostics)
                 originals.append(original)
                 merged = _merge_window_rows(merged, dict(checked['sentences'][0]))
                 window_problems.extend(child_window.get(1, []))
                 problems.extend(child_problems.get(1, []))
         except ModelError as repeated:
             split['status'] = 'incomplete_' + (repeated.reason or repeated.category)
-            raise
+            split['child_error'] = repeated.reason or repeated.category
+            _handle_output_limit(repeated, 'split_child_failed')
+            _handle_output_limit(truncation, 'terminal')
+            raise truncation from None
         split['status'] = 'recovered'
         for event in raw.get(purpose + '_structure_events', []):
             if event['status'] == 'infrastructure_failure':
@@ -3400,7 +3447,7 @@ class PersonaEngine:
                 else:
                     malformed = _sentence_format_errors(row, local) + _proof_format_errors(row, local)
                     errors, issues = _validate_clause_checks({'sentences':[row]},
-                        {**payload, 'candidate':[payload['candidate'][local-1]]})
+                        {**payload, 'candidate':[payload['candidate'][local-1]]}, final=batch_audit is not None)
                     malformed.extend(errors)
                 if malformed:
                     if batch_audit is not None:
@@ -3511,8 +3558,9 @@ class PersonaEngine:
         # One fixed stage ceiling includes size splitting, batch/field correction, timeout
         # retry and degree. Even one fact window can retry within this same ceiling.
         stage_seconds = MAX_CHECK_STAGE_SECONDS
-        deadline = (getattr(self.gateway, 'monotonic', time.monotonic)() + stage_seconds
-                    if deadline is None else deadline)
+        monotonic = getattr(self.gateway, 'monotonic', time.monotonic)
+        deadline = monotonic() + stage_seconds if deadline is None else deadline
+        longest_window = 0
         raw_batches = outputs.setdefault(purpose + '_batches', [])
         rows, batches, short_circuits = {}, [], []
         invalid_fields, invalid_batches, material_rejections = [], [], []
@@ -3561,12 +3609,17 @@ class PersonaEngine:
             raw = {purpose+'_task':'check_facts_and_rules',
                    purpose+'_prompt_version':PROMPT_VERSIONS[purpose]}
             raw_batches.append(raw)
-            retry_state = {'timeouts': 0}
+            # A recovery in this window must leave room for every later window
+            # (and the degree judgment), each estimated as the longest seen.
+            retry_state = {'timeouts': 0, 'longest_window': longest_window,
+                           'remaining_windows': len(subsets) - planned_index - 1 + bool(assess_degree)}
+            window_started = monotonic()
             checked_batch, original_batch, window_problems, problems = self._check_fact_batch(
                 purpose, material, subset, raw, deadline=deadline, retry_state=retry_state,
                 batch_index=batch_index, diagnostics={
                     'invalid_batches':invalid_batches, 'invalid_fields':invalid_fields,
                     'normalizations':normalizations, 'short_circuits':short_circuits})
+            longest_window = max(longest_window, monotonic() - window_started)
             _mark_window_complete([raw], purpose)
             if batch_index == 0:
                 outputs.update(raw)
@@ -3594,7 +3647,7 @@ class PersonaEngine:
             raw = {purpose+'_task':'degree_only', purpose+'_prompt_version':DEGREE_PROMPT_VERSION}
             raw_batches.append(raw)
             window_map.append([])
-            retry_state = {'timeouts': 0}
+            retry_state = {'timeouts': 0, 'longest_window': longest_window, 'remaining_windows': 0}
             comparison, degree_event = None, None
             try:
                 for attempt in range(2):
@@ -3655,8 +3708,15 @@ class PersonaEngine:
                 'material_rejections':material_rejections,
                 'skipped_windows':skipped, 'normalizations':normalizations}
 
-    def _review_handwritten(self, material, outputs, *, deadline):
-        """One sentence per bounded page; uncertain/invalid semantic permission means keep."""
+    def _review_handwritten(self, material, outputs, *, deadline, following_windows=0):
+        """One sentence per bounded page; uncertain/invalid semantic permission means keep.
+
+        The check stage shares this deadline: a retry leaves room for the pages
+        still to review and the `following_windows` the check is expected to need.
+        """
+        import time
+        monotonic = getattr(self.gateway, 'monotonic', time.monotonic)
+        longest_page = 0
         extra = material.get('handwritten_evidence', {}).get('memories', [])
         audit = {'policy':'explicit_correction_or_reply_instruction_v1',
                  'decisions':[], 'retries':0, 'conservative_keeps':0, 'oversized_memories':[],
@@ -3664,7 +3724,8 @@ class PersonaEngine:
         raw_batches = outputs.setdefault('persona_check_handwritten_batches', [])
         changes = []
         as_of = _instant(material['as_of'])
-        for ref,sentence in material['handwritten_snapshot'].items():
+        reviewed = list(material['handwritten_snapshot'].items())
+        for position,(ref,sentence) in enumerate(reviewed):
             written = _instant(sentence['written_at'])
             terms = _content_terms(sentence['text'])
             def later(memory):
@@ -3699,13 +3760,16 @@ class PersonaEngine:
                     'count':sum(len(rest) for rest in pages[HANDWRITTEN_REVIEW_MAX_PAGES:])})
                 pages = pages[:HANDWRITTEN_REVIEW_MAX_PAGES]
             decisions = []
-            for page in pages:
+            for page_index,page in enumerate(pages):
                 request = payload(page)
                 raw = {'persona_check_task':'handwritten_review',
                        'persona_check_prompt_version':HANDWRITTEN_PROMPT_VERSION,
                        'sentence_ref':ref, 'attempts':[]}
                 raw_batches.append(raw)
-                retry_state = {'timeouts':0}
+                retry_state = {'timeouts':0, 'longest_window':longest_page,
+                               'remaining_windows':(len(pages) - page_index - 1 + len(reviewed) - position - 1
+                                                    + following_windows)}
+                page_started = monotonic()
                 answer, error = None, None
                 for attempt in range(2):
                     attempt_raw = {}
@@ -3731,6 +3795,7 @@ class PersonaEngine:
                     attempt_raw['handwritten_structure_error'] = error
                     if attempt == 0:
                         audit['retries'] += 1
+                longest_page = max(longest_page, monotonic() - page_started)
                 _mark_window_complete(raw['attempts'], 'persona_check')
                 if error:
                     audit['conservative_keeps'] += 1
@@ -3908,7 +3973,12 @@ class PersonaEngine:
             generated = self._call('persona_generate', payload, outputs)
             import time
             check_deadline = getattr(self.gateway,'monotonic',time.monotonic)() + MAX_CHECK_STAGE_SECONDS
-            changes, handwritten_audit = self._review_handwritten(material,outputs,deadline=check_deadline)
+            # The review shares the check deadline: estimate the check windows that follow it.
+            _, planned, _ = _deterministic(generated, editable, previous)
+            following = len(_check_batches(material['locked_sentences']
+                                           + _assemble_handwritten(planned, material, previous))) + 1
+            changes, handwritten_audit = self._review_handwritten(material, outputs, deadline=check_deadline,
+                                                                  following_windows=following)
             material['handwritten_changes'] = changes
             _, generated_sentences, checked = _deterministic(generated, editable, previous)
             # An empty extension is valid: the intact template may be the entire candidate.
