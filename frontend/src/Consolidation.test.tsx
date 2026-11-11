@@ -172,6 +172,130 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
+const autoItem = {
+  phase: "consolidation",
+  item_key: "7",
+  memory_id: 8,
+  object_id: 8,
+  outcome: "auto_conflict",
+  reason: null,
+  created_at: stamp,
+  details: {
+    auto_resolution: "auto_v1",
+    relation: "supersedes",
+    report: "本人明确更正",
+    source_excerpts: excerpts,
+    undo: { expected_revision: 3, undone_at: null },
+  },
+};
+
+function autoReport(items: any[]) {
+  return {
+    id: 5,
+    state: "completed",
+    phase: 8,
+    trigger: "manual",
+    created_at: stamp,
+    finished_at: stamp,
+    timezone: "Asia/Shanghai",
+    summary: { checked: { count: 0, by_phase: {} }, skipped: { count: 0, reasons: {} } },
+    consolidation: {
+      settings: { max_calls: 4, resolution: "auto_v1" },
+      deferred: 0,
+      skip_reason: null,
+    },
+    items,
+  };
+}
+
+function stubAutoFetch(items: any[], status = 200) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, init?: RequestInit) => {
+      const method = init?.method || "GET",
+        body = JSON.parse(String(init?.body || "{}"));
+      requests.push({ url, method, body, headers: init?.headers });
+      if (url === "/admin/api/maintenance/5/consolidation/7/undo")
+        return status === 200
+          ? response(autoReport(items))
+          : response(
+              { error: { code: "revision_conflict", message: "记忆已被修改" } },
+              409,
+            );
+      if (url === "/admin/api/maintenance/5")
+        return response(autoReport(items));
+      throw new Error(`Unexpected route: ${url}`);
+    }),
+  );
+}
+
+test("自主处理项显示结果和撤销入口，撤销带修订号", async () => {
+  stubAutoFetch([autoItem]);
+  render(
+    <MaintenanceReportDialog id={5} close={vi.fn()} openMemory={vi.fn()} />,
+  );
+  const section = await screen.findByRole("region", { name: "自主处理结果" });
+  expect(within(section).getByText("本人已更正，旧记忆进入遗忘")).toBeVisible();
+  expect(within(section).getByText("本人明确更正")).toBeVisible();
+  expect(screen.getByText("处理方式：自主处理")).toBeInTheDocument();
+  await userEvent.click(
+    within(section).getByRole("button", { name: "撤销此次处理" }),
+  );
+  await waitFor(() =>
+    expect(
+      requests.some(
+        (r) =>
+          r.url.endsWith("/consolidation/7/undo") &&
+          r.method === "POST" &&
+          r.body.expected_revision === 3,
+      ),
+    ).toBe(true),
+  );
+});
+
+test("撤销发生冲突时显示错误并保留撤销入口", async () => {
+  stubAutoFetch([autoItem], 409);
+  render(
+    <MaintenanceReportDialog id={5} close={vi.fn()} openMemory={vi.fn()} />,
+  );
+  const button = await screen.findByRole("button", { name: "撤销此次处理" });
+  await userEvent.click(button);
+  expect(await screen.findByText(/记忆已被修改/)).toBeVisible();
+  expect(screen.getByRole("button", { name: "撤销此次处理" })).toBeEnabled();
+});
+
+test("已撤销的自主处理项不再提供撤销，受保护项没有撤销入口", async () => {
+  stubAutoFetch([
+    {
+      ...autoItem,
+      details: {
+        ...autoItem.details,
+        undo: { expected_revision: 3, undone_at: stamp },
+      },
+    },
+    {
+      ...autoItem,
+      item_key: "8",
+      outcome: "protected",
+      details: {
+        auto_resolution: "auto_v1",
+        report: "人工编辑或置顶的记忆不自动处理。",
+        source_excerpts: excerpts,
+        undo: null,
+      },
+    },
+  ]);
+  render(
+    <MaintenanceReportDialog id={5} close={vi.fn()} openMemory={vi.fn()} />,
+  );
+  await screen.findByRole("region", { name: "自主处理结果" });
+  expect(
+    screen.queryByRole("button", { name: "撤销此次处理" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByText(/已撤销/)).toBeVisible();
+  expect(screen.getByText("人工编辑或置顶的记忆，未自动处理")).toBeVisible();
+});
+
 test("整理报告区分合并和模型建议，显示来源、persona 差异、目标复核与已知用量", async () => {
   const openMemory = vi.fn();
   render(

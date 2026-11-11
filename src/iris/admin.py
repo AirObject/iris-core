@@ -866,6 +866,14 @@ def install_admin(app):
     def maintenance_report(run_id: int):
         return admin_data.maintenance_redactions(app.state.store, app.state.scheduler.lifecycle.report(run_id))
 
+    @router.post("/maintenance/{run_id}/consolidation/{work_id}/undo")
+    def undo_consolidation_action(run_id: int, work_id: int, payload: Revision):
+        from .api import RevisionConflict
+        from .consolidation import undo_auto_action
+        if not undo_auto_action(app.state.store, run_id, work_id, payload.expected_revision):
+            raise RevisionConflict()
+        return admin_data.maintenance_redactions(app.state.store, app.state.scheduler.lifecycle.report(run_id))
+
     @router.post("/maintenance", status_code=202)
     def maintain(payload: Input):
         return app.state.scheduler.request_maintenance()

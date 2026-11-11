@@ -383,8 +383,11 @@ class Maintenance:
                 if memory["retention"] >= config["restore_threshold"]:
                     # A changed H still takes effect; never decay or advance the
                     # three-visit counter while this item starts out forgotten.
-                    adjust_retention(self.store, mid, current=executed_at, settings=config, _conn=conn)
-                    return "restored", None, {"before": memory["retention"], "after": memory["retention"]}
+                    result = adjust_retention(self.store, mid, current=executed_at, settings=config, _conn=conn)
+                    if result is not None and result["lifecycle"] == "active":
+                        return "restored", None, {"before": memory["retention"], "after": memory["retention"]}
+                    # A superseded memory stays forgotten until an administrator restores it.
+                    return "skipped", "superseded", {}
                 return "skipped", "forgotten", {}
             amount = 0
             if memory["importance"] < 40:

@@ -208,7 +208,7 @@ def test_historical_freeze_preserves_prompts_and_new_policy_disables_old_paths()
         if name.startswith('src/iris/prompts/'):
             assert hashlib.sha256((runner.ROOT/name).read_bytes()).hexdigest()==expected
     assert DEFAULTS['method']=='broad' and DEFAULTS['resolution']=='report_only_v1'
-    assert RESOLUTIONS==('report_only_v1',)
+    assert RESOLUTIONS==('report_only_v1','auto_v1')
 
 
 @pytest.fixture

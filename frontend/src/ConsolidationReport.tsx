@@ -5,10 +5,13 @@ import {
 } from "./person-summary-labels";
 import { MergeDetailReview, mergeReviewLabel } from "./MergeDetailReview";
 import { useState } from "react";
-import { Badge, Pagination, RoleTime, seconds } from "./ui";
+import { api, errorText, json } from "./api";
+import { Badge, Notice, Pagination, RoleTime, seconds } from "./ui";
 import { PersonaChecks } from "./PersonaDetails";
 import { personaDegrees } from "./persona-labels";
 import {
+  autoRelations,
+  autoVerdicts,
   consolidationBudgets,
   consolidationSteps,
   consolidationReason,
@@ -82,14 +85,73 @@ export function Excerpts({
   );
 }
 
+function autoLabel(item: MaintenanceItem) {
+  const d = item.details;
+  if (item.outcome === "auto_conflict")
+    return autoRelations[d.relation || ""] || d.relation;
+  if (item.outcome === "auto_dependency")
+    return autoVerdicts[d.verdict || ""] || d.verdict;
+  if (item.outcome === "protected") return consolidationReason("protected");
+  return `未合并：${consolidationReason(item.reason || "")}`;
+}
+
+function UndoAction({
+  runId,
+  item,
+  refresh,
+}: {
+  runId: number;
+  item: MaintenanceItem;
+  refresh?: () => void;
+}) {
+  const undo = item.details.undo;
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  if (!undo) return null;
+  if (undo.undone_at)
+    return (
+      <p className="muted">
+        已撤销 · <RoleTime value={undo.undone_at} />
+      </p>
+    );
+  async function submit() {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api(
+        `/maintenance/${runId}/consolidation/${item.item_key}/undo`,
+        json("POST", { expected_revision: undo!.expected_revision }),
+      );
+      refresh?.();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="actions">
+      <button className="text-button" disabled={busy} onClick={submit}>
+        撤销此次处理
+      </button>
+      {error && <Notice error>{error}</Notice>}
+    </div>
+  );
+}
+
 function ModelItems({
   name,
   items,
   openMemory,
+  runId,
+  refresh,
 }: {
   name: string;
   items: MaintenanceItem[];
   openMemory: (id: number) => void;
+  runId: number;
+  refresh?: () => void;
 }) {
   const [offset, setOffset] = useState(0);
   return (
@@ -139,6 +201,20 @@ function ModelItems({
                     "无消息来源"}{" "}
                   · 重定向派生依据 {d.redirected_dependencies ?? 0} 处
                 </p>
+              </>
+            ) : d.auto_resolution === "auto_v1" ? (
+              <>
+                <Badge tone="warning">自主处理</Badge>{" "}
+                <span>{autoLabel(item)}</span>
+                {d.check_failure && (
+                  <p className="muted">核对未通过：{d.check_failure}</p>
+                )}
+                {d.suggestions?.map((s) => (
+                  <p key={s.id}>
+                    <Badge>{suggestionKinds[s.kind] || s.kind}</Badge>{" "}
+                    <Badge>{suggestionStatuses[s.review_status]}</Badge> {s.text}
+                  </p>
+                ))}
               </>
             ) : (
               <>
@@ -233,6 +309,7 @@ function ModelItems({
                 })}
               </details>
             )}
+            <UndoAction runId={runId} item={item} refresh={refresh} />
             <Excerpts value={d.source_excerpts} openMemory={openMemory} />
             <small>
               <RoleTime value={item.created_at} />
@@ -413,9 +490,11 @@ function StepBudgetReport({ data }: { data: MaintenanceReport }) {
 export function ConsolidationReportSections({
   data,
   openMemory,
+  refresh,
 }: {
   data: MaintenanceReport;
   openMemory: (id: number) => void;
+  refresh?: () => void;
 }) {
   const calls = data.summary.model_calls,
     p = data.persona;
@@ -450,6 +529,12 @@ export function ConsolidationReportSections({
                 {label}：{data.consolidation?.settings[key] ?? "未记录"}
               </p>
             ))}
+            <p>
+              处理方式：
+              {data.consolidation?.settings.resolution === "auto_v1"
+                ? "自主处理"
+                : "只报告"}
+            </p>
             {consolidationSwitches.map(([key, label]) => (
               <p key={key}>
                 {label}：
@@ -472,6 +557,19 @@ export function ConsolidationReportSections({
             name="记忆合并"
             items={data.items.filter((i) => i.outcome === "merged")}
             openMemory={openMemory}
+            runId={data.id}
+            refresh={refresh}
+          />
+          <ModelItems
+            name="自主处理结果"
+            items={data.items.filter(
+              (i) =>
+                i.details.auto_resolution === "auto_v1" &&
+                i.outcome !== "merged",
+            )}
+            openMemory={openMemory}
+            runId={data.id}
+            refresh={refresh}
           />
           <ModelItems
             name="整理建议（模型建议）"
@@ -479,6 +577,7 @@ export function ConsolidationReportSections({
               ["conflicts", "dependencies_reviewed"].includes(i.outcome),
             )}
             openMemory={openMemory}
+            runId={data.id}
           />
         </>
       )}

@@ -901,10 +901,26 @@ def entry_profile_attempt(store, entry_id, attempt_id):
         return _incremental_attempt(conn,row)
 
 
+def _project_auto_items(conn, report):
+    """Automatic items list their annotations and undo entry, never model-suggestion labels."""
+    from .consolidation import suggestion_review
+    for item in report.get('items', []):
+        details = item.get('details') or {}
+        if item.get('phase') != 'consolidation' or details.get('auto_resolution') != 'auto_v1':
+            continue
+        details['suggestions'] = [{'id': row['id'], 'memory_id': row['memory_id'], 'kind': row['kind'], 'text': row['text'],
+                                   **suggestion_review(row)}
+                                  for row in conn.execute('SELECT * FROM consolidation_annotations WHERE run_id=? AND work_id=? ORDER BY id',
+                                                          (report['id'], int(item['item_key'])))]
+        undo = details.get('undo')
+        details['undo'] = None if not undo else {'expected_revision': undo['expected_revision'], 'undone_at': undo.get('undone_at')}
+
+
 def maintenance_redactions(store, report):
     """Attach administrative redaction diagnostics to an existing run report."""
     result = dict(report)
     with store.read() as conn:
+        _project_auto_items(conn, report)
         result['items'] = [_redaction(conn,'maintenance_items',item,
             row_id=json.dumps([report['id'],item['phase'],item['item_key']],ensure_ascii=False,separators=(',',':')))
             for item in report.get('items',[])]

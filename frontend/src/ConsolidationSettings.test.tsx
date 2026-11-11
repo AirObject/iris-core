@@ -133,6 +133,41 @@ test("整理设置保存时间、调用预算与所有开关，并显示操作�
   expect(within(section).getByText(/只影响之后接受的新运行/)).toBeVisible();
 });
 
+test("处理方式可切换为自主处理，也可退回只报告", async () => {
+  render(<SettingsPage />);
+  const section = await screen.findByRole("region", { name: "梦境整理设置" });
+  const select = within(section).getByLabelText(
+    "矛盾、依赖与互有细节合并的处理方式",
+  );
+  expect(select).toHaveValue("report_only_v1");
+  expect(within(section).getByText(/只报告：/)).toBeVisible();
+  fireEvent.change(select, { target: { value: "auto_v1" } });
+  expect(within(section).getByText(/每项都有操作记录和撤销入口/)).toBeVisible();
+  await userEvent.click(
+    within(section).getByRole("button", { name: "保存梦境整理设置" }),
+  );
+  await waitFor(() =>
+    expect(
+      requests.find(
+        (r) => r.url.endsWith("/consolidation") && r.init?.method === "PATCH",
+      )?.body,
+    ).toEqual({ resolution: "auto_v1" }),
+  );
+  await waitFor(() => expect(settings.consolidation.resolution).toBe("auto_v1"));
+  fireEvent.change(
+    await within(section).findByLabelText(
+      "矛盾、依赖与互有细节合并的处理方式",
+    ),
+    { target: { value: "report_only_v1" } },
+  );
+  await userEvent.click(
+    within(section).getByRole("button", { name: "保存梦境整理设置" }),
+  );
+  await waitFor(() =>
+    expect(settings.consolidation.resolution).toBe("report_only_v1"),
+  );
+});
+
 test.each(["", "-1", "1001", "1.5"])(
   "整理预算 %s 被阻止，未发送请求",
   async (input) => {
