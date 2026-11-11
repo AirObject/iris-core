@@ -83,3 +83,34 @@ def test_host_projection_is_unchanged(client, store):
     authorize_host(client)
     item = client.get('/api/v1/goals?state=completed').json()['items'][0]
     assert item['id'] == gid and 'auto_closed' not in item and 'auto_review' not in item
+
+
+def test_undo_auto_merge_endpoint_lists_state_and_requires_csrf(client, store):
+    from goal_auto_helpers import CREATED, goal
+    first = goal(store, '周五前整理操作手册', people=(), created='2026-11-02T09:00:00+00:00')
+    second = goal(store, '周五前整理操作说明手册', people=(), created='2026-11-02T10:00:00+00:00')
+    with store.write() as conn:
+        conn.execute("INSERT INTO goal_duplicates(goal_a,goal_b,status,created_at) VALUES(?,?,'possible',?)",
+                     (first, second, CREATED))
+    store.set_setting('goal_dedup_judge', {'enabled': True, 'budget_seconds': 1})
+
+    class Same(Reviewer):
+        def goal_dedup_judge(self, messages, ids, *, budget_seconds):
+            return {'decisions': {i: 'same' for i in ids}}
+    enable(store, review=False, duplicates=True)
+    run_goals(store, Same(store))
+    action, = client.get('/admin/api/goal-auto-actions').json()['items']
+    assert action['type'] == 'duplicate' and action['outcome'] == 'merged' and action['undoable'] is True
+    assert action['source_id'] == second and 'merge_record_json' not in action
+    detail = client.get(f'/admin/api/goals/{first}').json()
+    assert detail['auto_review']['duplicate_judgments'][0]['undoable'] is True
+    path = f"/admin/api/goal-duplicate-judgments/{action['id']}/undo"
+    assert client.post(path, json={'expected_revision': action['target_revision']},
+                       headers={'X-Iris-CSRF': ''}).status_code == 403
+    assert client.post(path, json={'expected_revision': action['target_revision'] - 1}).status_code == 409
+    response = client.post(path, json={'expected_revision': action['target_revision']})
+    assert response.status_code == 200, response.text
+    assert response.json()['id'] == first and row(store, second)['merged_into'] is None
+    action, = client.get('/admin/api/goal-auto-actions').json()['items']
+    assert action['undoable'] is False and action['undone_at']
+    assert client.post(path, json={'expected_revision': row(store, first)['revision']}).status_code == 400

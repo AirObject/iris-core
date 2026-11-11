@@ -70,6 +70,22 @@ beforeEach(() => {
           reason: "auto_different",
           target_id: null,
           created_at: stamp,
+          undoable: false,
+        },
+        {
+          id: 4,
+          goal_a: 10,
+          goal_b: 13,
+          run_id: 3,
+          method: "D6",
+          verdict: "same",
+          outcome: "merged",
+          reason: "auto_merged",
+          target_id: 10,
+          created_at: stamp,
+          undoable: true,
+          source_id: 13,
+          target_revision: 5,
         },
       ],
     },
@@ -101,6 +117,10 @@ beforeEach(() => {
       reason: "auto_merged",
       target_id: 20,
       created_at: stamp,
+      undoable: true,
+      undone_at: null,
+      source_id: 21,
+      target_revision: 4,
       goals: [
         {
           id: 20,
@@ -126,6 +146,14 @@ beforeEach(() => {
     vi.fn(async (url: string, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body || "{}"));
       requests.push({ url, init, body });
+      if (url.endsWith("/undo")) {
+        if (conflict)
+          return response(
+            { error: { code: "revision_conflict", message: "目标已变化" } },
+            409,
+          );
+        return response(detail);
+      }
       if (url.endsWith("/reopen")) {
         if (conflict)
           return response(
@@ -322,5 +350,119 @@ test("维护报告列出自动复核结果和依据，可直接重开", async ()
   expect(await within(section).findByText("已重开")).toBeVisible();
   expect(requests.find((r) => r.url.endsWith("/reopen"))!.body).toEqual({
     expected_revision: 5,
+  });
+});
+
+test("自动合并可在目标页列表撤销，冲突时提示，成功后刷新", async () => {
+  const onChange = vi.fn();
+  render(<GoalAutoActions openGoal={vi.fn()} onChange={onChange} />);
+  await userEvent.click(
+    screen.getByRole("button", { name: "每日维护自动处理的目标" }),
+  );
+  await userEvent.click(
+    await screen.findByRole("button", { name: "撤销合并 #3" }),
+  );
+  expect(screen.getByText(/撤销后这两条目标不再被自动合并/)).toBeVisible();
+  conflict = true;
+  await userEvent.click(screen.getByRole("button", { name: "确认撤销合并" }));
+  expect(
+    await screen.findByText(/保留目标在合并后已变化，不能撤销/),
+  ).toBeVisible();
+  conflict = false;
+  await userEvent.click(screen.getByRole("button", { name: "确认撤销合并" }));
+  expect(
+    await screen.findByText("已撤销目标 #20 与 #21 的自动合并"),
+  ).toBeVisible();
+  const request = requests.filter((r) => r.url.endsWith("/undo")).at(-1)!;
+  expect(request.url).toBe("/admin/api/goal-duplicate-judgments/3/undo");
+  expect(request.body).toEqual({ expected_revision: 4 });
+  expect((request.init?.headers as any)["X-Iris-CSRF"]).toBe(
+    "goal-auto-test-csrf",
+  );
+  expect(onChange).toHaveBeenCalled();
+});
+
+test("目标详情的可能重复补判记录提供撤销合并，只对可撤销项显示", async () => {
+  render(
+    <GoalDetails
+      id={10}
+      catalog={goalCatalog}
+      openMemory={vi.fn()}
+      openGoal={vi.fn()}
+      onBack={vi.fn()}
+      onChange={vi.fn()}
+    />,
+  );
+  const panel = await screen.findByRole("region", { name: "每日维护自动复核" });
+  await userEvent.click(within(panel).getByText(/可能重复补判/));
+  expect(
+    within(panel).queryByRole("button", { name: "撤销合并 #2" }),
+  ).not.toBeInTheDocument();
+  await userEvent.click(
+    within(panel).getByRole("button", { name: "撤销合并 #4" }),
+  );
+  await userEvent.click(screen.getByRole("button", { name: "确认撤销合并" }));
+  expect(await screen.findByText("已撤销自动合并")).toBeVisible();
+  const request = requests.find((r) => r.url.endsWith("/undo"))!;
+  expect(request.url).toBe("/admin/api/goal-duplicate-judgments/4/undo");
+  expect(request.body).toEqual({ expected_revision: 5 });
+});
+
+test("维护报告的自动合并项可直接撤销，预算用尽单列", async () => {
+  const report: MaintenanceReport = {
+    id: 4,
+    trigger: "scheduled",
+    state: "completed",
+    phase: 10,
+    created_at: stamp,
+    finished_at: stamp,
+    timezone: "Asia/Shanghai",
+    summary: { goal_duplicates_merged: { count: 1, object_ids: [20] } },
+    goal_auto_review: { enabled: true, calls: 100, budget_exhausted: 3 },
+    goal_duplicate_review: { enabled: true, calls: 1, merged: 1 },
+    items: [
+      {
+        phase: "goals",
+        item_key: "duplicate:20:21",
+        memory_id: null,
+        object_id: 20,
+        outcome: "goal_duplicates_merged",
+        reason: "auto_merged",
+        details: {
+          kind: "duplicate",
+          goal_ids: [20, 21],
+          target_id: 20,
+          judgment_id: 3,
+          target_revision_after: 4,
+        },
+        created_at: stamp,
+      },
+    ],
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, init?: RequestInit) => {
+      requests.push({
+        url,
+        init,
+        body: JSON.parse(String(init?.body || "{}")),
+      });
+      if (url === "/admin/api/maintenance/4") return response(report);
+      if (url === "/admin/api/goal-duplicate-judgments/3/undo")
+        return response(detail);
+      throw new Error(`Unexpected route: ${url}`);
+    }),
+  );
+  render(
+    <MaintenanceReportDialog id={4} close={vi.fn()} openMemory={vi.fn()} />,
+  );
+  const section = await screen.findByRole("region", { name: "目标自动复核" });
+  expect(within(section).getByText(/模型调用 100 · 预算用尽 3/)).toBeVisible();
+  await userEvent.click(
+    within(section).getByRole("button", { name: "撤销合并 #3" }),
+  );
+  expect(await within(section).findByText("已撤销合并")).toBeVisible();
+  expect(requests.find((r) => r.url.endsWith("/undo"))!.body).toEqual({
+    expected_revision: 4,
   });
 });

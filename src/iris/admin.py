@@ -1134,6 +1134,12 @@ def install_admin(app):
         app.state.scheduler.wake()
         return result
 
+    @router.post("/goal-duplicate-judgments/{judgment_id}/undo")
+    def undo_goal_auto_merge(judgment_id: GoalId, payload: GoalReopen):
+        result = app.state.goals.undo_auto_merge(judgment_id, **payload.model_dump(), actor="admin")
+        app.state.scheduler.wake()
+        return result
+
     @router.post("/goals/{goal_id}/reopen")
     def reopen_goal(goal_id: GoalId, payload: GoalReopen):
         result = app.state.goals.reopen(goal_id, **payload.model_dump(), actor="admin")

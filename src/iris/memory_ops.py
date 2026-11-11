@@ -292,6 +292,11 @@ def message_references(conn, message_id):
         ("learning_request", "SELECT 1 FROM entries WHERE learn_requested_through=? LIMIT 1"),
     )
     reasons = [name for name, sql in checks if conn.execute(sql, (message_id,)).fetchone()]
+    # Evidence behind an automatic goal closure (G1) stays while its review record exists.
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE name='goal_auto_review_evidence'").fetchone() and conn.execute(
+            """SELECT 1 FROM goal_auto_review_evidence ev JOIN goal_auto_reviews r ON r.id=ev.review_id
+            JOIN goals g ON g.id=r.goal_id WHERE ev.message_id=? LIMIT 1""", (message_id,)).fetchone():
+        reasons.append('goal_auto_evidence')
     if conn.execute("SELECT 1 FROM sqlite_master WHERE name='entry_profile_incremental_work'").fetchone() and conn.execute(
             """SELECT 1 FROM purge_record_refs r JOIN entry_profile_incremental_work w ON CAST(w.id AS TEXT)=r.row_id
             WHERE r.table_name='entry_profile_incremental_work' AND r.ref_kind='message' AND r.ref_id=?

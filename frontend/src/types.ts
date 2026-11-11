@@ -258,6 +258,11 @@ export type GoalDuplicateJudgment = {
   reason: string;
   target_id: number | null;
   created_at: string;
+  undone_at?: string | null;
+  undone_by?: string | null;
+  undoable?: boolean;
+  source_id?: number | null;
+  target_revision?: number | null;
 };
 export type GoalAutoReview = {
   reviews: GoalAutoReviewRecord[];
@@ -484,6 +489,8 @@ export type MaintenanceItem = {
     goal_ids?: number[];
     target_id?: number | null;
     merged_id?: number | null;
+    judgment_id?: number;
+    target_revision_after?: number | null;
   };
   created_at: string;
 };

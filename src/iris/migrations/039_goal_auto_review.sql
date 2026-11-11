@@ -26,6 +26,14 @@ CREATE TABLE goal_auto_reviews (
 );
 CREATE INDEX goal_auto_reviews_goal ON goal_auto_reviews(goal_id,id);
 CREATE INDEX goal_auto_reviews_closed ON goal_auto_reviews(outcome,id) WHERE outcome='closed';
+-- Qualifying evidence behind an automatic closure. Message retention keeps
+-- these messages while the review row exists (memory_ops.message_references).
+CREATE TABLE goal_auto_review_evidence (
+    review_id INTEGER NOT NULL REFERENCES goal_auto_reviews(id),
+    message_id INTEGER NOT NULL,
+    PRIMARY KEY(review_id,message_id)
+);
+CREATE INDEX goal_auto_review_evidence_message ON goal_auto_review_evidence(message_id);
 
 -- An administrator reopen sticks: afterwards only messages newer than this
 -- watermark can serve as candidates, so the same evidence cannot re-close it.
@@ -45,6 +53,10 @@ CREATE TABLE goal_duplicate_judgments (
     outcome TEXT NOT NULL CHECK(outcome IN ('merged','separated','kept')),
     reason TEXT NOT NULL,
     target_id INTEGER,
+    -- IDs and field values needed to undo an automatic merge; never prose.
+    merge_record_json TEXT CHECK(merge_record_json IS NULL OR json_valid(merge_record_json)),
+    undone_at TEXT,
+    undone_by TEXT,
     created_at TEXT NOT NULL,
     CHECK(goal_a<goal_b),
     UNIQUE(goal_a,goal_b,fingerprint)

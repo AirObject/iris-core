@@ -482,7 +482,8 @@ function GoalAutoReport({
 }) {
   const [busy, setBusy] = useState<number | null>(null),
     [error, setError] = useState(""),
-    [done, setDone] = useState<number[]>([]);
+    [done, setDone] = useState<number[]>([]),
+    [undone, setUndone] = useState<number[]>([]);
   const sections = [
     ["目标自动复核", data.goal_auto_review],
     ["可能重复补判", data.goal_duplicate_review],
@@ -509,6 +510,27 @@ function GoalAutoReport({
       setBusy(null);
     }
   }
+  async function undo(judgment: number, revision: number) {
+    if (busy !== null) return;
+    setBusy(judgment);
+    setError("");
+    try {
+      await api(
+        `/goal-duplicate-judgments/${judgment}/undo`,
+        json("POST", { expected_revision: revision }),
+      );
+      setUndone((d) => [...d, judgment]);
+      refresh();
+    } catch (e) {
+      setError(
+        e instanceof ApiError && e.status === 409
+          ? "保留目标在合并后已变化，不能撤销；请到目标页核对。"
+          : errorText(e),
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
   return (
     <section className="detail-section" aria-label="目标自动复核">
       <h3>
@@ -528,7 +550,7 @@ function GoalAutoReport({
                 ["kept", "保留标记"],
                 ["no_candidates", "无候选消息"],
                 ["already_judged", "未变化"],
-                ["deferred", "留到下次"],
+                ["budget_exhausted", "预算用尽"],
                 ["failed", "失败"],
               ]
                 .filter(([key]) => typeof summary[key] === "number")
@@ -568,6 +590,24 @@ function GoalAutoReport({
               >
                 查看目标 #{goalId}
               </a>
+              {i.outcome === "goal_duplicates_merged" &&
+                i.details.judgment_id != null &&
+                i.details.target_revision_after != null &&
+                (undone.includes(i.details.judgment_id) ? (
+                  <span>已撤销合并</span>
+                ) : (
+                  <button
+                    disabled={busy !== null}
+                    onClick={() =>
+                      void undo(
+                        i.details.judgment_id!,
+                        i.details.target_revision_after!,
+                      )
+                    }
+                  >
+                    撤销合并 #{i.details.judgment_id}
+                  </button>
+                ))}
               {closed &&
                 i.details.revision_after != null &&
                 (done.includes(i.object_id) ? (

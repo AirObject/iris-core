@@ -8,6 +8,7 @@ import type {
   GoalAutoAction,
   GoalBasisAnnotation,
   GoalDetail,
+  GoalDuplicateJudgment,
   GoalEvidenceMessage,
   Page,
 } from "./types";
@@ -151,6 +152,44 @@ const outcomeNames: Record<string, string> = {
   separated: "已撤销可能重复",
   kept: "保留可能重复",
 };
+export function UndoMergeConfirm({
+  judgment,
+  busy,
+  error,
+  confirm,
+  cancel,
+}: {
+  judgment: Pick<GoalDuplicateJudgment, "goal_a" | "goal_b" | "target_id">;
+  busy: boolean;
+  error?: string;
+  confirm: () => void;
+  cancel: () => void;
+}) {
+  const source =
+    judgment.target_id === judgment.goal_a ? judgment.goal_b : judgment.goal_a;
+  return (
+    <Dialog title="撤销自动合并" closeDisabled={busy} onClose={cancel}>
+      {error && <Notice error>{error}</Notice>}
+      <div className="goal-confirm">
+        <p>
+          恢复目标 #{source}，保留目标 #{judgment.target_id}
+          的截止时间、提前量、来源和提醒退回合并前的状态。
+        </p>
+        <p>
+          保留目标在合并后被修改过时不能撤销。撤销后这两条目标不再被自动合并。
+        </p>
+        <div className="actions">
+          <button className="primary" disabled={busy} onClick={confirm}>
+            确认撤销合并
+          </button>
+          <button className="secondary" disabled={busy} onClick={cancel}>
+            取消
+          </button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
 export function GoalEvidenceList({
   messages,
 }: {
@@ -184,11 +223,13 @@ export function GoalAutoReviewPanel({
   goal,
   locked,
   reopen,
+  undoMerge,
   openGoal,
 }: {
   goal: GoalDetail;
   locked: boolean;
   reopen: () => void;
+  undoMerge: (judgment: GoalDuplicateJudgment) => void;
   openGoal: (id: number) => void;
 }) {
   const auto = goal.auto_review;
@@ -244,9 +285,20 @@ export function GoalAutoReviewPanel({
                   <RoleTime value={j.created_at} /> · 与目标 #{other} ·{" "}
                   {outcomeNames[j.outcome]} · {goalAutoReason(j.reason)}
                 </p>
-                <button className="text-button" onClick={() => openGoal(other)}>
-                  查看目标 #{other}
-                </button>
+                <div className="actions">
+                  <button
+                    className="text-button"
+                    onClick={() => openGoal(other)}
+                  >
+                    查看目标 #{other}
+                  </button>
+                  {j.undoable && (
+                    <button disabled={locked} onClick={() => undoMerge(j)}>
+                      撤销合并 #{j.id}
+                    </button>
+                  )}
+                  {j.undone_at && <span className="muted">已撤销</span>}
+                </div>
               </div>
             );
           })}
@@ -306,6 +358,10 @@ export function GoalAutoActions({
   const [target, setTarget] = useState<
     Extract<GoalAutoAction, { type: "review" }>["goal"] | null
   >(null);
+  const [merge, setMerge] = useState<Extract<
+    GoalAutoAction,
+    { type: "duplicate" }
+  > | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
@@ -326,6 +382,29 @@ export function GoalAutoActions({
       setError(
         e instanceof ApiError && e.status === 409
           ? "目标已变化，请刷新后重新核对。"
+          : errorText(e),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function undo() {
+    if (!merge || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api<Goal>(
+        `/goal-duplicate-judgments/${merge.id}/undo`,
+        json("POST", { expected_revision: merge.target_revision }),
+      );
+      setNotice(`已撤销目标 #${merge.goal_a} 与 #${merge.goal_b} 的自动合并`);
+      setMerge(null);
+      list.refresh();
+      onChange();
+    } catch (e) {
+      setError(
+        e instanceof ApiError && e.status === 409
+          ? "保留目标在合并后已变化，不能撤销；请到目标页核对。"
           : errorText(e),
       );
     } finally {
@@ -407,6 +486,17 @@ export function GoalAutoActions({
                       查看目标 #{g.id}
                     </button>
                   ))}
+                  {item.undoable && (
+                    <button
+                      onClick={() => {
+                        setError("");
+                        setMerge(item);
+                      }}
+                    >
+                      撤销合并 #{item.id}
+                    </button>
+                  )}
+                  {item.undone_at && <span className="muted">已撤销</span>}
                 </div>
               </article>
             ),
@@ -420,6 +510,15 @@ export function GoalAutoActions({
             />
           )}
         </>
+      )}
+      {merge && (
+        <UndoMergeConfirm
+          judgment={merge}
+          busy={busy}
+          error={error}
+          confirm={() => void undo()}
+          cancel={() => setMerge(null)}
+        />
       )}
       {target && (
         <ReopenConfirm

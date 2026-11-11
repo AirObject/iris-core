@@ -120,6 +120,7 @@ const revisionActions: Record<string, string> = {
   dedup: "目标去重判断",
   auto_review: "每日维护自动复核",
   reopen: "重开目标",
+  merge_undo: "撤销自动合并",
 };
 const revisionReasons: Record<string, string> = {
   "goal created": "创建目标",
@@ -135,6 +136,8 @@ const revisionReasons: Record<string, string> = {
   auto_merged: "每日维护补判为重复并合并",
   auto_different: "每日维护补判为不重复",
   admin_not_merged: "补判为重复，含管理员目标未合并",
+  host_scope_not_merged: "补判时宿主目标的范围不含对方，未合并",
+  "automatic merge undone by administrator": "管理员撤销自动合并",
 };
 const relationStates: Record<string, string> = {
   possible: "可能重复",

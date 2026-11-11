@@ -94,15 +94,67 @@ def test_unparseable_answer_after_repair_keeps_goal_open(store):
     _kept(store, gid, 'invalid_output')
 
 
-def test_rule_two_time_failure_when_only_a_source_before_creation_is_cited(store):
+def test_own_source_is_never_evidence_but_a_later_candidate_alongside_it_is(store):
     gid, source, done = basic(store)
     enable(store)
     run_goals(store, Reviewer(store, cite('completed', lambda payload: [payload['sources'][0]['id']])))
-    _kept(store, gid, 'evidence_not_after_creation')
-    # Passing direction: one later qualifying message among the evidence suffices.
+    _kept(store, gid, 'evidence_only_sources')
+    # Passing direction: one later qualifying candidate among the evidence suffices.
     message(store, '还有个事', at='2026-11-02T20:00:00+08:00')
     run_goals(store, Reviewer(store, cite('completed', lambda payload: [source, done])))
     assert row(store, gid)['state'] == 'completed'
+    record = reviews(store, gid)[-1]
+    with store.read() as conn:
+        protected = [r[0] for r in conn.execute('SELECT message_id FROM goal_auto_review_evidence WHERE review_id=?',
+                                                (record['id'],))]
+    assert protected == [done]
+
+
+def test_sources_inherited_by_a_merge_are_not_evidence_even_when_later(store):
+    from iris.goals import _merge, _row
+    subject(store, 'p1', '程栗')
+    source = message(store, '能帮我取一下南门驿站的电热毯吗', at='2026-11-02T17:10:00+08:00')
+    gid = goal(store, '帮程栗取南门驿站的电热毯', sources=[source])
+    intent = message(store, '我明天自己去驿站把电热毯拿回来', at='2026-11-02T18:00:00+08:00')
+    later = goal(store, '帮程栗取南门驿站电热毯', sources=[intent], created='2026-11-02T10:05:00+00:00')
+    with store.write() as conn:
+        _merge(conn, _row(conn, gid), _row(conn, later), Clock()(), actor='admin', semantic=True)
+    assert row(store, later)['merged_into'] == gid
+    chat = message(store, '今天好冷', at='2026-11-02T19:00:00+08:00')
+    enable(store)
+    reviewer = Reviewer(store, cite('completed', lambda payload: [intent]))
+    run_goals(store, reviewer)
+    payload = reviewer.calls[0]['payload']
+    assert intent in [m['id'] for m in payload['sources']] and intent not in [m['id'] for m in payload['messages']]
+    _kept(store, gid, 'evidence_only_sources')
+    done = message(store, '电热毯拿回来了，放餐桌上了', at='2026-11-02T20:00:00+08:00')
+    run_goals(store, Reviewer(store, cite('completed', lambda payload: [intent, done])))
+    assert row(store, gid)['state'] == 'completed' and chat
+
+
+def _apply(store, gid, material, evidence):
+    from iris.goals import apply_goal_review
+    with store.write() as conn:
+        return apply_goal_review(conn, Clock()(), material=material,
+                                 result={'decision': 'completed', 'evidence': evidence})
+
+
+def test_code_checks_reject_early_and_uninvolved_evidence_even_in_a_crafted_material(store):
+    """Selection already excludes these; the write-time checks must hold on their own."""
+    from iris.goals import auto_review_material
+    gid, source, done = basic(store)
+    early = message(store, '电热毯拿到了', at='2026-11-02T17:12:00+08:00')
+    proxy = message(store, '程栗的电热毯我替她拿了', sender='p2', at='2026-11-02T18:00:00+08:00')
+    with store.read() as conn:
+        material = auto_review_material(conn, gid, current=Clock()())
+    assert early not in material['candidate_ids'] and proxy not in material['candidate_ids']
+    for extra, reason in ((early, 'evidence_not_after_creation'), (proxy, 'evidence_sender_not_involved')):
+        crafted = {**material, 'message_ids': [*material['message_ids'], extra],
+                   'candidate_ids': [*material['candidate_ids'], extra], 'latest_message_id': extra + 1000}
+        assert _apply(store, gid, crafted, [extra])['reason'] == reason
+        assert row(store, gid)['state'] == 'open'
+    crafted = {**material, 'latest_message_id': material['latest_message_id'] + 2000}
+    assert _apply(store, gid, crafted, [done])['outcome'] == 'closed'
 
 
 def test_time_is_compared_as_instants_not_local_strings(store):
@@ -117,19 +169,19 @@ def test_time_is_compared_as_instants_not_local_strings(store):
     assert early not in [m['id'] for m in reviewer.calls[0]['payload']['messages']]
 
 
-def test_rule_two_sender_failure_and_pass(store):
+def test_uninvolved_sender_never_becomes_a_candidate(store):
     subject(store, 'p1', '程栗')
     subject(store, 'p2', '路人')
     gid = goal(store, people=('p1',))
     proxy = message(store, '程栗那个快递我替她拿了', sender='p2', at='2026-11-02T18:00:00+08:00')
-    with store.write() as conn:  # A later source (e.g. inherited) from someone not involved.
-        conn.execute('INSERT INTO goal_sources(goal_id,message_id) VALUES(?,?)', (gid, proxy))
     message(store, '今天好冷', at='2026-11-02T18:30:00+08:00')
     enable(store)
-    run_goals(store, Reviewer(store, cite('completed', lambda payload: [proxy])))
-    _kept(store, gid, 'evidence_sender_not_involved')
+    reviewer = Reviewer(store, cite('completed', lambda payload: [proxy]))
+    run_goals(store, reviewer)
+    assert proxy not in [m['id'] for m in reviewer.calls[0]['payload']['messages']]
+    _kept(store, gid, 'evidence_outside_material')
     own = message(store, '我自己拿到了', at='2026-11-02T19:00:00+08:00')
-    run_goals(store, Reviewer(store, cite('completed', lambda payload: [proxy, own])))
+    run_goals(store, Reviewer(store, cite('completed', lambda payload: [own])))
     assert row(store, gid)['state'] == 'completed'
 
 
@@ -432,3 +484,200 @@ def test_switch_turned_off_after_the_run_was_accepted_stops_calls(store):
     engine.run(rid)
     assert reviewer.calls == [] and row(store, gid)['state'] == 'open'
     assert engine.report(rid)['goal_auto_review'] == {'enabled': True, 'stopped': 'disabled'}
+
+
+def test_newest_qualified_messages_are_kept_when_priority_messages_fill_the_material(store):
+    subject(store, 'p1', '程栗')
+    gid = goal(store, '帮程栗取南门驿站的电热毯快递')
+    for minute in range(35):
+        message(store, f'电热毯快递的进展{minute}', at=f'2026-11-02T18:{minute:02d}:00+08:00')
+    retraction = message(store, '刚才说错了，还没弄完', entry_id='e2', at='2026-11-02T19:30:00+08:00')
+    enable(store)
+    reviewer = Reviewer(store, {'decision': 'open', 'evidence': [], 'reason': ''})
+    run_goals(store, reviewer)
+    picked = [m['id'] for m in reviewer.calls[0]['payload']['messages']]
+    assert len(picked) == 30 and retraction in picked
+    # A newer qualified message changes the fingerprint and is judged again.
+    run_goals(store, reviewer)
+    assert len(reviewer.calls) == 1
+    message(store, '这次真的弄完了', entry_id='e3', at='2026-11-02T20:00:00+08:00')
+    run_goals(store, reviewer)
+    assert len(reviewer.calls) == 2
+
+
+def test_priority_order_still_fills_beyond_the_newest_ten(store):
+    subject(store, 'p1', '程栗')
+    gid = goal(store, '帮程栗取南门驿站的电热毯快递')
+    keyword = message(store, '电热毯还在驿站', entry_id='e2', at='2026-11-02T17:20:00+08:00')
+    for minute in range(25):
+        message(store, f'闲聊{minute}', entry_id='e3', at=f'2026-11-02T18:{minute:02d}:00+08:00')
+    enable(store)
+    reviewer = Reviewer(store, {'decision': 'open', 'evidence': [], 'reason': ''})
+    run_goals(store, reviewer)
+    picked = [m['id'] for m in reviewer.calls[0]['payload']['messages']]
+    assert len(picked) == 26 and keyword in picked
+    assert gid
+
+
+def _gateway(store, clock, hits, *, limit_used):
+    import httpx
+    from iris.models import Gateway, ModelConfig
+    from iris.model_health import ModelHealth
+
+    def respond(request):
+        hits.append(request.url.path)
+        body = json.loads(request.content)
+        material = json.loads(body['messages'][-1]['content'])
+        if 'incoming' in material:
+            content = json.dumps({'decisions': [{'id': c['id'], 'verdict': 'same'} for c in material['candidates']]})
+        else:
+            content = json.dumps({'decision': 'completed', 'evidence': [material['messages'][-1]['id']], 'reason': 'x'})
+        return httpx.Response(200, json={'choices': [{'message': {'content': content}, 'finish_reason': 'stop'}],
+                                         'usage': {'prompt_tokens': 1, 'completion_tokens': 1}})
+    configs = {'chat': ModelConfig('https://g-c1.invalid/v1', '', 'unit')}
+    health = ModelHealth(store, configs, clock=clock)
+    health.set_daily_token_limit(10)
+    if limit_used:
+        with store.write() as conn:
+            conn.execute("""INSERT INTO model_calls(purpose,model,duration_ms,prompt_tokens,completion_tokens,
+                result_category,created_at) VALUES('learning','unit',1,1000,1000,'success',?)""", (clock().isoformat(),))
+    client = httpx.Client(transport=httpx.MockTransport(respond))
+    return Gateway(configs, store, health=health, clock=clock, client=client, sleeper=lambda s: None), client
+
+
+@pytest.mark.parametrize('limit_used', [True, False])
+def test_daily_token_limit_stops_g1_without_requests_or_fingerprints(store, limit_used):
+    gid, _, _ = basic(store)
+    enable(store)
+    clock, hits = Clock(), []
+    gateway, client = _gateway(store, clock, hits, limit_used=limit_used)
+    try:
+        engine, rid = run_goals(store, gateway, clock)
+    finally:
+        gateway.close()
+        client.close()
+    if limit_used:
+        assert hits == [] and row(store, gid)['state'] == 'open' and reviews(store) == []
+        summary = engine.report(rid)['goal_auto_review']
+        assert summary['stopped'] == 'usage_limit' and summary['calls'] == 0
+        assert [i for i in items(store, rid) if i['outcome'] == 'failed'] == []
+    else:
+        assert len(hits) == 1 and row(store, gid)['state'] == 'completed'
+
+
+@pytest.mark.parametrize('limit_used', [True, False])
+def test_daily_token_limit_also_stops_g2(store, limit_used):
+    subject(store, 'p1', '程栗')
+    first = goal(store, '周五前整理操作手册', people=(), created='2026-11-02T09:00:00+00:00')
+    second = goal(store, '周五前整理操作说明手册', people=(), created='2026-11-02T10:00:00+00:00')
+    store.set_setting('goal_dedup_judge', {'enabled': True, 'budget_seconds': 1})
+    with store.write() as conn:
+        conn.execute("INSERT INTO goal_duplicates(goal_a,goal_b,status,created_at) VALUES(?,?,'possible',?)",
+                     (first, second, CREATED))
+    enable(store, review=False, duplicates=True)
+    clock, hits = Clock(), []
+    gateway, client = _gateway(store, clock, hits, limit_used=limit_used)
+    try:
+        engine, rid = run_goals(store, gateway, clock)
+    finally:
+        gateway.close()
+        client.close()
+    if limit_used:
+        assert hits == [] and row(store, second)['merged_into'] is None
+        assert engine.report(rid)['goal_duplicate_review']['stopped'] == 'usage_limit'
+    else:
+        assert len(hits) == 1 and row(store, second)['merged_into'] == first
+
+
+@pytest.mark.parametrize('reopened', [True, False])
+def test_merge_keeps_the_reopen_watermark(store, reopened):
+    """G1 closes X, the administrator reopens X, G2 merges X into Y: Y keeps X's rejection."""
+    gid, source, done = basic(store)
+    enable(store)
+    run_goals(store, Reviewer(store, cite('completed', lambda payload: [done])))
+    if reopened:
+        Goals(store, clock=Clock()).reopen(gid, expected_revision=row(store, gid)['revision'])
+    else:
+        with store.write() as conn:  # Same goal reopened without a watermark (control).
+            conn.execute("UPDATE goals SET state='open',closed_at=NULL,closed_by=NULL,revision=revision+1 WHERE id=?", (gid,))
+    earlier = goal(store, '帮程栗取南门驿站电热毯的快递', created='2026-11-02T09:00:00+00:00')
+    store.set_setting('goal_dedup_judge', {'enabled': True, 'budget_seconds': 1})
+    with store.write() as conn:
+        conn.execute("INSERT INTO goal_duplicates(goal_a,goal_b,status,created_at) VALUES(?,?,'possible',?)",
+                     (min(earlier, gid), max(earlier, gid), CREATED))
+
+    class Both(Reviewer):
+        def goal_dedup_judge(self, messages, ids, *, budget_seconds):
+            return {'decisions': {i: 'same' for i in ids}}
+    enable(store, review=True, duplicates=True)
+    reviewer = Both(store, cite('completed', lambda payload: [done]))
+    run_goals(store, reviewer)
+    assert row(store, gid)['merged_into'] == earlier
+    if reopened:
+        assert row(store, earlier)['auto_review_after_message_id'] == row(store, gid)['auto_review_after_message_id']
+        assert row(store, earlier)['state'] == 'open' and reviewer.calls == []
+    else:
+        assert row(store, earlier)['state'] == 'completed'
+
+
+def test_closure_evidence_is_protected_from_message_retention(store):
+    from iris.memory_ops import message_references
+    gid, source, done = basic(store)
+    chat = message(store, '今天好冷', at='2026-11-02T19:30:00+08:00')
+    enable(store)
+    run_goals(store, Reviewer(store, cite('completed', lambda payload: [done])))
+    with store.read() as conn:
+        assert 'goal_auto_evidence' in message_references(conn, done)
+        assert message_references(conn, chat) == []
+    # Evidence of a judgment that kept the goal open protects nothing.
+    other = goal(store, '帮程栗交水费')
+    note = message(store, '水费的事回头再说', at='2026-11-02T20:00:00+08:00')
+    run_goals(store, Reviewer(store, {'decision': 'open', 'evidence': [note], 'reason': ''}))
+    assert reviews(store, other)[0]['outcome'] == 'kept_open'
+    with store.read() as conn:
+        assert 'goal_auto_evidence' not in message_references(conn, note)
+    # The daily message cleanup keeps the protected message and removes the other old one.
+    from iris.maintenance import Maintenance
+    store.set_setting('lifecycle', {'message_retention_days': 1})
+    late = Clock('2026-12-20T01:00:00+00:00')
+    engine = Maintenance(store, gateway=None, clock=late)
+    rid = engine.request()
+    engine.run(rid)
+    with store.read() as conn:
+        left = {r[0] for r in conn.execute('SELECT id FROM messages')}
+    assert done in left and chat not in left
+
+
+def test_report_counts_accumulate_across_an_interrupted_run(store):
+    enable(store)
+    subject(store, 'p1', '程栗')
+    first = goal(store, '帮程栗取快递')
+    second = goal(store, '帮程栗交水费')
+    message(store, '快递和水费都弄好了', at='2026-11-02T19:00:00+08:00')
+    stopped = []
+    reviewer = Reviewer(store, cite('completed'), hook=lambda payload: stopped.append(True))
+    engine, rid = run_goals(store, reviewer, stop=lambda: bool(stopped))
+    assert engine.report(rid)['goal_auto_review']['calls'] == 1
+    reviewer.hook = None
+    engine.run(rid)
+    summary = engine.report(rid)['goal_auto_review']
+    assert (summary['goals'], summary['calls'], summary['closed']) == (2, 2, 2)
+    assert 'already_judged' not in summary and 'cursor' not in summary
+    assert row(store, first)['state'] == row(store, second)['state'] == 'completed'
+
+
+def test_call_cap_reports_budget_exhausted_and_the_rest_waits(store, monkeypatch):
+    from iris import goals as goals_module
+    monkeypatch.setattr(goals_module, 'AUTO_REVIEW_MAX_CALLS', 1)
+    enable(store)
+    subject(store, 'p1', '程栗')
+    first = goal(store, '帮程栗取快递')
+    second = goal(store, '帮程栗交水费')
+    message(store, '快递和水费都弄好了', at='2026-11-02T19:00:00+08:00')
+    reviewer = Reviewer(store, cite('completed'))
+    engine, rid = run_goals(store, reviewer)
+    summary = engine.report(rid)['goal_auto_review']
+    assert (summary['calls'], summary['budget_exhausted']) == (1, 1)
+    assert row(store, first)['state'] == 'completed' and row(store, second)['state'] == 'open'
+    run_goals(store, reviewer)
+    assert row(store, second)['state'] == 'completed'
