@@ -31,7 +31,7 @@ class AutoModel:
 
     def __init__(self, store, pair=None, conflict=None, dependency=None, merge=None, hook=None):
         self.store, self.answers, self.hook = store, {'pair': pair, 'conflict': conflict, 'dependency': dependency, 'merge': merge}, hook
-        self.calls = []
+        self.calls, self.messages = [], []
 
     def chat(self, messages, purpose, max_tokens=16000, **kwargs):
         assert not self.store._writer.in_transaction
@@ -39,6 +39,7 @@ class AutoModel:
         step = ('conflict' if '矛盾判定器' in system else 'dependency' if '依赖复核器' in system
                 else 'merge' if '互有细节的记忆写成一条正文' in system else 'pair')
         self.calls.append((step, purpose, payload))
+        self.messages.append([dict(m) for m in messages])
         if self.hook:
             self.hook(step, payload)
         value = self.answers[step]
@@ -287,8 +288,11 @@ def test_coexist_touches_nothing(store, change):
 
 def test_ungrounded_reason_is_replaced_before_it_can_be_stored(store, change):
     answer = supersedes(change, reason='小林在第999次说明这是更正')
-    run(store, conflict_model(store, change, answer))
-    assert [n['text'] for n in annotations(store, change['a'])] == ['两条说法互相冲突，依据不足以判定。']
+    _, report = run(store, conflict_model(store, change, answer))
+    text = annotations(store, change['a'])[0]['text']
+    assert '999' not in text and f"记忆 {change['a']}" in text and f"记忆 {change['b']}" in text
+    details = item_of(report, 'auto_conflict')['details']
+    assert details['report'] == text and details['archived_reason'] == answer['reason']
 
 
 # ---- protection --------------------------------------------------------------

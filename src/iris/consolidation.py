@@ -31,7 +31,7 @@ DEFAULTS = {'enabled': True, 'max_calls': 300,
             'persona_enabled': True, 'goal_review_enabled': True, 'entry_profile_enabled': True, 'person_summary_enabled': True}
 PROMPT_VERSION = 'consolidation_report_only_v2'
 MERGE_PROMPT_VERSION = 'consolidation_pair_v3'
-AUTO_VERSION = 'consolidation_auto_v2'  # In auto_v1 fingerprints; bump with its prompts.
+AUTO_VERSION = 'consolidation_auto_v3'  # In auto_v1 fingerprints; bump with its prompts.
 # Existing purposes only: a new consolidation step gets no new model route.
 AUTO_STEPS = {'conflict_auto': ('consolidation_conflict', 'conflict_auto_v1'),
               'dependency_auto': ('consolidation_dependency', 'dependency_auto_v1'),
@@ -706,7 +706,9 @@ def merge_detail_decision(payload, result):
     outcome = 'not_merge'
     if not valid:
         outcome = 'invalid_details'
-        result.update(decision='uncertain', updates=[])
+        # auto_v1: fragments matter only for merging; a conflict still goes to its relation step.
+        kept = 'conflict' if decision == 'conflict' and payload.get('resolution') == 'auto_v1' else 'uncertain'
+        result.update(decision=kept, updates=[])
         result.pop('keep_id', None)
     elif decision == 'merge':
         detail = {side: list(quotes) for side, quotes in detail.items()}
@@ -824,6 +826,96 @@ def mutual_merge_rejection(payload, result, content):
     except UnsafeWrite as exc:
         return str(exc)
     return None
+
+
+SOURCE_REFERENCE = re.compile(r'^\s*(?:来源消息|消息|来源|#)?\s*(\d+)\s*$')
+MEMORY_REFERENCE = re.compile(r'^\s*(?:记忆|#)?\s*(\d+)\s*$')
+# Protocol slips that get the one mechanical repair in auto_v1; authorization is rechecked after it.
+REPAIRABLE = frozenset(('invalid_evidence', 'missing_evidence', 'invalid_update', 'invalid_merge', 'unexpected_updates',
+                        'report_only_fields', 'invalid_report_decision'))
+
+
+def _named_id(value, allowed, pattern, keys=None):
+    """An ID written as text becomes that ID only when it names exactly one allowed ID."""
+    if type(value) is int or not isinstance(value, str):
+        return value
+    text = value.strip()
+    found = set()
+    if keys and text in keys:
+        found.add(keys[text])
+    match = pattern.match(text)
+    if match and int(match[1]) in allowed:
+        found.add(int(match[1]))
+    return found.pop() if len(found) == 1 else value
+
+
+def coerce_ids(value, payload):
+    """Deterministically turn textual references into the visible integer IDs they name; never guess."""
+    if not isinstance(value, dict):
+        return value
+    sources = [s for m in payload['memories'] for s in material(m)['sources']]
+    source_ids = {s['id'] for s in sources}
+    by_key = {}
+    for source in sources:
+        if source.get('key'):
+            by_key.setdefault(str(source['key']), set()).add(source['id'])
+    keys = {key: ids.pop() for key, ids in by_key.items() if len(ids) == 1}
+    memory_ids = {m['id'] for m in payload['memories']}
+    value = dict(value)
+    if isinstance(value.get('evidence'), list):
+        value['evidence'] = [_named_id(v, source_ids, SOURCE_REFERENCE, keys) for v in value['evidence']]
+    for field in ('keep_id', 'old_id', 'new_id'):
+        if field in value:
+            value[field] = _named_id(value[field], memory_ids, MEMORY_REFERENCE)
+    if isinstance(value.get('independent_support_ids'), list):
+        value['independent_support_ids'] = [_named_id(v, memory_ids, MEMORY_REFERENCE) for v in value['independent_support_ids']]
+    return value
+
+
+def detail_correction_note(payload, result):
+    """Send back only the fragments that are not substrings, with both bodies."""
+    pair = [next(m for m in payload['memories'] if m['id'] == mid) for mid in payload['pair_ids']]
+    normalize = lambda text: ' '.join(text.split())
+    detail = result.get('unique_details')
+    bad = {}
+    if isinstance(detail, dict):
+        for side, memory in zip(('a', 'b'), pair):
+            quotes = detail.get(side)
+            bad[side] = [q for q in quotes if not isinstance(q, str) or normalize(q) not in normalize(memory['content'])] \
+                if isinstance(quotes, list) else [quotes]
+    return ('unique_details 中以下片段不是对应正文的连续子串：' + dumps(bad if bad else detail) +
+            '。A 的正文：' + pair[0]['content'] + '；B 的正文：' + pair[1]['content'] +
+            '。每项必须逐字取自对应正文（只允许规整空白），不能用来源原话、改写或补字。'
+            '其余字段保持原判断，按原要求只输出完整 JSON。')
+
+
+def generated_report(kind, **f):
+    """Report text built only from fields the code has verified."""
+    ids = lambda values: '、'.join(f'来源消息 {i}' for i in values) or '无'
+    if kind == 'supersedes':
+        return f"记忆 {f['old']} 已被记忆 {f['new']} 替代：说话人本人在{ids(f['evidence'])}中更正了较早的说法。"
+    if kind == 'reported_vs_self':
+        return f"记忆 {f['reported']} 是转述，与本人说法记忆 {f['own']} 冲突，依据{ids(f['evidence'])}；转述降低一档。"
+    if kind == 'coexist':
+        return f"记忆 {f['a']} 与记忆 {f['b']} 可以并存，不作处理。"
+    if kind == 'undecided':
+        return f"记忆 {f['a']} 与记忆 {f['b']} 互相冲突，依据不足以判定，两条都保留。"
+    if kind == 'dependency':
+        verdict = {'keep': '仍有独立依据，不作改动', 'forget': '没有独立依据，进入遗忘', 'undecided': '复核依据未通过校验，本次不处理'}[f['verdict']]
+        lost = '、'.join(f'记忆 {i}' for i in f['losses']) or '无'
+        return f"记忆 {f['target']} 的依据 {lost} 已失效；剩余独立原始消息 {f['count']} 条，{verdict}。"
+    if kind == 'mutual_merge':
+        return f"记忆 {f['lose']} 并入记忆 {f['keep']}，合并正文保留双方独有细节。"
+    return f"记忆 {f['lose']} 并入记忆 {f['keep']}：两条为同一事实，保留记忆 {f['keep']} 的原正文。"
+
+
+def auto_report(details, text, payload, generated):
+    """A model reason that fails grounding is archived (not shown) and replaced by generated text."""
+    if isinstance(text, str) and grounded_reason(text, payload, None) is not None:
+        details['reason_source'] = 'model'
+        return text
+    details.update(reason_source='generated', archived_reason=text)
+    return generated
 
 
 def _instant(value):
@@ -980,8 +1072,11 @@ class Consolidation:
             name='dependency_report_only_v2'
         elif report_only:
             name='conflict_report_only_v2'
+        elif payload.get('resolution')=='auto_v1':
+            name='pair_auto_v1'  # Same candidates and checks; describes the automatic path.
         else:
             name='pair_v3'  # Same broad candidates; deterministic qualifier containment.
+        auto=payload.get('resolution')=='auto_v1'
         prompt=files('iris').joinpath(f'prompts/consolidation_{name}.md').read_text(encoding='utf-8')
         public={k:v for k,v in payload.items() if k not in ('resolution','policy')}
         public['memories']=[material(m) for m in payload['memories']]
@@ -1004,8 +1099,9 @@ class Consolidation:
         else:
             gateway=self.gateway
         deadline=time.monotonic()+180
-        for repair in (False,True):
-            call_purpose=purpose+('_repair' if repair else '')
+        repair=corrected=False
+        while True:
+            call_purpose=purpose+('_repair' if repair or corrected else '')
             if isinstance(gateway,Gateway):
                 reply=gateway.chat(messages,call_purpose,16000,_deadline=gateway.monotonic()+max(0,deadline-time.monotonic()))
                 cid=gateway.health.call_id
@@ -1025,28 +1121,44 @@ class Consolidation:
                 if reply.finish_reason!='stop':
                     raise ValueError('incomplete_output')
                 result=json.loads(reply.content,object_pairs_hook=unique)
+                if auto:
+                    result=coerce_ids(result,payload)
                 if step:
                     self.validate_auto(result,step)
                     return result
-                self.validate(result,work,payload,report_only=report_only or work['kind']=='dependency')
+                try:
+                    self.validate(result,work,payload,report_only=report_only or work['kind']=='dependency',auto=auto)
+                except UnsafeWrite as exc:
+                    if auto and not repair and str(exc) in REPAIRABLE:
+                        raise ValueError(str(exc)) from None
+                    raise
                 if work['kind']=='pair' and not report_only:
-                    result=merge_detail_decision(payload,result)
+                    checked=merge_detail_decision(payload,result)
+                    detail=checked['merge_detail_check']
+                    if auto and not corrected and detail['outcome']=='invalid_details' and detail['model_decision']=='merge':
+                        # One bounded correction of the fragments; the judgment itself is not re-asked.
+                        corrected=True
+                        messages += [{'role':'assistant','content':reply.content},
+                                     {'role':'user','content':detail_correction_note(payload,result)}]
+                        continue
+                    result=checked
                 return result
             except (UnsafeWrite, InvalidOutput):
                 raise
             except (ValueError,TypeError,KeyError) as error:
                 if repair:
                     raise InvalidOutput('invalid_output') from None
+                repair=True
                 # Explain the mechanical rejection, not a preferred semantic answer.
                 visible=sorted({s['id'] for m in payload['memories'] for s in material(m)['sources']})
                 category=str(error) if type(error) is ValueError and str(error) in {
                     'invalid_fields','invalid_decision','invalid_evidence','missing_evidence','invalid_updates',
                     'invalid_update','non_target_update','invalid_belief','invalid_text','invalid_merge',
-                    'unexpected_updates','weakening_cannot_rewrite','duplicate_key','incomplete_output'} else 'invalid_json'
+                    'unexpected_updates','weakening_cannot_rewrite','duplicate_key','incomplete_output',
+                    'report_only_fields','invalid_report_decision'} else 'invalid_json'
                 repair_note=f'校验失败类型：{category}。evidence 只能引用可见来源消息 id：{dumps(visible)}；不要把记忆 id 当作消息 id。依照原始指令和材料完整修正一次，只输出 JSON。'
                 messages += [{'role':'assistant','content':reply.content},
                     {'role':'user','content':repair_note}]
-        raise AssertionError('unreachable')
 
     @staticmethod
     def validate_auto(value,step):
@@ -1071,7 +1183,7 @@ class Consolidation:
             raise ValueError('invalid_text')
 
     @staticmethod
-    def validate(value,work,payload,*,report_only=False):
+    def validate(value,work,payload,*,report_only=False,auto=False):
         allowed={'decision','reason','evidence','updates','keep_id'}
         if work['kind']=='pair' and not report_only:
             allowed.add('unique_details')
@@ -1120,7 +1232,9 @@ class Consolidation:
             raise UnsafeWrite('unexpected_updates')
         if value['decision']=='weaken' and any('content' in u for u in value['updates']):
             raise UnsafeWrite('weakening_cannot_rewrite')
-        validate_report_text(value, payload)
+        if not auto:
+            # auto_v1 never executes on prose; its report text is settled at write time.
+            validate_report_text(value, payload)
 
     def _plan_pair(self, get, m, n, settings):
         if profile_partition_exclusion(m,n):
@@ -1192,7 +1306,7 @@ class Consolidation:
         with self.store.read() as conn:
             rows=conn.execute("""SELECT id FROM memories WHERE lifecycle!='deleted' AND id<=?
                 ORDER BY importance DESC,julianday(updated_at) DESC,id""",(run['memory_through'],)).fetchall()
-            seen_pairs,cache,superseded_pairs=set(),{},[]
+            seen_pairs,cache,superseded_pairs,scope_pairs=set(),{},[],[]
             def get(mid):
                 if mid not in cache:
                     cache[mid]=attempt(f'plan:memory:{mid}',[mid],lambda:snapshot(conn,mid))
@@ -1235,6 +1349,11 @@ class Consolidation:
                     n=get(other)
                     if n is None:
                         continue
+                    if (m.get('_visibility')!=n.get('_visibility') and m['world']==n['world']
+                            and (set(m['about']) & set(n['about']) or m['about']==n['about'])
+                            and similarity(m['content'],n['content'])>=0.20):
+                        # A related pair kept apart by scope: an auditable safe exclusion.
+                        scope_pairs.append(list(pair))
                     payload=attempt(f'plan:pair:{pair[0]}:{pair[1]}',list(pair),lambda:self._plan_pair(get,m,n,settings))
                     if payload and (superseded_member(m) or superseded_member(n)):
                         # Restore or undo clears the annotation and changes the
@@ -1265,12 +1384,13 @@ class Consolidation:
         failed_ids={mid for ids in failures.values() for mid in ids}
         scanned=[(mid,fp) for mid,fp in scanned if mid not in failed_ids]
         with self.store.write() as conn:
-            if superseded_pairs:
-                conn.execute("""INSERT INTO maintenance_items
-                    (run_id,phase,item_key,object_id,outcome,reason,details_json,created_at)
-                    VALUES(?,'consolidation','skip:superseded_member',?,'skipped','superseded_member',?,?)
-                    ON CONFLICT(run_id,phase,item_key) DO UPDATE SET details_json=excluded.details_json""",
-                    (run['id'],run['id'],dumps({'count':len(superseded_pairs),'pairs':superseded_pairs[:50]}),self.clock().isoformat()))
+            for reason,pairs in (('superseded_member',superseded_pairs),('visibility_differs',scope_pairs)):
+                if pairs:
+                    conn.execute("""INSERT INTO maintenance_items
+                        (run_id,phase,item_key,object_id,outcome,reason,details_json,created_at)
+                        VALUES(?,'consolidation',?,?,'skipped',?,?,?)
+                        ON CONFLICT(run_id,phase,item_key) DO UPDATE SET details_json=excluded.details_json""",
+                        (run['id'],'skip:'+reason,run['id'],reason,dumps({'count':len(pairs),'pairs':pairs[:200]}),self.clock().isoformat()))
             conn.executemany('INSERT OR REPLACE INTO consolidation_scanned VALUES(?,?)',scanned)
             self._trim_pair_backlog(conn,run['id'])
             # A bounded run snapshot; the durable pending queue remains ordered.
@@ -1710,8 +1830,6 @@ class Consolidation:
         code=draft.get('rejected')
         if code is None:
             code=mutual_merge_rejection(payload,result,draft['content'])
-        if code is None and grounded_reason(draft['reason'],payload,None) is None:
-            code='invalid_reason'
         details.update(unique_details=result.get('unique_details'),merge_detail_check=result['merge_detail_check'])
         if code:
             details.update(report=f'互有细节未自动合并，保持两条：{code}。',_reason=code)
@@ -1720,7 +1838,8 @@ class Consolidation:
         keep=next(m for m in pair if m['id']==payload['preferred_keep_id'])
         lose=next(m for m in pair if m['id']!=keep['id'])
         merged=self._absorb(conn,keep,lose,*pair,'auto_merge_mutual',content=draft['content'].strip())
-        details.update(report='已自动合并互有细节的两条记忆。模型理由：'+draft['reason'],merge_body=draft['content'].strip(),
+        report=auto_report(details,draft['reason'],payload,generated_report('mutual_merge',keep=keep['id'],lose=lose['id']))
+        details.update(report=report,merge_body=draft['content'].strip(),
                        result_id=keep['id'],absorbed_ids=[lose['id']],undo=merged['undo'],
                        source_messages=sorted({s['id'] for m in before for s in m['sources']}),
                        redirected_dependencies=merged['redirected'])
@@ -1731,8 +1850,16 @@ class Consolidation:
         relation,failure=verify_relation(conn,payload,output)
         visible={s['id'] for m in payload['memories'] for s in material(m)['sources']}
         evidence=[i for i in output['evidence'] if i in visible]
-        text=grounded_reason(output['reason'],payload,'两条说法互相冲突，依据不足以判定。')
         memories={m['id']:m for m in before}
+        a,b=payload['pair_ids']
+        if relation=='supersedes':
+            generated=generated_report('supersedes',old=output['old_id'],new=output['new_id'],evidence=evidence)
+        elif relation=='reported_vs_self':
+            reported=next(mid for mid in payload['pair_ids'] if memories[mid]['stance']=='转述')
+            generated=generated_report('reported_vs_self',reported=reported,own=a if reported==b else b,evidence=evidence)
+        else:
+            generated=generated_report(relation,a=a,b=b)
+        text=auto_report(details,output['reason'],payload,generated)
         details.update(relation=relation,model_relation=output['relation'],check_failure=failure,report=text,evidence=evidence)
         changes,annotations,annotated=[],[],[]
         def mark(memory,kind,change=None,superseded_by=None):
@@ -1763,17 +1890,20 @@ class Consolidation:
         losses={l['id'] for l in payload.get('losses',[])}
         allowed={m['id'] for m in payload['memories'] if m['id']!=target['id'] and m['lifecycle']=='active' and m['id'] not in losses}
         ids=list(dict.fromkeys(output['independent_support_ids']))
-        text=grounded_reason(output['reason'],payload,'复核依据未通过校验，本次不处理。')
-        details.update(report=text,independent_support_ids=ids)
+        details.update(independent_support_ids=ids)
+        def describe(verdict,count):
+            generated=generated_report('dependency',target=target['id'],losses=sorted(losses),verdict=verdict,count=count)
+            return auto_report(details,output['reason'],payload,generated)
         if any(i not in allowed for i in ids):
-            details.update(verdict='undecided',check_failure='support_outside_material')
+            details.update(verdict='undecided',check_failure='support_outside_material',report=describe('undecided',0))
             return self._finish_auto(conn,work,before,details,'consolidation_auto_dependency','auto_dependency')
         # Re-read: an earlier item of this run may have forgotten a named support.
         still=[i for i in ids if conn.execute("SELECT 1 FROM memories WHERE id=? AND lifecycle='active'",(i,)).fetchone()]
         origins=independent_origins(conn,still,blocked=losses|{target['id']})
         # Design 8.7: a message the target cites itself counts unless it is the role's own speech.
         origins.update((mid,m) for mid,m in direct_origins(conn,target['id']).items() if m['kind']!=ROLE_SPEECH)
-        details.update(verdict='keep' if origins else 'forget',independent_messages=sorted(origins))
+        text=describe('keep' if origins else 'forget',len(origins))
+        details.update(verdict='keep' if origins else 'forget',independent_messages=sorted(origins),report=text)
         if not origins:
             change=self._auto_write(conn,target,self._forget_fields(conn,target),'auto_insufficient_support')
             revision=change['revision_after'] if change else target['revision']
@@ -1805,7 +1935,8 @@ class Consolidation:
                 return self._apply_auto_dependency(conn,work,payload,result,before,details)
             if result.get('merge_detail_check',{}).get('outcome')=='mutual_details':
                 return self._apply_mutual_merge(conn,work,payload,result,before,details)
-        validate_report_text(result, payload)
+        if not auto:
+            validate_report_text(result, payload)
         if 'merge_detail_check' in result:
             details.update(unique_details=result.get('unique_details'),merge_detail_check=result['merge_detail_check'])
             if result['merge_detail_check']['outcome']=='mutual_details':
@@ -1822,6 +1953,8 @@ class Consolidation:
             # Preserve existing fuller wording, never synthesize a third proposition.
             # Incoming dependents keep real support after its duplicate is absorbed.
             merged=self._absorb(conn,keep,lose,a,b,'auto_merge' if auto else result['reason'])
+            if auto:
+                details['report']=auto_report(details,result['reason'],payload,generated_report('merge',keep=keep['id'],lose=lose['id']))
             details.update(result_id=keep['id'],absorbed_ids=[lose['id']],source_messages=sorted({s['id'] for m in before for s in m['sources']}),redirected_dependencies=merged['redirected'])
             # Entry-profile receipts inherited by the merge triggers cannot be taken back.
             if auto and keep.get('type')!='入口画像':

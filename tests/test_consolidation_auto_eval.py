@@ -292,3 +292,37 @@ def test_detail_judgment_requires_booleans_and_matching_length(corpus, tmp_path)
     bad['merge_detail_results'][0]['must_keep_present'] = []
     with pytest.raises(ValueError, match='length'):
         scorer.validate_detail_judgment(bad, items, 'x')
+
+
+def test_recorded_scope_exclusion_counts_keep_both_as_handled(corpus, tmp_path):
+    case = corpus['CV012']
+    row = runner.case_run(case, tmp_path/'scope.db', lambda store, clock: LabelModel(store, case), 'broad', 'auto_v1')
+    skips = [i for i in row['report']['items'] if i['item_key'] == 'skip:visibility_differs']
+    keymap = row['input']['before']['key_map']
+    assert skips and [keymap['x'], keymap['y']] in [sorted(p) for p in skips[0]['details']['pairs']]
+    keep_both = next(i for i in scorer.score_case(row)['items'] if i['kind'] == 'merge' and set(i['pair']) == {'x', 'y'})
+    assert keep_both['result'] == scorer.CORRECT
+    unrecorded = copy.deepcopy(row)
+    unrecorded['report']['items'] = [i for i in unrecorded['report']['items'] if not i['item_key'].startswith('skip:')]
+    item = next(i for i in scorer.score_case(unrecorded)['items'] if i['kind'] == 'merge' and set(i['pair']) == {'x', 'y'})
+    assert item['result'] == scorer.UNPROCESSED and item['unprocessed'] == 'not_planned'
+
+
+def test_coexist_is_judged_by_the_final_state(corpus, tmp_path):
+    case = corpus['CV010']
+    row = runner.case_run(case, tmp_path/'coexist.db', lambda store, clock: LabelModel(store, case), 'broad', 'auto_v1')
+    assert result_for(scorer.score_case(row), kind='contradiction') == scorer.CORRECT
+    other = manual_row(row, x={'annotations': [annotation('insufficient_support')]})
+    assert result_for(scorer.score_case(other), kind='contradiction') == scorer.CORRECT
+    disputed = manual_row(row, x={'annotations': [annotation('disputed')]})
+    assert result_for(scorer.score_case(disputed), kind='contradiction') == scorer.MISSED
+
+
+def test_report_gives_label_and_work_counts(corpus, tmp_path):
+    case = corpus['CV006']  # a/b carries both a supersedes and a keep_both label on one work.
+    failed = runner.case_run(case, tmp_path/'broken.db', lambda store, clock: Broken(), 'broad', 'auto_v1')
+    runner.export_auto([failed], tmp_path/'materials', metadata([case]))
+    report = scorer.score(tmp_path/'materials', tmp_path/'out')
+    labels, works = report['unprocessed']['count'], report['unprocessed']['works']
+    assert labels > works >= 1
+    assert sum(report['work_counts'].values()) <= report['correct']['denominator']

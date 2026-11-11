@@ -80,7 +80,8 @@ def judge_contradiction(label, memory, threshold):
     if any(_moved(before, after) for before, after in pair):
         return WRONG
     if relation == 'coexist':
-        return CORRECT if all(_unchanged(b, a) and not _kinds(b, a) for b, a in pair) else MISSED
+        # Judged by the result: unchanged, and no new contradiction annotation on either side.
+        return CORRECT if all(_unchanged(b, a) and not {'disputed', 'superseded'} & set(_kinds(b, a)) for b, a in pair) else MISSED
     return CORRECT if all(_unchanged(b, a) and 'disputed' in _kinds(b, a) for b, a in pair) else MISSED
 
 
@@ -107,11 +108,22 @@ def work_status(work):
     return work['reason'] or 'skipped'
 
 
+def recorded_exclusions(row):
+    """Pairs the planner kept apart for a fixed safe reason (scope, superseded member)."""
+    found = {}
+    for item in row['report']['items']:
+        if item['phase'] == 'consolidation' and item['item_key'].startswith('skip:'):
+            for pair in item['details'].get('pairs', []):
+                found[frozenset(pair)] = item['reason']
+    return found
+
+
 def label_status(row, kind, ids):
     """(status, work) for the work that judged these memories; not_planned when none exists."""
     works = [w for w in row['work_results'] if w['kind'] == kind and set(w['memory_ids']) == set(ids)]
     if not works:
-        return 'not_planned', None
+        reason = recorded_exclusions(row).get(frozenset(ids)) if kind == 'pair' else None
+        return ('excluded:'+reason if reason else 'not_planned'), None
     ranked = sorted(works, key=lambda w: work_status(w) != 'processed')
     return work_status(ranked[0]), ranked[0]
 
@@ -178,6 +190,9 @@ def score_case(row):
     def settle(item, result, kind, keys):
         # Only a valid judgment (or protection) can be correct; a wrong state is wrong regardless.
         status, work = label_status(row, kind, [keymap[k] for k in keys])
+        item['work'] = work['check_id'] if work else None
+        if status.startswith('excluded:') and item.get('expected') == 'keep_both':
+            status = 'processed'  # a recorded safe exclusion is the handling a keep_both label asks for.
         if result != WRONG and status != 'processed':
             result = UNPROCESSED
             item['unprocessed'] = status
@@ -304,6 +319,11 @@ def load_detail_rounds(manifest, rows, directories):
     return rounds
 
 
+def _works(entries):
+    """Distinct works behind labels: one failed work can carry several labels."""
+    return {(case_id, item['work'] or tuple(item.get('keys') or item.get('pair') or [item.get('derived')])) for case_id, item in entries}
+
+
 def call_counts(rows):
     """Same validity vocabulary as the other evaluations: timeouts, 429, truncation, invalid calls."""
     calls = [c for row in rows for c in row['calls']]
@@ -342,7 +362,10 @@ def score(materials, out, *, detail_judgments=(), judge_model=None):
               'call_counts': call_counts(rows),
               'mishandling': ratio(wrong, len(items)+unexpected), 'correct': ratio(sum(item['result'] == CORRECT for item in items), len(items)),
               'unprocessed': {'count': sum(item['result'] == UNPROCESSED for item in items),
+                              'works': len(_works([(c['case_id'], i) for c in cases for i in c['items'] if i['result'] == UNPROCESSED])),
                               'by_category': dict(sorted(Counter(item['unprocessed'] for item in items if item['result'] == UNPROCESSED).items()))},
+              'work_counts': {result: len(_works([(c['case_id'], i) for c in cases for i in c['items'] if i['result'] == result]))
+                              for result in (CORRECT, MISSED, WRONG, UNPROCESSED)},
               'rewritten_merges': {'count': sum(len(case['rewritten_merges']) for case in cases),
                                    'unlabelled': sum(not r['labelled'] for case in cases for r in case['rewritten_merges']),
                                    'items': [{'case_id': case['case_id'], **r} for case in cases for r in case['rewritten_merges']]},
