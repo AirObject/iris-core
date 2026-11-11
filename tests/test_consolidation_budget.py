@@ -55,6 +55,8 @@ def scripted_gateway(store, monkeypatch, steps):
             gateway.close()
 
 
+# The report_only_v1 purposes; auto_v1 routes conflicts and dependencies differently.
+@pytest.mark.usefixtures('report_only')
 @pytest.mark.parametrize('kind', ['merge', 'conflict', 'dependency'])
 def test_consolidation_requests_allow_180_seconds(store, monkeypatch, kind):
     a, b = pair(store)

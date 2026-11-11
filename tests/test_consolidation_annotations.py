@@ -11,6 +11,9 @@ from iris.memory_ops import edit_memory
 from iris.retrieval import Retrieval
 from test_consolidation import Model, pair, run
 
+# These cases exercise report_only_v1, the default before C-B2 made it auto_v1.
+pytestmark = pytest.mark.usefixtures('report_only')
+
 
 def conclusion(a, b, *, kind='disputed'):
     update={'id':a,'annotation':'旧安排已经被后来的安排替代，历史事实仍成立', 'assessment':kind}

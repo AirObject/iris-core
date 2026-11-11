@@ -17,8 +17,8 @@ export const consolidationBudgets = [
   ["persona_max_calls", "persona 每轮调用上限", 30],
 ] as const;
 export const consolidationResolutions = [
-  ["report_only_v1", "只报告（默认）：不改动记忆，由管理员决定"],
-  ["auto_v1", "自主处理：模型判断，程序按规则执行，事后可撤销"],
+  ["report_only_v1", "只报告：不改动记忆，由管理员决定"],
+  ["auto_v1", "自主处理（默认）：模型判断，程序按规则执行，事后可撤销"],
 ] as const;
 export const autoRelations: Record<string, string> = {
   supersedes: "本人已更正，旧记忆进入遗忘",

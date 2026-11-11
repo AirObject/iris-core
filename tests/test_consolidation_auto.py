@@ -661,7 +661,7 @@ def test_run_snapshot_is_not_affected_by_later_setting_change(store, change):
     assert row(store, change['a'])['lifecycle'] == 'forgotten'
 
 
-@pytest.mark.parametrize('stored,expected', [(None, 'report_only_v1'), ('report_only_v1', 'report_only_v1'), ('auto_v1', 'auto_v1'),
+@pytest.mark.parametrize('stored,expected', [(None, 'auto_v1'), ('report_only_v1', 'report_only_v1'), ('auto_v1', 'auto_v1'),
                                              ('conservative_v2', 'report_only_v1'), ({'a': 1}, 'report_only_v1')])
 def test_settings_default_and_normalization(store, stored, expected):
     value = {} if stored is None else {'resolution': stored}
@@ -674,9 +674,9 @@ def test_settings_default_and_normalization(store, stored, expected):
         assert run_settings(conn, rid)['resolution'] == expected
 
 
-def test_new_database_defaults_to_report_only(store):
+def test_new_database_defaults_to_auto_v1(store):
     with store.write() as conn:
-        assert consolidation_settings(conn)['resolution'] == 'report_only_v1'
+        assert consolidation_settings(conn)['resolution'] == 'auto_v1'
 
 
 # ---- undo ---------------------------------------------------------------------
@@ -785,11 +785,11 @@ def test_settings_api_accepts_resolution_and_rejects_unknown(store):
     with TestClient(create_app(store=store, configs={}), base_url='http://127.0.0.1', client=('127.0.0.1', 1234)) as client:
         client.app.state.scheduler.stop()
         login_admin(client)
-        assert client.get('/admin/api/settings').json()['consolidation']['resolution'] == 'report_only_v1'
-        response = client.patch('/admin/api/settings/consolidation', json={'resolution': 'auto_v1'})
-        assert response.status_code == 200 and response.json()['consolidation']['resolution'] == 'auto_v1'
+        assert client.get('/admin/api/settings').json()['consolidation']['resolution'] == 'auto_v1'
+        response = client.patch('/admin/api/settings/consolidation', json={'resolution': 'report_only_v1'})
+        assert response.status_code == 200 and response.json()['consolidation']['resolution'] == 'report_only_v1'
         assert client.patch('/admin/api/settings/consolidation', json={'resolution': 'nonsense'}).status_code == 400
-        assert client.patch('/admin/api/settings/consolidation', json={'resolution': 'report_only_v1'}).json()['consolidation']['resolution'] == 'report_only_v1'
+        assert client.patch('/admin/api/settings/consolidation', json={'resolution': 'auto_v1'}).json()['consolidation']['resolution'] == 'auto_v1'
 
 
 # ---- the role's own speech and traced evidence --------------------------------
