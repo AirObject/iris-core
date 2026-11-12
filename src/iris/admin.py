@@ -493,6 +493,10 @@ class GoalBasisClear(GoalReason):
     expected_revision: int = Field(gt=0, strict=True)
 
 
+class GoalReopen(GoalReason):
+    expected_revision: int = Field(gt=0, strict=True)
+
+
 class NotificationQuery(Page):
     status: Literal["pending", "taken", "cancelled"] | None = None
     goal_id: int | None = Field(default=None, gt=0, le=9223372036854775807)
@@ -1104,6 +1108,10 @@ def install_admin(app):
         app.state.scheduler.wake()
         return result
 
+    @router.get("/goal-auto-actions")
+    def goal_auto_actions(query: Annotated[Page, Query()]):
+        return admin_data.goal_auto_actions(app.state.store, **query.model_dump())
+
     @router.get("/goals/{goal_id}")
     def goal(goal_id: GoalId):
         return admin_data.goal(app.state.store, goal_id, current=app.state.goals.clock())
@@ -1123,6 +1131,18 @@ def install_admin(app):
     @router.patch("/goals/{goal_id}")
     def edit_goal(goal_id: GoalId, payload: AdminGoalPatch):
         result = app.state.goals.update(goal_id, **payload.model_dump(exclude_unset=True), actor="admin")
+        app.state.scheduler.wake()
+        return result
+
+    @router.post("/goal-duplicate-judgments/{judgment_id}/undo")
+    def undo_goal_auto_merge(judgment_id: GoalId, payload: GoalReopen):
+        result = app.state.goals.undo_auto_merge(judgment_id, **payload.model_dump(), actor="admin")
+        app.state.scheduler.wake()
+        return result
+
+    @router.post("/goals/{goal_id}/reopen")
+    def reopen_goal(goal_id: GoalId, payload: GoalReopen):
+        result = app.state.goals.reopen(goal_id, **payload.model_dump(), actor="admin")
         app.state.scheduler.wake()
         return result
 

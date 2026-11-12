@@ -185,6 +185,9 @@ export function GoalSettings({
   const current = {
     ...value,
     internal_question_expiry_days: value.internal_question_expiry_days ?? 7,
+    goal_auto_review_enabled: value.goal_auto_review_enabled ?? false,
+    goal_duplicate_auto_judge_enabled:
+      value.goal_duplicate_auto_judge_enabled ?? false,
   };
   const { draft, change, reset } = useSettingsDraft({
     default_reminder_minutes: String(current.default_reminder_minutes),
@@ -192,6 +195,9 @@ export function GoalSettings({
     internal_question_expiry_days: String(
       current.internal_question_expiry_days,
     ),
+    goal_auto_review_enabled: current.goal_auto_review_enabled,
+    goal_duplicate_auto_judge_enabled:
+      current.goal_duplicate_auto_judge_enabled,
   });
   const [error, setError] = useState(""),
     [saved, setSaved] = useState(false);
@@ -224,6 +230,9 @@ export function GoalSettings({
       default_reminder_minutes: minutes,
       overdue_reminders: draft.overdue_reminders,
       internal_question_expiry_days: days,
+      goal_auto_review_enabled: draft.goal_auto_review_enabled,
+      goal_duplicate_auto_judge_enabled:
+        draft.goal_duplicate_auto_judge_enabled,
     });
     if (!Object.keys(changes).length) return;
     if (await save(changes)) {
@@ -286,6 +295,33 @@ export function GoalSettings({
           </label>
           <p className="lifecycle-help">
             只作用于学习产生且仍未结束的询问，到期由每日维护自动结束。宿主或管理员创建的询问和普通目标不受影响。
+          </p>
+          <label className="check-label">
+            <input
+              type="checkbox"
+              checked={draft.goal_auto_review_enabled}
+              onChange={(e) =>
+                change("goal_auto_review_enabled", e.target.checked)
+              }
+            />
+            每日维护按依据自动完成或放弃内部目标
+          </label>
+          <p className="lifecycle-help">
+            只处理学习产生、仍未结束的普通目标。模型给出依据消息，程序核对依据晚于目标创建、来自涉及的人或角色自己后才关闭；含糊或部分完成的说法保持未结束。宿主和管理员创建的目标不受影响，自动关闭的目标可以在目标页重开。默认关闭。
+          </p>
+          <label className="check-label">
+            <input
+              type="checkbox"
+              checked={draft.goal_duplicate_auto_judge_enabled}
+              onChange={(e) =>
+                change("goal_duplicate_auto_judge_enabled", e.target.checked)
+              }
+            />
+            每日维护补判“可能重复”的目标
+          </label>
+          <p className="lifecycle-help">
+            使用目标去重判断模型，每对最多 60
+            秒：判为重复时合并到较早的一条（含管理员创建的目标时不合并、改为撤销标记），判为不重复时撤销标记，仍不确定时保留标记。默认关闭。
           </p>
           {(error || saveError) && <Notice error>{error || saveError}</Notice>}
           {saved && <Notice>目标与提醒设置已保存</Notice>}

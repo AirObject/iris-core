@@ -1,4 +1,10 @@
-import { GoalBasisReview, GoalDedupReview } from "./GoalReview";
+import {
+  GoalAutoReviewPanel,
+  GoalBasisReview,
+  GoalDedupReview,
+  ReopenConfirm,
+  UndoMergeConfirm,
+} from "./GoalReview";
 import { useState } from "react";
 import { api, ApiError, errorText, json, useData } from "./api";
 import { Dialog, Notice, RoleTime, lifecycleLabel } from "./ui";
@@ -12,10 +18,12 @@ import type {
   GoalCatalog,
   GoalDetail,
   GoalBasisAnnotation,
+  GoalDuplicateJudgment,
 } from "./types";
 
 type Action =
-  | { kind: "completed" | "abandoned"; goal: Goal }
+  | { kind: "completed" | "abandoned" | "reopen"; goal: Goal }
+  | { kind: "undo_merge"; goal: Goal; judgment: GoalDuplicateJudgment }
   | { kind: "merge"; goal: Goal; other: Goal }
   | { kind: "basis_clear"; goal: Goal; annotation: GoalBasisAnnotation };
 function Duplicate({
@@ -140,7 +148,13 @@ export default function GoalDetails({
         openGoal(result.id);
       } else
         setNotice(
-          path.endsWith("/dismiss") ? "已驳回可能重复关系" : "目标已更新",
+          path.endsWith("/dismiss")
+            ? "已驳回可能重复关系"
+            : path.endsWith("/reopen")
+              ? "目标已重开"
+              : path.endsWith("/undo")
+                ? "已撤销自动合并"
+                : "目标已更新",
         );
     } catch (e) {
       setError(errorText(e));
@@ -275,6 +289,15 @@ export default function GoalDetails({
               setAction({ kind: "basis_clear", goal, annotation })
             }
           />
+          <GoalAutoReviewPanel
+            goal={goal}
+            locked={locked || !!editing || !!action}
+            openGoal={openGoal}
+            reopen={() => setAction({ kind: "reopen", goal })}
+            undoMerge={(judgment) =>
+              setAction({ kind: "undo_merge", goal, judgment })
+            }
+          />
           <GoalDedupReview goal={goal} openGoal={openGoal} />
           {!goal.merged_into && goal.possible_duplicate_ids.length > 0 && (
             <section className="panel goals-panel">
@@ -386,7 +409,37 @@ export default function GoalDetails({
           />
         </>
       )}
-      {action && (
+      {action?.kind === "reopen" && (
+        <ReopenConfirm
+          goal={action.goal}
+          busy={busy || stale}
+          error={error}
+          cancel={() => setAction(null)}
+          confirm={() =>
+            void write(
+              `/goals/${id}/reopen`,
+              { expected_revision: action.goal.revision },
+              "POST",
+            )
+          }
+        />
+      )}
+      {action?.kind === "undo_merge" && (
+        <UndoMergeConfirm
+          judgment={action.judgment}
+          busy={busy || stale}
+          error={error}
+          cancel={() => setAction(null)}
+          confirm={() =>
+            void write(
+              `/goal-duplicate-judgments/${action.judgment.id}/undo`,
+              { expected_revision: action.judgment.target_revision },
+              "POST",
+            )
+          }
+        />
+      )}
+      {action && action.kind !== "reopen" && action.kind !== "undo_merge" && (
         <Dialog
           title={
             action.kind === "basis_clear"

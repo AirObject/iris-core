@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from .retrieval import Retrieval
 from .state import report_history
-from .goals import goal_list, goal_detail, notification_list
+from .goals import auto_actions, auto_closure, auto_review_projection, goal_list, goal_detail, notification_list
 from .people import list_people, person_detail, canonical_subject
 from .maintenance import abandoned_retry_days
 from .memory_ops import lifecycle_settings, missing_batch_targets
@@ -557,7 +557,17 @@ def state_reports(store, *, limit=30, offset=0):
 
 def goals(store, **filters):
     with store.read() as conn:
-        return goal_list(conn, **filters)
+        result = goal_list(conn, **filters)
+        for item in result['items']:
+            # Admin-only marker; host projections of goals are unchanged.
+            closing = auto_closure(conn, item['id'])
+            item['auto_closed'] = closing is not None
+        return result
+
+
+def goal_auto_actions(store, *, limit=30, offset=0):
+    with store.read() as conn:
+        return auto_actions(conn, limit=limit, offset=offset)
 
 
 def _goal_source_context(conn, message_id):
@@ -596,6 +606,8 @@ def goal(store, goal_id, *, current=None):
         detail = goal_detail(conn, goal_id, current=current)
         for source in detail['sources']:
             source.update(_goal_source_context(conn,source['id']))
+        detail['auto_review'] = auto_review_projection(conn, goal_id)
+        detail['auto_closed'] = detail['auto_review']['closure'] is not None
         return detail
 
 
