@@ -29,7 +29,7 @@ from .memory_ops import setup_role, delete_memory, adjust_retention, lifecycle_s
 from .model_health import ModelHealth
 from .models import Gateway, ModelError, parse_json_object_with_status
 from .persona import (PersonaEngine, admin_edit, current_persona, pending_update, select_evidence,
-                      confirm_candidate, reject_candidate, DEGREES, PUBLISH_MODES, PROMPT_VERSIONS, DEGREE_PROMPT_VERSION, HANDWRITTEN_PROMPT_VERSION, CALL_TIMEOUTS, CALL_MAX_TOKENS, CHECK_BATCH_SIZE, CHECK_BATCH_CLAUSES, MAX_CHECK_STAGE_SECONDS, MAX_CHECK_REQUEST_BYTES, CHECK_TIMEOUT_RETRIES, CHECK_STREAM_IDLE_SECONDS, REPAIR_POLICY, check_transport, _trace, _stale, _settings, split_sentences, _structure_diagnostics, _output_limit_diagnostics, _check_records)
+                      confirm_candidate, reject_candidate, DEGREES, PUBLISH_MODES, PROMPT_VERSIONS, DEGREE_PROMPT_VERSION, HANDWRITTEN_PROMPT_VERSION, CALL_TIMEOUTS, CALL_MAX_TOKENS, CHECK_BATCH_SIZE, CHECK_BATCH_CLAUSES, MAX_CHECK_STAGE_SECONDS, MAX_CHECK_REQUEST_BYTES, CHECK_TIMEOUT_RETRIES, CHECK_STREAM_IDLE_SECONDS, REPAIR_POLICY, check_transport, _trace, _stale, _settings, split_sentences, _structure_diagnostics, _output_limit_diagnostics, _check_records, _handwritten_check_records)
 
 FORMAT_VERSION = 1
 SCORING_VERSION = 'persona_scoring_v1'
@@ -520,6 +520,13 @@ def _retained_current(checkpoint, observation):
         and current.get('sentences') == previous['sentences'])
 
 
+def _check_output_limited(call):
+    return (call.get('finish_reason') == 'length'
+            and call['purpose'].removesuffix('_repair') in ('persona_check', 'persona_recheck')
+            and not call.get('timed_out') and call.get('status_code') != 429
+            and call.get('result_category') == 'success')
+
+
 def _model_call_outcomes(calls, checkpoints=(), observations=()):
     """Recover owned calls only; tolerate truncation only at retained checkpoints.
 
@@ -543,18 +550,51 @@ def _model_call_outcomes(calls, checkpoints=(), observations=()):
         incomplete = bool(_incomplete_checks(matching))
         retained = incomplete and _retained_current(checkpoint, matching[0])
         checks = candidate['checks']
-        split_recovered = any((checks.get(phase) or {}).get(
-            'output_limit_diagnostics', {}).get('split_results', {}).get('recovered', 0)
-            for phase in ('initial_model', 'model', 'recheck'))
+        # A truncation is recovered when its window ended complete, whether by a
+        # retry, a structure reask or a split; older records count recovered splits.
+        diagnostics = [(checks.get(phase) or {}).get('output_limit_diagnostics', {})
+                       for phase in ('initial_model', 'model', 'recheck')]
+        diagnostics.append((checks.get('handwritten_review') or {}).get('output_limit_diagnostics', {}))
+        split_recovered = any(diagnostic.get('recovered_truncations', 0)
+                              or diagnostic.get('split_results', {}).get('recovered', 0)
+                              for diagnostic in diagnostics)
         ordered = [by_id[i] for i in sorted(ids)]
+        # An output retry that timed out restored its truncation. At a retained
+        # checkpoint only that retry's own call is tolerated: truncation records
+        # (deduplicated across phases) pair one to one with the output-limited
+        # calls in order, and the record must say its retry failed by timeout.
+        records = {event['order']:event for diagnostic in diagnostics
+                   for event in diagnostic.get('truncation_events', [])}
+        limited_calls = [call for call in ordered if _check_output_limited(call)]
+        retried, split_children = set(), set()
+        if retained and len(records) == len(limited_calls):
+            for number, (call, record) in enumerate(zip(limited_calls, (records[order] for order in sorted(records)))):
+                position = ordered.index(call)
+                follower = ordered[position + 1] if position + 1 < len(ordered) else None
+                if (record.get('retry') == 'failed' and record.get('retry_error') == 'timeout'
+                        and follower is not None and follower['purpose'] == call['purpose']
+                        and follower.get('timed_out') and follower.get('status_code') != 429):
+                    retried.add(follower['id'])
+                # A focus split that failed by timeout: its half's timed-out requests
+                # (the half's own timeout retry included), as many as recorded, all
+                # before the next output-limited call.
+                if record.get('split_failed') == 'timeout' and record.get('split_timeouts'):
+                    end = (ordered.index(limited_calls[number + 1]) if number + 1 < len(limited_calls)
+                           else len(ordered))
+                    timed_out = [later for later in ordered[position + 1:end]
+                                 if later['purpose'] == call['purpose'] and later.get('timed_out')
+                                 and later.get('status_code') != 429]
+                    split_children.update(later['id'] for later in timed_out[:record['split_timeouts']])
         for position, call in enumerate(ordered):
             purpose = call['purpose'].removesuffix('_repair')
-            limited = (call.get('finish_reason') == 'length' and purpose in ('persona_check', 'persona_recheck')
-                       and not call.get('timed_out') and call.get('status_code') != 429
-                       and call.get('result_category') == 'success')
+            limited = _check_output_limited(call)
             if retained and limited:
                 tolerated[call['id']] = {'checkpoint_id':checkpoint['checkpoint']['id'],
                     'outcome':'unpublished_current_retained'}
+            if call['id'] in retried or call['id'] in split_children:
+                tolerated[call['id']] = {'checkpoint_id':checkpoint['checkpoint']['id'],
+                    'outcome':'unpublished_current_retained', 'tolerated_as':
+                    'failed_output_retry_timeout' if call['id'] in retried else 'failed_focus_split_timeout'}
             if incomplete:
                 continue
             success = next((c for c in ordered[position + 1:]
@@ -572,7 +612,10 @@ def _model_call_outcomes(calls, checkpoints=(), observations=()):
                   'output_limit' if call.get('finish_reason') == 'length' else None)
         if reason:
             recovery = recovered.get(call.get('id'))
-            tolerance = tolerated.get(call.get('id')) if reason == 'output_limit' else None
+            tolerance = tolerated.get(call.get('id'))
+            if not (reason == 'output_limit' or (reason == 'timeout' and tolerance and tolerance.get('tolerated_as')
+                    in ('failed_output_retry_timeout', 'failed_focus_split_timeout'))):
+                tolerance = None
             outcomes.append({key:call.get(key) for key in
                 ('id','purpose','created_at','duration_ms','status_code','timed_out')} |
                 {'reason':reason, 'recovered':bool(recovery), 'tolerated':bool(tolerance),
@@ -660,7 +703,9 @@ def _call_metrics(calls, outcomes=None):
             'timed_out_calls':sum(bool(c.get('timed_out')) for c in calls),
             'rate_limited_calls':sum(c.get('status_code') == 429 for c in calls),
             'recovered_timed_out_calls':sum(bool(c['timed_out']) and c['recovered'] for c in outcomes),
-            'unrecovered_timed_out_calls':sum(bool(c['timed_out']) and not c['recovered'] for c in outcomes),
+            'unrecovered_timed_out_calls':sum(bool(c['timed_out']) and not c['recovered']
+                                              and not c.get('tolerated', False) for c in outcomes),
+            'tolerated_timed_out_calls':sum(bool(c['timed_out']) and c.get('tolerated', False) for c in outcomes),
             'recovered_rate_limited_calls':sum(c['status_code'] == 429 and c['recovered'] for c in outcomes),
             'unrecovered_rate_limited_calls':sum(c['status_code'] == 429 and not c['recovered'] for c in outcomes),
             'by_purpose':dict(Counter(c['purpose'] for c in calls))}
@@ -691,17 +736,23 @@ def _check_structure_metrics(rows):
 
 
 def _check_output_limit_metrics(rows):
-    totals = {'truncations':0, 'splits':0, 'terminal_truncations':0}
-    results = Counter()
+    totals = {'truncations':0, 'splits':0, 'terminal_truncations':0, 'recovered_truncations':0,
+              'focus_splits':0, 'output_retries':0}
+    results = {key:Counter() for key in ('split_results', 'focus_split_results', 'output_retry_results',
+                                         'output_retry_errors')}
     for row in rows:
         for attempt in row['attempts']:
             outputs = json.loads(attempt['outputs_json'])
             for purpose in ('persona_check', 'persona_recheck'):
-                diagnostic = _output_limit_diagnostics(outputs.get(purpose+'_batches', []), purpose)
+                records = outputs.get(purpose+'_batches', [])
+                if purpose == 'persona_check':
+                    records = records + _handwritten_check_records(outputs)
+                diagnostic = _output_limit_diagnostics(records, purpose)
                 for key in totals:
                     totals[key] += diagnostic[key]
-                results.update(diagnostic['split_results'])
-    return {**totals, 'split_results':dict(results)}
+                for key, counter in results.items():
+                    counter.update(diagnostic[key])
+    return {**totals, **{key:dict(counter) for key, counter in results.items()}}
 
 
 def _metrics(rows, judgments=None):
