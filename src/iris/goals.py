@@ -1715,17 +1715,26 @@ def _reschedule_current_stage(conn, goal_id, current):
     """Rebuild one goal's plans; publish one reminder for the stage it is in now.
 
     Warning time passed but not yet due: a "due soon" reminder. Past the
-    deadline: an overdue reminder, unless overdue reminders are turned off.
-    Before the warning time nothing is published; the new plan sends it.
+    deadline: an overdue reminder with the usual next-day plan, or, when overdue
+    reminders are turned off, one "due" reminder and no next-day plan. Before
+    the warning time nothing is published; the new plan sends it.
     """
     row = _row(conn,goal_id)
     _cancel(conn,goal_id,current,notifications=False)
-    publish = False
+    publish = due_notice = False
     if row['kind']=='normal' and row['state']=='open' and row['merged_into'] is None and row['deadline_at']:
         deadline = datetime.fromisoformat(row['deadline_at'])
         lead = row['reminder_minutes'] if row['reminder_minutes'] is not None else goal_settings(conn)['default_reminder_minutes']
-        publish = _soon(deadline,lead)<=current and (deadline>=current or goal_settings(conn)['overdue_reminders'])
+        if _soon(deadline,lead)<=current:
+            if deadline<current and not goal_settings(conn)['overdue_reminders']:
+                due_notice = not _pending_hidden(conn,goal_id,current)
+            else:
+                publish = True
     _schedule(conn,row,current,immediate=publish)
+    if due_notice:
+        conn.execute("""INSERT INTO notifications(kind,goal_id,reminder_kind,deadline_at,scheduled_at,published_at,content)
+            VALUES('goal_reminder',?,'due',?,?,?,?)""",(goal_id,row['deadline_at'],current.isoformat(),
+            current.isoformat(),'目标已到期：'+row['content']))
 
 
 def undo_auto_merge(conn, current, *, judgment_id, expected_revision, actor='admin', reason=None):
