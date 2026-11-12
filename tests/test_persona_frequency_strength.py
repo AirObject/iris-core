@@ -436,3 +436,28 @@ def test_the_fixed_counted_group_shape_stays_distributive(text):
 def test_check_prompt_says_a_bare_source_dou_is_no_evidence():
     check_prompt = files('iris').joinpath(f"prompts/{PROMPT_VERSIONS['persona_check']}.md").read_text(encoding='utf-8')
     assert '来源里单独的“都”' in check_prompt and '不算频率依据' in check_prompt
+
+
+# Round 7: an ordinal is no counted group; a source 每……都 is explicit evidence.
+
+@pytest.mark.parametrize('focus', ['第二本书我都先看目录。', '第三首歌我都先看词。', '第十二本书我都先看目录。'])
+def test_an_ordinal_is_no_counted_group(focus):
+    assert _focus_quantifiers(focus) == ['都']
+    assert 'frequency raised above the source' in problems_of(focus, focus, [check('都', '', '', 2)])
+
+
+@pytest.mark.parametrize('text', ['那三本书我都读完了', '十二本书我都读了'])
+def test_a_cardinal_counted_group_stays_distributive(text):
+    assert _focus_quantifiers(text) == []
+
+
+def test_a_source_each_with_its_dou_supports_the_same_strength():
+    excerpt, focus = '每遇到新朋友我都先问对方', '遇到新朋友我都会先问。'
+    assert verdict(focus, focus, [check('都', '', '每', 2)], excerpts=(excerpt, excerpt), current=excerpt) == ([], {})
+
+
+@pytest.mark.parametrize('excerpt', ['这些歌我都听过', '每遇到新朋友我先问对方', '不是每遇到新朋友我都先问'])
+def test_each_without_its_own_dou_is_no_evidence(excerpt):
+    focus = '遇到新朋友我都会先问。'
+    errors, problems = verdict(focus, focus, [check('都', '', '每', 2)], excerpts=(excerpt, excerpt), current=excerpt)
+    assert not errors and 'frequency raised above the source' in ' '.join(problems[1])

@@ -144,12 +144,16 @@ DOU_ADVERBS = frozenset('也 还 又 就 才 全 几乎 基本 差不多 同样'
 # place or action word (时, 里, 一起, 聊天) means the count is not the group of 都.
 GROUP_NOUN_EXCLUDED = '时候里中上下前后间内外边来去着了过起'
 COUNTED_GROUP = re.compile(
+    r'(?<![第0-9一两二三四五六七八九十百千几])'  # An ordinal (第二本书) is no group.
     r'(?:这|那)?(?:[2-9]|[1-9][0-9]+|[两二三四五六七八九十几][两二三四五六七八九十百千]*)'
     r'(?:个人|[本门位件首张篇份部只条样][新老小大好旧]?(?:(?![' + GROUP_NOUN_EXCLUDED + r'])[一-鿿]){1,2})'
     r'(?:我们|你们|他们|她们|咱们|对方|我|你|您|他|她|它)?'
     r'(?:也|还|又|就|才|全|几乎|基本|差不多|同样)?$')
 COORDINATION_PRONOUNS = frozenset('我 你 您 他 她 它 我们 你们 他们 她们 咱们 对方'.split())
 COORDINATORS = re.compile(r'和|跟|与|同')
+# A source may say how often with a bare 每 and its 都 (每遇到新朋友我都先问): legal as
+# source_quantifier, never a candidate word on its own.
+SOURCE_EACH = '每'
 # A quantifier right after a negative universal is negated too (从没……每次).
 NEVER_WORDS = frozenset('从不 从未 从没 从来不 从来没 从来没有'.split())
 # Only 都 can be bounded by a count of the occasions it covers: 这／那 + a numeral or 几
@@ -1697,13 +1701,25 @@ def _frequency_source_clauses(memory):
     return [clause for text in texts for clause in re.split(CLAUSE_BREAKS, text) if clause]
 
 
+def _each_dou(clause):
+    """Whether a clause says 每……都 (每遇到新朋友我都先问): a bare 每, not negated, then 都."""
+    tokens = list(_grammar_tokens(clause))
+    return any(token == '每' and (index == 0 or tokens[index - 1] not in QUANTIFIER_NEGATORS)
+               and any(later in ('都', '全都') for later in tokens[index + 1:])
+               for index, token in enumerate(tokens))
+
+
 def _source_strength(source_name, clauses, names=()):
     """The rank of the one frequency word an own utterance clause asserts, else None.
 
     Only a single closed-class word counts, and only where its clause asserts it:
     a negated (不经常, 从没……每次) or distributive (我们都) word is no frequency
     evidence. 都 alone never is: the source must say an explicit frequency word.
+    A bare 每 with its 都 (每……都) is one, of the universal rank.
     """
+    if source_name == SOURCE_EACH:
+        return next((FREQUENCY_STRENGTH['每次'] for clause in clauses
+                     if source_name in clause and _each_dou(clause)), None)
     if source_name not in FREQUENCY_STRENGTH or source_name in ('都', '全都'):
         return None
     return next((FREQUENCY_STRENGTH[source_name] for clause in clauses
@@ -1857,8 +1873,8 @@ def _validate_quantifier_scope(part, focus_text, sentence, evidence, *, final=Fa
         return ['invalid quantifier scope verdict'], []
     errors, issues = [], []
     for check in checks:
-        if (any(word in check['candidate_quantifier'] for word in frequency_words)
-                and check['source_quantifier'] and check['source_quantifier'] not in FREQUENCY_STRENGTH):
+        if (any(word in check['candidate_quantifier'] for word in frequency_words) and check['source_quantifier']
+                and check['source_quantifier'] not in FREQUENCY_STRENGTH and check['source_quantifier'] != SOURCE_EACH):
             if not final:
                 errors.append('invalid quantifier scope verdict: source_quantifier must be one frequency word')
                 continue
