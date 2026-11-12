@@ -128,9 +128,9 @@ QUANTIFIER_WORDS = SCOPED_QUANTIFIERS | frozenset(FREQUENCY_STRENGTH)
 # sentence is preferred over a missed universal):
 # (a) a plural pronoun or closed word for a group of people right before it, with at
 #     most one adverb between (我们都, 他们俩也都);
-# (b) a numeral of two or more (or 几), possibly after 这／那, with a closed classifier
-#     that counts people or things, never times or occasions, as the group right before
-#     it in its clause (那三本书我都, 两个人都); not inside 每……一 (每读完一本书我都);
+# (b) a counted group of two or more people or things in the fixed shape of
+#     COUNTED_GROUP right before it (那三本书我都, 两个人都, 几位新朋友我都); never times or
+#     occasions, never inside 每…… (每读完两本书我都);
 # (c) X 和／跟／与／同 Y right before it, X and Y each a personal pronoun or a name or
 #     alias of a subject in this material (我和对方都, 我和小舒都).
 # A 都 right after another quantifier (每次都), or after a counted universal heading its
@@ -138,8 +138,16 @@ QUANTIFIER_WORDS = SCOPED_QUANTIFIERS | frozenset(FREQUENCY_STRENGTH)
 PEOPLE_GROUPS = ('我们', '你们', '他们', '她们', '它们', '咱们', '大家', '大伙', '各位', '俩', '两人',
                  '两个人', '几个人')
 DOU_ADVERBS = frozenset('也 还 又 就 才 全 几乎 基本 差不多 同样'.split())
-COUNTED_THINGS = re.compile(r'(?:[2-9]|[1-9][0-9]+|[两二三四五六七八九十几][两二三四五六七八九十百千]*)'
-                            r'(?:[本门位件首张篇份部只条样][\u4e00-\u9fff]|个人|道题)')
+# 这／那? + 2 or more (or 几) + 个人, or a person/thing classifier with a noun of at most
+# two characters (one adjective 新／老／小／大／好／旧 may precede it); then at most one
+# pronoun and one adverb before 都. No other character may come between: a time,
+# place or action word (时, 里, 一起, 聊天) means the count is not the group of 都.
+GROUP_NOUN_EXCLUDED = '时候里中上下前后间内外边来去着了过起'
+COUNTED_GROUP = re.compile(
+    r'(?:这|那)?(?:[2-9]|[1-9][0-9]+|[两二三四五六七八九十几][两二三四五六七八九十百千]*)'
+    r'(?:个人|[本门位件首张篇份部只条样][新老小大好旧]?(?:(?![' + GROUP_NOUN_EXCLUDED + r'])[一-鿿]){1,2})'
+    r'(?:我们|你们|他们|她们|咱们|对方|我|你|您|他|她|它)?'
+    r'(?:也|还|又|就|才|全|几乎|基本|差不多|同样)?$')
 COORDINATION_PRONOUNS = frozenset('我 你 您 他 她 它 我们 你们 他们 她们 咱们 对方'.split())
 COORDINATORS = re.compile(r'和|跟|与|同')
 # A quantifier right after a negative universal is negated too (从没……每次).
@@ -804,9 +812,11 @@ def _output_shape(content):
 
 def _contained_failure(error):
     """A failure a retry or split falls back from: timeout, rate limit, transport,
-    truncation, unparseable output. A pause or usage limit keeps its own path."""
-    return not error.paused and (error.category in ('retryable', 'invalid_output', 'timeout')
-                                 or error.reason in ('timeout', 'rate_limited', 'output_limit', 'json_parse'))
+    truncation, unparseable output, or a refusal or item error of that one request.
+    Configuration, keys, accounts, pauses, usage limits and call budgets keep their path."""
+    contained = ('retryable', 'invalid_output', 'timeout', 'item_error', 'content_rejection')
+    return not error.paused and (error.category in contained or error.reason in contained
+                                 or error.reason in ('rate_limited', 'output_limit', 'json_parse'))
 
 
 def _handle_output_limit(error, handling):
@@ -1592,20 +1602,8 @@ def _coordinated_people(text, names):
 
 
 def _counted_group(clause):
-    """Whether the clause before 都 ends in a counted group of people or things.
-
-    The count is the group 都 ranges over only if just its noun, a pronoun and an
-    adverb follow it (那三本书我都, 两门课都); a 每 anywhere makes it a frequency.
-    """
-    if any(token.startswith('每') for token in clause):
-        return False
-    rest = list(clause)
-    if rest and rest[-1] in DOU_ADVERBS:
-        rest.pop()
-    if rest and rest[-1] in COORDINATION_PRONOUNS:
-        rest.pop()
-    text = ''.join(rest)
-    return any(len(text) - match.end() <= 3 for match in COUNTED_THINGS.finditer(text))
+    """Whether the clause before 都 ends in a counted group in the fixed COUNTED_GROUP shape."""
+    return not any(token.startswith('每') for token in clause) and bool(COUNTED_GROUP.search(''.join(clause)))
 
 
 def _distributive_dou(tokens, index, names=()):

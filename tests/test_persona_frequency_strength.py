@@ -415,3 +415,24 @@ def test_an_explicit_source_word_still_supports_dou():
     excerpt = '对方读错时我每次都先问了'
     focus = '对方读错时我都先问要不要重读。'
     assert verdict(focus, focus, [check('都', '', '每次', 2)], excerpts=(excerpt, excerpt), current=excerpt) == ([], {})
+
+
+# Round 6: a counted group is one fixed shape right before 都; the prompt says a bare 都 is no evidence.
+
+@pytest.mark.parametrize('focus', ['两个人独处时我都先问要不要重读。', '两个人聊天我都先问要不要重读。',
+                                   '几个人一起时我都先问要不要重读。', '两个人吵架时我都先道歉。',
+                                   '两位朋友来时我都先问要不要重读。', '两首歌时我都先看词。', '这两本书里我都夹了书签。'])
+def test_anything_between_the_count_and_dou_makes_it_a_frequency_claim(focus):
+    assert _focus_quantifiers(focus) == ['都']
+    assert 'frequency raised above the source' in problems_of(focus, focus, [check('都', '', '', 2)])
+
+
+@pytest.mark.parametrize('text', ['那三本书我都读完了', '两个人都来了', '几位新朋友我都问过', '那三本书我也都读完了',
+                                  '两样东西我都喜欢', '这几个人我都问过'])
+def test_the_fixed_counted_group_shape_stays_distributive(text):
+    assert _focus_quantifiers(text) == []
+
+
+def test_check_prompt_says_a_bare_source_dou_is_no_evidence():
+    check_prompt = files('iris').joinpath(f"prompts/{PROMPT_VERSIONS['persona_check']}.md").read_text(encoding='utf-8')
+    assert '来源里单独的“都”' in check_prompt and '不算频率依据' in check_prompt

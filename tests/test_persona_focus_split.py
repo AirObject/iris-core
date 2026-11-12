@@ -38,6 +38,10 @@ class Truncating(FocusModel):
                 raise ModelError('paused', '达到每日 token 上限', paused=True, reason='usage_limit')
             self.now += self.duration
             raise ModelError('retryable', action, reason=action)
+        if action in ('item_error', 'content_rejection', 'configuration'):
+            self.calls.append((json.loads(messages[-1]['content']), kwargs['_deadline']))
+            self.now += self.duration
+            raise ModelError(action, action, reason=action)
         reply = super().chat(messages, purpose, **kwargs)
         request = self.calls[-1][0]
         if self.omit is not None:
@@ -663,3 +667,34 @@ def test_subject_names_never_reach_a_model_request(store):
     messages = _request_messages('persona_check', {'task':'check_facts_and_rules', 'candidate':[],
                                                    '_subject_names':['只给代码的名字']})
     assert '只给代码的名字' not in messages[1]['content'] and '_subject_names' not in messages[1]['content']
+
+
+# Round 6: a refusal or item error of the one request is contained; configuration is not.
+
+@pytest.mark.parametrize('category', ['item_error', 'content_rejection'])
+@pytest.mark.parametrize('case', ['retry', 'focus_split'])
+def test_a_request_refusal_or_item_error_restores_the_truncation(store, category, case):
+    if case == 'retry':
+        material, sentence = single_focus_case()
+        model = Truncating(first_call, content='{"sentences":[', script={2:category})
+    else:
+        material, sentence = material_and_sentence(2)
+        model = Truncating(first_call, script={2:category})
+    outputs = {}
+    result, _ = run(store, model, material, [sentence], outputs)  # Never a stage failure.
+    assert result['validation_errors'] == ['output_limit; no complete judgment']
+    assert outputs['persona_check_incomplete'] == 'output_limit'
+    assert result['output_limit_diagnostics']['terminal_truncations'] == 1
+
+
+@pytest.mark.parametrize('case', ['retry', 'focus_split'])
+def test_a_configuration_error_is_not_absorbed(store, case):
+    if case == 'retry':
+        material, sentence = single_focus_case()
+        model = Truncating(first_call, content='{"sentences":[', script={2:'configuration'})
+    else:
+        material, sentence = material_and_sentence(2)
+        model = Truncating(first_call, script={2:'configuration'})
+    with pytest.raises(ModelError) as caught:
+        run(store, model, material, [sentence])
+    assert caught.value.category == 'configuration'
