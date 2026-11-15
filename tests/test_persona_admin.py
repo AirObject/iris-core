@@ -387,6 +387,7 @@ def test_prepare_uninitialized_persona_is_explicit_and_does_not_create_version(s
 def test_persona_shutdown_waits_for_accepted_task_before_closing_store(store):
     from iris.persona import PersonaJobs
     setup_role(store, 'Iris', '我来自云城。')
+    store.set_setting('persona_publish_mode', 'all_manual')
     entered, release, closed = threading.Event(), threading.Event(), threading.Event()
     fake = FakeGateway(store, {'sentences': []},
                        callback=lambda: (entered.set(), release.wait(10)))
