@@ -147,6 +147,7 @@ def test_changed_correction_evidence_blocks_publication_and_confirmation(handwri
 
 def test_confirm_rechecks_evidence_used_only_for_deletion(handwritten):
     from iris.persona import PersonaConflict
+    handwritten.set_setting('persona_publish_mode', 'all_manual')
     text='我不喜欢合奏。'
     before=write(handwritten,text)
     mid=add_self(handwritten,'此前说不喜欢合奏并不准确，我喜欢合奏排练。',
