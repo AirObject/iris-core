@@ -1505,24 +1505,51 @@ def _restarts_claim(clause):
 
 
 def _bounded_scene_focuses(text):
-    """A local event qualifier cannot license a later independent claim."""
+    """Keep local event scope on actions and reported speech, and check new general claims separately."""
     parts = _clause_parts(text)
-    first = parts[0]['text'] if parts else ''
-    number = r'[0-9零〇一二三四五六七八九十廿]+'
-    calendar_day = rf'(?:{number}年)?(?:{number}月)?{number}[日号]'
-    heading = re.fullmatch(rf'(?:在)?(?:{calendar_day}|{BOUNDED_SCENE.pattern})(?:中|里|时)?', first)
-    frame = heading is not None or BOUNDED_CONTEXT.match(text.strip()) is not None
-    continues = re.compile(r'^(?:我们|我)?(?:随后|接着|然后|当时|那时|当天)')
-    scoped = False
+    if not parts:
+        return set()
+    first = parts[0]['text']
+    has_subject = bool(CLAIM_SUBJECTS & set(words(first)))
+    heading = BOUNDED_SCENE.search(first) is not None and not has_subject
+    standing_claim = re.compile(
+        r'^(?:我们|我)(?:也|还|更|就|却|则|才)*(?:不)?(?:会|能|愿意|喜欢|偏好|倾向|习惯|擅长|想)')
+    speech = '说|表示|承认|提到|说明|补充'
+    speech_lead = re.compile(rf'^(?:我们|我)?(?:又|还|也|并)?(?:{speech})')
+    speech_end = re.compile(rf'(?:{speech})[：:]?$')
+    report_verbs = set(speech.split('|')) | REQUEST_ACTS
+
+    def unbounded_claim(clause):
+        if standing_claim.match(clause):
+            return True
+        tokens = words(clause)
+        if not tokens or tokens[0] not in CLAIM_SUBJECTS:
+            return False
+        # A condition or object can intervene between the speaker and the modal.
+        # An explicitly reported request or statement still has its own event.
+        for token in tokens[1:]:
+            if token in report_verbs:
+                break
+            if token in ('会', '不会'):
+                return True
+        return False
+
+    scoped = reported = False
     bounded = set()
     for part in parts:
-        clause = part['text']
+        index, clause = part['index'], part['text']
         if BOUNDED_SCENE.search(clause):
             scoped = True
-        elif not frame and _restarts_claim(clause) and not continues.match(clause):
+        elif scoped and not ((heading and index == 2) or reported) and unbounded_claim(clause):
             scoped = False
-        if scoped or frame:
-            bounded.add(part['index'])
+        if scoped:
+            bounded.add(index)
+        reported = scoped and bool(speech_lead.match(clause) or speech_end.search(clause))
+    if 1 not in bounded and 2 in bounded:
+        topic = first.startswith(('就', '关于', '对于')) and not has_subject
+        speech_content = _request_head(first) and speech_lead.match(parts[1]['text'])
+        if topic or speech_content:
+            bounded.add(1)
     return bounded
 
 

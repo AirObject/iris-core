@@ -93,6 +93,10 @@ def test_model_cannot_label_generic_activity_as_specific_single_date_scene():
     ('我偏好出门前先看地图，我在那次读图时核对页码。', False),
     ('我在那次读图时核对页码，随后我收好纸笔。', True),
     ('在那次读图时，我核对页码，我收好纸笔。', True),
+    ('清点材料那次，我核对页码，收好纸笔，我不会改用电子笔。', False),
+    ('清点材料那次，我核对页码，收好纸笔，我碰到相似情况不会改用电子笔。', False),
+    ('那次整理时我说，我更愿意写短句。', True),
+    ('我在那次读图时核对页码，但比较结果仍有疑问。', True),
 ])
 def test_single_date_keeps_scope_with_the_claim_it_qualifies(text, supported):
     from iris.persona import _clause_parts
