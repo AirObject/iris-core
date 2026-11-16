@@ -284,7 +284,8 @@ def test_rollback_keeps_original_handwriting_time(handwritten):
     assert material['handwritten_snapshot']['A1']['written_at']==WRITTEN.isoformat()
 
 
-def test_handwritten_review_cannot_renew_initial_check_stage_budget(handwritten):
+def test_handwritten_review_cannot_renew_initial_check_stage_budget(handwritten, monkeypatch):
+    monkeypatch.setattr("iris.persona.MAX_CHECK_STAGE_SECONDS", 900)
     text='我偏好自然表达。我喜欢淡蓝色。我欣赏安静。'
     before=write(handwritten,text)
     model=ReviewModel(handwritten,text,omit=True)

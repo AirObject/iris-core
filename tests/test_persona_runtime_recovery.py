@@ -84,7 +84,7 @@ def test_product_stage_retry_recovers_a_call_under_the_same_budget(tmp_path):
     assert report['metrics']['calls']['recovered_timed_out_calls'] == 1
     outputs = json.loads(report['rows'][0]['attempts'][0]['outputs_json'])
     retry = outputs['persona_check_batches'][0]['persona_check_timeout_retries'][0]
-    assert retry['status'] == 'complete' and retry['remaining_seconds'] == 540
+    assert retry['status'] == 'complete' and retry['remaining_seconds'] == 3600 - 360
 
 
 @pytest.mark.parametrize('failure', ['timeout', 'rate_limited', 'transport_failure'])

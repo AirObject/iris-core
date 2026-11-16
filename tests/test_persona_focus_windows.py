@@ -47,9 +47,9 @@ class FocusModel:
         return ModelReply(dumps({'sentences':rows,'change_degree':'small','reason':'有界变化。'}),'stop',{})
 
 
-def run(store, model, material, sentences, outputs=None):
+def run(store, model, material, sentences, outputs=None, *, deadline=None):
     return PersonaEngine(store,model)._check_all('persona_check',material,sentences,
-        full_content=''.join(s['text'] for s in sentences),outputs=outputs if outputs is not None else {}, assess_degree=False)
+        full_content=''.join(s['text'] for s in sentences),outputs=outputs if outputs is not None else {}, assess_degree=False, deadline=deadline)
 
 
 def test_large_sentence_is_checked_in_small_windows_without_losing_context(store):
@@ -91,7 +91,8 @@ def test_protected_sentences_are_checked_once_and_original_sentence_order_surviv
 
 def test_late_focus_timeout_keeps_one_stage_deadline_and_partial_raw_outputs(store):
     material,sentence=material_and_sentence(19);model=FocusModel(duration=130);outputs={}
-    with pytest.raises(ModelError) as error:run(store,model,material,[sentence],outputs)
+    with pytest.raises(ModelError) as error:
+        run(store, model, material, [sentence], outputs, deadline=900)
     assert error.value.reason=='timeout'
     assert len(model.calls)==7
     assert [d for _,d in model.calls]==[360,490,620,750,880,900,900]

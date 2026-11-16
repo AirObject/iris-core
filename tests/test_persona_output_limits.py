@@ -42,7 +42,7 @@ def test_truncation_splits_recursively_preserving_order_and_budget(store, purpos
     assert [r['reason'] for r in result['sentences']] == ['独立核对完整依据。'] * 4
     assert all(r['supported'] for r in result['sentences'])
     assert not result['validation_errors']
-    assert all(c[2] <= 900 for c in model.calls)
+    assert [call[2] for call in model.calls] == list(range(360, 360 + len(counts)))
     diagnostics = result['output_limit_diagnostics']
     assert diagnostics['truncations'] == diagnostics['splits'] == splits
     assert diagnostics['split_results'] == {'recovered': splits}
@@ -63,7 +63,7 @@ def test_split_children_do_not_renew_the_stage_budget(store):
     # PE-23: the child's timeout restores the original truncation: incomplete, not a stage failure.
     model, outputs = Limited(store, 1, cost=350), {}
     result = PersonaEngine(store, model)._check_all('persona_check', batch_material(), batch_sentences()[:4],
-        full_content='draft', outputs=outputs, assess_degree=False)
+        full_content='draft', outputs=outputs, assess_degree=False, deadline=900)
     assert result['validation_errors'] and outputs['persona_check_incomplete'] == 'output_limit'
     assert model.now == 1050 and len(model.calls) == 3
     assert model.calls[-1][2] == 900

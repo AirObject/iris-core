@@ -252,7 +252,7 @@ def test_each_fact_structure_error_reasks_once_then_accepts_or_rejects(store, pu
     assert diag['initial_failures'][code] >= 1
     assert diag['retry_results']['conservative' if persistent else 'corrected'] >= 1
     assert diag['conservative_sentence_count'] == int(persistent)
-    assert all(deadline <= 900 for _,_,deadline in model.calls)
+    assert [deadline for _, _, deadline in model.calls] == [360, 361]
 
 
 @pytest.mark.parametrize('purpose',['persona_check','persona_recheck'])

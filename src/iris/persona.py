@@ -57,12 +57,11 @@ EXCLUDED_KINDS = {'state': 'current state is not persona', 'task': 'pending acti
                   'instruction': 'host/model instruction is not persona'}
 CHECK_BATCH_SIZE = 4
 CHECK_BATCH_CLAUSES = 2
-MAX_CHECK_STAGE_SECONDS = 900
+MAX_CHECK_STAGE_SECONDS = 3600
 MAX_CHECK_REQUEST_BYTES = 32768
 CHECK_TIMEOUT_RETRIES = 1
 # PE-11b: 80 successful streams had <=2.442 s between data events, including
 # one 99.581 s call. Allow 90 s without bytes for heavier reasoning too.
-# The 360 s total call budget and 900 s stage budget remain unchanged.
 CHECK_STREAM_IDLE_SECONDS = 90
 REPAIR_POLICY = 'first_eligible_bound_memory_v2'
 BOUNDED_SCENE = re.compile(r'(?:这|那|当|某|本|同)(?:一)?(?:次|场|回|天)|\d{4}-\d{2}-\d{2}|[0-9零〇一二三四五六七八九十廿三]+(?:年|月|日|号)')

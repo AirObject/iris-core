@@ -152,7 +152,6 @@ def test_completion_shares_fixed_stage_deadline_and_keeps_both_raw_outputs(store
     result, _, _ = check(store, model, outputs=outputs)
     assert not result['incomplete_checks'] and result['sentences'][0]['supported']
     assert [deadline for _, deadline in model.calls] == [360, 719, 721]
-    assert all(deadline <= 900 for _, deadline in model.calls)
     raw = outputs['persona_check_batches'][0]
     assert raw['persona_check'] and raw['persona_check_focus_completions'][0]['outputs']['persona_check']
 

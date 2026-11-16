@@ -81,8 +81,10 @@ def single_focus_case():
 
 def run(store, model, material, sentences, outputs=None, engine=PersonaEngine, assess_degree=False):
     outputs = {} if outputs is None else outputs
+    # The small stage deadline keeps the reserve and timeout scenarios independent of the default.
     result = engine(store, model)._check_all('persona_check', material, sentences,
-        full_content=''.join(s['text'] for s in sentences), outputs=outputs, assess_degree=assess_degree)
+        full_content=''.join(s['text'] for s in sentences), outputs=outputs,
+        assess_degree=assess_degree, deadline=900)
     return result, outputs
 
 

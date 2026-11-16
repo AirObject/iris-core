@@ -73,7 +73,8 @@ def test_deterministic_selections_keep_indices_and_only_own_options(store):
     assert all(change['after']['basis']==change['before']['basis'] for change in checks['repaired_sentences'])
 
 
-def test_selected_repairs_still_share_recheck_budget_and_timeout_never_publishes(store):
+def test_selected_repairs_still_share_recheck_budget_and_timeout_never_publishes(store, monkeypatch):
+    monkeypatch.setattr("iris.persona.MAX_CHECK_STAGE_SECONDS", 900)
     five_memories(store)
     model=ManyRepairs(store,duration=350)
     result=PersonaEngine(store,model).regenerate(expected_version=1)
