@@ -40,10 +40,12 @@ MAX_CHARS = 800
 RELATIVE_TIMES = frozenset(('今天 今日 昨天 昨日 明天 明日 前天 后天 昨晚 今晚 明晚 昨夜 今夜 今早 今晨 '
                            '今年 去年 明年 上周 本周 这周 下周 上星期 本星期 这星期 下星期 '
                            '上个月 本月 这个月 下个月 最近 近日 近来 刚才 刚刚 现在 目前').split())
-PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v24', 'persona_check': 'persona_check_v37',
-                   'persona_recheck': 'persona_check_v37'}
+PROMPT_VERSIONS = {'persona_generate': 'persona_generate_v24', 'persona_check': 'persona_check_v38',
+                   'persona_recheck': 'persona_check_v38'}
 DEGREE_PROMPT_VERSION = 'persona_degree_v1'
-HANDWRITTEN_PROMPT_VERSION = 'persona_handwritten_v2'
+HANDWRITTEN_PROMPT_VERSION = 'persona_handwritten_v3'
+# These words only prioritize a focused review. They never authorize deletion.
+CORRECTION_CUE = re.compile(r'不是|并非|不再|没有|并不|从未|从没|未曾|更正|纠正|改成|改为|写错|记错|说错|撤回|否认')
 # Each sentence's review pages are relevance-first, so the bound drops the least related.
 HANDWRITTEN_REVIEW_MAX_PAGES = 2
 # About what two pages hold; also bounds the memories stored with each attempt/version.
@@ -1502,6 +1504,28 @@ def _restarts_claim(clause):
     return bool(tokens) and (tokens[0] in CLAIM_LINKS or tokens[0] in CLAIM_SUBJECTS)
 
 
+def _bounded_scene_focuses(text):
+    """A local event qualifier cannot license a later independent claim."""
+    parts = _clause_parts(text)
+    first = parts[0]['text'] if parts else ''
+    number = r'[0-9零〇一二三四五六七八九十廿]+'
+    calendar_day = rf'(?:{number}年)?(?:{number}月)?{number}[日号]'
+    heading = re.fullmatch(rf'(?:在)?(?:{calendar_day}|{BOUNDED_SCENE.pattern})(?:中|里|时)?', first)
+    frame = heading is not None or BOUNDED_CONTEXT.match(text.strip()) is not None
+    continues = re.compile(r'^(?:我们|我)?(?:随后|接着|然后|当时|那时|当天)')
+    scoped = False
+    bounded = set()
+    for part in parts:
+        clause = part['text']
+        if BOUNDED_SCENE.search(clause):
+            scoped = True
+        elif not frame and _restarts_claim(clause) and not continues.match(clause):
+            scoped = False
+        if scoped or frame:
+            bounded.add(part['index'])
+    return bounded
+
+
 def _hedge_kept(text, focus):
     """Whether a hedge reaches this focus; one on an unrelated claim does not.
 
@@ -2142,6 +2166,7 @@ def _validate_clause_checks(output, payload, *, final=False):
         # are separate proof obligations: validate each, never pool evidence or
         # discard an adverse verdict when projecting to the requested spans.
         full_by_index = {part['index']: part for part in full}
+        bounded_focuses = _bounded_scene_focuses(sentence['text'])
         requested_indices = [part['index'] for part in requested]
         # Only a focus the request marked owes a claim contract; extra spans do not.
         marks = {part['index']: part.get('plan_markers', []) for part in requested if isinstance(part, dict)}
@@ -2263,8 +2288,8 @@ def _validate_clause_checks(output, payload, *, final=False):
             if part['supported'] and len(dates) < 2:
                 if not part['scene_qualified']:
                     issues.append(f'{label}: general claim needs at least two distinct dates of its own proof')
-                elif not BOUNDED_SCENE.search(sentence['text']):
-                    issues.append(f'{label}: single-date claim needs an explicit bounded scene in this sentence')
+                elif expected['index'] not in bounded_focuses:
+                    issues.append(f'{label}: single-date claim needs an explicit bounded scene for this focus')
         if scope_absent:
             if (issues and len(errors) == row_errors_before
                     and _valid_sentence_verdict(row, index, require_kind=True)):
@@ -3813,23 +3838,68 @@ class PersonaEngine:
                 'skipped_windows':skipped, 'normalizations':normalizations}
 
     def _review_handwritten(self, material, outputs, *, deadline, following_windows=0):
-        """One sentence per bounded page; uncertain/invalid semantic permission means keep.
-
-        The check stage shares this deadline: a retry leaves room for the pages
-        still to review and the `following_windows` the check is expected to need.
-        """
+        """Preserve handwriting unless a later correction is confirmed or it is a reply instruction."""
         import time
         monotonic = getattr(self.gateway, 'monotonic', time.monotonic)
         longest_page = 0
         extra = material.get('handwritten_evidence', {}).get('memories', [])
-        audit = {'policy':'explicit_correction_or_reply_instruction_v1',
+        audit = {'policy':'corroborated_correction_or_reply_instruction_v2',
                  'decisions':[], 'retries':0, 'conservative_keeps':0, 'oversized_memories':[],
                  'over_budget_candidates':len(extra), 'unreviewed_memories':[]}
         raw_batches = outputs.setdefault('persona_check_handwritten_batches', [])
         changes = []
         as_of = _instant(material['as_of'])
         reviewed = list(material['handwritten_snapshot'].items())
-        for position,(ref,sentence) in enumerate(reviewed):
+
+        def review(request, remaining_windows):
+            nonlocal longest_page
+            sentence = request['handwritten']
+            summary = {'ref':sentence['ref']}
+            if focus := request.get('review_focus'):
+                summary['review_focus'] = focus
+            raw = {'persona_check_task':'handwritten_review',
+                   'persona_check_prompt_version':HANDWRITTEN_PROMPT_VERSION,
+                   'sentence_ref':sentence['ref'], 'attempts':[]}
+            if focus:
+                raw['review_focus'] = focus
+            raw_batches.append(raw)
+            retry_state = {'timeouts':0, 'longest_window':longest_page, 'remaining_windows':remaining_windows}
+            started = monotonic()
+            error = None
+            for attempt in range(2):
+                attempt_raw = {}
+                raw['attempts'].append(attempt_raw)
+                attempted = request
+                if attempt:
+                    attempted = {**request, 'format_retry':{'errors':[error],
+                        'instruction':'上次输出未通过结构或引文核对。只按原任务重新判断这一页，严格返回原定字段；'
+                                      'quote 必须从同一 ref 的 content 连续逐字复制。给不出合格依据就 keep。'}}
+                    if _check_request_bytes('persona_check', attempted) > MAX_CHECK_REQUEST_BYTES:
+                        attempted = request
+                try:
+                    answer = self._check_call('persona_check', attempted, attempt_raw,
+                        deadline=deadline, retry_state=retry_state)
+                    error = _handwritten_answer(answer, request['evidence_by_ref'], sentence)
+                    if not error and focus and answer['decision'] == 'reply_instruction':
+                        error = 'focused correction review cannot authorize an instruction deletion'
+                except ModelError as failure:
+                    if not _structure_failure(failure):
+                        raise
+                    error = _parse_structure_error(failure)
+                if not error:
+                    break
+                attempt_raw['handwritten_structure_error'] = error
+                if attempt == 0:
+                    audit['retries'] += 1
+            longest_page = max(longest_page, monotonic() - started)
+            _mark_window_complete(raw['attempts'], 'persona_check')
+            if error:
+                audit['conservative_keeps'] += 1
+                return {**summary, 'decision':'keep', 'reason':'invalid review after one reask',
+                        'error':error, 'status':'conservative'}
+            return {**answer, **summary, 'status':'complete'}
+
+        for position, (ref, sentence) in enumerate(reviewed):
             written = _instant(sentence['written_at'])
             terms = _content_terms(sentence['text'])
             def later(memory):
@@ -3839,11 +3909,15 @@ class PersonaEngine:
             eligible = ([m for m in material['evidence']['memories'] if later(m)]
                         + [m for m in extra if later(m) and terms & _content_terms(m['content'])])
             eligible.sort(key=_handwritten_rank(terms))
-            def payload(memories):
-                return {'task':'handwritten_review','candidate':[],
-                        'handwritten':sentence,
-                        'evidence_by_ref':{m['ref']:{**_model_memory(m), 'content':m['content'],
-                            'recorded_at':m['recorded_at']} for m in memories}}
+
+            def payload(memories, *, focus=None):
+                request = {'task':'handwritten_review', 'candidate':[], 'handwritten':sentence,
+                           'evidence_by_ref':{m['ref']:{**_model_memory(m), 'content':m['content'],
+                               'recorded_at':m['recorded_at']} for m in memories}}
+                if focus is not None:
+                    request['review_focus'] = focus
+                return request
+
             pages, page = [], []
             for memory in eligible:
                 if _check_request_bytes('persona_check',payload([*page,memory])) <= MAX_CHECK_REQUEST_BYTES:
@@ -3863,61 +3937,41 @@ class PersonaEngine:
                 audit['unreviewed_memories'].append({'sentence_ref':ref,
                     'count':sum(len(rest) for rest in pages[HANDWRITTEN_REVIEW_MAX_PAGES:])})
                 pages = pages[:HANDWRITTEN_REVIEW_MAX_PAGES]
-            decisions = []
-            for page_index,page in enumerate(pages):
-                request = payload(page)
-                raw = {'persona_check_task':'handwritten_review',
-                       'persona_check_prompt_version':HANDWRITTEN_PROMPT_VERSION,
-                       'sentence_ref':ref, 'attempts':[]}
-                raw_batches.append(raw)
-                retry_state = {'timeouts':0, 'longest_window':longest_page,
-                               'remaining_windows':(len(pages) - page_index - 1 + len(reviewed) - position - 1
-                                                    + following_windows)}
-                page_started = monotonic()
-                answer, error = None, None
-                for attempt in range(2):
-                    attempt_raw = {}
-                    raw['attempts'].append(attempt_raw)
-                    attempted = request
-                    if attempt:
-                        # Name the defect, or the same wording just fails the same way.
-                        attempted = {**request, 'format_retry':{'errors':[error],
-                            'instruction':'上次输出未通过结构或引文核对。只按原任务重新判断这一页，严格返回原定字段；'
-                                          'quote 必须从同一 ref 的 content 连续逐字复制。给不出合格依据就 keep，判定标准不放宽。'}}
-                        if _check_request_bytes('persona_check', attempted) > MAX_CHECK_REQUEST_BYTES:
-                            attempted = request
-                    try:
-                        answer = self._check_call('persona_check',attempted,attempt_raw,
-                            deadline=deadline,retry_state=retry_state)
-                        error = _handwritten_answer(answer,request['evidence_by_ref'],sentence)
-                    except ModelError as failure:
-                        if not _structure_failure(failure):
-                            raise
-                        error = _parse_structure_error(failure)
-                    if not error:
+
+            remaining = len(reviewed) - position - 1 + following_windows
+            decisions = [review(payload(page), remaining + len(pages) - page_index - 1)
+                         for page_index, page in enumerate(pages)]
+            if all(d['decision'] == 'keep' and d['status'] == 'complete' for d in decisions):
+                # A targeted pass can recover a correction phrased differently
+                # from the handwritten text. Stay within the same reviewed evidence.
+                focused = []
+                for memory in (m for page in pages for m in page if CORRECTION_CUE.search(m['content'])):
+                    request = payload([*focused, memory], focus='look_for_correction')
+                    if _check_request_bytes('persona_check', request) <= MAX_CHECK_REQUEST_BYTES:
+                        focused.append(memory)
+                if focused:
+                    decisions.append(review(payload(focused, focus='look_for_correction'), remaining + 1))
+
+            permitted = next((d for d in decisions if d['decision'] == 'reply_instruction'), None)
+            by_ref = {memory['ref']:memory for memory in eligible}
+            if permitted is None:
+                for proposal in [d for d in decisions if d['decision'] == 'explicit_correction']:
+                    # The independently framed check sees only the cited evidence
+                    # and the original text, without the previous decision or quote.
+                    cited = dict.fromkeys(proof['ref'] for proof in proposal['evidence'])
+                    request = payload([by_ref[key] for key in cited], focus='confirm_correction')
+                    if _check_request_bytes('persona_check', request) > MAX_CHECK_REQUEST_BYTES:
+                        audit['conservative_keeps'] += 1
+                        decisions.append({'ref':ref, 'review_focus':'confirm_correction', 'decision':'keep',
+                                          'reason':'confirmation material exceeds byte limit', 'status':'conservative'})
+                        continue
+                    confirmation = review(request, remaining)
+                    decisions.append(confirmation)
+                    if confirmation['decision'] == 'explicit_correction':
+                        permitted = confirmation
                         break
-                    attempt_raw['handwritten_structure_error'] = error
-                    if attempt == 0:
-                        audit['retries'] += 1
-                longest_page = max(longest_page, monotonic() - page_started)
-                _mark_window_complete(raw['attempts'], 'persona_check')
-                if error:
-                    audit['conservative_keeps'] += 1
-                    decisions.append({'ref':ref,'decision':'keep','reason':'invalid review after one reask',
-                                      'error':error,'status':'conservative'})
-                    continue
-                decision = {**answer, 'ref':ref, 'status':'complete'}
-                decisions.append(decision)
-            # A positive page supplies its own complete deletion proof; never
-            # combine different corrections into a stronger permission. An instruction is
-            # intrinsic to the exact sentence and needs no memory permission.
-            permitted = next((d for d in decisions if d['decision']=='reply_instruction'),None)
-            corrections = [d for d in decisions if d['decision']=='explicit_correction']
-            if permitted is None and corrections:
-                permitted = corrections[0]
             audit['decisions'].extend(decisions)
             if permitted is not None:
-                by_ref = {m['ref']:m for m in eligible}
                 basis = [{'memory_id':by_ref[p['ref']]['memory_id'],
                           'revision':by_ref[p['ref']]['revision'],'quote':p['quote']}
                          for p in permitted['evidence']]

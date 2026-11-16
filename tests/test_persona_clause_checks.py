@@ -88,6 +88,32 @@ def test_model_cannot_label_generic_activity_as_specific_single_date_scene():
     assert 'explicit bounded scene' in ' '.join(validate(result)[1][1])
 
 
+@pytest.mark.parametrize('text, supported', [
+    ('我在那次读图时核对页码，我偏好出门前先看地图。', False),
+    ('我偏好出门前先看地图，我在那次读图时核对页码。', False),
+    ('我在那次读图时核对页码，随后我收好纸笔。', True),
+    ('在那次读图时，我核对页码，我收好纸笔。', True),
+])
+def test_single_date_keeps_scope_with_the_claim_it_qualifies(text, supported):
+    from iris.persona import _clause_parts
+
+    request = payload()
+    request['candidate'][0].update(text=text, clauses=_clause_parts(text))
+    quote = '我在那次读图时核对页码，随后我收好纸笔。'
+    request['evidence_by_ref']['M1']['excerpts'] = [{'excerpt': quote, 'date': '2026-10-01'}]
+    result = verdict()
+    result['sentences'][0]['clauses'] = [
+        {'index': part['index'], 'supported': True, 'scene_qualified': True, 'reason': '假模型全部放行。',
+         'evidence': [{'ref': 'M1', 'source_index': 1, 'quote': quote}]}
+        for part in request['candidate'][0]['clauses']
+    ]
+    structural, problems = validate(result, request)
+    assert not structural
+    assert (not problems) is supported
+    if problems:
+        assert 'explicit bounded scene for this focus' in ' '.join(problems[1])
+
+
 def test_one_false_clause_overrides_supported_whole_sentence():
     result = verdict()
     result['sentences'][0]['clauses'][1]['supported'] = False
