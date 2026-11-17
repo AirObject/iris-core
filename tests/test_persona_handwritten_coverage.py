@@ -168,7 +168,10 @@ def test_reask_falls_back_when_the_feedback_would_exceed_the_byte_limit(store, m
         lambda purpose, payload: persona.MAX_CHECK_REQUEST_BYTES + 1 if 'format_retry' in payload else real(purpose, payload))
     model = invalid_quote_model(store)
     review(store, before, model)
-    assert len(model.reviews) == 2 and 'format_retry' not in model.reviews[1]
+    initial, reask, confirmation = model.reviews
+    assert initial == reask
+    assert 'format_retry' not in reask
+    assert confirmation['review_focus'] == 'confirm_correction'
 
 
 @pytest.mark.parametrize('content', ['我好像不再讨厌合奏了。', '我可能不是不喜欢合奏。'])

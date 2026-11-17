@@ -172,7 +172,7 @@ def test_one_oversized_sentence_is_rejected_without_sending_or_truncating_it(sto
 
 
 @pytest.mark.parametrize('failures', [('timeout',), ('timeout', 'timeout')])
-def test_timeout_retries_same_batch_once_inside_900_second_stage(store, failures):
+def test_timeout_retries_same_batch_once_inside_stage_budget(store, failures):
     material, sentence = general_case(); model, outputs = Checks(store, fail=failures), {}
     if len(failures) == 2:
         with pytest.raises(ModelError) as error: check(store, model, material, [sentence], outputs)
@@ -204,7 +204,6 @@ def test_field_correction_and_timeout_share_original_stage_deadline(store):
     assert result['sentences'][0]['supported']
     assert len(model.calls) == 3
     assert [d for _, _, d in model.calls] == [360, 720, 721]
-    assert all(d <= 900 for _, _, d in model.calls)
 
 
 def test_invalid_suffix_correction_cannot_erase_negative_from_the_suffix(store):
