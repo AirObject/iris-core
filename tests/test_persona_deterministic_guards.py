@@ -179,7 +179,7 @@ def test_admin_text_and_setup_remain_exact_under_new_style_guards(store):
                 result = approving_verdict(payload['candidate'], payload)
             return ModelReply(dumps(result), 'stop', {})
     result = PersonaEngine(store, Preserve()).regenerate(expected_version=edited['id'])
-    assert result['status'] == 'pending'  # Product default remains all_manual.
+    assert result['status'] == 'current'
     assert '初始设定：你们称我为目录管理员。' in result['version']['content']
     assert manual in result['version']['content']
     assert not result['version']['checks']['deleted_sentences']

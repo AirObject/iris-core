@@ -246,14 +246,16 @@ def test_future_deadline_closes_stream_worker_and_preserves_shared_client(prepar
     stream = Blocking()
     def respond(req):
         return httpx.Response(200, stream=stream)
+    configs = {'chat': ModelConfig('https://model.invalid', '', 'glm-5.3-flash')}
+    health = ModelHealth(prepared, configs)
     with httpx.Client(transport=httpx.MockTransport(respond)) as client:
-        gateway = Gateway({'chat': ModelConfig('https://model.invalid', '', 'glm-5.3-flash')},
-                          prepared, client=client)
+        gateway = Gateway(configs, prepared, client=client, health=health)
         try:
             outputs = {}
+            engine = PersonaEngine(prepared, gateway)
             started = time.monotonic()
             with pytest.raises(ModelError) as failure:
-                PersonaEngine(prepared, gateway)._call('persona_check', {}, outputs, deadline=started + .1)
+                engine._call('persona_check', {}, outputs, deadline=started + .5)
             assert failure.value.reason == 'timeout'
             assert stream.closed.is_set() and not client.is_closed and gateway.client is client
             assert time.monotonic() - started < 1.5

@@ -257,7 +257,7 @@ def test_new_prompt_versions_are_active_and_old_files_remain():
     assert PROMPT_VERSIONS == {'persona_generate':'persona_generate_v24', 'persona_check':'persona_check_v38',
                                'persona_recheck':'persona_check_v38'}
     assert HANDWRITTEN_PROMPT_VERSION == 'persona_handwritten_v3'
-    assert DEFAULT_PUBLISH_MODE == 'all_manual'
+    assert DEFAULT_PUBLISH_MODE == 'all_auto'
     for name in ('persona_generate_v21', 'persona_generate_v22', 'persona_generate_v23', 'persona_generate_v24',
                  'persona_check_v34', 'persona_check_v35', 'persona_check_v36', 'persona_check_v37', 'persona_check_v38',
                  'persona_handwritten_v1', 'persona_handwritten_v2', 'persona_handwritten_v3'):

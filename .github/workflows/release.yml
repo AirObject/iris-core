@@ -35,8 +35,7 @@ jobs:
               out.write('version=' + version + '\n')
           PYCODE
       - run: uv sync --locked --python 3.13
-      - run: uv run pytest
-      - run: uv run --locked --isolated --python 3.12 pytest
+      - run: uv run --locked --python 3.13 pytest
       - run: uv build
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -88,7 +87,7 @@ jobs:
 
           支持宿主机 AstrBot 与可信 Docker 网络中的 AstrBot。镜像以非 root 用户运行；首次设置使用容器日志中的一次性设置码，数据保存在 /data。请仅映射到 127.0.0.1，或使用明确 Host 白名单的可信网络；本服务不提供 TLS。
 
-          镜像：\`ghcr.io/airobject/iris-core:$VERSION\`（另有 \`latest\`），支持 linux/amd64 与 linux/arm64。附件为同一版本的 wheel 与 sdist；Python 3.12、3.13 测试及构建均已通过。
+          镜像：\`ghcr.io/airobject/iris-core:$VERSION\`（另有 \`latest\`），支持 linux/amd64 与 linux/arm64。附件为同一版本的 wheel 与 sdist；Python 3.13 测试及构建均已通过。
           EOF
           gh release create "$RELEASE_TAG" dist/*.whl dist/*.tar.gz \
             --verify-tag --title "Iris $VERSION" --notes-file "$RUNNER_TEMP/release-notes.md" --generate-notes

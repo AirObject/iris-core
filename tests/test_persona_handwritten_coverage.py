@@ -65,6 +65,7 @@ def test_over_budget_later_correction_reaches_the_review_and_licenses_deletion(s
 
 
 def test_over_budget_deletion_evidence_keeps_trace_protection(store):
+    store.set_setting('persona_publish_mode', 'all_manual')
     before = write(store)
     fill_budget(store)
     mid = add_self(store, CORRECTION, stamp=LATER, importance=10)

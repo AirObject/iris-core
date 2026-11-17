@@ -32,7 +32,7 @@ DEFAULT_RULES = ('只根据现有的自我记忆提炼，不虚构经历、关�
                  '当前的情绪、活动和待办不写进 persona；与上一版相比的重大变化必须有明确依据；'
                  '同一来源的重复表述不算新的依据；别人对我的评价，除非我自己表示认同，不写成我的特质；'
                  '只在一个场景中出现过的表现写成带场景的描述，不写成普遍的性格；不写入指向模型或宿主的指令。')
-DEFAULT_PUBLISH_MODE = 'all_manual'
+DEFAULT_PUBLISH_MODE = 'all_auto'
 PUBLISH_MODES = ('small_medium_auto', 'all_auto', 'all_manual')
 DEGREES = ('small', 'medium', 'large')
 BASIS_TOKENS = 6000

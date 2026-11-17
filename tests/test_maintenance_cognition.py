@@ -537,19 +537,18 @@ def test_skip_checkpoint_survives_stop_without_persona_attempt(store):
 
 
 @pytest.mark.parametrize('degree', ['small', 'medium', 'large'])
-def test_persona_dream_step_uses_manual_product_default(store, degree):
-    # The shared fixture opts in to auto-publication for older recovery tests;
-    # remove that override to exercise the product fallback in the real dream step.
+def test_persona_dream_step_uses_automatic_product_default(store, degree):
+    # Remove the shared fixture override to exercise the product fallback.
     engine, model, _ = persona_case(store, degree=degree)
     with store.write() as conn:
         conn.execute("DELETE FROM runtime_settings WHERE key='persona_publish_mode'")
     before = current_persona(store)['id']
     report = complete(engine)
-    assert report['persona']['status'] == 'pending'
-    assert current_persona(store)['id'] == before
+    assert report['persona']['status'] == 'published'
+    assert current_persona(store)['id'] != before
     with store.read() as conn:
-        row = conn.execute("SELECT material_json,checks_json FROM persona_versions WHERE status='pending'").fetchone()
-        assert json.loads(row['material_json'])['settings']['publish_mode'] == 'all_manual'
+        row = conn.execute("SELECT material_json,checks_json FROM persona_versions WHERE is_current=1").fetchone()
+        assert json.loads(row['material_json'])['settings']['publish_mode'] == 'all_auto'
         assert json.loads(row['checks_json'])['passed']
     assert len(model.calls) == 3
     assert model.calls[-1][1]['task'] == 'degree_only'

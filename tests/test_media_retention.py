@@ -302,8 +302,11 @@ def test_old_backup_without_cleanup_columns_or_manifest_imports(store, tmp_path)
         with sqlite3.connect(database) as conn:
             columns = {r[1] for r in conn.execute('PRAGMA table_info(media_files)')}
             if 'bytes_purged_at' in columns:
-                # Migrations 039, 038, 037 and 036 are newer than the columns removed below; undo them first.
-                # 038 only changes a setting value, so dropping its record is enough.
+                # Remove the newer migrations before removing the retention columns.
+                assert manifest['migrations'][-1] == '041_persona_auto_default.sql'
+                conn.execute("UPDATE runtime_settings SET value_json=? WHERE key='persona_publish_mode'",
+                             (json.dumps('all_manual'),))
+                conn.execute('DELETE FROM schema_migrations WHERE version=?', (manifest['migrations'].pop(),))
                 assert manifest['migrations'][-1] == '039_goal_auto_review.sql'
                 conn.executescript('''DROP INDEX messages_sender_entry;
                     DROP TABLE goal_auto_review_evidence;

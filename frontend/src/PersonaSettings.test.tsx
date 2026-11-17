@@ -11,7 +11,7 @@ import { PersonaSettingsEditor } from "./PersonaSettings";
 import { personaSettingsFixture } from "./persona-fixtures";
 
 afterEach(cleanup);
-test("默认标签与说明采用全部人工确认，仍显示服务端已保存的自动发布选择", () => {
+test("默认标注设为全部自动，仍显示服务端已保存的发布方式", () => {
   const save = vi.fn();
   const view = render(
     <PersonaSettingsEditor
@@ -21,18 +21,13 @@ test("默认标签与说明采用全部人工确认，仍显示服务端已保�
     />,
   );
   expect(
-    screen.getByRole("option", { name: "全部人工确认（默认）" }),
-  ).toHaveValue("all_manual");
+    screen.getByRole("option", { name: "全部自动（默认）" }),
+  ).toHaveValue("all_auto");
   expect(screen.getByRole("option", { name: "小或中自动发布" })).toHaveValue(
     "small_medium_auto",
   );
   expect(screen.getByLabelText("persona 发布方式")).toHaveValue("all_manual");
-  expect(screen.getByText(/M3 的 persona 门槛尚未达到/)).toHaveTextContent(
-    "检查通过的候选也先由管理员确认，确认后才生效",
-  );
-  expect(screen.getByText(/M3 的 persona 门槛尚未达到/)).toHaveTextContent(
-    "可以改回“小或中自动发布”或“全部自动”",
-  );
+  expect(screen.getByText(/升级时保留原有发布方式/)).toBeVisible();
   view.rerender(
     <PersonaSettingsEditor
       value={{ ...personaSettingsFixture, publish_mode: "small_medium_auto" }}
@@ -83,7 +78,7 @@ test.each(["small_medium_auto", "all_auto", "all_manual"] as const)(
       publish_mode: mode,
     });
     expect(screen.getByText(/只影响之后接受的任务/)).toBeVisible();
-    expect(screen.getByText(/包括删改手写内容.*不会等待确认/)).toBeVisible();
+    expect(screen.getByText(/包括按规则删除手写句等大变化/)).toBeVisible();
   },
 );
 test.each([

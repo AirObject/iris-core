@@ -1,5 +1,4 @@
-"""Manual-by-default publication, conservative upgrades and existing pending counts."""
-import json
+"""Automatic-by-default publication, conservative upgrades and manual confirmation."""
 import sqlite3
 from contextlib import closing
 from importlib.resources import files
@@ -16,23 +15,23 @@ from test_persona import FakeGateway
 from test_persona_admin import current, finished, start
 
 
-def test_new_install_and_absent_setting_default_to_manual(store):
+def test_new_install_and_absent_setting_default_to_auto(store):
     from iris.settings_api import PersonaSettings
-    assert store.setting('persona_publish_mode') == 'all_manual'
+    assert store.setting('persona_publish_mode') == 'all_auto'
     assert setup_role(store, 'Iris', '我来自云城。') == '我是Iris。初始设定：我来自云城。'
     with store.read() as conn:
-        assert persona_settings(conn)['publish_mode'] == 'all_manual'
+        assert persona_settings(conn)['publish_mode'] == 'all_auto'
         assert conn.execute('SELECT COUNT(*) FROM persona_versions WHERE is_current=1').fetchone()[0] == 1
         assert conn.execute('SELECT COUNT(*) FROM model_calls').fetchone()[0] == 0
     with store.write() as conn:
         conn.execute("DELETE FROM runtime_settings WHERE key='persona_publish_mode'")
     with store.read() as conn:
-        assert persona_settings(conn)['publish_mode'] == 'all_manual'
-    assert PersonaSettings(goal='保持稳定。').publish_mode == 'all_manual'
+        assert persona_settings(conn)['publish_mode'] == 'all_auto'
+    assert PersonaSettings(goal='保持稳定。').publish_mode == 'all_auto'
 
 
 @pytest.fixture
-def manual_client(store):
+def persona_client(store):
     setup_role(store, 'Iris', '我来自云城。')
     with TestClient(create_app(store=store, configs={}), base_url='http://127.0.0.1',
                     client=('127.0.0.1', 1234)) as client:
@@ -43,6 +42,13 @@ def manual_client(store):
         yield client
 
 
+@pytest.fixture
+def manual_client(persona_client):
+    response = persona_client.patch('/admin/api/settings/persona', json={'publish_mode': 'all_manual'})
+    assert response.status_code == 200
+    return persona_client
+
+
 def pending_count(client):
     response = client.get('/admin/api/persona/versions?status=pending&limit=1')
     assert response.status_code == 200
@@ -50,7 +56,25 @@ def pending_count(client):
 
 
 @pytest.mark.parametrize('degree', ['small', 'medium', 'large'])
-def test_default_keeps_checked_candidate_pending_until_admin_confirmation(manual_client, store, degree):
+def test_default_publishes_checked_candidate_without_confirmation(persona_client, degree):
+    client = persona_client
+    assert client.get('/admin/api/settings').json()['persona']['publish_mode'] == 'all_auto'
+    client.app.state.persona_jobs.engine.gateway.degree = degree
+    before = current(client)['current']['id']
+
+    result = finished(client, start(client))
+
+    assert result['state'] == 'current'
+    assert result['version_id'] != before
+    assert current(client)['current']['id'] == result['version_id']
+    assert pending_count(client) == 0
+    detail = client.get(f"/admin/api/persona/versions/{result['version_id']}").json()
+    assert detail['settings']['publish_mode'] == 'all_auto'
+    assert detail['checks']['passed']
+
+
+@pytest.mark.parametrize('degree', ['small', 'medium', 'large'])
+def test_manual_mode_keeps_checked_candidate_pending_until_admin_confirmation(manual_client, store, degree):
     client = manual_client
     assert client.get('/admin/api/settings').json()['persona']['publish_mode'] == 'all_manual'
     client.app.state.persona_jobs.engine.gateway.degree = degree
@@ -76,8 +100,8 @@ def test_default_keeps_checked_candidate_pending_until_admin_confirmation(manual
         assert conn.execute('SELECT COUNT(*) FROM notifications').fetchone()[0] == notifications
 
 
-def test_manual_default_still_rejects_failed_checks(manual_client):
-    client = manual_client
+def test_auto_default_still_rejects_failed_checks(persona_client):
+    client = persona_client
     client.app.state.persona_jobs.engine.gateway.supported = False
     assert finished(client, start(client))['state'] == 'rejected'
     assert current(client)['current']['id'] == 1 and pending_count(client) == 0
@@ -93,23 +117,23 @@ def test_admin_can_explicitly_enable_automatic_modes(manual_client, mode, degree
     assert finished(client, start(client))['state'] == status
 
 
-def test_partial_settings_edit_does_not_reset_manual_default(manual_client):
+def test_partial_settings_edit_preserves_selected_manual_mode(manual_client):
     response = manual_client.patch('/admin/api/settings/persona', json={'rules': '逐句核对依据。'})
     assert response.status_code == 200
     assert response.json()['persona']['publish_mode'] == 'all_manual'
 
 
 @pytest.mark.parametrize('mode,actor,action,fields,expected', [
-    ('small_medium_auto', None, None, [], 'all_manual'),
+    ('small_medium_auto', None, None, [], 'all_auto'),
     ('small_medium_auto', 'admin', 'persona_settings_saved', ['publish_mode'], 'small_medium_auto'),
     ('small_medium_auto', 'admin', 'persona_settings_saved', ['goal'], 'small_medium_auto'),
     ('small_medium_auto', 'admin', 'persona_settings_saved', ['rules'], 'small_medium_auto'),
-    ('small_medium_auto', 'persona', 'persona_settings_saved', ['goal'], 'all_manual'),
-    ('small_medium_auto', 'admin', 'lifecycle_saved', [], 'all_manual'),
-    ('small_medium_auto', 'admin', 'persona_edit', [], 'all_manual'),
+    ('small_medium_auto', 'persona', 'persona_settings_saved', ['goal'], 'all_auto'),
+    ('small_medium_auto', 'admin', 'lifecycle_saved', [], 'all_auto'),
+    ('small_medium_auto', 'admin', 'persona_edit', [], 'all_auto'),
     ('all_auto', None, None, [], 'all_auto'),
-    ('all_manual', None, None, [], 'all_manual'),
-    (None, None, None, [], 'all_manual'),
+    ('all_manual', None, None, [], 'all_auto'),
+    (None, None, None, [], 'all_auto'),
     (None, 'admin', 'persona_settings_saved', ['rules'], 'small_medium_auto'),
 ])
 def test_upgrade_changes_only_untouched_old_default(tmp_path, mode, actor, action, fields, expected):
@@ -155,3 +179,29 @@ def test_upgrade_changes_only_untouched_old_default(tmp_path, mode, actor, actio
         assert reopened.setting('persona_publish_mode') == expected
         with reopened.read() as conn:
             assert conn.execute("SELECT COUNT(*) FROM schema_migrations WHERE version LIKE '020_%'").fetchone()[0] == 1
+
+
+@pytest.mark.parametrize('mode,saved_fields,expected', [
+    ('all_manual', None, 'all_auto'),
+    (None, None, 'all_auto'),
+    (None, ['goal'], 'all_manual'),
+    ('all_manual', ['publish_mode'], 'all_manual'),
+    ('all_manual', ['rules'], 'all_manual'),
+    ('small_medium_auto', ['goal'], 'small_medium_auto'),
+    ('all_auto', ['publish_mode'], 'all_auto'),
+])
+def test_upgrade_preserves_effective_mode_after_a_settings_save(tmp_path, mode, saved_fields, expected):
+    path = tmp_path / 'before-auto-default.db'
+    with closing(Store(path)) as old:
+        with old.write() as conn:
+            conn.execute("DELETE FROM schema_migrations WHERE version='041_persona_auto_default.sql'")
+            conn.execute("DELETE FROM runtime_settings WHERE key='persona_publish_mode'")
+            if mode is not None:
+                conn.execute("INSERT INTO runtime_settings VALUES('persona_publish_mode', ?)", (dumps(mode),))
+            if saved_fields is not None:
+                conn.execute('''
+                    INSERT INTO admin_operations(actor,action,object_type,object_id,details_json,created_at)
+                    VALUES('admin','persona_settings_saved','settings','persona',?,'2026-11-12')
+                ''', (dumps({'fields': saved_fields}),))
+    with closing(Store(path)) as upgraded:
+        assert upgraded.setting('persona_publish_mode') == expected
