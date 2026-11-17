@@ -88,6 +88,36 @@ def test_model_cannot_label_generic_activity_as_specific_single_date_scene():
     assert 'explicit bounded scene' in ' '.join(validate(result)[1][1])
 
 
+@pytest.mark.parametrize('text, supported', [
+    ('我在那次读图时核对页码，我偏好出门前先看地图。', False),
+    ('我偏好出门前先看地图，我在那次读图时核对页码。', False),
+    ('我在那次读图时核对页码，随后我收好纸笔。', True),
+    ('在那次读图时，我核对页码，我收好纸笔。', True),
+    ('清点材料那次，我核对页码，收好纸笔，我不会改用电子笔。', False),
+    ('清点材料那次，我核对页码，收好纸笔，我碰到相似情况不会改用电子笔。', False),
+    ('那次整理时我说，我更愿意写短句。', True),
+    ('我在那次读图时核对页码，但比较结果仍有疑问。', True),
+])
+def test_single_date_keeps_scope_with_the_claim_it_qualifies(text, supported):
+    from iris.persona import _clause_parts
+
+    request = payload()
+    request['candidate'][0].update(text=text, clauses=_clause_parts(text))
+    quote = '我在那次读图时核对页码，随后我收好纸笔。'
+    request['evidence_by_ref']['M1']['excerpts'] = [{'excerpt': quote, 'date': '2026-10-01'}]
+    result = verdict()
+    result['sentences'][0]['clauses'] = [
+        {'index': part['index'], 'supported': True, 'scene_qualified': True, 'reason': '假模型全部放行。',
+         'evidence': [{'ref': 'M1', 'source_index': 1, 'quote': quote}]}
+        for part in request['candidate'][0]['clauses']
+    ]
+    structural, problems = validate(result, request)
+    assert not structural
+    assert (not problems) is supported
+    if problems:
+        assert 'explicit bounded scene for this focus' in ' '.join(problems[1])
+
+
 def test_one_false_clause_overrides_supported_whole_sentence():
     result = verdict()
     result['sentences'][0]['clauses'][1]['supported'] = False
@@ -180,13 +210,16 @@ def test_bad_local_index_reasks_the_batch_without_silently_renumbering(store):
     assert gateway.calls[1][1]['candidate'] == gateway.calls[2][1]['candidate']
 
 
-def test_whole_stage_timeout_preserves_partial_outputs_without_resetting_budget(store):
+@pytest.mark.parametrize('purpose', ['persona_check', 'persona_recheck'])
+def test_whole_stage_timeout_preserves_partial_outputs_without_resetting_budget(store, purpose):
     gateway, outputs = BatchGateway(duration=130), {}
     with pytest.raises(ModelError) as error:
-        PersonaEngine(store, gateway)._check_all('persona_check', batch_material(), batch_sentences()*3, full_content='整稿', outputs=outputs)
+        PersonaEngine(store, gateway)._check_all(
+            purpose, batch_material(), batch_sentences() * 16, full_content='整稿', outputs=outputs)
     assert error.value.reason == 'timeout'
-    assert len(gateway.calls) == 7 and [c[2] for c in gateway.calls] == [360,490,620,750,880,900,900]
-    assert len(outputs['persona_check_batches']) == 7
+    deadlines = [min(360 + start, 3600) for start in range(0, 3600, 130)]
+    assert [call[2] for call in gateway.calls] == deadlines
+    assert len(outputs[purpose + '_batches']) == len(deadlines)
     assert current_persona(store)['id'] == 1
 
 
@@ -201,7 +234,8 @@ def test_bare_result_cannot_borrow_earlier_clauses_negation_or_preference(text, 
     assert bool(problems(sentence(text), memory())) is not allowed
 
 
-def test_timeout_in_later_batch_records_attempt_and_keeps_current_version(store):
+def test_timeout_in_later_batch_records_attempt_and_keeps_current_version(store, monkeypatch):
+    monkeypatch.setattr("iris.persona.MAX_CHECK_STAGE_SECONDS", 900)
     from test_persona import FakeGateway
     from iris.persona import select_evidence
     mid = add_self(store, '在那次直播中，我解释了规则。')

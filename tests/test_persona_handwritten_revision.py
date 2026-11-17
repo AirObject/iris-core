@@ -103,6 +103,53 @@ def test_other_sides_preferences_and_no_evidence_preserve_handwriting_even_if_ge
     assert not result['version']['checks']['admin_content_removed_or_changed']
 
 
+def test_a_later_statement_on_another_scope_needs_independent_correction_confirmation(handwritten):
+    text = '我在小组排练里只用纸谱。'
+    before = write(handwritten, text)
+    add_self(handwritten, '独自在家练习时，我不再用纸谱。', stamp='2026-10-02T12:00:00+00:00')
+    handwritten.set_setting('persona_publish_mode', 'all_auto')
+
+    class Disagreeing(ReviewModel):
+        def chat(self, messages, purpose, **kwargs):
+            payload = json.loads(messages[-1]['content'])
+            if payload.get('task') == 'handwritten_review':
+                self.decision = 'keep' if payload.get('review_focus') == 'confirm_correction' else 'explicit_correction'
+            return super().chat(messages, purpose, **kwargs)
+
+    model = Disagreeing(handwritten, text, omit=True)
+    result = PersonaEngine(handwritten, model, clock=lambda: NOW).regenerate(expected_version=before['id'])
+    assert text in current_persona(handwritten)['content']
+    assert not result['version']['checks']['handwritten_changes']
+    confirmation, = [review for review in model.reviews if review.get('review_focus') == 'confirm_correction']
+    assert len(confirmation['evidence_by_ref']) == 1
+    assert 'reason' not in confirmation
+
+
+def test_focused_review_can_find_a_missed_later_correction_with_different_wording(handwritten):
+    text = '我已经给这份档案办理了认证。'
+    before = write(handwritten, text)
+    correction = '那份记录从未盖章，先前记错了。'
+    mid = add_self(handwritten, correction, stamp='2026-10-02T12:00:00+00:00')
+    add_self(handwritten, '我昨天先核对了箱子的清单。', stamp='2026-10-03T12:00:00+00:00')
+    handwritten.set_setting('persona_publish_mode', 'all_auto')
+
+    class Focused(ReviewModel):
+        def chat(self, messages, purpose, **kwargs):
+            payload = json.loads(messages[-1]['content'])
+            if payload.get('task') == 'handwritten_review':
+                self.decision = 'explicit_correction' if payload.get('review_focus') else 'keep'
+            return super().chat(messages, purpose, **kwargs)
+
+    model = Focused(handwritten, text, omit=True)
+    result = PersonaEngine(handwritten, model, clock=lambda: NOW).regenerate(expected_version=before['id'])
+    assert result['status'] == 'current'
+    assert text not in current_persona(handwritten)['content']
+    change, = result['version']['checks']['handwritten_changes']
+    assert [proof['memory_id'] for proof in change['basis']] == [mid]
+    assert [review.get('review_focus') for review in model.reviews] == [None, 'look_for_correction', 'confirm_correction']
+    assert [len(review['evidence_by_ref']) for review in model.reviews] == [2, 1, 1]
+
+
 @pytest.mark.parametrize('stamp', ['2026-09-30T12:00:00+00:00','2026-10-01T12:00:00+00:00'])
 def test_older_or_simultaneous_memory_cannot_license_correction(handwritten,stamp):
     text = '我不喜欢合奏。'
@@ -267,7 +314,8 @@ def test_review_structure_failures_reask_at_most_once_then_keep(handwritten,pers
         return reply
     model.chat=chat
     result=PersonaEngine(handwritten,model,clock=lambda:NOW).regenerate(expected_version=before['id'])
-    assert len(model.reviews)==2
+    expected_reviews = [None, None] if persistent else [None, None, 'confirm_correction']
+    assert [request.get('review_focus') for request in model.reviews] == expected_reviews
     assert (text in result['version']['content'])==persistent
     assert result['version']['checks']['handwritten_review']['retries']==1
     assert result['version']['checks']['handwritten_review']['conservative_keeps']==int(persistent)
@@ -284,7 +332,8 @@ def test_rollback_keeps_original_handwriting_time(handwritten):
     assert material['handwritten_snapshot']['A1']['written_at']==WRITTEN.isoformat()
 
 
-def test_handwritten_review_cannot_renew_initial_check_stage_budget(handwritten):
+def test_handwritten_review_cannot_renew_initial_check_stage_budget(handwritten, monkeypatch):
+    monkeypatch.setattr("iris.persona.MAX_CHECK_STAGE_SECONDS", 900)
     text='我偏好自然表达。我喜欢淡蓝色。我欣赏安静。'
     before=write(handwritten,text)
     model=ReviewModel(handwritten,text,omit=True)
