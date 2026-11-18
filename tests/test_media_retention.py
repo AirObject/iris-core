@@ -5,6 +5,7 @@ import sqlite3
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
+from importlib.resources import files
 from threading import Event
 
 import pytest
@@ -303,6 +304,24 @@ def test_old_backup_without_cleanup_columns_or_manifest_imports(store, tmp_path)
             columns = {r[1] for r in conn.execute('PRAGMA table_info(media_files)')}
             if 'bytes_purged_at' in columns:
                 # Remove the newer migrations before removing the retention columns.
+                assert manifest['migrations'][-1] == '043_people_merge.sql'
+                conn.executescript('''DROP TRIGGER subjects_merge_guard;
+                    DROP TRIGGER subject_link_denied_update;
+                    DROP INDEX messages_original_sender;
+                    DROP INDEX messages_original_quote_author;
+                    DROP INDEX people_review_history;
+                    DROP TABLE subject_merges;
+                    ALTER TABLE messages DROP COLUMN original_sender_subject_id;
+                    ALTER TABLE messages DROP COLUMN original_quote_author_subject_id;
+                    ALTER TABLE platform_identities DROP COLUMN original_subject_id;
+                    ALTER TABLE subject_links DROP COLUMN inherited_denial_from;
+                    UPDATE runtime_settings SET value_json=json_remove(value_json,'$.people_auto_merge_enabled')
+                    WHERE key='lifecycle';''')
+                people_migration = files('iris').joinpath('migrations', '010_people.sql').read_text(encoding='utf-8')
+                for name in ('subjects_merge_guard', 'subject_link_denied_update'):
+                    prefix = f'CREATE TRIGGER {name} '
+                    conn.executescript(prefix + people_migration.split(prefix)[1].split('END;', 1)[0] + 'END;')
+                conn.execute('DELETE FROM schema_migrations WHERE version=?', (manifest['migrations'].pop(),))
                 assert manifest['migrations'][-1] == '042_goal_auto_default_on.sql'
                 conn.execute('''UPDATE runtime_settings SET value_json=json_remove(value_json,
                     '$.goal_auto_review_enabled', '$.goal_duplicate_auto_judge_enabled') WHERE key='goals' ''')

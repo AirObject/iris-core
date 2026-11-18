@@ -10,6 +10,7 @@ from iris.consolidation import snapshot
 from iris.memory_ops import edit_memory
 from iris.retrieval import Retrieval
 from test_consolidation import Model, pair, run
+from test_retrieval import put
 
 # These cases exercise report_only_v1, the default before C-B2 made it auto_v1.
 pytestmark = pytest.mark.usefixtures('report_only')
@@ -167,6 +168,7 @@ def test_annotation_addition_does_not_invalidate_inflight_learning_revision(stor
 
 def test_upgrade_discards_pending_v2_decisions_and_preserves_legacy_annotations(tmp_path, monkeypatch):
     from importlib.resources import files
+    from conftest import historical_message
     from iris.db import Store, dumps
     from iris.maintenance import Maintenance
     from test_lifecycle import Clock
@@ -178,9 +180,13 @@ def test_upgrade_discards_pending_v2_decisions_and_preserves_legacy_annotations(
     with monkeypatch.context() as patch:
         patch.setattr('iris.db.files',lambda name:root)
         old=Store(tmp_path/'upgrade.db')
-    a,b=pair(old)
     # Seed the legacy schema directly; the current runtime requires migration 019.
     from iris.memory_ops import lifecycle_settings
+    with old.write() as conn:
+        first=historical_message(conn,'我每周教口琴，已经固定了。',Clock()().isoformat())
+        second=historical_message(conn,'口琴课还是我每周教。',Clock()().isoformat())
+    a=put(old,'我每周教口琴',evidence=[first],importance=80)
+    b=put(old,'我固定每周教口琴课',evidence=[second],importance=80)
     with old.write() as conn:
         rid=conn.execute("""INSERT INTO maintenance_runs(trigger,settings_json,timezone,memory_through,
             message_through,batch_through,created_at) VALUES('manual',?,'Asia/Shanghai',?,2,0,?)""",

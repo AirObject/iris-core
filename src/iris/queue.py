@@ -219,11 +219,12 @@ def should_learn(pending_count: int, oldest_at: datetime | None, latest_at: date
                 (oldest_at and current - oldest_at >= max_wait))
 
 
-def _subject(conn: sqlite3.Connection, platform: str, account_id: str, name: str) -> str:
-    row = conn.execute("SELECT subject_id,display_name FROM platform_identities WHERE platform=? AND account_id=?",
+def _account_subject(conn: sqlite3.Connection, platform: str, account_id: str, name: str) -> tuple[str, str | None]:
+    row = conn.execute("SELECT subject_id,original_subject_id,display_name FROM platform_identities WHERE platform=? AND account_id=?",
                        (platform, account_id)).fetchone()
     if row:
         subject_id = canonical_subject(conn, row["subject_id"])
+        original = row["original_subject_id"] or row["subject_id"]
         # Intake already holds the write transaction. Only recover an exact
         # account fallback; later ordinary nickname changes remain ignored.
         if (row["display_name"] == account_id and name != account_id
@@ -238,37 +239,53 @@ def _subject(conn: sqlite3.Connection, platform: str, account_id: str, name: str
             operation(conn, "identity_fallback_name_updated", "subject", subject_id,
                       {"platform": platform, "account_id": account_id, "subject_name_updated": bool(renamed),
                        "revision_before": before, "revision_after": after}, actor="system")
-        return subject_id
+        return subject_id, original if original != subject_id else None
     subject_id = uuid.uuid4().hex
     conn.execute("INSERT INTO subjects(id,kind,name,created_at) VALUES(?,'person',?,?)", (subject_id, name, now()))
     conn.execute("INSERT INTO platform_identities(subject_id,platform,account_id,display_name) VALUES(?,?,?,?)",
                  (subject_id, platform, account_id, name))
-    return subject_id
+    return subject_id, None
+
+
+def _subject(conn: sqlite3.Connection, platform: str, account_id: str, name: str) -> str:
+    return _account_subject(conn, platform, account_id, name)[0]
 
 
 def _quote_subject(conn: sqlite3.Connection, *, entry_id: str, platform: str,
                    name: str | None, account_id: str | None,
-                   current_sender_id: str | None) -> str | None:
+                   current_sender_id: str | None, original_sender: str | None) -> tuple[str | None, str | None]:
     if not name and not account_id:
-        return None
+        return None, None
     if account_id:
-        return _subject(conn, platform, account_id, name or account_id)
-    participants = {canonical_subject(conn, row[0]) for row in conn.execute("""SELECT DISTINCT m.sender_subject_id
+        return _account_subject(conn, platform, account_id, name or account_id)
+    matched = conn.execute("""SELECT DISTINCT m.sender_subject_id,original.id AS original_id,original.name AS original_name
         FROM messages m JOIN subjects s ON s.id=m.sender_subject_id
+        JOIN subjects original ON original.id=COALESCE(m.original_sender_subject_id,m.sender_subject_id)
         LEFT JOIN subject_aliases a ON a.subject_id=s.id AND a.folded_into IS NULL
-        WHERE m.entry_id=? AND m.kind='message' AND (s.name=? OR (a.alias=? AND EXISTS(SELECT 1 FROM subjects retired WHERE retired.merged_into=s.id)))""", (entry_id, name, name))}
+        WHERE m.entry_id=? AND m.kind='message' AND (s.name=? OR original.name=?
+          OR (a.alias=? AND EXISTS(SELECT 1 FROM subjects retired WHERE retired.merged_into=s.id)))""", (entry_id, name, name, name))
+    participants, originals = set(), set()
+    for row in matched:
+        participants.add(canonical_subject(conn, row['sender_subject_id']))
+        if row['original_name'] == name:
+            originals.add(row['original_id'])
     if current_sender_id:
-        current_sender_id = canonical_subject(conn, current_sender_id)
+        original = original_sender or current_sender_id
         if conn.execute("""SELECT 1 FROM subjects s LEFT JOIN subject_aliases a ON a.subject_id=s.id
             AND a.folded_into IS NULL WHERE s.id=? AND (s.name=? OR (a.alias=? AND EXISTS(SELECT 1 FROM subjects retired WHERE retired.merged_into=s.id)))""", (current_sender_id, name, name)).fetchone():
             participants.add(current_sender_id)
+        if conn.execute('SELECT 1 FROM subjects WHERE id=? AND name=?', (original, name)).fetchone():
+            participants.add(current_sender_id)
+            originals.add(original)
     if len(participants) == 1:
-        return next(iter(participants))
+        subject_id = next(iter(participants))
+        origin = next(iter(originals)) if len(originals) == 1 else None
+        return subject_id, origin if origin != subject_id else None
     # A display name alone never binds this mention to a platform account.
     mentioned_id = uuid.uuid4().hex
     conn.execute("INSERT INTO subjects(id,kind,name,created_at) VALUES(?,'person',?,?)",
                  (mentioned_id, name, now()))
-    return mentioned_id
+    return mentioned_id, None
 
 
 def add_message(store: Store, *, entry_id: str, entry_name: str, platform: str, entry_kind: str,
@@ -297,19 +314,19 @@ def add_message(store: Store, *, entry_id: str, entry_name: str, platform: str, 
         existing = conn.execute("SELECT id FROM messages WHERE entry_id=? AND dedupe_key=?", (entry_id, dedupe_key)).fetchone()
         if existing:
             return int(existing[0])
-        sender_id = ("self" if kind in ("self_output", "action_result") else
-                     "scene" if kind == "event" else _subject(conn, platform, account_id or sender, sender))
-        quote_id = _quote_subject(conn, entry_id=entry_id, platform=platform,
+        sender_id, original_sender = (("self", None) if kind in ("self_output", "action_result") else
+                     ("scene", None) if kind == "event" else _account_subject(conn, platform, account_id or sender, sender))
+        quote_id, original_quote = _quote_subject(conn, entry_id=entry_id, platform=platform,
                                   name=quote_author, account_id=quote_author_account_id,
-                                  current_sender_id=sender_id if kind == "message" else None)
+                                  current_sender_id=sender_id if kind == "message" else None, original_sender=original_sender)
         position = conn.execute("UPDATE entries SET message_sequence=message_sequence+1 WHERE id=? RETURNING message_sequence",
                                 (entry_id,)).fetchone()[0]
         result = conn.execute("""INSERT INTO messages
             (entry_id,kind,sender_subject_id,scene_identity,content,quote_author_subject_id,quote_content,
-             occurred_at,received_at,dedupe_key)
-            VALUES(?,?,?,?,?,?,?,?,?,?)""",
+             occurred_at,received_at,dedupe_key,original_sender_subject_id,original_quote_author_subject_id)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
             (entry_id, kind, sender_id, scene_identity, content, quote_id, quote_content,
-             occurred_at, now(), dedupe_key))
+             occurred_at, now(), dedupe_key, original_sender, original_quote))
         if media_ids is not None:
             from .media import attach_media
             attach_media(store, conn, int(result.lastrowid), media_ids)

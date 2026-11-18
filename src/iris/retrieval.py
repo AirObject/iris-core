@@ -675,7 +675,9 @@ class Retrieval:
 
     @staticmethod
     def _recent(conn, entry_id, limit):
-        recent = [dict(r) for r in reversed(conn.execute("""SELECT m.*,s.name AS sender_name,q.name AS quote_author_name
+        recent = [dict(r) for r in reversed(conn.execute("""SELECT m.id,m.entry_id,m.kind,m.sender_subject_id,
+            m.scene_identity,m.content,m.quote_author_subject_id,m.quote_content,m.occurred_at,m.received_at,
+            m.dedupe_key,m.learning_state,m.batch_id,s.name AS sender_name,q.name AS quote_author_name
             FROM messages m JOIN subjects s ON s.id=m.sender_subject_id LEFT JOIN subjects q ON q.id=m.quote_author_subject_id
             WHERE m.entry_id=? ORDER BY m.id DESC LIMIT ?""", (entry_id, limit)).fetchall())]
         for m in recent:

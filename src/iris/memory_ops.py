@@ -73,7 +73,7 @@ LIFECYCLE_DEFAULTS = {
     "feedback_increment": 8, "confirmation_increment": 5, "decay_amount": 1,
     "auto_delete_enabled": True, "auto_delete_days": 180, "upcoming_delete_days": 14,
     "message_retention_days": 30, "maintenance_time": "03:00",
-    "abandoned_retry_enabled": True, "dependency_penalty": 10,
+    "abandoned_retry_enabled": True, "dependency_penalty": 10, "people_auto_merge_enabled": False,
 }
 
 

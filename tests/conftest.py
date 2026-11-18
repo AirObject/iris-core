@@ -80,6 +80,14 @@ def store_before_migration(path, monkeypatch, migration):
         return Store(path)
 
 
+def historical_message(conn, content, stamp, *, entry='A', state='learned'):
+    """Seed a message in schemas that predate the current intake columns."""
+    conn.execute("INSERT OR IGNORE INTO entries(id,name,platform,kind) VALUES(?,?,'test','group')", (entry, entry))
+    return conn.execute('''INSERT INTO messages(entry_id,kind,sender_subject_id,content,occurred_at,
+        received_at,dedupe_key,learning_state) VALUES(?,'message','self',?,?,?,?,?)''',
+        (entry, content, stamp, stamp, content, state)).lastrowid
+
+
 @pytest.fixture
 def report_only(store, monkeypatch):
     """Opt-in for cases written for consolidation report_only_v1; the default is auto_v1.

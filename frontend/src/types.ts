@@ -26,6 +26,17 @@ export type PersonLink = {
   subjects: Person[];
   evidence_messages: Message[];
 };
+export type PersonMerge = {
+  id: number;
+  source: Person;
+  target: Person;
+  actor: "admin" | "maintenance";
+  created_at: string;
+  split_at: string | null;
+  target_revision: number;
+  can_split: boolean;
+  evidence_messages: Message[];
+};
 export type Roleplay = {
   actor: Person;
   character: Person;
@@ -43,6 +54,7 @@ export type PersonDetail = Omit<PersonSummary, "pending_links"> & {
   memories_url: string;
   same_as: PersonLink[];
   roleplay: (PersonLink & Roleplay)[];
+  merges?: PersonMerge[];
 };
 export type EntryFilters = {
   min_chars: number;
@@ -433,6 +445,7 @@ export type LifecycleConfig = {
   maintenance_time: string;
   abandoned_retry_enabled: boolean;
   abandoned_retry_days: number[];
+  people_auto_merge_enabled?: boolean;
 };
 export type Operation = {
   id: number;

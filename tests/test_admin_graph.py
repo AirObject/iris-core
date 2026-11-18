@@ -93,7 +93,7 @@ def test_entry_scope_requires_direct_message_source_not_legacy_entry_or_derived_
 def test_live_alias_account_count_self_and_scene_policy(cast):
     with cast.write() as conn:
         conn.execute("INSERT INTO subject_aliases(subject_id,alias) VALUES('a','阿林')")
-        conn.execute("INSERT INTO platform_identities VALUES('a','other','other-a','小林')")
+        conn.execute("INSERT INTO platform_identities(subject_id,platform,account_id,display_name) VALUES('a','other','other-a','小林')")
     put(cast, "角色与小林一起看景色", about=["self", "a", "scene"])
     graph = admin_graph.people_graph(cast)
     assert {n["id"] for n in graph["nodes"]} == {"self", "a"}

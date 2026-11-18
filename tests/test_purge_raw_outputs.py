@@ -253,7 +253,9 @@ def test_upgrade_scrubs_identifiable_previously_purged_batch(tmp_path, monkeypat
         patch.setattr('iris.db.files', lambda package: BeforePurge())
         old = Store(path)
     # Freeze the pre-029 storage shape; today's learning path requires RS columns.
-    source = msg(old, 1, PROSE)
+    from conftest import historical_message
+    with old.write() as conn:
+        source = historical_message(conn, PROSE, now())
     mid = put(old, PROSE, evidence=[source])
     with old.write() as conn:
         bid = insert(conn, 'batches', entry_id='A', history_ids='[]', target_ids=dumps([source]),

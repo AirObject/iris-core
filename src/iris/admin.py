@@ -18,6 +18,7 @@ from starlette.background import BackgroundTask
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError, field_validator, model_validator
 
 from . import admin_data, admin_graph, trial, people, persona, backup, media, entry_profile, person_summary
+from .people_split import split_merge
 from .models import IMAGE_TOTAL_TIMEOUT
 from .auth import audit, error
 from .tokens import NewToken, RateLimits
@@ -736,6 +737,10 @@ def install_admin(app):
     @router.post("/people/links/{link_id}/confirm")
     def confirm_person_link(link_id: int, payload: ConfirmPerson):
         return people.confirm_link(app.state.store, link_id, **payload.model_dump())
+
+    @router.post("/people/merges/{merge_id}/split")
+    def split_person_merge(merge_id: int, payload: Revision):
+        return split_merge(app.state.store, merge_id, **payload.model_dump())
 
     @router.post("/people/{subject_id}/aliases", status_code=201)
     def add_person_alias(subject_id: str, payload: Alias):

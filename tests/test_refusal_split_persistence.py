@@ -83,8 +83,9 @@ def test_rs18_upgrade_from_029_preserves_history_and_does_not_replay_refused(tmp
     with monkeypatch.context() as patch:
         patch.setattr("iris.db.files", lambda _: BeforeRS())
         old = Store(path)
-    source = msg(old, 1, "历史拒绝不可自行重放")
+    from conftest import historical_message
     with old.write() as conn:
+        source = historical_message(conn, "历史拒绝不可自行重放", now())
         bid = conn.execute("""INSERT INTO batches(entry_id,history_ids,target_ids,future_ids,state,
             attempt_count,prompt_version,created_at,finished_at) VALUES('A','[]',?,'[]','refused',1,'historic',?,?)""",
             (json.dumps([source]), now(), now())).lastrowid

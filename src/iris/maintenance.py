@@ -16,6 +16,7 @@ from .media import (DEFAULT_MEDIA_RETENTION_DAYS, GRACE_PERIOD, cleanup_upload_o
                     delete_expired_file, delete_unreferenced_file, files_for_message,
                     mark_expired_file, mark_unreferenced, media_retention_days)
 from .queue import reset_batch
+from . import people_review
 from .runtime_journal import cleanup, maintenance_span, record
 
 PHASES = ("decay", "expiry", "dependency", "messages", "retry", "consolidation", "persona", "goals", "media", "retention")
@@ -127,6 +128,8 @@ class Maintenance:
                 from .goals import auto_review_switches
                 # G1/G2 switches are fixed for the run; an older run has none (off).
                 config['goal_auto'] = auto_review_switches(conn)
+                if config[people_review.SETTING]:
+                    config['people_merge_through'] = conn.execute('SELECT COALESCE(MAX(id),0) FROM subject_links').fetchone()[0]
                 from .consolidation import consolidation_settings
                 model_config = consolidation_settings(conn)
                 zone_row = conn.execute("SELECT value_json FROM runtime_settings WHERE key='timezone'").fetchone()
@@ -205,8 +208,14 @@ class Maintenance:
                 continue
             candidates = self._candidates(run, phase)
             if not candidates:
-                if phase == "goals" and not self._goal_auto(run, stop=stop):
-                    return
+                if phase == "goals":
+                    if not self._goal_auto(run, stop=stop):
+                        return
+                    settings = json.loads(run['settings_json'])
+                    if settings.get(people_review.SETTING) and not people_review.review_for_run(
+                            self.store, self.gateway, run, link_through=settings['people_merge_through'],
+                            clock=self.clock, stop=stop):
+                        return
                 if phase == "media":
                     orphans = cleanup_upload_orphans(self.store, self.clock())
                     if any(orphans.values()):
