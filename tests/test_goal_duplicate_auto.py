@@ -129,6 +129,7 @@ def test_timeout_keeps_the_hint_and_retries_next_time(store, pair):
 def test_switch_off_means_no_dedup_call(store, pair):
     make, judge = pair
     make()
+    enable(store, review=False, duplicates=False)
     run_goals(store, judge)
     enable(store, review=True, duplicates=False)
     run_goals(store, judge)
@@ -476,6 +477,87 @@ def _absorbed_scope_flow(store, *, host_entries, blocked):
         assert updated['id'] == survivor
     else:
         assert row(store, survivor)['merged_into'] == inner and row(store, host)['merged_into'] == inner
+
+
+def _creation_scope_setup(store):
+    from iris.goals import write_learning_goal
+    from goal_auto_helpers import entry
+    store.set_setting('goal_dedup_judge', {'enabled': True, 'budget_seconds': 1})
+    judge = RuleJudge(store)
+    with store.write() as conn:
+        for name in ('e1', 'e2'):
+            entry(conn, name)
+    goals = Goals(store, gateway=judge, clock=Clock('2026-11-02T09:00:00+00:00'))
+    with store.write() as conn:
+        created = write_learning_goal(conn, content='周五前把操作手册整理好', kind='normal', deadline=None, entry_id='e1',
+                                      evidence=[], current=goals.clock())
+    assert created['dedup']['status'] == 'pending'  # the creation-time review runs later, in the scheduler
+    goals.clock = Clock('2026-11-02T10:00:00+00:00')
+    return goals, judge, created['submitted_id']
+
+
+def _dedup_job(store, gid):
+    with store.read() as conn:
+        job = conn.execute('SELECT state,result_json FROM goal_dedup_jobs WHERE goal_id=?', (gid,)).fetchone()
+        return job['state'], json.loads(job['result_json'])
+
+
+@pytest.mark.parametrize('host_entries,blocked', [(('e1',), True), (('e1', 'e2'), False)])
+def test_creation_review_never_moves_an_absorbed_host_goal_out_of_its_scope(store, host_entries, blocked):
+    """A new internal goal absorbs a scoped host goal before its own creation review runs."""
+    from iris.tokens import Scope
+    from goal_auto_helpers import goal
+    older = goal(store, '周五前整理操作手册', people=(), entry_id='e2', created='2026-11-02T08:00:00+00:00')
+    goals, judge, inner = _creation_scope_setup(store)
+    scope = Scope(kind='entries', entries=host_entries)
+    host_id = inner + 1
+    judge.verdicts.update({(host_id, inner): 'same', (host_id, older): 'different', (inner, older): 'same'})
+    created = goals.create(content='周五前整理操作说明手册', origin='host', actor='h', host='h', entry_id='e1', scope=scope)
+    host = created['submitted_id']
+    assert host == host_id and created['dedup'] == {'status': 'merged', 'target_id': inner}
+    assert row(store, host)['merged_into'] == inner and row(store, inner)['merged_into'] is None
+    judge.calls.clear()
+    receipt = goals.review(inner)
+    assert judge.calls == [{'incoming': inner, 'candidates': [older]}]  # the model judged: same as the older goal
+    if blocked:
+        assert receipt['dedup'] == {'status': 'possible_duplicate', 'target_id': older, 'target_ids': [older],
+                                    'reason': 'host_scope_not_merged'}
+        assert row(store, inner)['merged_into'] is None and row(store, host)['merged_into'] == inner
+        assert tuple(status(store, older, inner)) == ('possible', None)  # the hint stays for the administrator
+        assert _dedup_job(store, inner) == ('done', receipt['dedup'])
+        # The host still reaches its goal through the redirect, inside its scope.
+        with pytest.raises(goals_module.GoalMerged) as merged:
+            Goals(store, clock=Clock()).update(host, content='x', actor='h', scope=scope)
+        assert merged.value.canonical_id == inner
+        updated = Goals(store, clock=Clock()).update(inner, content='周五前整理好操作手册', actor='h', scope=scope)
+        assert updated['id'] == inner and updated['content'] == '周五前整理好操作手册'
+    else:
+        assert receipt['dedup'] == {'status': 'merged', 'target_id': older}
+        assert row(store, inner)['merged_into'] == older and row(store, host)['merged_into'] == older
+        with pytest.raises(goals_module.GoalMerged) as merged:
+            Goals(store, clock=Clock()).update(host, content='x', actor='h', scope=scope)
+        assert merged.value.canonical_id == older
+
+
+def test_creation_review_never_moves_a_later_host_goal_out_of_its_scope(store):
+    """The candidate can be the later goal: then it, not the reviewed goal, would be merged away."""
+    from iris.tokens import Scope
+    from goal_auto_helpers import goal
+    older = goal(store, '周五前整理操作手册', people=(), entry_id='e1', created='2026-11-02T08:00:00+00:00')
+    goals, judge, inner = _creation_scope_setup(store)
+    scope = Scope(kind='entries', entries=('e2',))
+    created = goals.create(content='周五前整理操作说明手册', origin='host', actor='h', host='h', entry_id='e2', scope=scope)
+    host = created['submitted_id']
+    assert created['dedup'] == {'status': 'created', 'target_id': None}  # the inner goal is outside its scope
+    judge.verdicts.update({(inner, host): 'same', (inner, older): 'different'})
+    receipt = goals.review(inner)
+    assert judge.calls[-1] == {'incoming': inner, 'candidates': [older, host]}
+    assert receipt['dedup'] == {'status': 'possible_duplicate', 'target_id': host, 'target_ids': [host],
+                                'reason': 'host_scope_not_merged'}
+    assert row(store, host)['merged_into'] is None and row(store, inner)['merged_into'] is None
+    assert tuple(status(store, inner, host)) == ('possible', None)
+    updated = Goals(store, clock=Clock()).update(host, content='周五前整理操作说明', actor='h', scope=scope)
+    assert updated['content'] == '周五前整理操作说明'
 
 
 def test_undo_round3_reminder_fired_under_a_for_bs_deadline(store):

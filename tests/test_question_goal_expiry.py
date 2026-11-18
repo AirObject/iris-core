@@ -281,12 +281,13 @@ def test_setting_write_persists_and_existing_admin_patch_preserves_internal_key(
         response = client.patch('/admin/api/settings/goals', json={'default_reminder_minutes': 90, 'overdue_reminders': False})
         assert response.status_code == 200
         assert response.json()['goals'] == {'default_reminder_minutes': 90, 'overdue_reminders': False, KEY: days,
-                                            'goal_auto_review_enabled': False, 'goal_duplicate_auto_judge_enabled': False}
+                                            'goal_auto_review_enabled': True, 'goal_duplicate_auto_judge_enabled': True}
         assert client.patch('/admin/api/settings/goals', json={KEY: days}).status_code == 200
     with store.read() as conn:
         assert question_expiry_days(conn) == days
         assert json.loads(conn.execute("SELECT value_json FROM runtime_settings WHERE key='goals'").fetchone()[0]) == {
-            KEY: days, 'default_reminder_minutes': 90, 'overdue_reminders': False}
+            KEY: days, 'default_reminder_minutes': 90, 'overdue_reminders': False,
+            'goal_auto_review_enabled': True, 'goal_duplicate_auto_judge_enabled': True}
 
 
 def test_host_goal_fields_unchanged_when_expired(store):

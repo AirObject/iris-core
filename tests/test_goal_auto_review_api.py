@@ -23,22 +23,23 @@ def client(store):
         yield client
 
 
-def test_switches_are_off_by_default_and_saved_only_when_set(client, store):
+def test_switches_are_on_by_default_and_each_can_be_turned_off(client, store):
     goals = client.get('/admin/api/settings').json()['goals']
-    assert goals[AUTO_REVIEW_KEY] is False and goals[DUPLICATE_AUTO_KEY] is False
+    assert goals[AUTO_REVIEW_KEY] is True and goals[DUPLICATE_AUTO_KEY] is True
+    assert store.setting('goals')[AUTO_REVIEW_KEY] is True and store.setting('goals')[DUPLICATE_AUTO_KEY] is True
     response = client.patch(PATH, json={'default_reminder_minutes': 30})
     assert response.status_code == 200
-    assert AUTO_REVIEW_KEY not in store.setting('goals') and DUPLICATE_AUTO_KEY not in store.setting('goals')
-    response = client.patch(PATH, json={AUTO_REVIEW_KEY: True})
-    assert response.status_code == 200 and response.json()['goals'][AUTO_REVIEW_KEY] is True
-    assert response.json()['goals'][DUPLICATE_AUTO_KEY] is False
-    assert store.setting('goals')[AUTO_REVIEW_KEY] is True and DUPLICATE_AUTO_KEY not in store.setting('goals')
-    response = client.patch(PATH, json={DUPLICATE_AUTO_KEY: True, AUTO_REVIEW_KEY: False})
-    assert response.json()['goals'][DUPLICATE_AUTO_KEY] is True and response.json()['goals'][AUTO_REVIEW_KEY] is False
+    assert store.setting('goals')[AUTO_REVIEW_KEY] is True and store.setting('goals')[DUPLICATE_AUTO_KEY] is True
+    response = client.patch(PATH, json={AUTO_REVIEW_KEY: False})
+    assert response.status_code == 200 and response.json()['goals'][AUTO_REVIEW_KEY] is False
+    assert response.json()['goals'][DUPLICATE_AUTO_KEY] is True
+    assert store.setting('goals')[AUTO_REVIEW_KEY] is False and store.setting('goals')[DUPLICATE_AUTO_KEY] is True
+    response = client.patch(PATH, json={DUPLICATE_AUTO_KEY: False, AUTO_REVIEW_KEY: True})
+    assert response.json()['goals'][DUPLICATE_AUTO_KEY] is False and response.json()['goals'][AUTO_REVIEW_KEY] is True
     with store.read() as conn:
         audit = [json.loads(r[0]) for r in conn.execute(
             "SELECT details_json FROM admin_operations WHERE action='settings_goals' ORDER BY id")]
-    assert audit[-1] == {DUPLICATE_AUTO_KEY: True, AUTO_REVIEW_KEY: False}
+    assert audit[-1] == {DUPLICATE_AUTO_KEY: False, AUTO_REVIEW_KEY: True}
 
 
 @pytest.mark.parametrize('value', [1, 'true', None, []])

@@ -11,6 +11,8 @@ from test_entry_profile import Clock, Model, messages
 
 
 def dream(store, clock, **settings):
+    # This historical fixture predates automated goal review and its tables.
+    store.set_setting('goals', {'goal_auto_review_enabled': False, 'goal_duplicate_auto_judge_enabled': False})
     store.set_setting('consolidation',dict(enabled=True,entry_profile_max_calls=50,merge_enabled=False,
         conflict_enabled=False,dependency_enabled=False,persona_enabled=False,goal_review_enabled=False,**settings))
     engine=Maintenance(store,gateway=Model(store),clock=clock)

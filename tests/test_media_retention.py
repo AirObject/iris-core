@@ -303,6 +303,10 @@ def test_old_backup_without_cleanup_columns_or_manifest_imports(store, tmp_path)
             columns = {r[1] for r in conn.execute('PRAGMA table_info(media_files)')}
             if 'bytes_purged_at' in columns:
                 # Remove the newer migrations before removing the retention columns.
+                assert manifest['migrations'][-1] == '042_goal_auto_default_on.sql'
+                conn.execute('''UPDATE runtime_settings SET value_json=json_remove(value_json,
+                    '$.goal_auto_review_enabled', '$.goal_duplicate_auto_judge_enabled') WHERE key='goals' ''')
+                conn.execute('DELETE FROM schema_migrations WHERE version=?', (manifest['migrations'].pop(),))
                 assert manifest['migrations'][-1] == '041_persona_auto_default.sql'
                 conn.execute("UPDATE runtime_settings SET value_json=? WHERE key='persona_publish_mode'",
                              (json.dumps('all_manual'),))

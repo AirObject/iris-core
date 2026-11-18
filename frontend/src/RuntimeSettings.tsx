@@ -185,9 +185,9 @@ export function GoalSettings({
   const current = {
     ...value,
     internal_question_expiry_days: value.internal_question_expiry_days ?? 7,
-    goal_auto_review_enabled: value.goal_auto_review_enabled ?? false,
+    goal_auto_review_enabled: value.goal_auto_review_enabled ?? true,
     goal_duplicate_auto_judge_enabled:
-      value.goal_duplicate_auto_judge_enabled ?? false,
+      value.goal_duplicate_auto_judge_enabled ?? true,
   };
   const { draft, change, reset } = useSettingsDraft({
     default_reminder_minutes: String(current.default_reminder_minutes),
@@ -307,7 +307,7 @@ export function GoalSettings({
             每日维护按依据自动完成或放弃内部目标
           </label>
           <p className="lifecycle-help">
-            只处理学习产生、仍未结束的普通目标。模型给出依据消息，程序核对依据晚于目标创建、来自涉及的人或角色自己后才关闭；含糊或部分完成的说法保持未结束。宿主和管理员创建的目标不受影响，自动关闭的目标可以在目标页重开。默认关闭。
+            只处理学习产生、仍未结束的普通目标。模型给出依据消息，程序核对依据晚于目标创建、来自涉及的人或角色自己后才关闭；含糊或部分完成的说法保持未结束。宿主和管理员创建的目标不受影响，自动关闭的目标可以在目标页重开。默认开启，可以关闭。
           </p>
           <label className="check-label">
             <input
@@ -321,7 +321,7 @@ export function GoalSettings({
           </label>
           <p className="lifecycle-help">
             使用目标去重判断模型，每对最多 60
-            秒：判为重复时合并到较早的一条（含管理员创建的目标时不合并、改为撤销标记），判为不重复时撤销标记，仍不确定时保留标记。默认关闭。
+            秒：判为重复时合并到较早的一条（含管理员创建的目标时不合并、改为撤销标记），判为不重复时撤销标记，仍不确定时保留标记。默认开启，可以关闭。
           </p>
           {(error || saveError) && <Notice error>{error || saveError}</Notice>}
           {saved && <Notice>目标与提醒设置已保存</Notice>}
