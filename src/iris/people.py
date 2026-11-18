@@ -1,4 +1,4 @@
-"""Administrator-controlled identities and read-only subject annotations.
+"""Identity changes and read-only subject annotations.
 
 canonical_subject is the common transaction-local resolver for intake, recall,
 and learning commits. It never guesses by name.
@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from urllib.parse import urlencode
 
-from .db import now
+from .db import dumps, now
 from .memory_ops import operation
 
 
@@ -127,7 +127,34 @@ def _ancestors(conn, sid):
     return seen
 
 
-def _move_aliases(conn, source, target, moved):
+def subject_members(conn, subject_id):
+    return {r[0] for r in conn.execute('''WITH RECURSIVE members(id) AS (
+        SELECT ? UNION SELECT s.id FROM subjects s JOIN members m ON s.merged_into=m.id)
+        SELECT id FROM members''', (subject_id,))}
+
+
+def merge_blocker(conn, source_id, target_id, *, automatic=False):
+    left = subject_members(conn, source_id)
+    right = subject_members(conn, target_id)
+    members = left | right
+    if left & right:
+        return 'already_merged'
+    for sid in members:
+        if (_ancestors(conn, sid) - {sid}) & members:
+            return 'ancestor'
+    for row in conn.execute('''SELECT subject_a,subject_b,kind,status,folded_into,resolved_at
+        FROM subject_links WHERE subject_a IN (SELECT value FROM json_each(?))
+          AND subject_b IN (SELECT value FROM json_each(?))
+          AND (status='denied' OR kind='roleplay')''', (dumps(sorted(members)), dumps(sorted(members)))):
+        if row['kind'] == 'same_as' and row['status'] == 'denied':
+            return 'denied_history'
+        if row['kind'] == 'roleplay' and (automatic or
+                (row['folded_into'] is None and row['resolved_at'] is None)):
+            return 'roleplay'
+    return None
+
+
+def _move_aliases(conn, source, target, moved, *, allow_blocked_name):
     blocks = list(conn.execute('SELECT * FROM subject_alias_blocks WHERE subject_id=? ORDER BY id', (source['id'],)))
     moved['alias_block_ids'] = [r['id'] for r in blocks]
     for row in blocks:
@@ -143,7 +170,8 @@ def _move_aliases(conn, source, target, moved):
     moved['folded_aliases'], moved['removed_alias_ids'] = [], []
     # Manual removal survives an identity merge. Confirming the identity itself
     # explicitly authorizes the old display name as an alias of the survivor.
-    conn.execute('DELETE FROM subject_alias_blocks WHERE subject_id=? AND alias=?', (target['id'], source['name']))
+    if allow_blocked_name:
+        conn.execute('DELETE FROM subject_alias_blocks WHERE subject_id=? AND alias=?', (target['id'], source['name']))
     blocked = {r[0] for r in conn.execute('SELECT alias FROM subject_alias_blocks WHERE subject_id=?', (target['id'],))}
     for row in list(conn.execute('SELECT id,alias FROM subject_aliases WHERE subject_id=? AND folded_into IS NULL', (target['id'],))):
         if row['alias'] in blocked:
@@ -159,7 +187,7 @@ def _move_aliases(conn, source, target, moved):
             moved['folded_aliases'].append({'alias_id': row['id'], 'into_alias_id': existing['id']})
         else:
             conn.execute('UPDATE subject_aliases SET subject_id=? WHERE id=?', (target['id'], row['id']))
-    if source['name'].strip().casefold() != target['name'].strip().casefold():
+    if source['name'] not in blocked and source['name'].strip().casefold() != target['name'].strip().casefold():
         conn.execute('INSERT OR IGNORE INTO subject_aliases(subject_id,alias) VALUES(?,?)', (target['id'], source['name']))
         moved['name_alias_id'] = conn.execute('SELECT id FROM subject_aliases WHERE subject_id=? AND alias=?',
                                              (target['id'], source['name'])).fetchone()[0]
@@ -180,8 +208,8 @@ def _move_links(conn, source_id, target_id, moved):
                   'to_subject_ids': [a, b], 'source_message_id': row['source_message_id']}
         if existing:
             if priority.get(row['status'], 0) > priority.get(existing['status'], 0):
-                conn.execute('UPDATE subject_links SET status=?,belief=? WHERE id=?',
-                             (row['status'], row['belief'], existing['id']))
+                conn.execute('UPDATE subject_links SET status=?,belief=?,inherited_denial_from=? WHERE id=?',
+                             (row['status'], row['belief'], row['id'] if row['status'] == 'denied' else None, existing['id']))
             conn.execute('UPDATE subject_links SET folded_into=? WHERE id=?', (existing['id'], row['id']))
             change['folded_into'] = existing['id']
         else:
@@ -198,35 +226,70 @@ def confirm_link(store, link_id, *, target_id, expected_revision, expected_sourc
         source_id = rel['subject_b'] if target_id == rel['subject_a'] else rel['subject_a']
         source = _subject(conn, source_id, expected_source_revision)
         target = _subject(conn, target_id, expected_target_revision)
-        if source_id in _ancestors(conn, target_id) or target_id in _ancestors(conn, source_id):
-            raise ValueError('不能合并从属人物与其祖先')
-        if conn.execute('''SELECT 1 FROM subject_links WHERE kind='roleplay' AND folded_into IS NULL
-            AND resolved_at IS NULL AND ((subject_a=? AND subject_b=?) OR (subject_a=? AND subject_b=?))''',
-            (source_id, target_id, target_id, source_id)).fetchone():
-            raise ValueError('扮演者与虚构角色不能合并')
-        moved = {
-            'platform_identities': [dict(r) for r in conn.execute('SELECT platform,account_id FROM platform_identities WHERE subject_id=? ORDER BY platform,account_id', (source_id,))],
-            'speaker_memory_ids': [r[0] for r in conn.execute('SELECT id FROM memories WHERE speaker_subject_id=? ORDER BY id', (source_id,))],
-            'about_memory_ids': [r[0] for r in conn.execute('SELECT memory_id FROM memory_subjects WHERE subject_id=? ORDER BY memory_id', (source_id,))],
-            'child_subject_ids': [r[0] for r in conn.execute('SELECT id FROM subjects WHERE parent_id=? ORDER BY id', (source_id,))],
-        }
-        stamp = now()
-        conn.execute("UPDATE subject_links SET status='confirmed',resolved_at=? WHERE id=?", (stamp, link_id))
-        _move_aliases(conn, source, target, moved)
-        conn.execute('UPDATE platform_identities SET subject_id=? WHERE subject_id=?', (target_id, source_id))
-        conn.execute('UPDATE memories SET speaker_subject_id=? WHERE speaker_subject_id=?', (target_id, source_id))
-        conn.execute('INSERT OR IGNORE INTO memory_subjects(memory_id,subject_id) SELECT memory_id,? FROM memory_subjects WHERE subject_id=?',
-                     (target_id, source_id))
-        conn.execute('DELETE FROM memory_subjects WHERE subject_id=?', (source_id,))
-        conn.execute('UPDATE subjects SET parent_id=? WHERE parent_id=?', (target_id, source_id))
-        _move_links(conn, source_id, target_id, moved)
-        conn.execute('UPDATE subjects SET merged_into=?,merged_at=? WHERE id=?', (target_id, stamp, source_id))
-        details = {'source_id': source_id, 'target_id': target_id, 'link_id': link_id,
-                   'source_revision_before': expected_source_revision, 'target_revision_before': expected_target_revision,
-                   'moved': moved}
-        operation(conn, 'subjects_merged', 'subject', target_id, details)
-        return {'source_id': source_id, 'target_id': target_id, 'link_id': link_id,
-                'revision': conn.execute('SELECT revision FROM subjects WHERE id=?', (target_id,)).fetchone()[0]}
+        blocker = merge_blocker(conn, source_id, target_id)
+        if blocker:
+            raise ValueError({'ancestor': '不能合并从属人物与其祖先',
+                              'roleplay': '扮演者与虚构角色不能合并',
+                              'denied_history': '合并链中已有永久否认的联系'}.get(blocker, '人物已合并'))
+        return merge_link(conn, rel, source, target, actor='admin', stamp=now())
+
+
+def _merge_rows(conn, source_id, target_id, link_id):
+    # The alias move may delete an entire folded tree. Include its original
+    # rows, so split can recover duplicates and source-level alias removals.
+    aliases = conn.execute('''WITH RECURSIVE aliases(id) AS (
+        SELECT id FROM subject_aliases WHERE subject_id IN (?,?) UNION
+        SELECT a.id FROM subject_aliases a JOIN aliases p ON a.folded_into=p.id)
+        SELECT a.* FROM subject_aliases a JOIN aliases p ON a.id=p.id''', (source_id, target_id))
+    return {
+        'subject_aliases': {r['id']: dict(r) for r in aliases},
+        'subject_alias_blocks': {r['id']: dict(r) for r in conn.execute(
+            'SELECT * FROM subject_alias_blocks WHERE subject_id IN (?,?)', (source_id, target_id))},
+        'subject_links': {r['id']: {k: r[k] for k in r.keys() if k != 'revision'} for r in conn.execute(
+            '''SELECT * FROM subject_links WHERE id!=? AND
+            (subject_a IN (?,?) OR subject_b IN (?,?))''', (link_id, source_id, target_id, source_id, target_id))},
+    }
+
+
+def merge_link(conn, rel, source, target, *, actor, stamp, evidence_ids=()):
+    """Move the same associations for admin and daily maintenance, with a split journal."""
+    source_id, target_id, link_id = source['id'], target['id'], rel['id']
+    before = _merge_rows(conn, source_id, target_id, link_id)
+    moved = {
+        'platform_identities': [dict(r) for r in conn.execute('SELECT platform,account_id FROM platform_identities WHERE subject_id=? ORDER BY platform,account_id', (source_id,))],
+        'speaker_memory_ids': [r[0] for r in conn.execute('SELECT id FROM memories WHERE speaker_subject_id=? ORDER BY id', (source_id,))],
+        'about_memory_ids': [r[0] for r in conn.execute('SELECT memory_id FROM memory_subjects WHERE subject_id=? ORDER BY memory_id', (source_id,))],
+        'child_subject_ids': [r[0] for r in conn.execute('SELECT id FROM subjects WHERE parent_id=? ORDER BY id', (source_id,))],
+    }
+    about_shared = [r[0] for r in conn.execute('''SELECT memory_id FROM memory_subjects WHERE subject_id=?
+        INTERSECT SELECT memory_id FROM memory_subjects WHERE subject_id=?''', (source_id, target_id))]
+    conn.execute("UPDATE subject_links SET status='confirmed',resolved_at=? WHERE id=?", (stamp, link_id))
+    _move_aliases(conn, source, target, moved, allow_blocked_name=actor == 'admin')
+    conn.execute('''UPDATE platform_identities SET subject_id=?,original_subject_id=COALESCE(original_subject_id,subject_id)
+        WHERE subject_id=?''', (target_id, source_id))
+    conn.execute('UPDATE memories SET speaker_subject_id=? WHERE speaker_subject_id=?', (target_id, source_id))
+    conn.execute('INSERT OR IGNORE INTO memory_subjects(memory_id,subject_id) SELECT memory_id,? FROM memory_subjects WHERE subject_id=?',
+                 (target_id, source_id))
+    conn.execute('DELETE FROM memory_subjects WHERE subject_id=?', (source_id,))
+    conn.execute('UPDATE subjects SET parent_id=? WHERE parent_id=?', (target_id, source_id))
+    _move_links(conn, source_id, target_id, moved)
+    conn.execute('UPDATE subjects SET merged_into=?,merged_at=? WHERE id=?', (target_id, stamp, source_id))
+    after = _merge_rows(conn, source_id, target_id, link_id)
+    changes = {table: [[rows.get(i), after[table].get(i)] for i in sorted(rows.keys() | after[table].keys())
+                       if rows.get(i) != after[table].get(i)] for table, rows in before.items()}
+    changes.update({key: moved[key] for key in ('platform_identities', 'speaker_memory_ids',
+                                               'about_memory_ids', 'child_subject_ids')})
+    changes['about_shared'] = about_shared
+    merge_id = conn.execute('''INSERT INTO subject_merges(link_id,source_id,target_id,actor,created_at,
+        memory_through,evidence_ids_json,changes_json)
+        VALUES(?,?,?,?,?,(SELECT COALESCE(MAX(id),0) FROM memories),?,?)''',
+        (link_id, source_id, target_id, actor, stamp, dumps(list(evidence_ids)), dumps(changes))).lastrowid
+    details = {'source_id': source_id, 'target_id': target_id, 'link_id': link_id, 'merge_id': merge_id,
+               'source_revision_before': source['revision'], 'target_revision_before': target['revision'],
+               'evidence_message_ids': list(evidence_ids), 'moved': moved}
+    operation(conn, 'subjects_merged', 'subject', target_id, details, actor=actor, stamp=stamp)
+    return {'source_id': source_id, 'target_id': target_id, 'link_id': link_id, 'merge_id': merge_id,
+            'revision': conn.execute('SELECT revision FROM subjects WHERE id=?', (target_id,)).fetchone()[0]}
 
 
 def _live_links(conn, subject_ids):
@@ -267,6 +330,8 @@ def _memory_counts(conn, sid):
 
 
 def person_detail(store, subject_id):
+    from .people_split import person_merges
+
     with store.read() as conn:
         row = conn.execute('SELECT * FROM subjects WHERE id=?', (subject_id,)).fetchone()
         if row is None or row['kind'] != 'person' or subject_id in ('self', 'scene'):
@@ -281,6 +346,7 @@ def person_detail(store, subject_id):
         links = [_link_details(conn, r) for r in _live_links(conn, [subject_id])]
         result['same_as'] = [r for r in links if r['kind'] == 'same_as']
         result['roleplay'] = [r for r in links if r['kind'] == 'roleplay']
+        result['merges'] = person_merges(conn, subject_id)
         return result
 
 

@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import iris.admin_data as admin_data
-from conftest import FakeGateway, authorize_host, login_admin, msg
+from conftest import FakeGateway, authorize_host, historical_message, login_admin, msg
 from iris.api import create_app
 from iris.db import Store
 from iris.learning import LearningEngine, PROMPT_VERSION
@@ -423,9 +423,17 @@ def test_upgrade_from_single_retry_keeps_history_and_schedules_the_rest(tmp_path
     with monkeypatch.context() as patch:
         patch.setattr(db, "files", lambda _: OldRoot())
         old = Store(path)
-        retried_once = abandoned(old, entry="A", at=day(2, 9))  # failed again after its one retry
-        untouched = abandoned(old, entry="B", at=day(3, 1))
         with old.write() as conn:
+            batches = []
+            for entry, current in (("A", day(2, 9)), ("B", day(3, 1))):
+                stamp = current.isoformat()
+                mid = historical_message(conn, "我喜欢猫", stamp, entry=entry, state='abandoned')
+                batch_id = conn.execute("""INSERT INTO batches(entry_id,history_ids,target_ids,future_ids,state,
+                    attempt_count,prompt_version,created_at,finished_at) VALUES(?,'[]',?,'[]','abandoned',4,?,?,?)""",
+                    (entry, json.dumps([mid]), PROMPT_VERSION, stamp, stamp)).lastrowid
+                conn.execute("UPDATE messages SET batch_id=? WHERE id=?", (batch_id, mid))
+                batches.append(batch_id)
+            retried_once, untouched = batches
             rid = conn.execute("""INSERT INTO maintenance_runs(trigger,state,settings_json,timezone,memory_through,
                 message_through,batch_through,created_at,finished_at,goal_through)
                 VALUES('manual','completed','{}','Asia/Shanghai',0,0,0,?,?,0)""",

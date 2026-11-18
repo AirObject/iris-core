@@ -34,6 +34,7 @@ const phaseNames: Record<string, string> = {
   consolidation: "模型整理",
   persona: "persona 更新",
   goals: "目标依据复核",
+  people: "身份联系复核",
 };
 const countNames: Record<string, string> = {
   decayed: "衰减",
@@ -60,6 +61,8 @@ const countNames: Record<string, string> = {
   goal_duplicates_merged: "重复目标合并",
   goal_duplicates_separated: "撤销可能重复",
   goal_duplicates_kept: "保留可能重复",
+  people_merged: "自动合并人物",
+  kept_possible: "保留可能是同一人",
   model_calls: "模型调用",
 };
 const goalAutoOutcomes = [
@@ -82,6 +85,17 @@ const reasonNames: Record<string, string> = {
   already_retried: "已自动重试过",
   batch_date_changed: "批次日期已变化",
   target_messages_cleared: "目标消息已清理",
+  denied_history: "合并链已有永久否认",
+  roleplay: "已有扮演关系",
+  roleplay_evidence: "原始发言说明为扮演关系",
+  ancestor: "涉及从属人物及其祖先",
+  already_reviewed: "已复核相同材料",
+  stale: "联系或依据已变化",
+  insufficient_independent_messages: "没有足够的跨日原始发言",
+  insufficient_independent_evidence: "证据独立性不足",
+  counter_evidence: "存在反证",
+  model_kept_possible: "保留可能联系",
+  verified_independent_evidence: "跨日期独立证据已核验",
 };
 function Counts({ summary }: { summary: MaintenanceSummary }) {
   return (

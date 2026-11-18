@@ -17,6 +17,7 @@ import type {
   Page,
   PersonDetail as Detail,
   PersonLink,
+  PersonMerge,
   PersonSummary,
 } from "./types";
 
@@ -215,6 +216,7 @@ function Evidence({ messages }: { messages: Message[] }) {
 type Action =
   | { kind: "deny"; link: PersonLink }
   | { kind: "merge"; link: PersonLink }
+  | { kind: "split"; merge: PersonMerge }
   | { kind: "alias"; alias: Alias };
 function PersonDetail({
   id,
@@ -253,7 +255,9 @@ function PersonDetail({
     const conflict = e instanceof ApiError && e.status === 409;
     setStale(conflict);
     setError(
-      conflict ? "资料或联系已变化，请刷新人物资料后重新核对。" : errorText(e),
+      conflict && action?.kind !== "split"
+        ? "资料或联系已变化，请刷新人物资料后重新核对。"
+        : errorText(e),
     );
   };
   const succeeded = (message: string) => {
@@ -297,21 +301,25 @@ function PersonDetail({
     setError("");
     setNotice("");
     try {
-      if (action.kind === "deny")
+      if (action.kind === "split") {
+        await api(
+          `/people/merges/${action.merge.id}/split`,
+          json("POST", { expected_revision: action.merge.target_revision }),
+        );
+        succeeded("已拆分人物，并永久否认这条同一人联系。");
+      } else if (action.kind === "deny") {
         await api(
           `/people/links/${action.link.id}/deny`,
           json("POST", { expected_revision: action.link.revision }),
         );
-      else
+        succeeded("联系已否认，后续学习不会重新提出这对人物的同一人联系。");
+      } else {
         await api(
           `/people/${encodeURIComponent(id)}/aliases/${action.alias.id}`,
           json("DELETE", { expected_revision: person.revision }),
         );
-      succeeded(
-        action.kind === "deny"
-          ? "联系已否认，后续学习不会重新提出这对人物的同一人联系。"
-          : "已删除别名，后续学习不会自动加回。必要时可手动添加。",
-      );
+        succeeded("已删除别名，后续学习不会自动加回。必要时可手动添加。");
+      }
     } catch (e) {
       fail(e);
     } finally {
@@ -459,6 +467,44 @@ function PersonDetail({
               </form>
             )}
           </section>
+          {!!person.merges?.length && (
+            <section className="panel">
+              <h3>人物合并记录</h3>
+              {person.merges.map((merge) => (
+                <article className="person-link" key={merge.id}>
+                  <h4>
+                    {merge.source.name} → {merge.target.name}
+                  </h4>
+                  <p>
+                    <Badge tone={merge.actor === "maintenance" ? "purple" : ""}>
+                      {merge.actor === "maintenance"
+                        ? "每日维护自动合并"
+                        : "管理员合并"}
+                    </Badge>{" "}
+                    {fullTime(merge.created_at)}
+                    {merge.split_at && ` · 已拆分 ${fullTime(merge.split_at)}`}
+                  </p>
+                  {merge.actor === "maintenance" && (
+                    <Evidence messages={merge.evidence_messages} />
+                  )}
+                  {merge.can_split && (
+                    <button
+                      disabled={locked}
+                      onClick={() => {
+                        setError("");
+                        setAction({ kind: "split", merge });
+                      }}
+                    >
+                      拆分人物
+                    </button>
+                  )}
+                  {!merge.can_split && !merge.split_at && (
+                    <p className="muted">请先拆分涉及这两个人物的后续合并。</p>
+                  )}
+                </article>
+              ))}
+            </section>
+          )}
           <section className="panel">
             <h3>可能是同一人</h3>
             {!person.same_as.length && <p className="muted">暂无身份联系。</p>}
@@ -550,7 +596,13 @@ function PersonDetail({
           ) : (
             action && (
               <Dialog
-                title={action.kind === "deny" ? "否认人物联系" : "删除别名"}
+                title={
+                  {
+                    deny: "否认人物联系",
+                    alias: "删除别名",
+                    split: "拆分人物",
+                  }[action.kind]
+                }
                 onClose={() => setAction(null)}
                 closeDisabled={busy}
               >
@@ -558,6 +610,12 @@ function PersonDetail({
                   <p>
                     否认 {action.link.subjects.map((s) => s.name).join("与")}{" "}
                     是同一人。否认后，后续学习不会改回待确认，也不会再次提出这对人物的同一人联系。
+                  </p>
+                ) : action.kind === "split" ? (
+                  <p>
+                    恢复 {action.merge.source.name}{" "}
+                    的独立身份，并永久否认该人物与 {action.merge.target.name}{" "}
+                    的同一人联系。
                   </p>
                 ) : (
                   <p>
@@ -580,7 +638,13 @@ function PersonDetail({
                     disabled={locked}
                     onClick={confirmAction}
                   >
-                    {action.kind === "deny" ? "确认否认" : "确认删除别名"}
+                    {
+                      {
+                        deny: "确认否认",
+                        alias: "确认删除别名",
+                        split: "确认拆分",
+                      }[action.kind]
+                    }
                   </button>
                 </div>
               </Dialog>

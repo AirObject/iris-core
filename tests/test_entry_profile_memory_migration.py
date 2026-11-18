@@ -1,9 +1,10 @@
 """Upgrade actual 031 data: no model calls and no model paragraph import."""
 import json
+from conftest import historical_message
 from iris import db, entry_profile as ep
 from iris.db import Store, dumps
 from iris.memory_ops import purge_memory
-from test_entry_profile_memory_live import message, CLOCK
+from test_entry_profile_memory_live import CLOCK
 
 
 def test_031_upgrade_converts_only_current_manual_paragraphs_and_keeps_history(tmp_path,monkeypatch):
@@ -18,8 +19,8 @@ def test_031_upgrade_converts_only_current_manual_paragraphs_and_keeps_history(t
     with monkeypatch.context() as patch:
         patch.setattr(db,'files',lambda _:Root())
         old=Store(path)
-        message(old)
         with old.write() as conn:
+            historical_message(conn,'升级前的消息',CLOCK().isoformat(),entry='group')
             settings=ep._ensure(conn,'group',CLOCK().isoformat())
             ep._insert(conn,'group',previous=0,content='旧主题。\n规则。\n未分类\n说明。',sentences=[
                 {'text':'旧主题。','author':'model','basis':[],'message_count':2},

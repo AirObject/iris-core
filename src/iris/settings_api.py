@@ -175,6 +175,7 @@ class Lifecycle(Input):
     maintenance_time: str = Field(default="03:00", pattern=r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
     abandoned_retry_enabled: bool = Field(default=True, strict=True)
     dependency_penalty: int = Field(default=10, ge=0, le=100, strict=True)
+    people_auto_merge_enabled: bool = Field(default=False, strict=True)
 
 
 class LifecycleUpdate(Lifecycle):

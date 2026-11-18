@@ -201,6 +201,19 @@ export function LifecycleSettings({
             />
             <small>放弃后第几天重试，逗号分隔</small>
           </label>
+          <label className="check-label">
+            <input
+              type="checkbox"
+              checked={draft.people_auto_merge_enabled ?? false}
+              onChange={(e) =>
+                change("people_auto_merge_enabled", e.target.checked)
+              }
+            />
+            每日维护自动合并同一人
+          </label>
+          <p className="lifecycle-help">
+            默认关闭。开启后，维护会复核“可能是同一人”的联系。合并须有跨日期的独立证据，可以在人物页查看证据并拆分。
+          </p>
           <p className="lifecycle-help">
             维护按实际执行次数衰减，遗忘和置顶记忆不衰减。依据失效时每个依据只扣一次，置顶期间暂缓扣减。已放弃的批次按上面的日期（角色时区）各自动重试一次，每次使用完整尝试额度；停机错过的日期恢复后最多补一次。用完后缺口只作记录，仍可手动重新学习，手动重新学习不占自动重试次数。内容拒绝不自动重试。
           </p>

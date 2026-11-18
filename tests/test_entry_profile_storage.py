@@ -174,6 +174,7 @@ def test_backup_round_trip_keeps_new_kind_owner_subject_and_receipts(store,tmp_p
 
 
 def test_upgrade_030_preserves_people_triggers_and_foreign_keys(tmp_path,monkeypatch):
+    from conftest import historical_message
     import iris.db as db
     from iris.search_text import segmented
     path=tmp_path/'old.db'
@@ -187,8 +188,8 @@ def test_upgrade_030_preserves_people_triggers_and_foreign_keys(tmp_path,monkeyp
     with monkeypatch.context() as patch:
         patch.setattr(db,'files',lambda _:OldRoot())
         old=Store(path)
-        msg(old,1,'升级前的消息')
         with old.write() as conn:
+            historical_message(conn,'升级前的消息',now())
             conn.execute("INSERT INTO subjects(id,kind,name,created_at) VALUES('friend','person','旧人物',?)",(now(),))
             triggers={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='subjects'")}
             assert memory_ops.Visibility(conn).memory(999) is None

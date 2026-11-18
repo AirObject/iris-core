@@ -115,6 +115,11 @@ beforeEach(() => {
         details.A.same_as = [];
         details.B.same_as = [];
         result = { source_id: source, target_id: body.target_id };
+      } else if (url.endsWith("/split")) {
+        details.B.merged_into = null;
+        details.A.merges![0].split_at = "2026-11-17T10:05:00Z";
+        details.A.merges![0].can_split = false;
+        result = { source_id: "B", target_id: "A" };
       } else if (url.endsWith("/deny")) {
         details.A.same_as[0].status = "denied";
         result = { id: 9, status: "denied", revision: 4 };
@@ -136,6 +141,53 @@ beforeEach(() => {
   );
 });
 afterEach(() => vi.unstubAllGlobals());
+
+test("人物合并记录展示自动合并证据并可确认拆分", async () => {
+  details.B.merged_into = "A";
+  details.A.merges = [
+    {
+      id: 18,
+      source: { id: "B", name: "林同学" },
+      target: { id: "A", name: "小林" },
+      actor: "maintenance",
+      created_at: "2026-11-17T10:00:00Z",
+      split_at: null,
+      target_revision: 7,
+      can_split: true,
+      evidence_messages: [
+        {
+          ...link.evidence_messages[0],
+          content: "我亲眼看见林同学换成了小林的账号。",
+        },
+      ],
+    },
+  ];
+  render(<People initialQuery="?id=A" onChange={changed} />);
+  expect(await screen.findByText("每日维护自动合并")).toBeInTheDocument();
+  expect(
+    screen.getByText("我亲眼看见林同学换成了小林的账号。"),
+  ).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "拆分人物" }));
+  const dialog = screen.getByRole("dialog", { name: "拆分人物" });
+  expect(within(dialog).getByText(/永久否认/)).toBeInTheDocument();
+  await userEvent.click(
+    within(dialog).getByRole("button", { name: "确认拆分" }),
+  );
+  expect(
+    await screen.findByText("已拆分人物，并永久否认这条同一人联系。"),
+  ).toBeInTheDocument();
+  expect(
+    requests.find((request) => request.url.endsWith("/merges/18/split")),
+  ).toMatchObject({
+    method: "POST",
+    body: { expected_revision: 7 },
+  });
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: "拆分人物" }),
+    ).not.toBeInTheDocument(),
+  );
+});
 
 test("人物列表按名字或别名、待确认筛选并分页", async () => {
   render(<People onChange={changed} />);

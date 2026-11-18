@@ -39,6 +39,10 @@ SUPERSEDED_NO_RESTORE = "superseded_no_restore"
 PARTICIPANT_NUMBER = re.compile(r"(?<![A-Za-z0-9_])P[0-9]+(?![A-Za-z0-9_])")
 
 
+def _split_revision(conn):
+    return conn.execute("SELECT COALESCE(MAX(id),0) FROM admin_operations WHERE action='subjects_split'").fetchone()[0]
+
+
 def _validate_output_shape(output: Any, raw: str) -> None:
     """All five sections are required, even when empty; never infer an empty result.
 
@@ -177,6 +181,7 @@ class LearningEngine:
             aliases = conn.execute("SELECT subject_id,alias FROM subject_aliases WHERE folded_into IS NULL AND subject_id IN (SELECT id FROM subjects WHERE kind IN ('person','self')) ORDER BY subject_id,alias").fetchall()
             identities = conn.execute("SELECT subject_id,platform,account_id FROM platform_identities WHERE subject_id IN (SELECT id FROM subjects WHERE kind IN ('person','self'))").fetchall()
             persona = persona_context(conn)['content']
+            split_revision = _split_revision(conn)
             messages = {r["id"]: _row_dict(r) for r in rows}
             for message_id, media in message_media(conn, ids).items():
                 messages[message_id]["media"] = media
@@ -191,7 +196,8 @@ class LearningEngine:
                         message[field], message[label] = sid, names[sid]
         return {"messages": messages, "subjects": [_row_dict(r) for r in subjects],
                 "aliases": [_row_dict(r) for r in aliases], "identities": [_row_dict(r) for r in identities],
-                "persona": persona, "role_name": str(self.store.setting("role_name", "Iris"))}
+                "persona": persona, "role_name": str(self.store.setting("role_name", "Iris")),
+                "split_revision": split_revision}
 
     def _related(self, batch: Batch, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
         target = [snapshot["messages"][i] for i in batch.target_ids]
@@ -726,6 +732,8 @@ class LearningEngine:
             row = conn.execute("SELECT state FROM batches WHERE id=?", (batch.id,)).fetchone()
             if not row or row[0] != "running":
                 raise RuntimeError("batch state changed before commit")
+            if snapshot["split_revision"] != _split_revision(conn):
+                raise ModelError("retryable", "subject identities split during learning", reason="subject_split")
             for item in accepted["people"]:
                 if "alias" in item:
                     owner = canonical_subject(conn, item["_subject_id"])
@@ -945,8 +953,9 @@ class LearningEngine:
                 if degrade_refused_context(conn, batch.id,
                         sent_context_ids=attempt.get("sent_context_ids", []), error=error.summary):
                     return "waiting"
-            count = batch.attempt_count + (0 if error.paused else 1)
-            if error.paused:
+            retry_without_charge = error.paused or error.reason == "subject_split"
+            count = batch.attempt_count + (0 if retry_without_charge else 1)
+            if retry_without_charge:
                 state, message_state, gap = "waiting", "batched", None
             elif refusal:
                 state, message_state, gap = "refused", "refused", "content_rejection"
@@ -954,7 +963,7 @@ class LearningEngine:
                 state, message_state, gap = "abandoned", "abandoned", "attempts_exhausted"
             else:
                 state, message_state, gap = "waiting", "batched", None
-            next_at = (self.clock() + timedelta(seconds=RETRY_DELAYS[min(count - 1, 2)])).isoformat() if state == "waiting" and not error.paused else None
+            next_at = (self.clock() + timedelta(seconds=RETRY_DELAYS[min(count - 1, 2)])).isoformat() if state == "waiting" and not retry_without_charge else None
             conn.execute("UPDATE batches SET state=?,attempt_count=?,next_retry_at=?,last_error=?,finished_at=? WHERE id=?",
                          (state, count, next_at, error.summary, now() if state != "waiting" else None, batch.id))
             if state != "waiting":
