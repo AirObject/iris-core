@@ -10,11 +10,12 @@ from goal_auto_helpers import (CREATED, Clock, Reviewer, basic, cite, enable, en
                                row, run_goals, subject)
 
 
-def test_switches_default_off_and_no_model_call(store):
+def test_switches_default_on_and_turned_off_means_no_model_call(store):
     with store.read() as conn:
         settings = goal_settings(conn)
-    assert settings[AUTO_REVIEW_KEY] is False and settings[DUPLICATE_AUTO_KEY] is False
+    assert settings[AUTO_REVIEW_KEY] is True and settings[DUPLICATE_AUTO_KEY] is True
     gid, _, _ = basic(store)
+    enable(store, review=False, duplicates=False)
     reviewer = Reviewer(store, cite('completed'))
     engine, rid = run_goals(store, reviewer)
     assert reviewer.calls == [] and row(store, gid)['state'] == 'open' and reviews(store) == []

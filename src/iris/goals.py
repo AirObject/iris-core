@@ -31,14 +31,15 @@ from .query_analysis import SubjectNames
 from .search_text import query_coverage_terms
 from .state import local_time, role_zone
 
-# Full-auto G line switches (DECISIONS 2026-11-11): off for new and old
-# databases until the planner enables them after the hidden-set gates.
+# Full-auto G line switches (DECISIONS 2026-11-11). goal_review_hidden_v1 and
+# goal_dedup_hidden_v1 passed on 2026-11-12, so both default on. Migration 042
+# writes them for databases whose goal settings an administrator never saved
+# (on) and pins the previous value for the others (off unless saved on); this
+# fallback only covers a missing row or field.
 AUTO_REVIEW_KEY = 'goal_auto_review_enabled'
 DUPLICATE_AUTO_KEY = 'goal_duplicate_auto_judge_enabled'
 DEFAULTS = {'default_reminder_minutes': 60, 'overdue_reminders': True}
-# Not written with other goal settings until set, so "never saved" stays
-# distinguishable from an explicit choice when a default changes later.
-AUTO_DEFAULTS = {AUTO_REVIEW_KEY: False, DUPLICATE_AUTO_KEY: False}
+AUTO_DEFAULTS = {AUTO_REVIEW_KEY: True, DUPLICATE_AUTO_KEY: True}
 QUESTION_EXPIRY_KEY = 'internal_question_expiry_days'
 DEFAULT_QUESTION_EXPIRY_DAYS = 7
 ALL_ENTRIES = Scope(kind='all')
@@ -1509,6 +1510,25 @@ def apply_goal_review(conn, current, *, material, result, run_id=None):
             'latest_message_id':material['latest_message_id'],'candidates':len(material['candidate_ids'])}
 
 
+def _goal_scope(value):
+    """A goal's stored host token scope; NULL means all entries."""
+    return Scope.model_validate_json(value or '{"kind":"all"}')
+
+
+def _host_scope_blocks_merge(conn, source_id, target_entry_id):
+    """True when merging goal source_id (the later one) into a goal in
+    target_entry_id would move a host goal out of its token scope.
+
+    Merging the later goal also redirects every goal absorbed into it, so the
+    source itself and every goal whose merged_into chain ends at it must allow
+    writing the target's entry. Shared by G2 and the creation-time review.
+    """
+    scopes = [r[0] for r in conn.execute('''WITH RECURSIVE chain(id) AS (
+            SELECT ? UNION SELECT g.id FROM goals g JOIN chain c ON g.merged_into=c.id)
+        SELECT g.host_scope_json FROM goals g JOIN chain c ON c.id=g.id''',(source_id,))]
+    return any(not _goal_scope(value).allows_write(target_entry_id) for value in scopes)
+
+
 def duplicate_auto_pairs(conn, *, goal_through=None):
     return [(r[0],r[1]) for r in conn.execute("""SELECT d.goal_a,d.goal_b FROM goal_duplicates d
         JOIN goals a ON a.id=d.goal_a JOIN goals b ON b.id=d.goal_b
@@ -1544,22 +1564,14 @@ def duplicate_auto_material(conn, goal_a, goal_b):
     # The later goal is judged (and would be merged) under its own token scope,
     # exactly as in the creation-time review. Only a scoped host goal that would
     # be merged into a goal outside its scope is blocked; the hint stays.
-    scopes = {gid:Scope.model_validate_json(rows[gid]['host_scope_json'] or '{"kind":"all"}') for gid in rows}
     common = {'goal_a':goal_a,'goal_b':goal_b,'proposed_id':proposed['id'],'partner_id':partner['id'],
               'origins':sorted({r['origin'] for r in rows.values()}),'options':options,'method':method,
               'revisions':{str(gid):rows[gid]['revision'] for gid in rows}}
-    # Merging the later goal also redirects every goal absorbed into it, so each
-    # absorbed host goal's token scope must allow the earlier goal's entry too.
-    absorbed = [r[0] for r in conn.execute('''WITH RECURSIVE chain(id) AS (
-            SELECT ? UNION SELECT g.id FROM goals g JOIN chain c ON g.merged_into=c.id)
-        SELECT g.host_scope_json FROM goals g JOIN chain c ON c.id=g.id WHERE g.id!=?''',
-        (proposed['id'],proposed['id']))]
-    moved = [scopes[proposed['id']],*(Scope.model_validate_json(value or '{"kind":"all"}') for value in absorbed)]
-    if any(not scope.allows_write(partner['entry_id']) for scope in moved):
+    if _host_scope_blocks_merge(conn,proposed['id'],partner['entry_id']):
         fingerprint = hashlib.sha256(json.dumps({'scope_blocked':True,'goals':sorted(common['revisions'].items())},
                                                 sort_keys=True).encode()).hexdigest()
         return {**common,'scope_blocked':True,'fingerprint':fingerprint,'partner_in_material':False}
-    scope = scopes[proposed['id']]
+    scope = _goal_scope(proposed['host_scope_json'])
     review = dedup_review_material(conn,proposed['id'],options,scope=scope)
     judged = [row['id'] for row in review['selected']]
     if review['model_possible']:
@@ -2036,7 +2048,16 @@ class Goals:
                 decision = {'status':'pending','target_id':None,'reason':'configuration_changed'}
             elif decision['status']=='merged':
                 target = next(row for row in selected if row['id']==decision['target_id'])
-                decision['target_id'] = _merge(conn,target,proposed,current,actor=actor,semantic=True,scope=scope)
+                earlier,later = sorted((target,proposed),key=lambda r:(r['created_at'],r['id']))
+                if _host_scope_blocks_merge(conn,later['id'],earlier['entry_id']):
+                    # The same check as G2: a merge would move a host goal (the
+                    # later goal or one absorbed into it) out of its token scope.
+                    # As for an administrator's goal: no merge, a possible hint.
+                    decision = {**decision,'status':'possible_duplicate','target_ids':[target['id']],
+                                'reason':'host_scope_not_merged'}
+                    _possible(conn,goal_id,target['id'],current,actor=actor)
+                else:
+                    decision['target_id'] = _merge(conn,target,proposed,current,actor=actor,semantic=True,scope=scope)
             elif decision['status']=='possible_duplicate':
                 for target_id in decision['target_ids']:
                     _possible(conn,goal_id,target_id,current,actor=actor)

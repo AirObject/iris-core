@@ -258,7 +258,7 @@ test("目标页的自动处理列表在展开前不请求，展开后列出完�
   ).toEqual({ expected_revision: 5 });
 });
 
-test("两个自动复核开关默认关闭，只保存改动的开关", async () => {
+test("两个自动复核开关缺省时默认开启，可以关闭，只保存改动的开关", async () => {
   const save = vi.fn(async (changes: Record<string, unknown>) => ({
     default_reminder_minutes: 60,
     overdue_reminders: true,
@@ -273,13 +273,47 @@ test("两个自动复核开关默认关闭，只保存改动的开关", async ()
   );
   const review = screen.getByLabelText("每日维护按依据自动完成或放弃内部目标");
   const duplicates = screen.getByLabelText("每日维护补判“可能重复”的目标");
-  expect(review).not.toBeChecked();
-  expect(duplicates).not.toBeChecked();
+  expect(review).toBeChecked();
+  expect(duplicates).toBeChecked();
+  expect(screen.getAllByText(/默认开启，可以关闭/)).toHaveLength(2);
   await userEvent.click(review);
   await userEvent.click(
     screen.getByRole("button", { name: "保存目标与提醒设置" }),
   );
-  expect(save).toHaveBeenCalledWith({ goal_auto_review_enabled: true });
+  expect(save).toHaveBeenCalledWith({ goal_auto_review_enabled: false });
+});
+
+test("自动复核开关显示服务端保存的值", async () => {
+  const save = vi.fn(async (changes: Record<string, unknown>) => ({
+    default_reminder_minutes: 60,
+    overdue_reminders: true,
+    goal_auto_review_enabled: false,
+    goal_duplicate_auto_judge_enabled: true,
+    ...changes,
+  }));
+  render(
+    <GoalSettings
+      value={{
+        default_reminder_minutes: 60,
+        overdue_reminders: true,
+        goal_auto_review_enabled: false,
+        goal_duplicate_auto_judge_enabled: true,
+      }}
+      busy={false}
+      save={save}
+    />,
+  );
+  const review = screen.getByLabelText("每日维护按依据自动完成或放弃内部目标");
+  const duplicates = screen.getByLabelText("每日维护补判“可能重复”的目标");
+  expect(review).not.toBeChecked();
+  expect(duplicates).toBeChecked();
+  await userEvent.click(duplicates);
+  await userEvent.click(
+    screen.getByRole("button", { name: "保存目标与提醒设置" }),
+  );
+  expect(save).toHaveBeenCalledWith({
+    goal_duplicate_auto_judge_enabled: false,
+  });
 });
 
 test("维护报告列出自动复核结果和依据，可直接重开", async () => {

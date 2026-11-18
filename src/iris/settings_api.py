@@ -23,7 +23,7 @@ from .persona import DEFAULT_GOAL, DEFAULT_RULES, DEFAULT_PUBLISH_MODE, persona_
 from .state import state_settings
 from .service_status import model_health_snapshot
 from .consolidation import consolidation_settings
-from .goals import DEFAULT_QUESTION_EXPIRY_DAYS, goal_settings
+from .goals import AUTO_DEFAULTS, AUTO_REVIEW_KEY, DEFAULT_QUESTION_EXPIRY_DAYS, DUPLICATE_AUTO_KEY, goal_settings
 from .goal_dedup_judge import DEFAULTS as GOAL_JUDGE_DEFAULTS, settings as goal_judge_settings
 
 CONNECTION_TIMEOUT = 10
@@ -149,9 +149,9 @@ class GoalsSettings(Input):
     default_reminder_minutes: int = Field(default=60, ge=0, le=525600, strict=True)
     overdue_reminders: bool = Field(default=True, strict=True)
     internal_question_expiry_days: int = Field(default=DEFAULT_QUESTION_EXPIRY_DAYS, ge=1, le=365, strict=True)
-    # Full-auto G line; both stay off until the planner enables them after the gates.
-    goal_auto_review_enabled: bool = Field(default=False, strict=True)
-    goal_duplicate_auto_judge_enabled: bool = Field(default=False, strict=True)
+    # Full-auto G line; on by default since the 2026-11-12 gates, can be turned off.
+    goal_auto_review_enabled: bool = Field(default=AUTO_DEFAULTS[AUTO_REVIEW_KEY], strict=True)
+    goal_duplicate_auto_judge_enabled: bool = Field(default=AUTO_DEFAULTS[DUPLICATE_AUTO_KEY], strict=True)
 
 
 class Limits(Input):

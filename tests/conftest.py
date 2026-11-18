@@ -1,8 +1,10 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from iris import db
 from iris.db import Store
 from iris.learning import LearningEngine, PROMPT_VERSION
 from iris.models import ModelConfig, ModelError
@@ -56,6 +58,26 @@ def store(tmp_path):
         yield value
     finally:
         value.close()
+
+
+def store_before_migration(path, monkeypatch, migration):
+    """Build an old database using the real migration runner and a script prefix."""
+    load_resources = db.files
+
+    def older_resources(package):
+        root = load_resources(package)
+
+        def joinpath(name):
+            resource = root.joinpath(name)
+            if name == 'migrations':
+                return SimpleNamespace(iterdir=lambda: [p for p in resource.iterdir() if p.name < migration])
+            return resource
+
+        return SimpleNamespace(joinpath=joinpath)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(db, 'files', older_resources)
+        return Store(path)
 
 
 @pytest.fixture

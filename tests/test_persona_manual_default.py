@@ -6,7 +6,7 @@ from importlib.resources import files
 import pytest
 from fastapi.testclient import TestClient
 
-from conftest import login_admin
+from conftest import login_admin, store_before_migration
 from iris.api import create_app
 from iris.db import Store, dumps
 from iris.memory_ops import setup_role
@@ -190,11 +190,10 @@ def test_upgrade_changes_only_untouched_old_default(tmp_path, mode, actor, actio
     ('small_medium_auto', ['goal'], 'small_medium_auto'),
     ('all_auto', ['publish_mode'], 'all_auto'),
 ])
-def test_upgrade_preserves_effective_mode_after_a_settings_save(tmp_path, mode, saved_fields, expected):
+def test_upgrade_preserves_effective_mode_after_a_settings_save(tmp_path, monkeypatch, mode, saved_fields, expected):
     path = tmp_path / 'before-auto-default.db'
-    with closing(Store(path)) as old:
+    with closing(store_before_migration(path, monkeypatch, '041_persona_auto_default.sql')) as old:
         with old.write() as conn:
-            conn.execute("DELETE FROM schema_migrations WHERE version='041_persona_auto_default.sql'")
             conn.execute("DELETE FROM runtime_settings WHERE key='persona_publish_mode'")
             if mode is not None:
                 conn.execute("INSERT INTO runtime_settings VALUES('persona_publish_mode', ?)", (dumps(mode),))
