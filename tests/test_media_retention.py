@@ -304,6 +304,9 @@ def test_old_backup_without_cleanup_columns_or_manifest_imports(store, tmp_path)
             columns = {r[1] for r in conn.execute('PRAGMA table_info(media_files)')}
             if 'bytes_purged_at' in columns:
                 # Remove the newer migrations before removing the retention columns.
+                assert manifest['migrations'][-1] == '044_model_cached_tokens.sql'
+                conn.execute('ALTER TABLE model_calls DROP COLUMN cached_tokens')
+                conn.execute('DELETE FROM schema_migrations WHERE version=?', (manifest['migrations'].pop(),))
                 assert manifest['migrations'][-1] == '043_people_merge.sql'
                 conn.executescript('''DROP TRIGGER subjects_merge_guard;
                     DROP TRIGGER subject_link_denied_update;
