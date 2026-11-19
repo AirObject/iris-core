@@ -19,13 +19,16 @@ from .goals import write_learning_goal
 from .claim_sequences import normalize_claim as _normalize, same_claim_sequences as _same_claim_sequences
 from .people import canonical_subject
 from .memory_ops import Visibility, confirm_retention, record_batch_memory_effect, superseded_forgotten
-from .models import Gateway, ModelError, parse_json_object_with_status
+from .models import Gateway, ModelConfig, ModelError, parse_json_object_with_status
 from .media import (material_content, message_media, native_learning_enabled,
                     plan_learning_images, prepare_media)
 from .queue import (Batch, claim_batch, degrade_refused_context, estimate_tokens,
                     learning_batch, split_refused_batch, truncate_material)
 from .retrieval import Retrieval
 from .persona import persona_context
+
+
+type BatchEmbeddings = dict[tuple[ModelConfig, str], np.ndarray | None]
 
 
 PROMPT_VERSION = "learning_v10"
@@ -64,9 +67,7 @@ def _validate_output_shape(output: Any, raw: str) -> None:
 
 
 def _dropped_memory(item: dict[str, Any], reason: str) -> dict[str, Any]:
-    # The batch result is JSON; the runtime vector attached before _apply is not.
-    return {"section": "memories", "reason": reason,
-            "item": {key: value for key, value in item.items() if key != "_embedding"}}
+    return {"section": "memories", "reason": reason, "item": dict(item)}
 
 
 def _score(value: Any, default: int) -> int:
@@ -697,7 +698,8 @@ class LearningEngine:
                          (memory_id, message_id, now()))
 
     def _apply(self, batch: Batch, accepted: dict[str, list[dict[str, Any]]], dropped: list[dict[str, Any]],
-               snapshot: dict[str, Any], refs: dict[str, dict[str, Any]], attempt: dict[str, Any]) -> dict[str, Any]:
+               snapshot: dict[str, Any], refs: dict[str, dict[str, Any]], attempt: dict[str, Any],
+               embeddings: BatchEmbeddings) -> dict[str, Any]:
         created: list[int] = []
         updated: list[int] = []
         confirmed: list[int] = []
@@ -711,7 +713,7 @@ class LearningEngine:
                 if superseded_forgotten(conn, memory_id):
                     # Sources are still appended by the caller; only the rescue is refused.
                     dropped.append({"section": section, "reason": SUPERSEDED_NO_RESTORE,
-                                    "item": {k: v for k, v in item.items() if k != "_embedding"}})
+                                    "item": dict(item)})
                     return
                 if not record_batch_memory_effect(conn, batch.id, memory_id, "confirmed"):
                     return
@@ -792,7 +794,9 @@ class LearningEngine:
                 for message_id in item["evidence"]:
                     if message_id in target:
                         self._source(conn, current["id"], message_id)
+            embedding_config = self.gateway.configs.get("embedding")
             for item in accepted["memories"]:
+                vector = embeddings.get((embedding_config, item["content"])) if embedding_config else None
                 # Recheck every derived reference before any write, including
                 # scope changes while the learning model was in flight.
                 visibility = Visibility(conn)
@@ -821,16 +825,13 @@ class LearningEngine:
                         return False
                     if _similar(memory["content"], item["content"]):
                         return True
-                    if item.get("_embedding") is None or memory["embedding"] is None:
-                        return False
-                    if memory["embedding_model"] != self.gateway.configs["embedding"].model:
+                    if vector is None or memory["embedding"] is None or memory["embedding_model"] != embedding_config.model:
                         return False
                     prior = np.frombuffer(memory["embedding"], dtype=np.float32)
-                    current_vector = item["_embedding"]
-                    if prior.size != current_vector.size:
+                    if prior.size != vector.size:
                         return False
-                    denominator = float(np.linalg.norm(prior) * np.linalg.norm(current_vector))
-                    return bool(denominator and float(np.dot(prior, current_vector) / denominator) >= dedupe_threshold)
+                    denominator = float(np.linalg.norm(prior) * np.linalg.norm(vector))
+                    return bool(denominator and float(np.dot(prior, vector) / denominator) >= dedupe_threshold)
                 duplicate = next((m for m in existing if visibility.memory(m["id"]) == incoming_scope and m["speaker_subject_id"] == speaker_id and
                                   m["stance"] == item["stance"] and
                                   m["event_time"] == item["event_time"] and
@@ -856,8 +857,8 @@ class LearningEngine:
                     VALUES(?,?,?,?,?,?,?,?,?,'real',?,?,?,?,?,?)""",
                     (item["content"], item["kind"], speaker_id, item["stance"], item["belief"], item["importance"],
                      round(30 + item["importance"] * 0.4), item["event_time"], batch.entry_id,
-                     item["_embedding"].tobytes() if item.get("_embedding") is not None else None,
-                     self.gateway.configs["embedding"].model if item.get("_embedding") is not None else None,
+                     vector.tobytes() if vector is not None else None,
+                     embedding_config.model if vector is not None else None,
                      stamp, stamp, stamp, stamp))
                 memory_id = int(result.lastrowid)
                 record_batch_memory_effect(conn, batch.id, memory_id, "created")
@@ -904,7 +905,7 @@ class LearningEngine:
             conn.execute("DELETE FROM memory_gaps WHERE batch_id=?", (batch.id,))
             self._write_attempt(conn, batch.id, attempt)
         for memory_id in updated:
-            self._embed_memory(memory_id)
+            self._embed_memory(memory_id, embeddings)
         return result
 
     @staticmethod
@@ -918,7 +919,17 @@ class LearningEngine:
              dumps(attempt["sent_context_ids"]) if "sent_context_ids" in attempt else None,
              attempt.get("prompt_version")))
 
-    def _embed_memory(self, memory_id: int) -> None:
+    def _batch_embedding(self, content: str, config: ModelConfig, embeddings: BatchEmbeddings) -> np.ndarray | None:
+        key = (config, content)
+        if key not in embeddings:
+            try:
+                vector = np.asarray(self.gateway.embedding(content, "memory_embedding"), dtype=np.float32)
+            except ModelError:
+                vector = None
+            embeddings[key] = vector if self.gateway.configs.get("embedding") == config else None
+        return embeddings[key]
+
+    def _embed_memory(self, memory_id: int, embeddings: BatchEmbeddings) -> None:
         config = self.gateway.configs.get("embedding")
         if not config or not config.model:
             return
@@ -926,11 +937,12 @@ class LearningEngine:
             row = conn.execute("SELECT content,revision FROM memories WHERE id=?", (memory_id,)).fetchone()
         if not row:
             return
-        try:
-            vector = np.asarray(self.gateway.embedding(row["content"], "memory_embedding"), dtype=np.float32)
-        except ModelError:
+        vector = self._batch_embedding(row["content"], config, embeddings)
+        if vector is None:
             return
         with self.store.write() as conn:
+            if self.gateway.configs.get("embedding") != config:
+                return
             conn.execute("UPDATE memories SET embedding=?,embedding_model=? WHERE id=? AND revision=?",
                          (vector.tobytes(), config.model, memory_id, row["revision"]))
 
@@ -1018,15 +1030,13 @@ class LearningEngine:
                            error=details[0] if details else None)
             output, snapshot["normalizations"] = self._normalize_output(output, refs)
             accepted, dropped = self._validate(output, batch, snapshot, numbers, refs)
-            embedding_config = self.gateway.configs.get("embedding")
-            if embedding_config and embedding_config.model:
-                for item in accepted["memories"]:
-                    try:
-                        item["_embedding"] = np.asarray(self.gateway.embedding(item["content"], "memory_embedding"), dtype=np.float32)
-                    except ModelError:
-                        item["_embedding"] = None
+            embeddings: BatchEmbeddings = {}
+            for item in accepted["memories"]:
+                embedding_config = self.gateway.configs.get("embedding")
+                if embedding_config and embedding_config.model:
+                    self._batch_embedding(item["content"], embedding_config, embeddings)
             attempt["duration_ms"] = round((time.monotonic() - started) * 1000)
-            return self._apply(batch, accepted, dropped, snapshot, refs, attempt)
+            return self._apply(batch, accepted, dropped, snapshot, refs, attempt, embeddings)
         except ModelError as error:
             if attempt["raw_output"] is None:
                 attempt["raw_output"] = error.first_raw if error.first_raw is not None else error.raw_output

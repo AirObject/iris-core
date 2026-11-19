@@ -1,7 +1,7 @@
-"""Regression fixtures for the retired document path on an actual 031 schema.
+"""Regression fixtures for the retired entry profile document schema.
 
 New production behavior is covered by test_entry_profile_memory_{live,api,
-migration}. This fixture does not turn off features on a current database.
+migration}. Keep the 031 entry profile tables and current model call accounting.
 """
 import pytest
 from iris import db
@@ -11,7 +11,8 @@ def use_legacy_schema(monkeypatch):
     root=db.files('iris')
     class Scripts:
         def iterdir(self):
-            return [p for p in root.joinpath('migrations').iterdir() if p.name<'032']
+            return [p for p in root.joinpath('migrations').iterdir()
+                    if p.name < '032' or p.name == '044_model_cached_tokens.sql']
     class Root:
         def joinpath(self,*parts):
             return Scripts() if parts==('migrations',) else root.joinpath(*parts)

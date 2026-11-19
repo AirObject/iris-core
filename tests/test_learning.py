@@ -1,6 +1,8 @@
+import pytest
+
 from iris.learning import PROMPT, _same_goal, independent_evidence_count, normalize_event_time, source_message_ids
 from iris.memory_ops import set_subject_link_status, setup_role
-from iris.models import ModelConfig
+from iris.models import ModelConfig, ModelError
 
 from conftest import FakeGateway, batch, msg
 from test_batches import count, memory
@@ -172,6 +174,81 @@ def test_same_display_name_accounts_need_unambiguous_reference(store):
     _, result = batch(store, FakeGateway(output), count=2)
     assert len(result["created"]) == 1
     assert any("ambiguous" in item["reason"] for item in result["dropped"])
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_batch_reuses_identical_memory_embeddings_without_dropping_sources(store, monkeypatch, fails):
+    sources = [msg(store, i, "我喜欢猫") for i in (1, 2)]
+    fake = FakeGateway({"memories": [memory(evidence=[1]), memory(evidence=[2])]})
+    fake.configs["embedding"] = ModelConfig("fake", "", "fake-embed")
+    calls = []
+
+    def embed(text, purpose):
+        calls.append((text, purpose))
+        if fails:
+            raise ModelError("retryable", "temporary embedding failure")
+        return [1.0, 0.0]
+
+    monkeypatch.setattr(fake, "embedding", embed)
+    _, result = batch(store, fake)
+    (memory_id,) = result["created"]
+    assert calls == [("小林喜欢猫", "memory_embedding")]
+    with store.read() as conn:
+        assert {r[0] for r in conn.execute("SELECT message_id FROM sources WHERE memory_id=?", (memory_id,))} == set(sources)
+        size, model = conn.execute("SELECT length(embedding),embedding_model FROM memories WHERE id=?", (memory_id,)).fetchone()
+        assert (size, model) == ((None, None) if fails else (8, "fake-embed"))
+
+    msg(store, 3, "我喜欢猫")
+    fake.response = {"memories": [memory(evidence=[3])]}
+    _, later = batch(store, fake, count=1)
+    assert later["confirmed"] == [memory_id]
+    assert calls == [("小林喜欢猫", "memory_embedding")] * 2
+
+
+def test_batch_can_share_embedding_between_new_candidate_and_correction(store, monkeypatch):
+    msg(store, 1, "我喜欢展馆")
+    _, first = batch(store, FakeGateway({"memories": [memory("小林喜欢展馆")]}), count=1)
+    (memory_id,) = first["created"]
+    msg(store, 2, "我现在喜欢博物馆")
+    content = "小林喜欢博物馆"
+    fake = FakeGateway({
+        "memories": [memory(content, evidence=[2])],
+        "updates": [{"ref": "M1", "action": "修正", "content": content, "belief": 80, "evidence": [2]}],
+    })
+    fake.configs["embedding"] = ModelConfig("fake", "", "fake-embed")
+    calls = []
+
+    def embed(text, purpose):
+        calls.append((text, purpose))
+        return [1.0, 0.0]
+
+    monkeypatch.setattr(fake, "embedding", embed)
+    _, result = batch(store, fake, count=1)
+    assert result["updated"] == [memory_id] and result["created"] == []
+    assert calls == [(content, "memory_embedding")]
+    with store.read() as conn:
+        row = conn.execute("SELECT content,revision,length(embedding) FROM memories WHERE id=?", (memory_id,)).fetchone()
+        assert tuple(row) == (content, 2, 8)
+
+
+def test_batch_keeps_new_vectors_under_the_active_embedding_model(store, monkeypatch):
+    msg(store, 1, "我喜欢猫，也喜欢狗")
+    fake = FakeGateway({"memories": [memory("小林喜欢猫"), memory("小林喜欢狗")]})
+    fake.configs["embedding"] = ModelConfig("fake", "", "old-model")
+    calls = []
+
+    def embed(text, purpose):
+        calls.append((text, fake.configs["embedding"].model))
+        fake.configs["embedding"] = ModelConfig("fake", "", "new-model")
+        return [1.0, 0.0]
+
+    monkeypatch.setattr(fake, "embedding", embed)
+    _, result = batch(store, fake, count=1)
+    assert len(result["created"]) == 2
+    assert calls == [("小林喜欢猫", "old-model"), ("小林喜欢狗", "new-model")]
+    with store.read() as conn:
+        rows = conn.execute("SELECT content,embedding_model FROM memories ORDER BY id").fetchall()
+        assert [tuple(row) for row in rows] == [("小林喜欢猫", None), ("小林喜欢狗", "new-model")]
 
 
 def test_vector_confirmation_keeps_different_event_times_separate(store):

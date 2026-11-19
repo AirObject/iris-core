@@ -1,11 +1,17 @@
 import json
-from concurrent.futures import TimeoutError as FutureTimeout
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+from contextlib import closing
+from dataclasses import replace
+from threading import Event
 
 import httpx
 import pytest
 
 from iris.models import (Gateway, ModelConfig, ModelError, parse_json_object,
                          parse_json_object_with_status, repair_unescaped_value_quotes)
+
+from fake_openai import Clock
+from thread_helpers import THREAD_WAIT, expire_after_entry
 
 
 def configs():
@@ -127,7 +133,6 @@ def test_embedding_uses_configured_plan_path(store):
 
 
 def test_embedding_dimension_payload_and_mismatched_response(store):
-    from dataclasses import replace
     configured = configs()
     configured['embedding'] = replace(configured['embedding'], dimensions=1024)
     seen = []
@@ -146,12 +151,213 @@ def test_embedding_dimension_payload_and_mismatched_response(store):
         gateway.close()
 
 
+@pytest.mark.parametrize(("usage", "cached_tokens"), [
+    ({"prompt_tokens": 32, "prompt_tokens_details": {"cached_tokens": 12}}, 12),
+    ({"prompt_tokens_details": {"cached_tokens": 0}}, 0),
+    ({"prompt_tokens": 32}, None),
+    ({"prompt_tokens_details": {}}, None),
+    ({"prompt_tokens_details": {"cached_tokens": None}}, None),
+    ({"prompt_tokens_details": {"cached_tokens": True}}, None),
+    ({"prompt_tokens_details": {"cached_tokens": "0"}}, None),
+    ({"prompt_tokens_details": {"cached_tokens": -1}}, None),
+    ({"prompt_tokens_details": {"cached_tokens": 2**63}}, None),
+    ({"prompt_tokens_details": [0]}, None),
+])
+def test_model_call_records_only_reported_valid_cache_usage(store, usage, cached_tokens):
+    def handler(request):
+        return httpx.Response(200, json=response(usage=usage))
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client, closing(Gateway(configs(), store, client)) as gateway:
+        gateway.chat([{"role": "user", "content": "test"}], "test")
+    with store.read() as conn:
+        row = conn.execute("SELECT cached_tokens,prompt_tokens FROM model_calls").fetchone()
+        assert tuple(row) == (cached_tokens, usage.get("prompt_tokens"))
+
+
+def embedding_response(vector=(0.1, 0.2)):
+    return httpx.Response(200, json={"data": [{"embedding": list(vector)}]})
+
+
+def watch_embedding_waiter(gateway, monkeypatch):
+    (flight,) = gateway._embedding_flights.values()
+    waiting = Event()
+    original_result = flight.outcome.result
+
+    def result(timeout=None):
+        waiting.set()
+        return original_result(timeout)
+
+    monkeypatch.setattr(flight.outcome, "result", result)
+    return waiting
+
+
+@pytest.mark.parametrize("first_status", [200, 400])
+def test_identical_embeddings_share_one_outbound_attempt(store, monkeypatch, first_status):
+    entered, release = Event(), Event()
+    calls = []
+
+    def handler(request):
+        calls.append(json.loads(request.content))
+        if len(calls) == 1:
+            entered.set()
+            assert release.wait(THREAD_WAIT)
+            if first_status != 200:
+                return httpx.Response(first_status)
+        return embedding_response()
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client, closing(Gateway(configs(), store, client)) as gateway:
+        with ThreadPoolExecutor(max_workers=2) as callers:
+            first = callers.submit(gateway.embedding, "同一正文", "memory_embedding")
+            try:
+                assert entered.wait(THREAD_WAIT)
+                waiting = watch_embedding_waiter(gateway, monkeypatch)
+                second = callers.submit(gateway.embedding, "同一正文", "retrieval_query")
+                assert waiting.wait(THREAD_WAIT)
+                assert len(calls) == 1
+            finally:
+                release.set()
+            if first_status == 200:
+                original = first.result(timeout=THREAD_WAIT)
+                shared = second.result(timeout=THREAD_WAIT)
+                assert original == shared == [0.1, 0.2]
+                assert original is not shared
+            else:
+                for caller in (first, second):
+                    with pytest.raises(ModelError) as error:
+                        caller.result(timeout=THREAD_WAIT)
+                    assert error.value.category == "item_error"
+        assert len(calls) == 1
+        assert gateway.embedding("同一正文") == [0.1, 0.2]
+    assert len(calls) == 2 and calls[0] == calls[1]
+    with store.read() as conn:
+        rows = conn.execute("SELECT purpose,status_code FROM model_calls ORDER BY id").fetchall()
+        assert [tuple(row) for row in rows] == [("memory_embedding", first_status), ("embedding", 200)]
+
+
+def test_embedding_follower_timeout_leaves_owner_running(store, monkeypatch):
+    entered, release = Event(), Event()
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        entered.set()
+        assert release.wait(THREAD_WAIT)
+        return embedding_response()
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client, closing(Gateway(configs(), store, client)) as gateway:
+        with ThreadPoolExecutor(max_workers=1) as callers:
+            owner = callers.submit(gateway.embedding, "同一正文", "memory_embedding")
+            try:
+                assert entered.wait(THREAD_WAIT)
+                (flight,) = gateway._embedding_flights.values()
+
+                def expire(timeout=None):
+                    assert 0 < timeout <= 2
+                    raise FutureTimeout
+
+                monkeypatch.setattr(flight.outcome, "result", expire)
+                with pytest.raises(ModelError) as error:
+                    gateway.embedding("同一正文", "retrieval_query")
+                assert error.value.reason == "timeout"
+                assert not owner.done() and len(calls) == 1
+            finally:
+                release.set()
+            assert owner.result(timeout=THREAD_WAIT) == [0.1, 0.2]
+    with store.read() as conn:
+        assert [row[0] for row in conn.execute("SELECT purpose FROM model_calls")] == ["memory_embedding"]
+
+
+@pytest.mark.parametrize("change", ["text", "credential", "dimensions"])
+def test_embedding_flights_do_not_share_changed_request_identity(store, change):
+    configured = configs()
+    settings = {"embedding_model": configured["embedding"].model, "embedding_dimensions": 2}
+    store.set_setting("retrieval", settings)
+    entered, release = Event(), Event()
+    requests = []
+
+    def handler(request):
+        payload = json.loads(request.content)
+        count = payload["dimensions"]
+        requests.append((payload["input"], count))
+        if len(requests) == 1:
+            entered.set()
+            assert release.wait(THREAD_WAIT)
+        return embedding_response([0.1] * count)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client, closing(Gateway(configured, store, client)) as gateway:
+        with ThreadPoolExecutor(max_workers=2) as callers:
+            first = callers.submit(gateway.embedding, "同一正文")
+            try:
+                assert entered.wait(THREAD_WAIT)
+                expected_size = 2
+                second_input = "另一正文" if change == "text" else "同一正文"
+                if change == "credential":
+                    gateway.replace_config("embedding", replace(configured["embedding"], api_key="second-placeholder"))
+                elif change == "dimensions":
+                    store.set_setting("retrieval", {**settings, "embedding_dimensions": 3})
+                    expected_size = 3
+                second = callers.submit(gateway.embedding, second_input)
+                assert second.result(timeout=THREAD_WAIT) == [0.1] * expected_size
+            finally:
+                release.set()
+            if change == "credential":
+                with pytest.raises(ModelError) as error:
+                    first.result(timeout=THREAD_WAIT)
+                assert error.value.reason == "configuration_changed"
+            else:
+                assert first.result(timeout=THREAD_WAIT) == [0.1] * 2
+    assert requests == [("同一正文", 2), (second_input, expected_size)]
+
+
+def test_embedding_retry_waits_for_timed_out_owner_to_release_transport(store, monkeypatch):
+    entered, release = Event(), Event()
+    clock = Clock()
+    calls = []
+    sleeps = []
+
+    def handler(request):
+        calls.append(request)
+        if len(calls) == 1:
+            entered.set()
+            assert release.wait(THREAD_WAIT)
+        return embedding_response()
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client, closing(
+        Gateway(configs(), store, client, monotonic=clock.monotonic, sleeper=sleeps.append, jitter=lambda a, b: 0)
+    ) as gateway:
+        try:
+            with monkeypatch.context() as controlled:
+                requests = expire_after_entry(controlled, gateway._pool, entered, clock)
+                with pytest.raises(ModelError) as error:
+                    gateway.embedding("同一正文", "retrieval_query")
+                assert error.value.reason == "timeout" and requests[0].running()
+            (flight,) = gateway._embedding_flights.values()
+            assert not flight.outcome.done()
+            waiting = watch_embedding_waiter(gateway, monkeypatch)
+            with ThreadPoolExecutor(max_workers=1) as callers:
+                follower = callers.submit(gateway.embedding, "同一正文", "memory_embedding")
+                try:
+                    assert waiting.wait(THREAD_WAIT)
+                    assert len(calls) == 1
+                finally:
+                    release.set()
+                assert follower.result(timeout=THREAD_WAIT) == [0.1, 0.2]
+        finally:
+            release.set()
+    assert len(calls) == 2 and sleeps == [2]
+    with store.read() as conn:
+        rows = conn.execute("SELECT purpose,result_category,timed_out FROM model_calls ORDER BY id").fetchall()
+        assert [tuple(row) for row in rows] == [
+            ("retrieval_query", "retryable", 1),
+            ("memory_embedding", "success", 0),
+        ]
+
+
 @pytest.mark.parametrize(("purpose", "deadline"), [
     ("test", 120), ("learning", 180), ("learning_repair", 180),
     ("learning_judge", 240), ("learning_judge_repair", 240),
 ])
 def test_generation_has_hard_total_timeout_and_two_retries(store, purpose, deadline):
-    from fake_openai import Clock
     clock = Clock()
     seen = []
     class Future:

@@ -1,5 +1,5 @@
 import json
-from concurrent.futures import TimeoutError as FutureTimeout
+from concurrent.futures import Future, TimeoutError as FutureTimeout
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -43,18 +43,20 @@ def test_embedding_deadline_is_two_seconds_without_retries_or_waiting_in_transac
     entry(store)
     put(store, "我喜欢天文摄影")
     seen = []
-    class Future:
+    class TimeoutFuture(Future):
         def result(self, timeout):
             assert timeout == pytest.approx(2, abs=.01)
             raise FutureTimeout()
+
         def cancel(self):
             seen.append("cancel")
+            return super().cancel()
     class Pool:
         def submit(self, *args, **kwargs):
             assert not store._writer.in_transaction
             assert kwargs["timeout"].read == kwargs["timeout"].connect == pytest.approx(2, abs=.01)
             seen.append("request")
-            return Future()
+            return TimeoutFuture()
     gateway = Gateway({"embedding": ModelConfig("https://example.invalid", "", "fake-vector")}, store,
                       sleeper=lambda _: pytest.fail("retrieval must not retry"))
     gateway._pool.shutdown(wait=False)
