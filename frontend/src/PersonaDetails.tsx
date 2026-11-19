@@ -268,7 +268,7 @@ export function PersonaChecks({
       )}
       {checks.admin_content_removed_or_changed && (
         <Notice>
-          候选删去或改动了手写内容，变化程度按“大”处理。默认发布方式需要确认；“全部自动”模式会直接发布检查通过的候选。
+          此候选删改了手写内容，按大变化处理。检查通过后，“全部自动”须判明变化程度才发布，其余模式需确认。
         </Notice>
       )}
     </div>

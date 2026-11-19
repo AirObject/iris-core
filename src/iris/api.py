@@ -715,7 +715,7 @@ def _install_host_openapi(app):
         ("post", base + "/memories/search", {"text": "观星", "entry_id": "group-a", "include_forgotten": False,
                                             "include_state": False, "include_goals": False},
          search, {"memories": [], "hints": [], "recall_id": "recall-id"},
-         "按文本、人物、类型、立场与时间范围筛选。entry_id 可选，给出时检查令牌权限；不传则省略入口上下文。可见范围由检索层实现；AP 兼容尚无 entry_id 参数的旧检索层，部署入口隐私规则须同时包含 VS 实现。include_forgotten 深度读取不恢复遗忘记忆；不返回已删除记忆。include_goals/include_state 仅在开启时加入对应分区。返回 subject_annotations，不运行召回判断。sources 的范围外 entry_id、entry_name、occurred_at 为 null。"),
+         "按文本、人物、类型、立场与时间范围筛选。entry_id 可选，给出时检查令牌权限；不传则省略入口上下文。按所给入口上下文过滤记忆可见范围。include_forgotten 深度读取不恢复遗忘记忆；不返回已删除记忆。include_goals/include_state 仅在开启时加入对应分区。返回 subject_annotations，不运行召回判断。sources 的范围外 entry_id、entry_name、occurred_at 为 null。"),
         ("post", base + "/feedback", {"recall_id": "recall-id", "memory_ids": [1]},
          obj({"recall_id": string, "accepted": array(integer), "strengthened": array(integer)}),
          {"recall_id": "recall-id", "accepted": [1], "strengthened": [1]},

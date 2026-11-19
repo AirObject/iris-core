@@ -528,7 +528,7 @@ def _report_markdown(report: dict[str, Any]) -> str:
             lines.append(f"- {label}：全部 {_fmt(all_metrics.get(key))}，holdout {_fmt(holdout.get(key))}；门槛 {_fmt(limit)}。")
     else:
         lines.extend(["", "本次没有 holdout 结果，不能判定 M1 学习门槛是否最终达标；最终还需规划者运行隐藏验收集。"])
-    lines.extend(["", "M2 参考门槛（本 PR 不要求）：记忆精确率 ≥85%；事实召回率 ≥75%；"
+    lines.extend(["", "M2 参考门槛：记忆精确率 ≥85%；事实召回率 ≥75%；"
                   "误记率 ≤5%；证据正确率 ≥90%；归属正确率 ≥90%。"])
     lines.extend(["", "## 与上次结果对比", ""])
     previous = report.get("previous")

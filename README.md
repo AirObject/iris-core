@@ -61,16 +61,16 @@ uv run iris --data-dir /path/to/iris-data serve
 
 试用页在角色回复失败时也显示已完成准备的召回候选编号、当时修订、支持分与降级原因。复用已发布回复时标明原回复编号、准备时间与召回记录编号，不重新准备或调用模型。诊断附在既有召回记录中，只增加编号、修订、分数与结果等元数据，不复制准备材料正文、不增加使用次数；失败响应仍为 502，通过 `result.diagnostic` 提供诊断，成功／复用响应为 `diagnostic`。诊断中的记忆链接打开当前详情。旧回复没有记录、或原召回记录已按 30 天保留期限清理时会明确提示不可还原。
 
-## Docker 部署（0.0.1）
+## Docker 部署
 
-镜像 `ghcr.io/airobject/iris-core:0.0.1` 同时提供 `linux/amd64`、`linux/arm64`，另有 `latest` 标签。推荐固定版本；`iris --version` 可查看已安装版本。镜像基于固定的官方 Python 3.13 小版本，以 UID/GID **10001:10001** 运行，默认 `0.0.0.0:8080`，数据目录 `/data`，健康检查只访问本机 `/login`，不需要宿主令牌。
+镜像 `ghcr.io/airobject/iris-core:0.0.3` 同时提供 `linux/amd64`、`linux/arm64`，另有 `latest` 标签。推荐固定版本；`iris --version` 可查看已安装版本。镜像基于固定的官方 Python 3.13 小版本，以 UID/GID **10001:10001** 运行，默认 `0.0.0.0:8080`，数据目录 `/data`，健康检查只访问本机 `/login`，不需要宿主令牌。
 
 **只把端口映射到本机，或把 Iris 放在可信 Docker 网络中；不要直接暴露到公网，本服务不提供 TLS。** 只有环境变量严格等于 `IRIS_CONTAINER=1` 才允许非回环监听；`true` 等其他值不会开启。镜像已设此开关，普通安装默认关闭。Host 白名单、宿主令牌、管理员会话和 CSRF 仍全部生效，不信任代理头，也不启用 CORS。
 
 AstrBot 在宿主机时：
 
 ```bash
-docker run -d --name iris -p 127.0.0.1:8080:8080 -v iris-data:/data ghcr.io/airobject/iris-core:0.0.1
+docker run -d --name iris -p 127.0.0.1:8080:8080 -v iris-data:/data ghcr.io/airobject/iris-core:0.0.3
 docker logs iris
 ```
 
@@ -83,7 +83,7 @@ AstrBot 也在 Docker 中时，将它的**现有服务配置**接入同一网络
 ```yaml
 services:
   iris:
-    image: ghcr.io/airobject/iris-core:0.0.1
+    image: ghcr.io/airobject/iris-core:0.0.3
     environment:
       IRIS_ALLOWED_HOSTS: iris
     ports:
@@ -115,7 +115,7 @@ docker exec iris iris --data-dir /data models import --from /config/models.toml
 
 ```bash
 docker stop iris
-docker run --rm -v iris-data:/data ghcr.io/airobject/iris-core:0.0.1 tokens create --host astrbot --prefix 'astrbot:'
+docker run --rm -v iris-data:/data ghcr.io/airobject/iris-core:0.0.3 tokens create --host astrbot --prefix 'astrbot:'
 docker start iris
 ```
 
