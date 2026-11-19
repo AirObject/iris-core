@@ -1,4 +1,4 @@
-"""Small command line surface for the M1 learning PR."""
+"""Command-line entry point for Iris."""
 
 from __future__ import annotations
 
